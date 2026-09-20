@@ -1,11 +1,23 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DeepPartial, Repository } from 'typeorm';
 import { CreateHabitDto } from './dto/create-habit.dto';
+import { UpdateHabitDto } from './dto/update-habit.dto';
 import { HabitEntity } from './entities/habit.entity';
 import { HabitScheduleType } from './enums/habit-schedule-type.enum';
 import { MissedOccurrencePolicy } from './enums/missed-occurrence-policy.enum';
 import { Weekday } from './enums/weekday.enum';
+
+type HabitSchedule = {
+  scheduleType: HabitScheduleType;
+  intervalDays: number | null;
+  weekdays: Weekday[] | null;
+  weeklyTarget: number | null;
+};
 
 @Injectable()
 export class HabitsService {
@@ -20,6 +32,18 @@ export class HabitsService {
         id: 'ASC',
       },
     });
+  }
+
+  async findOne(id: number): Promise<HabitEntity> {
+    const habit = await this.habitRepository.findOneBy({
+      id,
+    });
+
+    if (!habit) {
+      throw new NotFoundException(`Habit with ID ${id} was not found`);
+    }
+
+    return habit;
   }
 
   async create(createHabitDto: CreateHabitDto): Promise<HabitEntity> {
@@ -56,12 +80,77 @@ export class HabitsService {
     return this.habitRepository.save(habit);
   }
 
-  private validateSchedule(schedule: {
-    scheduleType: HabitScheduleType;
-    intervalDays: number | null;
-    weekdays: Weekday[] | null;
-    weeklyTarget: number | null;
-  }): void {
+  async update(
+    id: number,
+    updateHabitDto: UpdateHabitDto,
+  ): Promise<HabitEntity> {
+    const hasChanges = Object.values(updateHabitDto).some(
+      (value) => value !== undefined,
+    );
+
+    if (!hasChanges) {
+      throw new BadRequestException('At least one property must be provided');
+    }
+
+    const changes: DeepPartial<HabitEntity> = {
+      id,
+    };
+
+    if (updateHabitDto.title !== undefined) {
+      changes.title = updateHabitDto.title;
+    }
+
+    if (updateHabitDto.scheduleType !== undefined) {
+      changes.scheduleType = updateHabitDto.scheduleType;
+    }
+
+    if (updateHabitDto.startDate !== undefined) {
+      changes.startDate = updateHabitDto.startDate;
+    }
+
+    if (updateHabitDto.intervalDays !== undefined) {
+      changes.intervalDays = updateHabitDto.intervalDays;
+    }
+
+    if (updateHabitDto.weekdays !== undefined) {
+      changes.weekdays = updateHabitDto.weekdays;
+    }
+
+    if (updateHabitDto.weeklyTarget !== undefined) {
+      changes.weeklyTarget = updateHabitDto.weeklyTarget;
+    }
+
+    if (updateHabitDto.missedOccurrencePolicy !== undefined) {
+      changes.missedOccurrencePolicy = updateHabitDto.missedOccurrencePolicy;
+    }
+
+    if (updateHabitDto.isActive !== undefined) {
+      changes.isActive = updateHabitDto.isActive;
+    }
+
+    const habit = await this.habitRepository.preload(changes);
+
+    if (!habit) {
+      throw new NotFoundException(`Habit with ID ${id} was not found`);
+    }
+
+    this.validateSchedule({
+      scheduleType: habit.scheduleType,
+      intervalDays: habit.intervalDays,
+      weekdays: habit.weekdays,
+      weeklyTarget: habit.weeklyTarget,
+    });
+
+    return this.habitRepository.save(habit);
+  }
+
+  async remove(id: number): Promise<void> {
+    const habit = await this.findOne(id);
+
+    await this.habitRepository.softRemove(habit);
+  }
+
+  private validateSchedule(schedule: HabitSchedule): void {
     switch (schedule.scheduleType) {
       case HabitScheduleType.INTERVAL:
         if (schedule.intervalDays === null) {
