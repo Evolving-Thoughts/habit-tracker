@@ -9,6 +9,7 @@ import { HabitOccurrenceStatus } from './enums/habit-occurrence-status.enum';
 import { HabitOccurrencesService } from './habit-occurrences.service';
 import { HabitScheduleCalculator } from './scheduling/habit-schedule-calculator';
 import { getCurrentDateInTimeZone } from '../common/date/date-only.utils';
+import { Weekday } from '../habits/enums/weekday.enum';
 
 @Injectable()
 export class HabitOccurrenceGeneratorService {
@@ -179,31 +180,45 @@ export class HabitOccurrenceGeneratorService {
 
     const pendingOccurrence = await this.findOldestPendingOccurrence(habit.id);
 
+    let candidateDate: string;
+
     if (pendingOccurrence) {
-      const wasSkipped = await this.handlePendingOccurrence(
+      const shouldSkip = this.shouldSkipFixedWeekdayOccurrence(
         habit,
         pendingOccurrence,
         today,
       );
 
-      if (!wasSkipped) {
+      if (!shouldSkip) {
+        // Die Ausführung befindet sich noch innerhalb
+        // ihres Carry-over-Zeitraums.
         return;
       }
+
+      const skippedOccurrence = await this.occurrenceService.updateStatus(
+        pendingOccurrence.id,
+        HabitOccurrenceStatus.SKIPPED,
+      );
+
+      candidateDate = HabitScheduleCalculator.addDays(
+        skippedOccurrence.scheduledDate,
+        1,
+      );
+    } else {
+      const lastOccurrence = await this.occurrenceRepository.findOne({
+        where: {
+          habitId: habit.id,
+        },
+        order: {
+          scheduledDate: 'DESC',
+          id: 'DESC',
+        },
+      });
+
+      candidateDate = lastOccurrence
+        ? HabitScheduleCalculator.addDays(lastOccurrence.scheduledDate, 1)
+        : habit.startDate;
     }
-
-    const lastOccurrence = await this.occurrenceRepository.findOne({
-      where: {
-        habitId: habit.id,
-      },
-      order: {
-        scheduledDate: 'DESC',
-        id: 'DESC',
-      },
-    });
-
-    let candidateDate = lastOccurrence
-      ? HabitScheduleCalculator.addDays(lastOccurrence.scheduledDate, 1)
-      : habit.startDate;
 
     while (HabitScheduleCalculator.isOnOrBefore(candidateDate, today)) {
       if (
@@ -219,22 +234,64 @@ export class HabitOccurrenceGeneratorService {
         candidateDate,
       );
 
-      if (
-        habit.missedOccurrencePolicy === MissedOccurrencePolicy.SKIP &&
-        candidateDate < today
-      ) {
-        await this.occurrenceService.updateStatus(
-          occurrence.id,
-          HabitOccurrenceStatus.SKIPPED,
-        );
+      const shouldSkip = this.shouldSkipFixedWeekdayOccurrence(
+        habit,
+        occurrence,
+        today,
+      );
 
-        candidateDate = HabitScheduleCalculator.addDays(candidateDate, 1);
-
-        continue;
+      if (!shouldSkip) {
+        return;
       }
 
-      return;
+      const skippedOccurrence = await this.occurrenceService.updateStatus(
+        occurrence.id,
+        HabitOccurrenceStatus.SKIPPED,
+      );
+
+      candidateDate = HabitScheduleCalculator.addDays(
+        skippedOccurrence.scheduledDate,
+        1,
+      );
     }
+  }
+
+  private shouldSkipFixedWeekdayOccurrence(
+    habit: HabitEntity,
+    occurrence: HabitOccurrenceEntity,
+    today: string,
+  ): boolean {
+    if (habit.missedOccurrencePolicy === MissedOccurrencePolicy.SKIP) {
+      // Bei SKIP verfällt die Ausführung direkt
+      // nach ihrem geplanten Tag.
+      return occurrence.scheduledDate < today;
+    }
+
+    if (habit.weekdays === null || habit.weekdays.length === 0) {
+      return false;
+    }
+
+    const nextDueDate = this.findNextFixedWeekdayDate(
+      occurrence.scheduledDate,
+      habit.weekdays,
+    );
+
+    // Bei CARRY_OVER bleibt die Ausführung bis zum
+    // nächsten konfigurierten Wochentag offen.
+    return nextDueDate <= today;
+  }
+
+  private findNextFixedWeekdayDate(
+    afterDate: string,
+    weekdays: Weekday[],
+  ): string {
+    let candidateDate = HabitScheduleCalculator.addDays(afterDate, 1);
+
+    while (!HabitScheduleCalculator.isFixedWeekday(candidateDate, weekdays)) {
+      candidateDate = HabitScheduleCalculator.addDays(candidateDate, 1);
+    }
+
+    return candidateDate;
   }
 
   private async generateWeeklyTargetOccurrence(
@@ -243,6 +300,21 @@ export class HabitOccurrenceGeneratorService {
   ): Promise<void> {
     if (habit.weeklyTarget === null) {
       return;
+    }
+
+    const pendingOccurrence = await this.findOldestPendingOccurrence(habit.id);
+
+    if (pendingOccurrence) {
+      if (pendingOccurrence.scheduledDate === today) {
+        return;
+      }
+
+      // Eine Weekly-Target-Chance gilt immer nur
+      // bis zum nächsten Kalendertag.
+      await this.occurrenceService.updateStatus(
+        pendingOccurrence.id,
+        HabitOccurrenceStatus.SKIPPED,
+      );
     }
 
     const week = HabitScheduleCalculator.getWeekRange(today);
@@ -257,20 +329,6 @@ export class HabitOccurrenceGeneratorService {
 
     if (completedThisWeek >= habit.weeklyTarget) {
       return;
-    }
-
-    const pendingOccurrence = await this.findOldestPendingOccurrence(habit.id);
-
-    if (pendingOccurrence) {
-      const wasSkipped = await this.handlePendingOccurrence(
-        habit,
-        pendingOccurrence,
-        today,
-      );
-
-      if (!wasSkipped) {
-        return;
-      }
     }
 
     const occurrenceForToday = await this.occurrenceRepository.findOneBy({
@@ -298,28 +356,6 @@ export class HabitOccurrenceGeneratorService {
         id: 'ASC',
       },
     });
-  }
-
-  private async handlePendingOccurrence(
-    habit: HabitEntity,
-    occurrence: HabitOccurrenceEntity,
-    today: string,
-  ): Promise<boolean> {
-    const isOverdue = occurrence.scheduledDate < today;
-
-    const shouldSkip =
-      isOverdue && habit.missedOccurrencePolicy === MissedOccurrencePolicy.SKIP;
-
-    if (!shouldSkip) {
-      return false;
-    }
-
-    await this.occurrenceService.updateStatus(
-      occurrence.id,
-      HabitOccurrenceStatus.SKIPPED,
-    );
-
-    return true;
   }
 
   private findOccurrencesForToday(
