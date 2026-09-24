@@ -10,6 +10,8 @@ import { HabitEntity } from '../src/habits/entities/habit.entity';
 import { HabitScheduleType } from '../src/habits/enums/habit-schedule-type.enum';
 import { MissedOccurrencePolicy } from '../src/habits/enums/missed-occurrence-policy.enum';
 import { Weekday } from '../src/habits/enums/weekday.enum';
+import { getCurrentDateInTimeZone } from '../src/common/date/date-only.utils';
+import { HabitOccurrenceEntity } from '../src/habit-occurrences/entities/habit-occurrence.entity';
 
 type HabitResponseBody = {
   id: number;
@@ -29,31 +31,11 @@ type ErrorResponseBody = {
   error: string;
 };
 
-function getCurrentDateInTimeZone(timeZone: string, now = new Date()): string {
-  const parts = new Intl.DateTimeFormat('en', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(now);
-
-  const year = parts.find((part) => part.type === 'year')?.value;
-
-  const month = parts.find((part) => part.type === 'month')?.value;
-
-  const day = parts.find((part) => part.type === 'day')?.value;
-
-  if (!year || !month || !day) {
-    throw new Error('Could not determine the current date');
-  }
-
-  return `${year}-${month}-${day}`;
-}
-
 describe('Habits API (e2e)', () => {
   let app: INestApplication;
   let httpServer: Server;
   let habitRepository: Repository<HabitEntity>;
+  let occurrenceRepository: Repository<HabitOccurrenceEntity>;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -70,10 +52,16 @@ describe('Habits API (e2e)', () => {
     habitRepository = moduleFixture.get<Repository<HabitEntity>>(
       getRepositoryToken(HabitEntity),
     );
+
+    occurrenceRepository = moduleFixture.get<Repository<HabitOccurrenceEntity>>(
+      getRepositoryToken(HabitOccurrenceEntity),
+    );
   });
 
   beforeEach(async () => {
-    await habitRepository.clear();
+    await occurrenceRepository.createQueryBuilder().delete().execute();
+
+    await habitRepository.createQueryBuilder().delete().execute();
   });
 
   afterAll(async () => {
@@ -99,7 +87,7 @@ describe('Habits API (e2e)', () => {
         id: body.id,
         title: 'Joggen',
         scheduleType: HabitScheduleType.INTERVAL,
-        startDate: getCurrentDateInTimeZone('Europe/Berlin'),
+        startDate: getCurrentDateInTimeZone(),
         intervalDays: 2,
         weekdays: null,
         weeklyTarget: null,

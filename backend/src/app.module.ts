@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TodosModule } from './todos/todos.module';
 import { HabitsModule } from './habits/habits.module';
+import { HabitOccurrencesModule } from './habit-occurrences/habit-occurrences.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { HabitsModule } from './habits/habits.module';
     }),
     TodosModule,
     HabitsModule,
+    HabitOccurrencesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

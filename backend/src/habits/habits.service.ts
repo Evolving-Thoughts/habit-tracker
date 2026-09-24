@@ -11,6 +11,7 @@ import { HabitEntity } from './entities/habit.entity';
 import { HabitScheduleType } from './enums/habit-schedule-type.enum';
 import { MissedOccurrencePolicy } from './enums/missed-occurrence-policy.enum';
 import { Weekday } from './enums/weekday.enum';
+import { getCurrentDateInTimeZone } from '../common/date/date-only.utils';
 
 type HabitSchedule = {
   scheduleType: HabitScheduleType;
@@ -47,9 +48,7 @@ export class HabitsService {
   }
 
   async create(createHabitDto: CreateHabitDto): Promise<HabitEntity> {
-    const startDate =
-      createHabitDto.startDate ??
-      this.getCurrentDateInTimeZone('Europe/Berlin');
+    const startDate = createHabitDto.startDate ?? getCurrentDateInTimeZone();
 
     const intervalDays = createHabitDto.intervalDays ?? null;
 
@@ -197,26 +196,5 @@ export class HabitsService {
 
         return;
     }
-  }
-
-  private getCurrentDateInTimeZone(timeZone: string, now = new Date()): string {
-    const parts = new Intl.DateTimeFormat('en', {
-      timeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).formatToParts(now);
-
-    const year = parts.find((part) => part.type === 'year')?.value;
-
-    const month = parts.find((part) => part.type === 'month')?.value;
-
-    const day = parts.find((part) => part.type === 'day')?.value;
-
-    if (!year || !month || !day) {
-      throw new Error('Could not determine the current date');
-    }
-
-    return `${year}-${month}-${day}`;
   }
 }
