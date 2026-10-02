@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { TodosModule } from './todos/todos.module';
 import { HabitsModule } from './habits/habits.module';
 import { HabitOccurrencesModule } from './habit-occurrences/habit-occurrences.module';
+import { DayPlannerModule } from './day-planner/day-planner.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { HabitOccurrencesModule } from './habit-occurrences/habit-occurrences.mo
     TodosModule,
     HabitsModule,
     HabitOccurrencesModule,
+    DayPlannerModule,
   ],
   controllers: [AppController],
   providers: [AppService],
