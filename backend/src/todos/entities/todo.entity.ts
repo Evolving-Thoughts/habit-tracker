@@ -28,6 +28,12 @@ export class TodoEntity {
     type: 'timestamptz',
     nullable: true,
   })
+  completedAt!: Date | null;
+
+  @Column({
+    type: 'timestamptz',
+    nullable: true,
+  })
   scheduledAt!: Date | null;
 
   @Column({

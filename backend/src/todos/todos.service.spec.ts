@@ -20,6 +20,7 @@ describe('TodosService', () => {
     id: 1,
     title: 'Learn NestJS',
     completed: false,
+    completedAt: null,
     scheduledAt: null,
     plannedDurationMinutes: null,
     isFixed: false,
@@ -53,6 +54,7 @@ describe('TodosService', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    jest.useRealTimers();
   });
 
   describe('findAll', () => {
@@ -92,6 +94,7 @@ describe('TodosService', () => {
       const unsavedTodo = {
         title: 'Learn NestJS',
         completed: false,
+        completedAt: null,
         scheduledAt: null,
         plannedDurationMinutes: null,
         isFixed: false,
@@ -109,6 +112,7 @@ describe('TodosService', () => {
       expect(repository.create).toHaveBeenCalledWith({
         title: 'Learn NestJS',
         completed: false,
+        completedAt: null,
         scheduledAt: null,
         plannedDurationMinutes: null,
         isFixed: false,
@@ -123,6 +127,7 @@ describe('TodosService', () => {
       const unsavedTodo = {
         title: 'Doctor appointment',
         completed: false,
+        completedAt: null,
         scheduledAt: new Date(scheduledAt),
         plannedDurationMinutes: 30,
         isFixed: true,
@@ -151,6 +156,7 @@ describe('TodosService', () => {
       expect(repository.create).toHaveBeenCalledWith({
         title: 'Doctor appointment',
         completed: false,
+        completedAt: null,
         scheduledAt: new Date(scheduledAt),
         plannedDurationMinutes: 30,
         isFixed: true,
@@ -173,27 +179,105 @@ describe('TodosService', () => {
   });
 
   describe('update', () => {
-    it('updates the completed state', async () => {
-      const updatedTodo: TodoEntity = {
+    it('sets completedAt when completing a todo', async () => {
+      jest.useFakeTimers();
+
+      jest.setSystemTime(new Date('2026-09-21T10:30:00.000Z'));
+
+      const preloadedTodo: TodoEntity = {
         ...todo,
         completed: true,
+        completedAt: null,
       };
 
-      repository.preload.mockResolvedValue(updatedTodo);
-      repository.save.mockResolvedValue(updatedTodo);
+      const savedTodo: TodoEntity = {
+        ...preloadedTodo,
+        completedAt: new Date('2026-09-21T10:30:00.000Z'),
+      };
+
+      repository.preload.mockResolvedValue(preloadedTodo);
+
+      repository.save.mockResolvedValue(savedTodo);
 
       await expect(
-        service.update(1, {
+        service.update(todo.id, {
           completed: true,
         }),
-      ).resolves.toEqual(updatedTodo);
+      ).resolves.toEqual(savedTodo);
 
       expect(repository.preload).toHaveBeenCalledWith({
-        id: 1,
+        id: todo.id,
         completed: true,
       });
 
-      expect(repository.save).toHaveBeenCalledWith(updatedTodo);
+      expect(repository.save).toHaveBeenCalledWith({
+        ...preloadedTodo,
+        completedAt: new Date('2026-09-21T10:30:00.000Z'),
+      });
+    });
+
+    it('preserves completedAt when completing an already completed todo', async () => {
+      jest.useFakeTimers();
+
+      jest.setSystemTime(new Date('2026-09-22T10:30:00.000Z'));
+
+      const originalCompletedAt = new Date('2026-09-21T10:30:00.000Z');
+
+      const completedTodo: TodoEntity = {
+        ...todo,
+        completed: true,
+        completedAt: originalCompletedAt,
+      };
+
+      repository.preload.mockResolvedValue(completedTodo);
+
+      repository.save.mockResolvedValue(completedTodo);
+
+      await expect(
+        service.update(todo.id, {
+          completed: true,
+        }),
+      ).resolves.toEqual(completedTodo);
+
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          completed: true,
+          completedAt: originalCompletedAt,
+        }),
+      );
+    });
+
+    it('clears completedAt when reopening a todo', async () => {
+      const preloadedTodo: TodoEntity = {
+        ...todo,
+        completed: false,
+        completedAt: new Date('2026-09-21T10:30:00.000Z'),
+      };
+
+      const reopenedTodo: TodoEntity = {
+        ...preloadedTodo,
+        completedAt: null,
+      };
+
+      repository.preload.mockResolvedValue(preloadedTodo);
+
+      repository.save.mockResolvedValue(reopenedTodo);
+
+      await expect(
+        service.update(todo.id, {
+          completed: false,
+        }),
+      ).resolves.toEqual(reopenedTodo);
+
+      expect(repository.preload).toHaveBeenCalledWith({
+        id: todo.id,
+        completed: false,
+      });
+
+      expect(repository.save).toHaveBeenCalledWith({
+        ...preloadedTodo,
+        completedAt: null,
+      });
     });
 
     it('converts a scheduledAt string to a Date', async () => {
@@ -208,13 +292,13 @@ describe('TodosService', () => {
       repository.save.mockResolvedValue(updatedTodo);
 
       await expect(
-        service.update(1, {
+        service.update(todo.id, {
           scheduledAt,
         }),
       ).resolves.toEqual(updatedTodo);
 
       expect(repository.preload).toHaveBeenCalledWith({
-        id: 1,
+        id: todo.id,
         scheduledAt: new Date(scheduledAt),
       });
 
@@ -233,14 +317,14 @@ describe('TodosService', () => {
       repository.save.mockResolvedValue(updatedTodo);
 
       await expect(
-        service.update(1, {
+        service.update(todo.id, {
           scheduledAt: null,
           plannedDurationMinutes: null,
         }),
       ).resolves.toEqual(updatedTodo);
 
       expect(repository.preload).toHaveBeenCalledWith({
-        id: 1,
+        id: todo.id,
         scheduledAt: null,
         plannedDurationMinutes: null,
       });
@@ -258,7 +342,7 @@ describe('TodosService', () => {
       repository.preload.mockResolvedValue(fixedTodoWithoutDate);
 
       await expect(
-        service.update(1, {
+        service.update(todo.id, {
           scheduledAt: null,
         }),
       ).rejects.toThrow(BadRequestException);
@@ -284,7 +368,9 @@ describe('TodosService', () => {
     });
 
     it('rejects an empty update', async () => {
-      await expect(service.update(1, {})).rejects.toThrow(BadRequestException);
+      await expect(service.update(todo.id, {})).rejects.toThrow(
+        BadRequestException,
+      );
 
       expect(repository.preload).not.toHaveBeenCalled();
       expect(repository.save).not.toHaveBeenCalled();
@@ -296,10 +382,10 @@ describe('TodosService', () => {
       repository.findOneBy.mockResolvedValue(todo);
       repository.softRemove.mockResolvedValue(todo);
 
-      await expect(service.remove(1)).resolves.toBeUndefined();
+      await expect(service.remove(todo.id)).resolves.toBeUndefined();
 
       expect(repository.findOneBy).toHaveBeenCalledWith({
-        id: 1,
+        id: todo.id,
       });
 
       expect(repository.softRemove).toHaveBeenCalledWith(todo);

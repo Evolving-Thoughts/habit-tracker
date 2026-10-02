@@ -7,6 +7,7 @@ export class TodoMapper {
       id: todo.id,
       title: todo.title,
       completed: todo.completed,
+      completedAt: todo.completedAt?.toISOString() ?? null,
       scheduledAt: todo.scheduledAt?.toISOString() ?? null,
       plannedDurationMinutes: todo.plannedDurationMinutes,
       isFixed: todo.isFixed,

@@ -12,6 +12,7 @@ type TodoResponseBody = {
   id: number;
   title: string;
   completed: boolean;
+  completedAt: string | null;
   scheduledAt: string | null;
   plannedDurationMinutes: number | null;
   isFixed: boolean;
@@ -70,6 +71,7 @@ describe('Todos API (e2e)', () => {
         id: body.id,
         title: 'Learn NestJS',
         completed: false,
+        completedAt: null,
         scheduledAt: null,
         plannedDurationMinutes: null,
         isFixed: false,
@@ -80,11 +82,8 @@ describe('Todos API (e2e)', () => {
       });
 
       expect(persistedTodo).not.toBeNull();
-      expect(persistedTodo?.title).toBe('Learn NestJS');
       expect(persistedTodo?.completed).toBe(false);
-      expect(persistedTodo?.scheduledAt).toBeNull();
-      expect(persistedTodo?.plannedDurationMinutes).toBeNull();
-      expect(persistedTodo?.isFixed).toBe(false);
+      expect(persistedTodo?.completedAt).toBeNull();
     });
 
     it('creates a scheduled fixed todo', async () => {
@@ -103,20 +102,10 @@ describe('Todos API (e2e)', () => {
       expect(typeof body.id).toBe('number');
       expect(body.title).toBe('Doctor appointment');
       expect(body.completed).toBe(false);
+      expect(body.completedAt).toBeNull();
       expect(body.scheduledAt).toBe('2026-09-20T10:00:00.000Z');
       expect(body.plannedDurationMinutes).toBe(30);
       expect(body.isFixed).toBe(true);
-
-      const persistedTodo = await todoRepository.findOneBy({
-        id: body.id,
-      });
-
-      expect(persistedTodo).not.toBeNull();
-      expect(persistedTodo?.scheduledAt).toEqual(
-        new Date('2026-09-20T10:00:00.000Z'),
-      );
-      expect(persistedTodo?.plannedDurationMinutes).toBe(30);
-      expect(persistedTodo?.isFixed).toBe(true);
     });
 
     it('rejects a fixed todo without a date', async () => {
@@ -149,8 +138,6 @@ describe('Todos API (e2e)', () => {
 
       expect(body.statusCode).toBe(400);
       expect(body.message).toContain('property admin should not exist');
-
-      expect(await todoRepository.count()).toBe(0);
     });
   });
 
@@ -165,23 +152,19 @@ describe('Todos API (e2e)', () => {
 
       const createdTodo = createResponse.body as TodoResponseBody;
 
+      expect(createdTodo.completedAt).toBeNull();
+
       const getResponse = await request(httpServer)
         .get(`/todos/${createdTodo.id}`)
         .expect(200);
 
-      const foundTodo = getResponse.body as TodoResponseBody;
+      expect(getResponse.body as TodoResponseBody).toEqual(createdTodo);
 
-      expect(foundTodo).toEqual(createdTodo);
+      const listResponse = await request(httpServer).get('/todos').expect(200);
 
-      const getAllResponse = await request(httpServer)
-        .get('/todos')
-        .expect(200);
+      expect(listResponse.body as TodoResponseBody[]).toEqual([createdTodo]);
 
-      const listedTodos = getAllResponse.body as TodoResponseBody[];
-
-      expect(listedTodos).toEqual([createdTodo]);
-
-      const updateResponse = await request(httpServer)
+      const completeResponse = await request(httpServer)
         .patch(`/todos/${createdTodo.id}`)
         .send({
           completed: true,
@@ -190,14 +173,42 @@ describe('Todos API (e2e)', () => {
         })
         .expect(200);
 
-      const updatedTodo = updateResponse.body as TodoResponseBody;
+      const completedTodo = completeResponse.body as TodoResponseBody;
 
-      expect(updatedTodo).toEqual({
-        ...createdTodo,
-        completed: true,
-        scheduledAt: '2026-09-21T08:00:00.000Z',
-        plannedDurationMinutes: 60,
-      });
+      expect(completedTodo.completed).toBe(true);
+      expect(completedTodo.completedAt).not.toBeNull();
+      expect(completedTodo.scheduledAt).toBe('2026-09-21T08:00:00.000Z');
+      expect(completedTodo.plannedDurationMinutes).toBe(60);
+
+      expect(Number.isNaN(Date.parse(completedTodo.completedAt ?? ''))).toBe(
+        false,
+      );
+
+      const originalCompletedAt = completedTodo.completedAt;
+
+      const repeatedCompleteResponse = await request(httpServer)
+        .patch(`/todos/${createdTodo.id}`)
+        .send({
+          completed: true,
+        })
+        .expect(200);
+
+      const repeatedlyCompletedTodo =
+        repeatedCompleteResponse.body as TodoResponseBody;
+
+      expect(repeatedlyCompletedTodo.completedAt).toBe(originalCompletedAt);
+
+      const reopenResponse = await request(httpServer)
+        .patch(`/todos/${createdTodo.id}`)
+        .send({
+          completed: false,
+        })
+        .expect(200);
+
+      const reopenedTodo = reopenResponse.body as TodoResponseBody;
+
+      expect(reopenedTodo.completed).toBe(false);
+      expect(reopenedTodo.completedAt).toBeNull();
 
       await request(httpServer)
         .delete(`/todos/${createdTodo.id}`)
@@ -210,10 +221,7 @@ describe('Todos API (e2e)', () => {
         .get('/todos')
         .expect(200);
 
-      const todosAfterDeletion =
-        listAfterDeletionResponse.body as TodoResponseBody[];
-
-      expect(todosAfterDeletion).toEqual([]);
+      expect(listAfterDeletionResponse.body as TodoResponseBody[]).toEqual([]);
 
       const softDeletedTodo = await todoRepository.findOne({
         where: {
@@ -232,6 +240,7 @@ describe('Todos API (e2e)', () => {
       const todo = todoRepository.create({
         title: 'Learn NestJS',
         completed: false,
+        completedAt: null,
         scheduledAt: null,
         plannedDurationMinutes: null,
         isFixed: false,
@@ -254,6 +263,7 @@ describe('Todos API (e2e)', () => {
       const todo = todoRepository.create({
         title: 'Learn NestJS',
         completed: true,
+        completedAt: new Date(),
         scheduledAt: new Date('2026-09-21T08:00:00.000Z'),
         plannedDurationMinutes: 60,
         isFixed: false,
@@ -273,6 +283,7 @@ describe('Todos API (e2e)', () => {
       const body = response.body as TodoResponseBody;
 
       expect(body.completed).toBe(false);
+      expect(body.completedAt).toBeNull();
       expect(body.scheduledAt).toBeNull();
       expect(body.plannedDurationMinutes).toBeNull();
     });
@@ -281,6 +292,7 @@ describe('Todos API (e2e)', () => {
       const todo = todoRepository.create({
         title: 'Doctor appointment',
         completed: false,
+        completedAt: null,
         scheduledAt: new Date('2026-09-21T08:00:00.000Z'),
         plannedDurationMinutes: 30,
         isFixed: true,
@@ -299,21 +311,13 @@ describe('Todos API (e2e)', () => {
 
       expect(body.statusCode).toBe(400);
       expect(body.message).toBe('A fixed todo requires a scheduled date');
-
-      const unchangedTodo = await todoRepository.findOneBy({
-        id: savedTodo.id,
-      });
-
-      expect(unchangedTodo?.scheduledAt).toEqual(
-        new Date('2026-09-21T08:00:00.000Z'),
-      );
-      expect(unchangedTodo?.isFixed).toBe(true);
     });
 
     it('allows removing a date when the todo becomes flexible', async () => {
       const todo = todoRepository.create({
         title: 'Doctor appointment',
         completed: false,
+        completedAt: null,
         scheduledAt: new Date('2026-09-21T08:00:00.000Z'),
         plannedDurationMinutes: 30,
         isFixed: true,

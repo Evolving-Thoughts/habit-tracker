@@ -42,6 +42,7 @@ export class TodosService {
     const todo = this.todoRepository.create({
       title: createTodoDto.title,
       completed: false,
+      completedAt: null,
       scheduledAt,
       plannedDurationMinutes: createTodoDto.plannedDurationMinutes ?? null,
       isFixed,
@@ -90,6 +91,16 @@ export class TodosService {
 
     if (!todo) {
       throw new NotFoundException(`Todo with ID ${id} was not found`);
+    }
+
+    if (updateTodoDto.completed === true) {
+      // Bei einem wiederholten PATCH mit completed=true
+      // bleibt der ursprüngliche Zeitpunkt erhalten.
+      todo.completedAt ??= new Date();
+    }
+
+    if (updateTodoDto.completed === false) {
+      todo.completedAt = null;
     }
 
     this.validateScheduling(todo.isFixed, todo.scheduledAt);

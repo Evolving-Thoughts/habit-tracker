@@ -29,6 +29,7 @@ describe('TodosController', () => {
     id: 1,
     title: 'Learn NestJS',
     completed: false,
+    completedAt: null,
     scheduledAt: null,
     plannedDurationMinutes: null,
     isFixed: false,
@@ -72,6 +73,7 @@ describe('TodosController', () => {
           id: 1,
           title: 'Learn NestJS',
           completed: false,
+          completedAt: null,
           scheduledAt: null,
           plannedDurationMinutes: null,
           isFixed: false,
@@ -90,6 +92,7 @@ describe('TodosController', () => {
         id: 1,
         title: 'Learn NestJS',
         completed: false,
+        completedAt: null,
         scheduledAt: null,
         plannedDurationMinutes: null,
         isFixed: false,
@@ -111,6 +114,7 @@ describe('TodosController', () => {
         id: 1,
         title: 'Learn NestJS',
         completed: false,
+        completedAt: null,
         scheduledAt: null,
         plannedDurationMinutes: null,
         isFixed: false,
@@ -144,6 +148,7 @@ describe('TodosController', () => {
         id: 2,
         title: 'Doctor appointment',
         completed: false,
+        completedAt: null,
         scheduledAt: '2026-09-20T10:00:00.000Z',
         plannedDurationMinutes: 30,
         isFixed: true,
@@ -154,22 +159,26 @@ describe('TodosController', () => {
   });
 
   describe('update', () => {
-    it('updates and maps a todo', async () => {
+    it('maps completedAt to an ISO string', async () => {
+      const completedAt = new Date('2026-09-21T10:30:00.000Z');
+
       const updateTodoDto: UpdateTodoDto = {
         completed: true,
       };
 
-      const updatedTodo: TodoEntity = {
+      const completedTodo: TodoEntity = {
         ...todo,
         completed: true,
+        completedAt,
       };
 
-      serviceMock.update.mockResolvedValue(updatedTodo);
+      serviceMock.update.mockResolvedValue(completedTodo);
 
       await expect(controller.update(1, updateTodoDto)).resolves.toEqual({
         id: 1,
         title: 'Learn NestJS',
         completed: true,
+        completedAt: '2026-09-21T10:30:00.000Z',
         scheduledAt: null,
         plannedDurationMinutes: null,
         isFixed: false,
@@ -178,7 +187,33 @@ describe('TodosController', () => {
       expect(serviceMock.update).toHaveBeenCalledWith(1, updateTodoDto);
     });
 
-    it('maps scheduledAt to an ISO string', async () => {
+    it('maps a reopened todo with completedAt null', async () => {
+      const updateTodoDto: UpdateTodoDto = {
+        completed: false,
+      };
+
+      const reopenedTodo: TodoEntity = {
+        ...todo,
+        completed: false,
+        completedAt: null,
+      };
+
+      serviceMock.update.mockResolvedValue(reopenedTodo);
+
+      await expect(controller.update(1, updateTodoDto)).resolves.toEqual({
+        id: 1,
+        title: 'Learn NestJS',
+        completed: false,
+        completedAt: null,
+        scheduledAt: null,
+        plannedDurationMinutes: null,
+        isFixed: false,
+      });
+
+      expect(serviceMock.update).toHaveBeenCalledWith(1, updateTodoDto);
+    });
+
+    it('maps scheduling values', async () => {
       const scheduledAt = new Date('2026-09-20T10:00:00.000Z');
 
       const updateTodoDto: UpdateTodoDto = {
@@ -200,6 +235,7 @@ describe('TodosController', () => {
         id: 1,
         title: 'Learn NestJS',
         completed: false,
+        completedAt: null,
         scheduledAt: '2026-09-20T10:00:00.000Z',
         plannedDurationMinutes: 30,
         isFixed: true,
