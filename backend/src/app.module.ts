@@ -5,7 +5,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TodosModule } from './todos/todos.module';
 import { HabitsModule } from './habits/habits.module';
-import { HabitOccurrencesModule } from './habit-occurrences/habit-occurrences.module';
 import { DayPlannerModule } from './day-planner/day-planner.module';
 
 @Module({
@@ -23,12 +22,11 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
         password: config.getOrThrow<string>('DB_PASSWORD'),
         database: config.getOrThrow<string>('DB_NAME'),
         autoLoadEntities: true,
-        synchronize: true,
+        synchronize: config.get<string>('NODE_ENV') !== 'production',
       }),
     }),
     TodosModule,
     HabitsModule,
-    HabitOccurrencesModule,
     DayPlannerModule,
   ],
   controllers: [AppController],

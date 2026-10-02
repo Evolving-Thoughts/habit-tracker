@@ -2,38 +2,36 @@ import { HabitScheduleType } from '../enums/habit-schedule-type.enum';
 import { MissedOccurrencePolicy } from '../enums/missed-occurrence-policy.enum';
 import { Weekday } from '../enums/weekday.enum';
 
-export type HabitResponseDtoProperties = {
+export type ScheduleRuleResponse =
+  | {
+      type: HabitScheduleType.INTERVAL;
+      intervalDays: number;
+      missedOccurrencePolicy: MissedOccurrencePolicy;
+    }
+  | {
+      type: HabitScheduleType.FIXED_WEEKDAYS;
+      weekdays: Weekday[];
+      missedOccurrencePolicy: MissedOccurrencePolicy;
+    }
+  | {
+      type: HabitScheduleType.WEEKLY_TARGET;
+      weeklyTarget: number;
+    };
+
+export type ScheduleVersionResponse = {
   id: number;
-  title: string;
-  scheduleType: HabitScheduleType;
-  startDate: string;
-  intervalDays: number | null;
-  weekdays: Weekday[] | null;
-  weeklyTarget: number | null;
-  missedOccurrencePolicy: MissedOccurrencePolicy;
-  isActive: boolean;
+  effectiveFrom: string;
+  effectiveAt: string;
+  endsAt: string | null;
+  cancelledAt: string | null;
+  firstDueDate: string | null;
+  schedule: ScheduleRuleResponse;
 };
 
-export class HabitResponseDto {
-  readonly id: number;
-  readonly title: string;
-  readonly scheduleType: HabitScheduleType;
-  readonly startDate: string;
-  readonly intervalDays: number | null;
-  readonly weekdays: Weekday[] | null;
-  readonly weeklyTarget: number | null;
-  readonly missedOccurrencePolicy: MissedOccurrencePolicy;
-  readonly isActive: boolean;
-
-  constructor(properties: HabitResponseDtoProperties) {
-    this.id = properties.id;
-    this.title = properties.title;
-    this.scheduleType = properties.scheduleType;
-    this.startDate = properties.startDate;
-    this.intervalDays = properties.intervalDays;
-    this.weekdays = properties.weekdays;
-    this.weeklyTarget = properties.weeklyTarget;
-    this.missedOccurrencePolicy = properties.missedOccurrencePolicy;
-    this.isActive = properties.isActive;
-  }
-}
+export type HabitResponseDto = {
+  id: number;
+  title: string;
+  isActive: boolean;
+  currentSchedule: ScheduleVersionResponse | null;
+  upcomingSchedule: ScheduleVersionResponse | null;
+};

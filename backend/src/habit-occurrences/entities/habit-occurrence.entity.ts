@@ -12,47 +12,40 @@ import { HabitEntity } from '../../habits/entities/habit.entity';
 import { HabitScheduleVersionEntity } from '../../habits/entities/habit-schedule-version.entity';
 import { HabitOccurrenceStatus } from '../enums/habit-occurrence-status.enum';
 
+export type HabitOccurrenceCancellationReason =
+  'schedule_changed' | 'already_completed_today' | 'weekly_target_reached';
+
 @Entity({ name: 'habit_occurrences' })
-@Index(['habitId', 'scheduledDate'], {
+@Index(['scheduleVersionId', 'scheduledDate'], { unique: true })
+@Index('UQ_habit_occurrences_pending', ['habitId'], {
   unique: true,
+  where: `"status" = 'pending'`,
 })
-@Index(['scheduleVersionId'])
 export class HabitOccurrenceEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column({
-    type: 'integer',
-  })
+  @Column({ type: 'integer' })
   habitId!: number;
 
   @ManyToOne(() => HabitEntity, {
     nullable: false,
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({
-    name: 'habitId',
-  })
+  @JoinColumn({ name: 'habitId' })
   habit!: HabitEntity;
 
-  @Column({
-    type: 'integer',
-    nullable: true,
-  })
-  scheduleVersionId!: number | null;
+  @Column({ type: 'integer' })
+  scheduleVersionId!: number;
 
   @ManyToOne(() => HabitScheduleVersionEntity, {
-    nullable: true,
+    nullable: false,
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({
-    name: 'scheduleVersionId',
-  })
-  scheduleVersion!: HabitScheduleVersionEntity | null;
+  @JoinColumn({ name: 'scheduleVersionId' })
+  scheduleVersion!: HabitScheduleVersionEntity;
 
-  @Column({
-    type: 'date',
-  })
+  @Column({ type: 'date' })
   scheduledDate!: string;
 
   @Column({
@@ -62,19 +55,15 @@ export class HabitOccurrenceEntity {
   })
   status!: HabitOccurrenceStatus;
 
-  @Column({
-    type: 'date',
-    nullable: true,
-  })
+  @Column({ type: 'date', nullable: true })
   resolvedDate!: string | null;
 
-  @CreateDateColumn({
-    type: 'timestamptz',
-  })
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  cancellationReason!: HabitOccurrenceCancellationReason | null;
+
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn({
-    type: 'timestamptz',
-  })
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 }

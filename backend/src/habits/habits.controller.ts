@@ -11,53 +11,59 @@ import {
   Post,
 } from '@nestjs/common';
 import { CreateHabitDto } from './dto/create-habit.dto';
-import { HabitResponseDto } from './dto/habit-response.dto';
 import { UpdateHabitDto } from './dto/update-habit.dto';
-import { HabitMapper } from './mappers/habit.mapper';
+import { ChangeHabitScheduleDto } from './dto/change-habit-schedule.dto';
+import {
+  HabitResponseDto,
+  ScheduleVersionResponse,
+} from './dto/habit-response.dto';
 import { HabitsService } from './habits.service';
 
 @Controller('habits')
 export class HabitsController {
-  constructor(private readonly habitsService: HabitsService) {}
+  constructor(private readonly service: HabitsService) {}
 
   @Get()
-  async findAll(): Promise<HabitResponseDto[]> {
-    const habits = await this.habitsService.findAll();
+  findAll(): Promise<HabitResponseDto[]> {
+    return this.service.findAll();
+  }
 
-    return habits.map((habit) => HabitMapper.toResponseDto(habit));
+  @Get(':id/schedule-versions')
+  findVersions(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<ScheduleVersionResponse[]> {
+    return this.service.findVersions(id);
   }
 
   @Get(':id')
-  async findOne(
-    @Param('id', ParseIntPipe) id: number,
-  ): Promise<HabitResponseDto> {
-    const habit = await this.habitsService.findOne(id);
-
-    return HabitMapper.toResponseDto(habit);
+  findOne(@Param('id', ParseIntPipe) id: number): Promise<HabitResponseDto> {
+    return this.service.findOne(id);
   }
 
   @Post()
-  async create(
-    @Body() createHabitDto: CreateHabitDto,
-  ): Promise<HabitResponseDto> {
-    const habit = await this.habitsService.create(createHabitDto);
-
-    return HabitMapper.toResponseDto(habit);
+  create(@Body() dto: CreateHabitDto): Promise<HabitResponseDto> {
+    return this.service.create(dto);
   }
 
   @Patch(':id')
-  async update(
+  update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateHabitDto: UpdateHabitDto,
+    @Body() dto: UpdateHabitDto,
   ): Promise<HabitResponseDto> {
-    const habit = await this.habitsService.update(id, updateHabitDto);
+    return this.service.update(id, dto);
+  }
 
-    return HabitMapper.toResponseDto(habit);
+  @Post(':id/schedule-changes')
+  changeSchedule(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ChangeHabitScheduleDto,
+  ): Promise<HabitResponseDto> {
+    return this.service.changeSchedule(id, dto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
-    await this.habitsService.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
+    return this.service.remove(id);
   }
 }

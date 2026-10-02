@@ -5,24 +5,22 @@ import {
   DEFAULT_TIME_ZONE,
   getCurrentDateInTimeZone,
 } from '../common/date/date-only.utils';
+import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
+import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
+import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
+import { TodoEntity } from '../todos/entities/todo.entity';
 import {
   DayPlannerHabitItemDto,
-  DayPlannerItemDto,
   DayPlannerResponseDto,
   DayPlannerTodoItemDto,
 } from './dto/day-planner-response.dto';
-import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
-import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
-import { HabitOccurrenceGeneratorService } from '../habit-occurrences/habit-occurrence-generator.service';
-import { TodoEntity } from '../todos/entities/todo.entity';
 
 @Injectable()
 export class DayPlannerService {
   constructor(
     @InjectRepository(TodoEntity)
     private readonly todoRepository: Repository<TodoEntity>,
-
-    private readonly occurrenceGenerator: HabitOccurrenceGeneratorService,
+    private readonly scheduling: HabitSchedulingService,
   ) {}
 
   async getToday(): Promise<DayPlannerResponseDto> {
@@ -30,21 +28,37 @@ export class DayPlannerService {
 
     const [todos, occurrences] = await Promise.all([
       this.findTodosForToday(today),
-      this.occurrenceGenerator.generateToday(),
+      this.scheduling.getToday(),
     ]);
 
-    const todoItems = todos.map((todo) => this.mapTodo(todo, today));
+    const items = [
+      ...todos.map((todo) => this.mapTodo(todo, today)),
+      ...occurrences.map((occurrence) => this.mapOccurrence(occurrence, today)),
+    ];
 
-    const habitItems = occurrences.map((occurrence) =>
-      this.mapHabitOccurrence(occurrence, today),
-    );
+    items.sort((first, second) => {
+      const dateComparison = first.scheduledDate.localeCompare(
+        second.scheduledDate,
+      );
 
-    const items = this.sortItems([...todoItems, ...habitItems]);
+      if (dateComparison !== 0) {
+        return dateComparison;
+      }
 
-    return new DayPlannerResponseDto({
-      date: today,
-      items,
+      const firstTime =
+        first.type === 'todo'
+          ? first.scheduledAt
+          : `${first.scheduledDate}T00:00:00.000Z`;
+
+      const secondTime =
+        second.type === 'todo'
+          ? second.scheduledAt
+          : `${second.scheduledDate}T00:00:00.000Z`;
+
+      return firstTime.localeCompare(secondTime);
     });
+
+    return new DayPlannerResponseDto({ date: today, items });
   }
 
   private findTodosForToday(today: string): Promise<TodoEntity[]> {
@@ -52,33 +66,21 @@ export class DayPlannerService {
       .createQueryBuilder('todo')
       .where('"todo"."scheduledAt" IS NOT NULL')
       .andWhere(
-        new Brackets((queryBuilder) => {
-          queryBuilder
+        new Brackets((query) => {
+          query
             .where(
-              `(
-              "todo"."completed" = false
-              AND DATE(
-                "todo"."scheduledAt"
-                AT TIME ZONE :timeZone
-              ) <= :today
-            )`,
-              {
-                timeZone: DEFAULT_TIME_ZONE,
-                today,
-              },
+              `"todo"."completed" = false
+               AND DATE(
+                 "todo"."scheduledAt" AT TIME ZONE :timeZone
+               ) <= :today`,
+              { timeZone: DEFAULT_TIME_ZONE, today },
             )
             .orWhere(
-              `(
-              "todo"."completed" = true
-              AND DATE(
-                "todo"."completedAt"
-                AT TIME ZONE :timeZone
-              ) = :today
-            )`,
-              {
-                timeZone: DEFAULT_TIME_ZONE,
-                today,
-              },
+              `"todo"."completed" = true
+               AND DATE(
+                 "todo"."completedAt" AT TIME ZONE :timeZone
+               ) = :today`,
+              { timeZone: DEFAULT_TIME_ZONE, today },
             );
         }),
       )
@@ -89,7 +91,7 @@ export class DayPlannerService {
 
   private mapTodo(todo: TodoEntity, today: string): DayPlannerTodoItemDto {
     if (todo.scheduledAt === null) {
-      throw new Error(`Scheduled todo ${todo.id} has no scheduledAt`);
+      throw new Error('Expected a scheduled todo');
     }
 
     const scheduledDate = getCurrentDateInTimeZone(
@@ -111,14 +113,12 @@ export class DayPlannerService {
     };
   }
 
-  private mapHabitOccurrence(
+  private mapOccurrence(
     occurrence: HabitOccurrenceEntity,
     today: string,
   ): DayPlannerHabitItemDto {
-    if (!occurrence.habit) {
-      throw new Error(
-        `Habit occurrence ${occurrence.id} has no habit relation`,
-      );
+    if (!occurrence.habit || !occurrence.scheduleVersion) {
+      throw new Error('Missing occurrence relations');
     }
 
     return {
@@ -128,34 +128,10 @@ export class DayPlannerService {
       title: occurrence.habit.title,
       status: occurrence.status,
       scheduledDate: occurrence.scheduledDate,
-      scheduleType: occurrence.habit.scheduleType,
+      scheduleType: occurrence.scheduleVersion.type,
       isOverdue:
         occurrence.status === HabitOccurrenceStatus.PENDING &&
         occurrence.scheduledDate < today,
     };
-  }
-
-  private sortItems(items: DayPlannerItemDto[]): DayPlannerItemDto[] {
-    return [...items].sort((first, second) => {
-      const dateComparison = first.scheduledDate.localeCompare(
-        second.scheduledDate,
-      );
-
-      if (dateComparison !== 0) {
-        return dateComparison;
-      }
-
-      const firstSortValue =
-        first.type === 'todo'
-          ? first.scheduledAt
-          : `${first.scheduledDate}T00:00:00.000Z`;
-
-      const secondSortValue =
-        second.type === 'todo'
-          ? second.scheduledAt
-          : `${second.scheduledDate}T00:00:00.000Z`;
-
-      return firstSortValue.localeCompare(secondSortValue);
-    });
   }
 }

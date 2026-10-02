@@ -14,67 +14,48 @@ import { MissedOccurrencePolicy } from '../enums/missed-occurrence-policy.enum';
 import { Weekday } from '../enums/weekday.enum';
 
 @Entity({ name: 'habit_schedule_versions' })
-@Index(['habitId', 'validFrom'])
+@Index(['habitId', 'effectiveAt'])
+@Index('UQ_habit_schedule_versions_open', ['habitId'], {
+  unique: true,
+  where: '"endsAt" IS NULL AND "cancelledAt" IS NULL',
+})
 @Check(
-  'CHK_habit_schedule_versions_date_range',
-  '"validUntil" IS NULL OR "validUntil" >= "validFrom"',
+  'CHK_habit_schedule_version_range',
+  '"endsAt" IS NULL OR "endsAt" >= "effectiveAt"',
 )
 export class HabitScheduleVersionEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column({
-    type: 'integer',
-  })
+  @Column({ type: 'integer' })
   habitId!: number;
 
   @ManyToOne(() => HabitEntity, {
     nullable: false,
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({
-    name: 'habitId',
-  })
+  @JoinColumn({ name: 'habitId' })
   habit!: HabitEntity;
 
   @Column({
     type: 'enum',
     enum: HabitScheduleType,
   })
-  scheduleType!: HabitScheduleType;
+  type!: HabitScheduleType;
 
-  @Column({
-    type: 'date',
-  })
-  validFrom!: string;
+  @Column({ type: 'timestamptz' })
+  effectiveAt!: Date;
 
-  /**
-   * Exklusives Ende:
-   * validUntil = 2026-10-08 bedeutet, dass diese Version
-   * ab dem 08.10.2026 nicht mehr für neue Termine gilt.
-   *
-   * null bedeutet: kein Ende festgelegt.
-   */
-  @Column({
-    type: 'date',
-    nullable: true,
-  })
-  validUntil!: string | null;
+  @Column({ type: 'timestamptz', nullable: true })
+  endsAt!: Date | null;
 
-  /**
-   * Ausgangspunkt des Intervallrasters.
-   * Bei anderen Habit-Typen bleibt dieses Feld null.
-   */
-  @Column({
-    type: 'date',
-    nullable: true,
-  })
+  @Column({ type: 'timestamptz', nullable: true })
+  cancelledAt!: Date | null;
+
+  @Column({ type: 'date', nullable: true })
   firstDueDate!: string | null;
 
-  @Column({
-    type: 'integer',
-    nullable: true,
-  })
+  @Column({ type: 'integer', nullable: true })
   intervalDays!: number | null;
 
   @Column({
@@ -85,21 +66,15 @@ export class HabitScheduleVersionEntity {
   })
   weekdays!: Weekday[] | null;
 
-  @Column({
-    type: 'integer',
-    nullable: true,
-  })
+  @Column({ type: 'integer', nullable: true })
   weeklyTarget!: number | null;
 
   @Column({
     type: 'enum',
     enum: MissedOccurrencePolicy,
-    default: MissedOccurrencePolicy.CARRY_OVER,
   })
   missedOccurrencePolicy!: MissedOccurrencePolicy;
 
-  @CreateDateColumn({
-    type: 'timestamptz',
-  })
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 }
