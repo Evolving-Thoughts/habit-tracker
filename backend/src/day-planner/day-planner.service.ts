@@ -50,18 +50,18 @@ export class DayPlannerService {
   private findTodosForToday(today: string): Promise<TodoEntity[]> {
     return this.todoRepository
       .createQueryBuilder('todo')
-      .where('todo.scheduledAt IS NOT NULL')
+      .where('"todo"."scheduledAt" IS NOT NULL')
       .andWhere(
         new Brackets((queryBuilder) => {
           queryBuilder
             .where(
               `(
-                todo.completed = false
-                AND DATE(
-                  todo.scheduledAt
-                  AT TIME ZONE :timeZone
-                ) <= :today
-              )`,
+              "todo"."completed" = false
+              AND DATE(
+                "todo"."scheduledAt"
+                AT TIME ZONE :timeZone
+              ) <= :today
+            )`,
               {
                 timeZone: DEFAULT_TIME_ZONE,
                 today,
@@ -69,12 +69,12 @@ export class DayPlannerService {
             )
             .orWhere(
               `(
-                todo.completed = true
-                AND DATE(
-                  todo.completedAt
-                  AT TIME ZONE :timeZone
-                ) = :today
-              )`,
+              "todo"."completed" = true
+              AND DATE(
+                "todo"."completedAt"
+                AT TIME ZONE :timeZone
+              ) = :today
+            )`,
               {
                 timeZone: DEFAULT_TIME_ZONE,
                 today,
@@ -82,8 +82,8 @@ export class DayPlannerService {
             );
         }),
       )
-      .orderBy('todo.scheduledAt', 'ASC')
-      .addOrderBy('todo.id', 'ASC')
+      .orderBy('"todo"."scheduledAt"', 'ASC')
+      .addOrderBy('"todo"."id"', 'ASC')
       .getMany();
   }
 
