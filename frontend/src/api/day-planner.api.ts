@@ -2,7 +2,11 @@ import type {
   DayPlannerResponse,
   HabitOccurrenceStatus,
 } from "../types/day-planner";
-import type { HabitResponse, UpdateHabitInput } from "../types/habit";
+import type {
+  ChangeHabitScheduleInput,
+  HabitResponse,
+  UpdateHabitInput,
+} from "../types/habit";
 import type { CreateTodoInput, TodoResponse } from "../types/todo";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string;
@@ -17,7 +21,23 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed with status ${response.status}`);
+    let message = `Request failed with status ${response.status}`;
+    try {
+      const body: unknown = await response.json();
+      if (body !== null && typeof body === "object" && "message" in body) {
+        const detail = body.message;
+        if (typeof detail === "string") message = detail;
+        else if (
+          Array.isArray(detail) &&
+          detail.every((item) => typeof item === "string")
+        ) {
+          message = detail.join(" · ");
+        }
+      }
+    } catch {
+      // Non-JSON error responses still use the HTTP status fallback.
+    }
+    throw new Error(message);
   }
 
   if (response.status === 204) {
@@ -106,6 +126,16 @@ export function updateHabit(
 ): Promise<HabitResponse> {
   return request<HabitResponse>(`/habits/${habitId}`, {
     method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function changeHabitSchedule(
+  habitId: number,
+  input: ChangeHabitScheduleInput,
+): Promise<HabitResponse> {
+  return request<HabitResponse>(`/habits/${habitId}/schedule-changes`, {
+    method: "POST",
     body: JSON.stringify(input),
   });
 }

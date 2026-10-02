@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import {
+  changeHabitSchedule,
   deleteHabit,
   deleteTodo,
   getHabit,
@@ -11,10 +12,19 @@ import {
 import type { HabitScheduleType } from "../types/day-planner";
 import type {
   MissedOccurrencePolicy,
+  ChangeHabitScheduleInput,
+  HabitResponse,
+  HabitScheduleRule,
+  ScheduleVersionResponse,
   UpdateHabitInput,
   Weekday,
 } from "../types/habit";
 import type { CreateTodoInput } from "../types/todo";
+import {
+  formatDateForGermanDisplay,
+  getCurrentDateInTimeZone,
+  isValidIsoDate,
+} from "../utils/date";
 
 const props = defineProps<{
   kind: "todo" | "habit";
@@ -45,6 +55,10 @@ const originalLocalInput = ref("");
 
 // Habit-Felder
 const isActive = ref(true);
+const loadedHabit = ref<HabitResponse | null>(null);
+const changeSchedule = ref(false);
+const effectiveFrom = ref(getCurrentDateInTimeZone());
+const today = computed(() => getCurrentDateInTimeZone());
 const missedPolicy = ref<MissedOccurrencePolicy>("carry_over");
 
 const scheduleType = ref<HabitScheduleType>("interval");
@@ -117,12 +131,9 @@ async function loadEntity(): Promise<void> {
 
       title.value = habit.title;
       isActive.value = habit.isActive;
-      missedPolicy.value = habit.missedOccurrencePolicy;
-
-      scheduleType.value = habit.scheduleType;
-      intervalDays.value = habit.intervalDays ?? 2;
-      weeklyTarget.value = habit.weeklyTarget ?? 3;
-      selectedWeekdays.value = [...(habit.weekdays ?? [])];
+      loadedHabit.value = habit;
+      const version = habit.currentSchedule ?? habit.upcomingSchedule;
+      if (version) fillSchedule(version.schedule);
     }
 
     hasLoaded.value = true;
@@ -204,51 +215,90 @@ function buildTodoInput(): CreateTodoInput {
   };
 }
 
-function buildHabitInput(): UpdateHabitInput {
-  // Alle Zeitplanfelder werden gesendet.
-  // Nicht passende Felder werden explizit geleert.
-  const input: UpdateHabitInput = {
-    title: validatedTitle(),
-    scheduleType: scheduleType.value,
-    intervalDays: null,
-    weekdays: null,
-    weeklyTarget: null,
-    isActive: isActive.value,
-    missedOccurrencePolicy: missedPolicy.value,
-  };
+function fillSchedule(rule: HabitScheduleRule): void {
+  scheduleType.value = rule.type;
+  missedPolicy.value =
+    rule.type === "weekly_target" ? "skip" : rule.missedOccurrencePolicy;
+  intervalDays.value = rule.type === "interval" ? rule.intervalDays : 2;
+  weeklyTarget.value = rule.type === "weekly_target" ? rule.weeklyTarget : 3;
+  selectedWeekdays.value =
+    rule.type === "fixed_weekdays" ? [...rule.weekdays] : [];
+}
 
+function describeSchedule(version: ScheduleVersionResponse): string {
+  const rule = version.schedule;
+  switch (rule.type) {
+    case "interval":
+      return `Alle ${rule.intervalDays} Tage`;
+    case "weekly_target":
+      return `${rule.weeklyTarget} Mal pro Woche`;
+    case "fixed_weekdays":
+      return weekdayOptions
+        .filter((option) => rule.weekdays.includes(option.value))
+        .map((option) => option.label)
+        .join(", ");
+  }
+}
+
+function editUpcomingSchedule(): void {
+  const version = loadedHabit.value?.upcomingSchedule;
+  if (!version || isBusy.value) return;
+  fillSchedule(version.schedule);
+  effectiveFrom.value = version.effectiveFrom;
+  changeSchedule.value = true;
+}
+
+function buildHabitInput(): UpdateHabitInput {
+  const input: UpdateHabitInput = {};
+  const value = validatedTitle();
+  if (value !== loadedHabit.value?.title) input.title = value;
+  if (isActive.value !== loadedHabit.value?.isActive)
+    input.isActive = isActive.value;
+  return input;
+}
+
+function buildScheduleChange(): ChangeHabitScheduleInput {
+  if (
+    !isValidIsoDate(effectiveFrom.value) ||
+    effectiveFrom.value < getCurrentDateInTimeZone()
+  ) {
+    throw new Error("Bitte wähle heute oder ein zukünftiges gültiges Datum.");
+  }
+  let schedule: HabitScheduleRule;
   switch (scheduleType.value) {
     case "interval":
-      input.intervalDays = positiveInteger(
-        intervalDays.value,
-        "Das Intervall muss eine ganze Zahl ab 1 Tag sein.",
-      );
+      schedule = {
+        type: "interval",
+        intervalDays: positiveInteger(
+          intervalDays.value,
+          "Das Intervall muss eine ganze Zahl ab 1 Tag sein.",
+        ),
+        missedOccurrencePolicy: missedPolicy.value,
+      };
       break;
-
     case "fixed_weekdays":
-      if (selectedWeekdays.value.length === 0) {
+      if (!selectedWeekdays.value.length)
         throw new Error("Bitte wähle mindestens einen Wochentag.");
-      }
-
-      // Einheitliche Reihenfolge: Montag bis Sonntag.
-      input.weekdays = weekdayOptions
-        .filter((option) => selectedWeekdays.value.includes(option.value))
-        .map((option) => option.value);
+      schedule = {
+        type: "fixed_weekdays",
+        weekdays: weekdayOptions
+          .filter((option) => selectedWeekdays.value.includes(option.value))
+          .map((option) => option.value),
+        missedOccurrencePolicy: missedPolicy.value,
+      };
       break;
-
     case "weekly_target":
-      input.weeklyTarget = positiveInteger(
-        weeklyTarget.value,
-        "Das Wochenziel muss zwischen 1 und 7 liegen.",
-        7,
-      );
+      schedule = {
+        type: "weekly_target",
+        weeklyTarget: positiveInteger(
+          weeklyTarget.value,
+          "Das Wochenziel muss zwischen 1 und 7 liegen.",
+          7,
+        ),
+      };
       break;
-
-    default:
-      throw new Error("Ungültige Habit-Art.");
   }
-
-  return input;
+  return { effectiveFrom: effectiveFrom.value, schedule };
 }
 
 async function save(): Promise<void> {
@@ -264,7 +314,30 @@ async function save(): Promise<void> {
     if (props.kind === "todo") {
       await updateTodo(props.entityId, buildTodoInput());
     } else {
-      await updateHabit(props.entityId, buildHabitInput());
+      // Validate both requests before persisting either of them.
+      const metadata = buildHabitInput();
+      const scheduleInput = changeSchedule.value ? buildScheduleChange() : null;
+      let metadataSaved = false;
+      if (Object.keys(metadata).length > 0) {
+        loadedHabit.value = await updateHabit(props.entityId, metadata);
+        metadataSaved = true;
+      }
+      if (scheduleInput) {
+        try {
+          loadedHabit.value = await changeHabitSchedule(
+            props.entityId,
+            scheduleInput,
+          );
+        } catch (error: unknown) {
+          const detail =
+            error instanceof Error ? error.message : "Unbekannter Fehler";
+          throw new Error(
+            metadataSaved
+              ? `Stammdaten gespeichert, Zeitplanänderung fehlgeschlagen: ${detail}. Du kannst die Zeitplanänderung erneut speichern.`
+              : detail,
+          );
+        }
+      }
     }
 
     emit("changed");
@@ -363,100 +436,175 @@ onMounted(loadEntity);
         </template>
 
         <template v-else>
-          <p class="item-editor__schedule-label">
-            Habit-Art: <strong>{{ scheduleLabel }}</strong>
-          </p>
-
-          <label for="planner-edit-schedule-type"> Habit-Art auswählen </label>
-          <select
-            id="planner-edit-schedule-type"
-            v-model="scheduleType"
-            name="scheduleType"
-          >
-            <option value="interval">Intervall</option>
-            <option value="fixed_weekdays">Feste Wochentage</option>
-            <option value="weekly_target">Häufigkeit pro Woche</option>
-          </select>
-
-          <template v-if="scheduleType === 'interval'">
-            <label for="planner-edit-interval"> Alle wie viele Tage? </label>
-            <input
-              id="planner-edit-interval"
-              v-model="intervalDays"
-              name="intervalDays"
-              type="number"
-              min="1"
-              step="1"
-            />
-
-            <small> 1 = täglich, 2 = alle zwei Tage. </small>
-          </template>
-
-          <fieldset
-            v-else-if="scheduleType === 'fixed_weekdays'"
-            class="item-editor__weekdays"
-          >
-            <legend>Ausführungstage</legend>
-
-            <label
-              v-for="option in weekdayOptions"
-              :key="option.value"
-              class="item-editor__weekday"
-            >
-              <input
-                v-model="selectedWeekdays"
-                name="weekdays"
-                type="checkbox"
-                :value="option.value"
-              />
-              {{ option.label }}
-            </label>
-          </fieldset>
-
-          <template v-else>
-            <label for="planner-edit-weekly-target"> Wie oft pro Woche? </label>
-            <input
-              id="planner-edit-weekly-target"
-              v-model="weeklyTarget"
-              name="weeklyTarget"
-              type="number"
-              min="1"
-              max="7"
-              step="1"
-            />
-
-            <small>
-              Ohne festgelegte Wochentage. Die Woche beginnt am Montag.
-            </small>
-          </template>
-
           <label class="item-editor__checkbox">
             <input v-model="isActive" name="isActive" type="checkbox" />
             Habit aktiv
           </label>
 
-          <label for="planner-edit-policy">
-            Verhalten bei verpassten Terminen
+          <div class="item-editor__notice" data-test="schedule-summary">
+            <p v-if="loadedHabit?.currentSchedule">
+              Aktueller Zeitplan:
+              <strong>{{
+                describeSchedule(loadedHabit.currentSchedule)
+              }}</strong>
+              · seit
+              {{
+                formatDateForGermanDisplay(
+                  loadedHabit.currentSchedule.effectiveFrom,
+                )
+              }}
+            </p>
+            <p v-else>Das Habit hat noch keinen aktuell gültigen Zeitplan.</p>
+            <template v-if="loadedHabit?.upcomingSchedule">
+              <p>
+                Geplant ab
+                {{
+                  formatDateForGermanDisplay(
+                    loadedHabit.upcomingSchedule.effectiveFrom,
+                  )
+                }}:
+                <strong>{{
+                  describeSchedule(loadedHabit.upcomingSchedule)
+                }}</strong>
+              </p>
+              <button
+                type="button"
+                data-test="edit-upcoming"
+                @click="editUpcomingSchedule"
+              >
+                Geplanten Zeitplan bearbeiten
+              </button>
+            </template>
+          </div>
+
+          <label class="item-editor__checkbox">
+            <input
+              v-model="changeSchedule"
+              name="changeSchedule"
+              type="checkbox"
+            />
+            Zeitplan ändern
           </label>
-          <select
-            id="planner-edit-policy"
-            v-model="missedPolicy"
-            name="missedPolicy"
-            :disabled="scheduleType === 'weekly_target'"
+          <small
+            >Nur Titel und Aktivität zu ändern lässt aktuelle und geplante
+            Zeitpläne unverändert.</small
           >
-            <option value="carry_over">Übertragen</option>
-            <option value="skip">Verfallen lassen</option>
-          </select>
 
-          <small v-if="scheduleType === 'weekly_target'">
-            Bei Wochenzielen gilt derzeit eine tägliche Chance unabhängig von
-            dieser Policy.
-          </small>
+          <fieldset v-if="changeSchedule" data-test="schedule-fields">
+            <legend>Neuer Zeitplan</legend>
+            <label for="planner-edit-effective-from">Gültig ab</label>
+            <input
+              id="planner-edit-effective-from"
+              v-model="effectiveFrom"
+              name="effectiveFrom"
+              type="date"
+              :min="today"
+              required
+            />
+            <small
+              >Standard: heute (Europe/Berlin). Heute wirkt die Änderung ab dem
+              Speichern; ein zukünftiger Tag ab 00:00 Uhr.
+              <template v-if="isValidIsoDate(effectiveFrom)"
+                >Gewählt:
+                {{ formatDateForGermanDisplay(effectiveFrom) }}.</template
+              >
+            </small>
 
-          <p class="item-editor__notice">
-            Du bearbeitest das gesamte Habit. Bereits erzeugte Ausführungen
-            bleiben erhalten und werden nicht rückwirkend neu berechnet.
-          </p>
+            <p class="item-editor__schedule-label">
+              Habit-Art: <strong>{{ scheduleLabel }}</strong>
+            </p>
+
+            <label for="planner-edit-schedule-type">
+              Habit-Art auswählen
+            </label>
+            <select
+              id="planner-edit-schedule-type"
+              v-model="scheduleType"
+              name="scheduleType"
+            >
+              <option value="interval">Intervall</option>
+              <option value="fixed_weekdays">Feste Wochentage</option>
+              <option value="weekly_target">Häufigkeit pro Woche</option>
+            </select>
+
+            <template v-if="scheduleType === 'interval'">
+              <label for="planner-edit-interval"> Alle wie viele Tage? </label>
+              <input
+                id="planner-edit-interval"
+                v-model="intervalDays"
+                name="intervalDays"
+                type="number"
+                min="1"
+                step="1"
+              />
+
+              <small> 1 = täglich, 2 = alle zwei Tage. </small>
+            </template>
+
+            <fieldset
+              v-else-if="scheduleType === 'fixed_weekdays'"
+              class="item-editor__weekdays"
+            >
+              <legend>Ausführungstage</legend>
+
+              <label
+                v-for="option in weekdayOptions"
+                :key="option.value"
+                class="item-editor__weekday"
+              >
+                <input
+                  v-model="selectedWeekdays"
+                  name="weekdays"
+                  type="checkbox"
+                  :value="option.value"
+                />
+                {{ option.label }}
+              </label>
+            </fieldset>
+
+            <template v-else>
+              <label for="planner-edit-weekly-target">
+                Wie oft pro Woche?
+              </label>
+              <input
+                id="planner-edit-weekly-target"
+                v-model="weeklyTarget"
+                name="weeklyTarget"
+                type="number"
+                min="1"
+                max="7"
+                step="1"
+              />
+
+              <small>
+                Ohne festgelegte Wochentage. Die Woche beginnt am Montag.
+              </small>
+            </template>
+
+            <template v-if="scheduleType !== 'weekly_target'">
+              <label for="planner-edit-policy">
+                Verhalten bei verpassten Terminen
+              </label>
+              <select
+                id="planner-edit-policy"
+                v-model="missedPolicy"
+                name="missedPolicy"
+              >
+                <option value="carry_over">Übertragen</option>
+                <option value="skip">Verfallen lassen</option>
+              </select>
+            </template>
+            <small v-else
+              >Wochenziele zählen Erledigungen von Montag bis Sonntag. Eine
+              verpasste tägliche Chance wird nicht übertragen.</small
+            >
+            <p class="item-editor__notice">
+              Die Änderung ersetzt einen eventuell bereits geplanten zukünftigen
+              Zeitplan. Historische Erledigungen und übersprungene Ausführungen
+              bleiben erhalten. Noch offene Ausführungen des abgelösten
+              Zeitplans werden vom Backend abgeglichen.
+            </p>
+          </fieldset>
         </template>
 
         <div class="item-editor__actions">
