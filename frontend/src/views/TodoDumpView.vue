@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import {
+  deleteTodo,
   getTodos,
   updateTodo,
   updateTodoCompletion,
@@ -16,6 +17,7 @@ const errorMessage = ref<string | null>(null);
 const successMessage = ref<string | null>(null);
 
 const selectedTodo = ref<TodoResponse | null>(null);
+const confirmDeletion = ref(false);
 
 const editTitle = ref("");
 const editScheduledAt = ref("");
@@ -94,11 +96,11 @@ function openEditing(todo: TodoResponse): void {
   }
 
   selectedTodo.value = todo;
+  confirmDeletion.value = false;
 
   editTitle.value = todo.title;
 
-  // Die Dump-Liste enthält ausschließlich
-  // Todos ohne geplanten Zeitpunkt.
+  // Im Dump stehen nur Todos ohne Zeitpunkt.
   editScheduledAt.value = "";
 
   editDuration.value = todo.plannedDurationMinutes ?? "";
@@ -111,6 +113,8 @@ function openEditing(todo: TodoResponse): void {
 
 function closeEditing(): void {
   selectedTodo.value = null;
+  confirmDeletion.value = false;
+
   editTitle.value = "";
   editScheduledAt.value = "";
   editDuration.value = "";
@@ -198,6 +202,34 @@ async function saveTodo(): Promise<void> {
       error instanceof Error
         ? error.message
         : "Die Änderungen konnten nicht gespeichert werden.";
+  } finally {
+    isSaving.value = false;
+  }
+}
+
+async function removeSelectedTodo(): Promise<void> {
+  if (isBusy.value || !selectedTodo.value || !confirmDeletion.value) {
+    return;
+  }
+
+  const todoId = selectedTodo.value.id;
+
+  isSaving.value = true;
+  errorMessage.value = null;
+  successMessage.value = null;
+
+  try {
+    await deleteTodo(todoId);
+
+    closeEditing();
+    successMessage.value = "Todo gelöscht.";
+
+    await loadTodos();
+  } catch (error: unknown) {
+    errorMessage.value =
+      error instanceof Error
+        ? error.message
+        : "Das Todo konnte nicht gelöscht werden.";
   } finally {
     isSaving.value = false;
   }
@@ -298,6 +330,39 @@ onMounted(loadTodos);
             >
               Abbrechen
             </button>
+          </div>
+
+          <div class="todo-editor__delete">
+            <button
+              v-if="!confirmDeletion"
+              type="button"
+              data-test="dump-request-delete"
+              @click="confirmDeletion = true"
+            >
+              Todo löschen
+            </button>
+
+            <template v-else>
+              <p>„{{ selectedTodo.title }}“ wirklich löschen?</p>
+
+              <div class="todo-editor__actions">
+                <button
+                  type="button"
+                  data-test="dump-confirm-delete"
+                  @click="removeSelectedTodo"
+                >
+                  Ja, löschen
+                </button>
+
+                <button
+                  type="button"
+                  data-test="dump-cancel-delete"
+                  @click="confirmDeletion = false"
+                >
+                  Nicht löschen
+                </button>
+              </div>
+            </template>
           </div>
         </fieldset>
       </form>
@@ -495,6 +560,7 @@ onMounted(loadTodos);
 .todo-editor__checkbox,
 .todo-editor__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
 }
@@ -504,6 +570,21 @@ onMounted(loadTodos);
   color: #697386;
   font-size: 0.8125rem;
   line-height: 1.5;
+}
+
+.todo-editor__delete {
+  margin-top: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.todo-editor__delete button {
+  padding: 0.65rem 0.9rem;
+  border: 1px solid #ccd2dc;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  color: #b42318;
+  cursor: pointer;
 }
 
 .todo-dump__sections {

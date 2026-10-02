@@ -1,6 +1,7 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  deleteTodo,
   getTodos,
   updateTodo,
   updateTodoCompletion,
@@ -21,6 +22,7 @@ enableAutoUnmount(afterEach);
 const getTodosMock = vi.mocked(getTodos);
 const updateTodoMock = vi.mocked(updateTodo);
 const completionMock = vi.mocked(updateTodoCompletion);
+const deleteTodoMock = vi.mocked(deleteTodo);
 
 function makeTodo(overrides: Partial<TodoResponse> = {}): TodoResponse {
   return {
@@ -52,6 +54,7 @@ describe("TodoDumpView", () => {
     getTodosMock.mockResolvedValue([]);
     completionMock.mockResolvedValue(undefined);
     updateTodoMock.mockResolvedValue(makeTodo());
+    deleteTodoMock.mockResolvedValue(undefined);
   });
 
   it("shows only unscheduled todos", async () => {
@@ -143,7 +146,7 @@ describe("TodoDumpView", () => {
     ).toBe("30");
   });
 
-  it("updates the title and duration without scheduling the todo", async () => {
+  it("updates title and duration without scheduling the todo", async () => {
     getTodosMock.mockResolvedValueOnce([makeTodo()]).mockResolvedValueOnce([
       makeTodo({
         title: "Vue lernen",
@@ -342,5 +345,91 @@ describe("TodoDumpView", () => {
     expect(updateTodoMock).not.toHaveBeenCalled();
 
     expect(wrapper.find('[data-test="editing-form"]').exists()).toBe(false);
+  });
+
+  it("deletes a dump todo only after confirmation", async () => {
+    getTodosMock.mockResolvedValueOnce([makeTodo()]).mockResolvedValueOnce([]);
+
+    const wrapper = mountView();
+
+    await flushPromises();
+
+    await wrapper
+      .get('button[aria-label="NestJS lernen bearbeiten"]')
+      .trigger("click");
+
+    await wrapper.get('[data-test="dump-request-delete"]').trigger("click");
+
+    expect(deleteTodoMock).not.toHaveBeenCalled();
+
+    await wrapper.get('[data-test="dump-confirm-delete"]').trigger("click");
+
+    await flushPromises();
+
+    expect(deleteTodoMock).toHaveBeenCalledWith(1);
+    expect(deleteTodoMock).toHaveBeenCalledTimes(1);
+
+    expect(wrapper.find('[data-todo-id="1"]').exists()).toBe(false);
+
+    expect(wrapper.find('[data-test="editing-form"]').exists()).toBe(false);
+
+    expect(wrapper.get('[role="status"]').text()).toBe("Todo gelöscht.");
+  });
+
+  it("cancels deletion without removing the todo", async () => {
+    getTodosMock.mockResolvedValueOnce([makeTodo()]);
+
+    const wrapper = mountView();
+
+    await flushPromises();
+
+    await wrapper
+      .get('button[aria-label="NestJS lernen bearbeiten"]')
+      .trigger("click");
+
+    await wrapper.get('[data-test="dump-request-delete"]').trigger("click");
+
+    await wrapper.get('[data-test="dump-cancel-delete"]').trigger("click");
+
+    expect(deleteTodoMock).not.toHaveBeenCalled();
+
+    expect(wrapper.find('[data-test="dump-confirm-delete"]').exists()).toBe(
+      false,
+    );
+
+    expect(wrapper.find('[data-todo-id="1"]').exists()).toBe(true);
+  });
+
+  it("keeps the editor open when deletion fails", async () => {
+    getTodosMock.mockResolvedValueOnce([makeTodo()]);
+
+    deleteTodoMock.mockRejectedValueOnce(new Error("Löschen fehlgeschlagen"));
+
+    const wrapper = mountView();
+
+    await flushPromises();
+
+    await wrapper
+      .get('button[aria-label="NestJS lernen bearbeiten"]')
+      .trigger("click");
+
+    await wrapper.get('[data-test="dump-request-delete"]').trigger("click");
+
+    await wrapper.get('[data-test="dump-confirm-delete"]').trigger("click");
+
+    await flushPromises();
+
+    expect(wrapper.get('[role="alert"]').text()).toBe("Löschen fehlgeschlagen");
+
+    expect(wrapper.find('[data-test="editing-form"]').exists()).toBe(true);
+
+    expect(wrapper.find('[data-todo-id="1"]').exists()).toBe(true);
+
+    expect(
+      wrapper.get<HTMLFieldSetElement>('[data-test="editing-form"] > fieldset')
+        .element.disabled,
+    ).toBe(false);
+
+    expect(getTodosMock).toHaveBeenCalledTimes(1);
   });
 });

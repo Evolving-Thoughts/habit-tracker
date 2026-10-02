@@ -45,6 +45,15 @@ const habit: HabitResponse = {
   isActive: true,
 };
 
+function mountHabitEditor() {
+  return mount(PlannerItemEditor, {
+    props: {
+      kind: "habit",
+      entityId: 10,
+    },
+  });
+}
+
 describe("PlannerItemEditor", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -59,7 +68,7 @@ describe("PlannerItemEditor", () => {
     vi.mocked(deleteHabit).mockResolvedValue(undefined);
   });
 
-  it("saves a todo while preserving an unchanged timestamp", async () => {
+  it("saves a todo without changing an untouched timestamp", async () => {
     const wrapper = mount(PlannerItemEditor, {
       props: {
         kind: "todo",
@@ -84,30 +93,188 @@ describe("PlannerItemEditor", () => {
     expect(wrapper.emitted("changed")).toEqual([[]]);
   });
 
-  it("updates the habit definition rather than an occurrence", async () => {
-    const wrapper = mount(PlannerItemEditor, {
-      props: {
-        kind: "habit",
-        entityId: 10,
-      },
-    });
+  it("shows and edits the interval configuration", async () => {
+    const wrapper = mountHabitEditor();
 
     await flushPromises();
 
-    await wrapper.get('input[name="title"]').setValue("Laufen");
+    expect(wrapper.text()).toContain("Habit-Art: Intervall");
 
-    await wrapper.get('input[name="isActive"]').setValue(false);
+    expect(
+      wrapper.get<HTMLInputElement>('input[name="intervalDays"]').element.value,
+    ).toBe("2");
+
+    await wrapper.get('input[name="intervalDays"]').setValue("4");
 
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
     expect(updateHabit).toHaveBeenCalledWith(10, {
-      title: "Laufen",
-      isActive: false,
+      title: "Joggen",
+      scheduleType: "interval",
+      intervalDays: 4,
+      weekdays: null,
+      weeklyTarget: null,
+      isActive: true,
       missedOccurrencePolicy: "carry_over",
     });
+  });
 
-    expect(updateTodo).not.toHaveBeenCalled();
+  it("switches from interval to fixed weekdays and clears incompatible fields", async () => {
+    const wrapper = mountHabitEditor();
+
+    await flushPromises();
+
+    await wrapper.get('select[name="scheduleType"]').setValue("fixed_weekdays");
+
+    await wrapper.get('input[name="weekdays"][value="monday"]').setValue(true);
+
+    await wrapper
+      .get('input[name="weekdays"][value="thursday"]')
+      .setValue(true);
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(updateHabit).toHaveBeenCalledWith(10, {
+      title: "Joggen",
+      scheduleType: "fixed_weekdays",
+      intervalDays: null,
+      weekdays: ["monday", "thursday"],
+      weeklyTarget: null,
+      isActive: true,
+      missedOccurrencePolicy: "carry_over",
+    });
+  });
+
+  it("prefills existing weekdays and allows changing them", async () => {
+    vi.mocked(getHabit).mockResolvedValueOnce({
+      ...habit,
+      scheduleType: "fixed_weekdays",
+      intervalDays: null,
+      weekdays: ["monday", "thursday"],
+    });
+
+    const wrapper = mountHabitEditor();
+
+    await flushPromises();
+
+    expect(
+      wrapper.get<HTMLInputElement>('input[name="weekdays"][value="monday"]')
+        .element.checked,
+    ).toBe(true);
+
+    await wrapper.get('input[name="weekdays"][value="monday"]').setValue(false);
+
+    await wrapper
+      .get('input[name="weekdays"][value="saturday"]')
+      .setValue(true);
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(updateHabit).toHaveBeenCalledWith(
+      10,
+      expect.objectContaining({
+        weekdays: ["thursday", "saturday"],
+      }),
+    );
+  });
+
+  it("switches from fixed weekdays to a weekly target", async () => {
+    vi.mocked(getHabit).mockResolvedValueOnce({
+      ...habit,
+      scheduleType: "fixed_weekdays",
+      intervalDays: null,
+      weekdays: ["monday"],
+    });
+
+    const wrapper = mountHabitEditor();
+
+    await flushPromises();
+
+    await wrapper.get('select[name="scheduleType"]').setValue("weekly_target");
+
+    await wrapper.get('input[name="weeklyTarget"]').setValue("5");
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(updateHabit).toHaveBeenCalledWith(10, {
+      title: "Joggen",
+      scheduleType: "weekly_target",
+      intervalDays: null,
+      weekdays: null,
+      weeklyTarget: 5,
+      isActive: true,
+      missedOccurrencePolicy: "carry_over",
+    });
+  });
+
+  it("switches from a weekly target to an interval", async () => {
+    vi.mocked(getHabit).mockResolvedValueOnce({
+      ...habit,
+      scheduleType: "weekly_target",
+      intervalDays: null,
+      weeklyTarget: 3,
+    });
+
+    const wrapper = mountHabitEditor();
+
+    await flushPromises();
+
+    await wrapper.get('select[name="scheduleType"]').setValue("interval");
+
+    await wrapper.get('input[name="intervalDays"]').setValue("3");
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(updateHabit).toHaveBeenCalledWith(
+      10,
+      expect.objectContaining({
+        scheduleType: "interval",
+        intervalDays: 3,
+        weekdays: null,
+        weeklyTarget: null,
+      }),
+    );
+  });
+
+  it("rejects fixed weekdays without a selected day", async () => {
+    const wrapper = mountHabitEditor();
+
+    await flushPromises();
+
+    await wrapper.get('select[name="scheduleType"]').setValue("fixed_weekdays");
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(updateHabit).not.toHaveBeenCalled();
+
+    expect(wrapper.get('[role="alert"]').text()).toBe(
+      "Bitte wähle mindestens einen Wochentag.",
+    );
+  });
+
+  it("rejects a weekly target above seven", async () => {
+    const wrapper = mountHabitEditor();
+
+    await flushPromises();
+
+    await wrapper.get('select[name="scheduleType"]').setValue("weekly_target");
+
+    await wrapper.get('input[name="weeklyTarget"]').setValue("8");
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(updateHabit).not.toHaveBeenCalled();
+
+    expect(wrapper.get('[role="alert"]').text()).toBe(
+      "Das Wochenziel muss zwischen 1 und 7 liegen.",
+    );
   });
 
   it.each([
@@ -170,8 +337,8 @@ describe("PlannerItemEditor", () => {
 
     expect(wrapper.emitted("changed")).toBeUndefined();
 
-    expect(wrapper.get<HTMLFieldSetElement>("fieldset").element.disabled).toBe(
-      false,
-    );
+    expect(
+      wrapper.get<HTMLFieldSetElement>("form > fieldset").element.disabled,
+    ).toBe(false);
   });
 });

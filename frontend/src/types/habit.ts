@@ -25,6 +25,10 @@ export type HabitResponse = {
 
 export type UpdateHabitInput = {
   title?: string;
+  scheduleType?: HabitScheduleType;
+  intervalDays?: number | null;
+  weekdays?: Weekday[] | null;
+  weeklyTarget?: number | null;
   isActive?: boolean;
   missedOccurrencePolicy?: MissedOccurrencePolicy;
 };
