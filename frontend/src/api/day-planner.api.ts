@@ -30,9 +30,23 @@ export function getToday(): Promise<DayPlannerResponse> {
   return request<DayPlannerResponse>("/day-planner/today");
 }
 
+export function getTodos(): Promise<TodoResponse[]> {
+  return request<TodoResponse[]>("/todos");
+}
+
 export function createTodo(input: CreateTodoInput): Promise<TodoResponse> {
   return request<TodoResponse>("/todos", {
     method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateTodo(
+  todoId: number,
+  input: Partial<CreateTodoInput>,
+): Promise<TodoResponse> {
+  return request<TodoResponse>(`/todos/${todoId}`, {
+    method: "PATCH",
     body: JSON.stringify(input),
   });
 }
@@ -47,6 +61,16 @@ export function updateTodoCompletion(
       completed,
     }),
   });
+}
+
+export function updateTodoSchedule(
+  todoId: number,
+  input: {
+    scheduledAt: string;
+    isFixed: boolean;
+  },
+): Promise<TodoResponse> {
+  return updateTodo(todoId, input);
 }
 
 export function updateOccurrenceStatus(
