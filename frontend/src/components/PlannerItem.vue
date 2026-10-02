@@ -14,6 +14,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   toggle: [item: DayPlannerItem];
   skip: [item: DayPlannerHabitItem];
+  edit: [item: DayPlannerItem];
 }>();
 
 const isCompleted = computed(() => {
@@ -133,6 +134,29 @@ function skip(): void {
         </button>
       </div>
     </div>
+
+    <button
+      class="planner-item__edit"
+      type="button"
+      :disabled="isUpdating"
+      :aria-label="`${item.title} bearbeiten`"
+      title="Bearbeiten"
+      @click="emit('edit', item)"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="m16 3 5 5-12 12-6 1 1-6L16 3Z" />
+        <path d="m14 5 5 5" />
+      </svg>
+    </button>
   </article>
 </template>
 
@@ -269,5 +293,33 @@ function skip(): void {
   font-size: 0.8125rem;
   text-decoration: underline;
   cursor: pointer;
+}
+
+.planner-item__edit {
+  display: grid;
+  flex: 0 0 2.75rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0.625rem;
+  background: transparent;
+  color: #697386;
+  cursor: pointer;
+}
+
+.planner-item__edit:hover:not(:disabled) {
+  background: #eef1f5;
+}
+
+.planner-item__edit:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.planner-item__edit svg {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 </style>

@@ -55,7 +55,7 @@ describe("PlannerItem", () => {
 
     expect(wrapper.text()).toContain("02.10.2026");
 
-    // Im Oktober gilt in Berlin UTC+2.
+    // Am 02.10. gilt in Berlin UTC+2.
     expect(wrapper.text()).toContain("10:00");
     expect(wrapper.text()).toContain("30 Min.");
     expect(wrapper.text()).toContain("Fester Termin");
@@ -95,6 +95,45 @@ describe("PlannerItem", () => {
     expect(wrapper.emitted("skip")).toEqual([[item]]);
   });
 
+  it("emits edit for a todo", async () => {
+    const item = makeTodo();
+
+    const wrapper = mount(PlannerItem, {
+      props: {
+        item,
+        isUpdating: false,
+      },
+    });
+
+    await wrapper
+      .get('button[aria-label="NestJS lernen bearbeiten"]')
+      .trigger("click");
+
+    expect(wrapper.emitted("edit")).toEqual([[item]]);
+
+    expect(wrapper.emitted("toggle")).toBeUndefined();
+  });
+
+  it("emits edit for a habit", async () => {
+    const item = makeHabit();
+
+    const wrapper = mount(PlannerItem, {
+      props: {
+        item,
+        isUpdating: false,
+      },
+    });
+
+    await wrapper
+      .get('button[aria-label="Joggen bearbeiten"]')
+      .trigger("click");
+
+    expect(wrapper.emitted("edit")).toEqual([[item]]);
+
+    expect(wrapper.emitted("toggle")).toBeUndefined();
+    expect(wrapper.emitted("skip")).toBeUndefined();
+  });
+
   it("does not offer a skip action for todos", () => {
     const wrapper = mount(PlannerItem, {
       props: {
@@ -107,7 +146,7 @@ describe("PlannerItem", () => {
   });
 
   it.each(["completed", "skipped"] as const)(
-    "offers reopening for a %s habit",
+    "offers reopening and editing for a %s habit",
     (status) => {
       const wrapper = mount(PlannerItem, {
         props: {
@@ -121,6 +160,10 @@ describe("PlannerItem", () => {
       );
 
       expect(wrapper.find(".planner-item__skip-button").exists()).toBe(false);
+
+      expect(
+        wrapper.find('button[aria-label="Joggen bearbeiten"]').exists(),
+      ).toBe(true);
     },
   );
 
@@ -137,7 +180,7 @@ describe("PlannerItem", () => {
     expect(wrapper.get(".planner-item__status").text()).toBe("Überfällig");
   });
 
-  it("disables actions while an update is running", () => {
+  it("disables all habit actions while an update is running", () => {
     const wrapper = mount(PlannerItem, {
       props: {
         item: makeHabit(),
@@ -147,7 +190,8 @@ describe("PlannerItem", () => {
 
     const buttons = wrapper.findAll("button");
 
-    expect(buttons).toHaveLength(2);
+    // Abhaken, Überspringen und Bearbeiten.
+    expect(buttons).toHaveLength(3);
 
     for (const button of buttons) {
       expect(button.element.disabled).toBe(true);

@@ -2,6 +2,7 @@ import type {
   DayPlannerResponse,
   HabitOccurrenceStatus,
 } from "../types/day-planner";
+import type { HabitResponse, UpdateHabitInput } from "../types/habit";
 import type { CreateTodoInput, TodoResponse } from "../types/todo";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string;
@@ -82,5 +83,35 @@ export function updateOccurrenceStatus(
     body: JSON.stringify({
       status,
     }),
+  });
+}
+
+export function getTodo(todoId: number): Promise<TodoResponse> {
+  return request<TodoResponse>(`/todos/${todoId}`);
+}
+
+export function deleteTodo(todoId: number): Promise<void> {
+  return request<void>(`/todos/${todoId}`, {
+    method: "DELETE",
+  });
+}
+
+export function getHabit(habitId: number): Promise<HabitResponse> {
+  return request<HabitResponse>(`/habits/${habitId}`);
+}
+
+export function updateHabit(
+  habitId: number,
+  input: UpdateHabitInput,
+): Promise<HabitResponse> {
+  return request<HabitResponse>(`/habits/${habitId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteHabit(habitId: number): Promise<void> {
+  return request<void>(`/habits/${habitId}`, {
+    method: "DELETE",
   });
 }

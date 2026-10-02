@@ -13,6 +13,7 @@ vi.mock("../api/day-planner.api", () => ({
   createTodo: vi.fn(),
   updateTodo: vi.fn(),
   updateTodoCompletion: vi.fn(),
+  deleteTodo: vi.fn(),
 }));
 
 enableAutoUnmount(afterEach);

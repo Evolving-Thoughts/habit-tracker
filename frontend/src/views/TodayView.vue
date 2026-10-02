@@ -5,19 +5,29 @@ import {
   updateOccurrenceStatus,
   updateTodoCompletion,
 } from "../api/day-planner.api";
+import CreateTodoForm from "../components/CreateTodoForm.vue";
 import PlannerItem from "../components/PlannerItem.vue";
+import PlannerItemEditor from "../components/PlannerItemEditor.vue";
 import type {
   DayPlannerHabitItem,
   DayPlannerItem,
   DayPlannerResponse,
 } from "../types/day-planner";
 import { formatDateForGermanDisplay } from "../utils/date";
-import CreateTodoForm from "../components/CreateTodoForm.vue";
+
+type EditingTarget = {
+  kind: "todo" | "habit";
+  entityId: number;
+};
 
 const planner = ref<DayPlannerResponse | null>(null);
 const isLoading = ref(true);
 const errorMessage = ref<string | null>(null);
+
 const updatingKeys = ref<string[]>([]);
+
+const editingTarget = ref<EditingTarget | null>(null);
+const editorBusy = ref(false);
 
 const formattedDate = computed(() => {
   if (!planner.value) {
@@ -58,7 +68,7 @@ function getItemKey(item: DayPlannerItem): string {
 }
 
 function isUpdating(item: DayPlannerItem): boolean {
-  return updatingKeys.value.includes(getItemKey(item));
+  return editorBusy.value || updatingKeys.value.includes(getItemKey(item));
 }
 
 function startUpdating(item: DayPlannerItem): void {
@@ -149,6 +159,34 @@ async function skipHabit(item: DayPlannerHabitItem): Promise<void> {
   }
 }
 
+function openEditing(item: DayPlannerItem): void {
+  if (editorBusy.value || updatingKeys.value.length > 0) {
+    return;
+  }
+
+  editingTarget.value =
+    item.type === "todo"
+      ? {
+          kind: "todo",
+          entityId: item.todoId,
+        }
+      : {
+          kind: "habit",
+          entityId: item.habitId,
+        };
+}
+
+function closeEditing(): void {
+  editingTarget.value = null;
+  editorBusy.value = false;
+}
+
+async function onEditorChanged(): Promise<void> {
+  closeEditing();
+
+  await loadToday(false);
+}
+
 onMounted(() => loadToday());
 </script>
 
@@ -168,7 +206,7 @@ onMounted(() => loadToday());
       <button
         class="today-view__refresh"
         type="button"
-        :disabled="isLoading"
+        :disabled="isLoading || editorBusy"
         @click="loadToday()"
       >
         Aktualisieren
@@ -176,6 +214,16 @@ onMounted(() => loadToday());
     </header>
 
     <CreateTodoForm @created="loadToday(false)" />
+
+    <PlannerItemEditor
+      v-if="editingTarget"
+      :key="`${editingTarget.kind}-${editingTarget.entityId}`"
+      :kind="editingTarget.kind"
+      :entity-id="editingTarget.entityId"
+      @busy="editorBusy = $event"
+      @changed="onEditorChanged"
+      @close="closeEditing"
+    />
 
     <p v-if="errorMessage" class="today-view__error" role="alert">
       {{ errorMessage }}
@@ -185,12 +233,13 @@ onMounted(() => loadToday());
       Tagesplan wird geladen …
     </div>
 
-    <div v-else-if="!hasItems" class="today-view__state">
+    <div v-else-if="!hasItems && !errorMessage" class="today-view__state">
       <strong>Für heute ist nichts geplant.</strong>
+
       <span> Genieße den freien Raum oder plane einen neuen Eintrag. </span>
     </div>
 
-    <div v-else class="today-view__sections">
+    <div v-else-if="hasItems" class="today-view__sections">
       <section v-if="overdueItems.length > 0" class="today-section">
         <header class="today-section__header">
           <h2>Überfällig</h2>
@@ -205,6 +254,7 @@ onMounted(() => loadToday());
             :is-updating="isUpdating(item)"
             @toggle="toggleItem"
             @skip="skipHabit"
+            @edit="openEditing"
           />
         </div>
       </section>
@@ -223,6 +273,7 @@ onMounted(() => loadToday());
             :is-updating="isUpdating(item)"
             @toggle="toggleItem"
             @skip="skipHabit"
+            @edit="openEditing"
           />
         </div>
       </section>
@@ -241,6 +292,7 @@ onMounted(() => loadToday());
             :is-updating="isUpdating(item)"
             @toggle="toggleItem"
             @skip="skipHabit"
+            @edit="openEditing"
           />
         </div>
       </section>
