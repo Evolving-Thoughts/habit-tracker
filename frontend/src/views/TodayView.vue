@@ -12,6 +12,7 @@ import type {
   DayPlannerResponse,
 } from "../types/day-planner";
 import { formatDateForGermanDisplay } from "../utils/date";
+import CreateTodoForm from "../components/CreateTodoForm.vue";
 
 const planner = ref<DayPlannerResponse | null>(null);
 const isLoading = ref(true);
@@ -173,6 +174,8 @@ onMounted(() => loadToday());
         Aktualisieren
       </button>
     </header>
+
+    <CreateTodoForm @created="loadToday(false)" />
 
     <p v-if="errorMessage" class="today-view__error" role="alert">
       {{ errorMessage }}

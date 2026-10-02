@@ -14,6 +14,7 @@ import TodayView from "./TodayView.vue";
 
 vi.mock("../api/day-planner.api", () => ({
   getToday: vi.fn(),
+  createTodo: vi.fn(),
   updateOccurrenceStatus: vi.fn(),
   updateTodoCompletion: vi.fn(),
 }));
