@@ -364,30 +364,48 @@ export class HabitOccurrenceGeneratorService {
     return this.occurrenceRepository
       .createQueryBuilder('occurrence')
       .innerJoinAndSelect('occurrence.habit', 'habit')
-      .where('habit.isActive = :isActive', {
+      .where('"habit"."isActive" = :isActive', {
         isActive: true,
       })
-      .andWhere('habit.deletedAt IS NULL')
+      .andWhere('"habit"."deletedAt" IS NULL')
       .andWhere(
         new Brackets((queryBuilder) => {
           queryBuilder
             .where(
               `(
-                occurrence.status = :pendingStatus
-                AND occurrence.scheduledDate <= :today
-              )`,
+              "occurrence"."status" = :pendingStatus
+              AND "occurrence"."scheduledDate" <= :today
+            )`,
               {
                 pendingStatus: HabitOccurrenceStatus.PENDING,
                 today,
               },
             )
-            .orWhere('occurrence.resolvedDate = :today', {
-              today,
-            });
+            .orWhere(
+              `(
+              "occurrence"."status" = :completedStatus
+              AND "occurrence"."resolvedDate" = :today
+            )`,
+              {
+                completedStatus: HabitOccurrenceStatus.COMPLETED,
+                today,
+              },
+            )
+            .orWhere(
+              `(
+              "occurrence"."status" = :skippedStatus
+              AND "occurrence"."scheduledDate" = :today
+              AND "occurrence"."resolvedDate" = :today
+            )`,
+              {
+                skippedStatus: HabitOccurrenceStatus.SKIPPED,
+                today,
+              },
+            );
         }),
       )
-      .orderBy('occurrence.scheduledDate', 'ASC')
-      .addOrderBy('occurrence.id', 'ASC')
+      .orderBy('"occurrence"."scheduledDate"', 'ASC')
+      .addOrderBy('"occurrence"."id"', 'ASC')
       .getMany();
   }
 }

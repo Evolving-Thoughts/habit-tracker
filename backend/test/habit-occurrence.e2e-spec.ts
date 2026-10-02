@@ -77,32 +77,57 @@ describe('Habit occurrences API (e2e)', () => {
     await app.close();
   });
 
+  async function createIntervalHabit(
+    startDate: string,
+  ): Promise<HabitResponseBody> {
+    const response = await request(httpServer)
+      .post('/habits')
+      .send({
+        title: 'Joggen',
+        scheduleType: HabitScheduleType.INTERVAL,
+        startDate,
+        intervalDays: 2,
+        missedOccurrencePolicy: MissedOccurrencePolicy.CARRY_OVER,
+      })
+      .expect(201);
+
+    return response.body as HabitResponseBody;
+  }
+
+  async function getTodayOccurrences(): Promise<HabitOccurrenceResponseBody[]> {
+    const response = await request(httpServer)
+      .get('/habit-occurrences/today')
+      .expect(200);
+
+    return response.body as HabitOccurrenceResponseBody[];
+  }
+
+  async function createStoredOccurrence(
+    habitId: number,
+    scheduledDate: string,
+    status: HabitOccurrenceStatus,
+    resolvedDate: string | null,
+  ): Promise<HabitOccurrenceEntity> {
+    const occurrence = occurrenceRepository.create({
+      habitId,
+      scheduledDate,
+      status,
+      resolvedDate,
+    });
+
+    return occurrenceRepository.save(occurrence);
+  }
+
   describe('GET /habit-occurrences/today', () => {
     it('generates a due occurrence and does not duplicate it', async () => {
       const today = getCurrentDateInTimeZone();
+      const habit = await createIntervalHabit(today);
 
-      const createHabitResponse = await request(httpServer)
-        .post('/habits')
-        .send({
-          title: 'Joggen',
-          scheduleType: HabitScheduleType.INTERVAL,
-          startDate: today,
-          intervalDays: 2,
-        })
-        .expect(201);
+      const firstOccurrences = await getTodayOccurrences();
 
-      const habit = createHabitResponse.body as HabitResponseBody;
+      expect(firstOccurrences).toHaveLength(1);
 
-      const firstTodayResponse = await request(httpServer)
-        .get('/habit-occurrences/today')
-        .expect(200);
-
-      const firstTodayOccurrences =
-        firstTodayResponse.body as HabitOccurrenceResponseBody[];
-
-      expect(firstTodayOccurrences).toHaveLength(1);
-
-      expect(firstTodayOccurrences[0]).toEqual({
+      expect(firstOccurrences[0]).toEqual({
         id: expect.any(Number) as number,
         habitId: habit.id,
         scheduledDate: today,
@@ -110,14 +135,9 @@ describe('Habit occurrences API (e2e)', () => {
         resolvedDate: null,
       });
 
-      const secondTodayResponse = await request(httpServer)
-        .get('/habit-occurrences/today')
-        .expect(200);
+      const secondOccurrences = await getTodayOccurrences();
 
-      const secondTodayOccurrences =
-        secondTodayResponse.body as HabitOccurrenceResponseBody[];
-
-      expect(secondTodayOccurrences).toEqual(firstTodayOccurrences);
+      expect(secondOccurrences).toEqual(firstOccurrences);
 
       expect(
         await occurrenceRepository.count({
@@ -128,35 +148,36 @@ describe('Habit occurrences API (e2e)', () => {
       ).toBe(1);
     });
 
-    it('backfills missed interval dates using the fixed rhythm', async () => {
+    it('keeps backfilled skips in history but excludes them from today', async () => {
       const today = getCurrentDateInTimeZone();
 
       const fourDaysAgo = HabitScheduleCalculator.addDays(today, -4);
 
       const twoDaysAgo = HabitScheduleCalculator.addDays(today, -2);
 
-      const createHabitResponse = await request(httpServer)
-        .post('/habits')
-        .send({
-          title: 'Joggen',
-          scheduleType: HabitScheduleType.INTERVAL,
-          startDate: fourDaysAgo,
-          intervalDays: 2,
-          missedOccurrencePolicy: MissedOccurrencePolicy.CARRY_OVER,
-        })
-        .expect(201);
+      const habit = await createIntervalHabit(fourDaysAgo);
 
-      const habit = createHabitResponse.body as HabitResponseBody;
+      const todayOccurrences = await getTodayOccurrences();
 
-      const todayResponse = await request(httpServer)
-        .get('/habit-occurrences/today')
+      expect(todayOccurrences).toHaveLength(1);
+
+      const currentOccurrence = todayOccurrences[0];
+
+      expect(currentOccurrence).toEqual({
+        id: expect.any(Number) as number,
+        habitId: habit.id,
+        scheduledDate: today,
+        status: HabitOccurrenceStatus.PENDING,
+        resolvedDate: null,
+      });
+
+      const historyResponse = await request(httpServer)
+        .get(`/habits/${habit.id}/occurrences`)
         .expect(200);
 
-      const occurrences = todayResponse.body as HabitOccurrenceResponseBody[];
+      const history = historyResponse.body as HabitOccurrenceResponseBody[];
 
-      expect(occurrences).toHaveLength(3);
-
-      expect(occurrences).toEqual([
+      expect(history).toEqual([
         {
           id: expect.any(Number) as number,
           habitId: habit.id,
@@ -171,38 +192,102 @@ describe('Habit occurrences API (e2e)', () => {
           status: HabitOccurrenceStatus.SKIPPED,
           resolvedDate: today,
         },
-        {
-          id: expect.any(Number) as number,
-          habitId: habit.id,
-          scheduledDate: today,
-          status: HabitOccurrenceStatus.PENDING,
-          resolvedDate: null,
-        },
+        currentOccurrence,
       ]);
 
-      const historyResponse = await request(httpServer)
-        .get(`/habits/${habit.id}/occurrences`)
-        .expect(200);
+      // Ein erneuter Aufruf darf weder historische
+      // noch aktuelle Ausführungen duplizieren.
+      expect(await getTodayOccurrences()).toEqual(todayOccurrences);
 
-      const history = historyResponse.body as HabitOccurrenceResponseBody[];
+      expect(
+        await occurrenceRepository.count({
+          where: {
+            habitId: habit.id,
+          },
+        }),
+      ).toBe(3);
+    });
 
-      expect(history).toEqual(occurrences);
+    it('includes a late occurrence completed today', async () => {
+      const today = getCurrentDateInTimeZone();
+
+      const yesterday = HabitScheduleCalculator.addDays(today, -1);
+
+      const habit = await createIntervalHabit(yesterday);
+
+      const occurrence = await createStoredOccurrence(
+        habit.id,
+        yesterday,
+        HabitOccurrenceStatus.COMPLETED,
+        today,
+      );
+
+      expect(await getTodayOccurrences()).toEqual([
+        {
+          id: occurrence.id,
+          habitId: habit.id,
+          scheduledDate: yesterday,
+          status: HabitOccurrenceStatus.COMPLETED,
+          resolvedDate: today,
+        },
+      ]);
+    });
+
+    it('excludes an occurrence completed on a previous day', async () => {
+      const today = getCurrentDateInTimeZone();
+
+      const yesterday = HabitScheduleCalculator.addDays(today, -1);
+
+      const habit = await createIntervalHabit(yesterday);
+
+      await createStoredOccurrence(
+        habit.id,
+        yesterday,
+        HabitOccurrenceStatus.COMPLETED,
+        yesterday,
+      );
+
+      // Bei einem Zwei-Tage-Intervall ist der
+      // nächste Termin erst morgen.
+      expect(await getTodayOccurrences()).toEqual([]);
+
+      expect(
+        await occurrenceRepository.count({
+          where: {
+            habitId: habit.id,
+          },
+        }),
+      ).toBe(1);
+    });
+
+    it('excludes an occurrence skipped on a previous day', async () => {
+      const today = getCurrentDateInTimeZone();
+
+      const yesterday = HabitScheduleCalculator.addDays(today, -1);
+
+      const habit = await createIntervalHabit(yesterday);
+
+      await createStoredOccurrence(
+        habit.id,
+        yesterday,
+        HabitOccurrenceStatus.SKIPPED,
+        yesterday,
+      );
+
+      expect(await getTodayOccurrences()).toEqual([]);
+
+      expect(
+        await occurrenceRepository.count({
+          where: {
+            habitId: habit.id,
+          },
+        }),
+      ).toBe(1);
     });
 
     it('does not generate occurrences for an inactive habit', async () => {
       const today = getCurrentDateInTimeZone();
-
-      const createHabitResponse = await request(httpServer)
-        .post('/habits')
-        .send({
-          title: 'Joggen',
-          scheduleType: HabitScheduleType.INTERVAL,
-          startDate: today,
-          intervalDays: 2,
-        })
-        .expect(201);
-
-      const habit = createHabitResponse.body as HabitResponseBody;
+      const habit = await createIntervalHabit(today);
 
       await request(httpServer)
         .patch(`/habits/${habit.id}`)
@@ -211,42 +296,17 @@ describe('Habit occurrences API (e2e)', () => {
         })
         .expect(200);
 
-      const response = await request(httpServer)
-        .get('/habit-occurrences/today')
-        .expect(200);
-
-      const occurrences = response.body as HabitOccurrenceResponseBody[];
-
-      expect(occurrences).toEqual([]);
-
+      expect(await getTodayOccurrences()).toEqual([]);
       expect(await occurrenceRepository.count()).toBe(0);
     });
 
     it('does not generate occurrences for a soft-deleted habit', async () => {
       const today = getCurrentDateInTimeZone();
-
-      const createHabitResponse = await request(httpServer)
-        .post('/habits')
-        .send({
-          title: 'Joggen',
-          scheduleType: HabitScheduleType.INTERVAL,
-          startDate: today,
-          intervalDays: 2,
-        })
-        .expect(201);
-
-      const habit = createHabitResponse.body as HabitResponseBody;
+      const habit = await createIntervalHabit(today);
 
       await request(httpServer).delete(`/habits/${habit.id}`).expect(204);
 
-      const response = await request(httpServer)
-        .get('/habit-occurrences/today')
-        .expect(200);
-
-      const occurrences = response.body as HabitOccurrenceResponseBody[];
-
-      expect(occurrences).toEqual([]);
-
+      expect(await getTodayOccurrences()).toEqual([]);
       expect(await occurrenceRepository.count()).toBe(0);
     });
   });
@@ -254,29 +314,15 @@ describe('Habit occurrences API (e2e)', () => {
   describe('occurrence lifecycle', () => {
     it('completes, resets and skips an occurrence', async () => {
       const today = getCurrentDateInTimeZone();
+      const habit = await createIntervalHabit(today);
 
-      const createHabitResponse = await request(httpServer)
-        .post('/habits')
-        .send({
-          title: 'Joggen',
-          scheduleType: HabitScheduleType.INTERVAL,
-          startDate: today,
-          intervalDays: 2,
-        })
-        .expect(201);
+      const occurrences = await getTodayOccurrences();
 
-      const habit = createHabitResponse.body as HabitResponseBody;
+      const occurrence = occurrences[0];
 
-      const todayResponse = await request(httpServer)
-        .get('/habit-occurrences/today')
-        .expect(200);
-
-      const todayOccurrences =
-        todayResponse.body as HabitOccurrenceResponseBody[];
-
-      const occurrence = todayOccurrences[0];
-
-      expect(occurrence).toBeDefined();
+      if (!occurrence) {
+        throw new Error('Expected a generated occurrence');
+      }
 
       const completedResponse = await request(httpServer)
         .patch(`/habit-occurrences/${occurrence.id}/status`)
@@ -294,14 +340,7 @@ describe('Habit occurrences API (e2e)', () => {
         resolvedDate: today,
       });
 
-      const completedTodayResponse = await request(httpServer)
-        .get('/habit-occurrences/today')
-        .expect(200);
-
-      const completedTodayOccurrences =
-        completedTodayResponse.body as HabitOccurrenceResponseBody[];
-
-      expect(completedTodayOccurrences).toContainEqual(completedOccurrence);
+      expect(await getTodayOccurrences()).toEqual([completedOccurrence]);
 
       const resetResponse = await request(httpServer)
         .patch(`/habit-occurrences/${occurrence.id}/status`)
@@ -312,9 +351,11 @@ describe('Habit occurrences API (e2e)', () => {
 
       const resetOccurrence = resetResponse.body as HabitOccurrenceResponseBody;
 
-      expect(resetOccurrence.status).toBe(HabitOccurrenceStatus.PENDING);
-
-      expect(resetOccurrence.resolvedDate).toBeNull();
+      expect(resetOccurrence).toEqual({
+        ...occurrence,
+        status: HabitOccurrenceStatus.PENDING,
+        resolvedDate: null,
+      });
 
       const skippedResponse = await request(httpServer)
         .patch(`/habit-occurrences/${occurrence.id}/status`)
@@ -326,46 +367,38 @@ describe('Habit occurrences API (e2e)', () => {
       const skippedOccurrence =
         skippedResponse.body as HabitOccurrenceResponseBody;
 
-      expect(skippedOccurrence.status).toBe(HabitOccurrenceStatus.SKIPPED);
+      expect(skippedOccurrence).toEqual({
+        ...occurrence,
+        status: HabitOccurrenceStatus.SKIPPED,
+        resolvedDate: today,
+      });
 
-      expect(skippedOccurrence.resolvedDate).toBe(today);
+      // Ein für heute geplanter und heute
+      // übersprungener Termin bleibt sichtbar.
+      expect(await getTodayOccurrences()).toEqual([skippedOccurrence]);
 
       const historyResponse = await request(httpServer)
         .get(`/habits/${habit.id}/occurrences`)
         .expect(200);
 
-      const history = historyResponse.body as HabitOccurrenceResponseBody[];
-
-      expect(history).toEqual([skippedOccurrence]);
+      expect(historyResponse.body as HabitOccurrenceResponseBody[]).toEqual([
+        skippedOccurrence,
+      ]);
     });
 
     it('rejects a direct change from completed to skipped', async () => {
       const today = getCurrentDateInTimeZone();
+      const habit = await createIntervalHabit(today);
 
-      const habit = habitRepository.create({
-        title: 'Joggen',
-        scheduleType: HabitScheduleType.INTERVAL,
-        startDate: today,
-        intervalDays: 2,
-        weekdays: null,
-        weeklyTarget: null,
-        missedOccurrencePolicy: MissedOccurrencePolicy.CARRY_OVER,
-        isActive: true,
-      });
-
-      const savedHabit = await habitRepository.save(habit);
-
-      const occurrence = occurrenceRepository.create({
-        habitId: savedHabit.id,
-        scheduledDate: today,
-        status: HabitOccurrenceStatus.COMPLETED,
-        resolvedDate: today,
-      });
-
-      const savedOccurrence = await occurrenceRepository.save(occurrence);
+      const occurrence = await createStoredOccurrence(
+        habit.id,
+        today,
+        HabitOccurrenceStatus.COMPLETED,
+        today,
+      );
 
       const response = await request(httpServer)
-        .patch(`/habit-occurrences/${savedOccurrence.id}/status`)
+        .patch(`/habit-occurrences/${occurrence.id}/status`)
         .send({
           status: HabitOccurrenceStatus.SKIPPED,
         })
@@ -374,41 +407,32 @@ describe('Habit occurrences API (e2e)', () => {
       const body = response.body as ErrorResponseBody;
 
       expect(body.statusCode).toBe(409);
-
       expect(body.message).toBe(
         'Cannot change occurrence status from completed to skipped',
       );
+
+      const unchangedOccurrence = await occurrenceRepository.findOneBy({
+        id: occurrence.id,
+      });
+
+      expect(unchangedOccurrence?.status).toBe(HabitOccurrenceStatus.COMPLETED);
     });
   });
 
   describe('validation and missing resources', () => {
     it('rejects an invalid status', async () => {
       const today = getCurrentDateInTimeZone();
+      const habit = await createIntervalHabit(today);
 
-      const habit = habitRepository.create({
-        title: 'Joggen',
-        scheduleType: HabitScheduleType.INTERVAL,
-        startDate: today,
-        intervalDays: 2,
-        weekdays: null,
-        weeklyTarget: null,
-        missedOccurrencePolicy: MissedOccurrencePolicy.CARRY_OVER,
-        isActive: true,
-      });
-
-      const savedHabit = await habitRepository.save(habit);
-
-      const occurrence = occurrenceRepository.create({
-        habitId: savedHabit.id,
-        scheduledDate: today,
-        status: HabitOccurrenceStatus.PENDING,
-        resolvedDate: null,
-      });
-
-      const savedOccurrence = await occurrenceRepository.save(occurrence);
+      const occurrence = await createStoredOccurrence(
+        habit.id,
+        today,
+        HabitOccurrenceStatus.PENDING,
+        null,
+      );
 
       const response = await request(httpServer)
-        .patch(`/habit-occurrences/${savedOccurrence.id}/status`)
+        .patch(`/habit-occurrences/${occurrence.id}/status`)
         .send({
           status: 'invalid-status',
         })
@@ -439,7 +463,6 @@ describe('Habit occurrences API (e2e)', () => {
       const body = response.body as ErrorResponseBody;
 
       expect(body.statusCode).toBe(404);
-
       expect(body.message).toBe(
         'Habit occurrence with ID 999999 was not found',
       );
@@ -453,7 +476,6 @@ describe('Habit occurrences API (e2e)', () => {
       const body = response.body as ErrorResponseBody;
 
       expect(body.statusCode).toBe(404);
-
       expect(body.message).toBe('Habit with ID 999999 was not found');
     });
   });

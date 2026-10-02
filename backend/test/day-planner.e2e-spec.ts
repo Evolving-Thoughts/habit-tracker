@@ -68,6 +68,14 @@ type DayPlannerResponseBody = {
   items: DayPlannerItemBody[];
 };
 
+type HabitOccurrenceResponseBody = {
+  id: number;
+  habitId: number;
+  scheduledDate: string;
+  status: HabitOccurrenceStatus;
+  resolvedDate: string | null;
+};
+
 function isTodoItem(item: DayPlannerItemBody): item is DayPlannerTodoItemBody {
   return item.type === 'todo';
 }
@@ -122,6 +130,50 @@ describe('Day planner API (e2e)', () => {
     await app.close();
   });
 
+  async function createTodo(
+    title: string,
+    options: {
+      scheduledAt?: string;
+      plannedDurationMinutes?: number;
+      isFixed?: boolean;
+    } = {},
+  ): Promise<TodoResponseBody> {
+    const response = await request(httpServer)
+      .post('/todos')
+      .send({
+        title,
+        ...options,
+      })
+      .expect(201);
+
+    return response.body as TodoResponseBody;
+  }
+
+  async function createIntervalHabit(
+    startDate: string,
+  ): Promise<HabitResponseBody> {
+    const response = await request(httpServer)
+      .post('/habits')
+      .send({
+        title: 'Joggen',
+        scheduleType: HabitScheduleType.INTERVAL,
+        startDate,
+        intervalDays: 2,
+        missedOccurrencePolicy: MissedOccurrencePolicy.CARRY_OVER,
+      })
+      .expect(201);
+
+    return response.body as HabitResponseBody;
+  }
+
+  async function getPlanner(): Promise<DayPlannerResponseBody> {
+    const response = await request(httpServer)
+      .get('/day-planner/today')
+      .expect(200);
+
+    return response.body as DayPlannerResponseBody;
+  }
+
   describe('GET /day-planner/today', () => {
     it('combines due todos and habit occurrences', async () => {
       const today = getCurrentDateInTimeZone();
@@ -130,58 +182,27 @@ describe('Day planner API (e2e)', () => {
 
       const tomorrow = HabitScheduleCalculator.addDays(today, 1);
 
-      const unscheduledTodoResponse = await request(httpServer)
-        .post('/todos')
-        .send({
-          title: 'Todo dump item',
-        })
-        .expect(201);
+      const unscheduledTodo = await createTodo('Todo dump item');
 
-      const unscheduledTodo = unscheduledTodoResponse.body as TodoResponseBody;
+      const overdueTodo = await createTodo('Überfälliges Todo', {
+        scheduledAt: `${yesterday}T08:00:00.000Z`,
+        plannedDurationMinutes: 30,
+        isFixed: false,
+      });
 
-      const overdueTodoResponse = await request(httpServer)
-        .post('/todos')
-        .send({
-          title: 'Überfälliges Todo',
-          scheduledAt: `${yesterday}T08:00:00.000Z`,
-          plannedDurationMinutes: 30,
-          isFixed: false,
-        })
-        .expect(201);
+      const todayTodo = await createTodo('Heutiger Termin', {
+        scheduledAt: `${today}T10:00:00.000Z`,
+        plannedDurationMinutes: 60,
+        isFixed: true,
+      });
 
-      const overdueTodo = overdueTodoResponse.body as TodoResponseBody;
+      const futureTodo = await createTodo('Zukünftiges Todo', {
+        scheduledAt: `${tomorrow}T08:00:00.000Z`,
+      });
 
-      const todayTodoResponse = await request(httpServer)
-        .post('/todos')
-        .send({
-          title: 'Heutiger Termin',
-          scheduledAt: `${today}T10:00:00.000Z`,
-          plannedDurationMinutes: 60,
-          isFixed: true,
-        })
-        .expect(201);
-
-      const todayTodo = todayTodoResponse.body as TodoResponseBody;
-
-      const futureTodoResponse = await request(httpServer)
-        .post('/todos')
-        .send({
-          title: 'Zukünftiges Todo',
-          scheduledAt: `${tomorrow}T08:00:00.000Z`,
-        })
-        .expect(201);
-
-      const futureTodo = futureTodoResponse.body as TodoResponseBody;
-
-      const completedTodoResponse = await request(httpServer)
-        .post('/todos')
-        .send({
-          title: 'Heute erledigtes Todo',
-          scheduledAt: `${yesterday}T12:00:00.000Z`,
-        })
-        .expect(201);
-
-      const completedTodo = completedTodoResponse.body as TodoResponseBody;
+      const completedTodo = await createTodo('Heute erledigtes Todo', {
+        scheduledAt: `${yesterday}T12:00:00.000Z`,
+      });
 
       await request(httpServer)
         .patch(`/todos/${completedTodo.id}`)
@@ -190,23 +211,9 @@ describe('Day planner API (e2e)', () => {
         })
         .expect(200);
 
-      const habitResponse = await request(httpServer)
-        .post('/habits')
-        .send({
-          title: 'Joggen',
-          scheduleType: HabitScheduleType.INTERVAL,
-          startDate: today,
-          intervalDays: 2,
-        })
-        .expect(201);
+      const habit = await createIntervalHabit(today);
 
-      const habit = habitResponse.body as HabitResponseBody;
-
-      const response = await request(httpServer)
-        .get('/day-planner/today')
-        .expect(200);
-
-      const body = response.body as DayPlannerResponseBody;
+      const body = await getPlanner();
 
       expect(body.date).toBe(today);
 
@@ -219,9 +226,7 @@ describe('Day planner API (e2e)', () => {
       const returnedTodoIds = todoItems.map((item) => item.todoId);
 
       expect(returnedTodoIds).toContain(overdueTodo.id);
-
       expect(returnedTodoIds).toContain(todayTodo.id);
-
       expect(returnedTodoIds).toContain(completedTodo.id);
 
       expect(returnedTodoIds).not.toContain(unscheduledTodo.id);
@@ -264,9 +269,9 @@ describe('Day planner API (e2e)', () => {
         (item) => item.todoId === completedTodo.id,
       );
 
+      expect(completedItem).toBeDefined();
       expect(completedItem?.status).toBe('completed');
-
-      expect(completedItem?.completedAt).not.toBeNull();
+      expect(completedItem?.completedAt).toEqual(expect.any(String));
       expect(completedItem?.isOverdue).toBe(false);
 
       expect(habitItems[0]).toEqual({
@@ -283,45 +288,26 @@ describe('Day planner API (e2e)', () => {
 
     it('keeps a completed habit occurrence visible for the rest of the day', async () => {
       const today = getCurrentDateInTimeZone();
+      const habit = await createIntervalHabit(today);
 
-      const habitResponse = await request(httpServer)
-        .post('/habits')
-        .send({
-          title: 'Joggen',
-          scheduleType: HabitScheduleType.INTERVAL,
-          startDate: today,
-          intervalDays: 2,
-        })
-        .expect(201);
-
-      const habit = habitResponse.body as HabitResponseBody;
-
-      const initialPlannerResponse = await request(httpServer)
-        .get('/day-planner/today')
-        .expect(200);
-
-      const initialPlanner =
-        initialPlannerResponse.body as DayPlannerResponseBody;
+      const initialPlanner = await getPlanner();
 
       const pendingOccurrence = initialPlanner.items
         .filter(isHabitItem)
         .find((item) => item.habitId === habit.id);
 
-      expect(pendingOccurrence).toBeDefined();
+      if (!pendingOccurrence) {
+        throw new Error('Expected a pending habit occurrence');
+      }
 
       await request(httpServer)
-        .patch(`/habit-occurrences/${pendingOccurrence?.occurrenceId}/status`)
+        .patch(`/habit-occurrences/${pendingOccurrence.occurrenceId}/status`)
         .send({
           status: HabitOccurrenceStatus.COMPLETED,
         })
         .expect(200);
 
-      const completedPlannerResponse = await request(httpServer)
-        .get('/day-planner/today')
-        .expect(200);
-
-      const completedPlanner =
-        completedPlannerResponse.body as DayPlannerResponseBody;
+      const completedPlanner = await getPlanner();
 
       const completedOccurrence = completedPlanner.items
         .filter(isHabitItem)
@@ -329,7 +315,7 @@ describe('Day planner API (e2e)', () => {
 
       expect(completedOccurrence).toEqual({
         type: 'habit',
-        occurrenceId: pendingOccurrence?.occurrenceId,
+        occurrenceId: pendingOccurrence.occurrenceId,
         habitId: habit.id,
         title: 'Joggen',
         status: HabitOccurrenceStatus.COMPLETED,
@@ -339,31 +325,16 @@ describe('Day planner API (e2e)', () => {
       });
     });
 
-    it('shows skipped historical occurrences and the current pending occurrence', async () => {
+    it('keeps backfilled skips in history but excludes them from today', async () => {
       const today = getCurrentDateInTimeZone();
 
       const fourDaysAgo = HabitScheduleCalculator.addDays(today, -4);
 
       const twoDaysAgo = HabitScheduleCalculator.addDays(today, -2);
 
-      const habitResponse = await request(httpServer)
-        .post('/habits')
-        .send({
-          title: 'Joggen',
-          scheduleType: HabitScheduleType.INTERVAL,
-          startDate: fourDaysAgo,
-          intervalDays: 2,
-          missedOccurrencePolicy: MissedOccurrencePolicy.CARRY_OVER,
-        })
-        .expect(201);
+      const habit = await createIntervalHabit(fourDaysAgo);
 
-      const habit = habitResponse.body as HabitResponseBody;
-
-      const response = await request(httpServer)
-        .get('/day-planner/today')
-        .expect(200);
-
-      const body = response.body as DayPlannerResponseBody;
+      const body = await getPlanner();
 
       const habitItems = body.items
         .filter(isHabitItem)
@@ -375,27 +346,114 @@ describe('Day planner API (e2e)', () => {
           occurrenceId: expect.any(Number) as number,
           habitId: habit.id,
           title: 'Joggen',
-          status: HabitOccurrenceStatus.SKIPPED,
-          scheduledDate: fourDaysAgo,
-          scheduleType: HabitScheduleType.INTERVAL,
-          isOverdue: false,
-        },
-        {
-          type: 'habit',
-          occurrenceId: expect.any(Number) as number,
-          habitId: habit.id,
-          title: 'Joggen',
-          status: HabitOccurrenceStatus.SKIPPED,
-          scheduledDate: twoDaysAgo,
-          scheduleType: HabitScheduleType.INTERVAL,
-          isOverdue: false,
-        },
-        {
-          type: 'habit',
-          occurrenceId: expect.any(Number) as number,
-          habitId: habit.id,
-          title: 'Joggen',
           status: HabitOccurrenceStatus.PENDING,
+          scheduledDate: today,
+          scheduleType: HabitScheduleType.INTERVAL,
+          isOverdue: false,
+        },
+      ]);
+
+      const historyResponse = await request(httpServer)
+        .get(`/habits/${habit.id}/occurrences`)
+        .expect(200);
+
+      const history = historyResponse.body as HabitOccurrenceResponseBody[];
+
+      expect(history).toEqual([
+        {
+          id: expect.any(Number) as number,
+          habitId: habit.id,
+          scheduledDate: fourDaysAgo,
+          status: HabitOccurrenceStatus.SKIPPED,
+          resolvedDate: today,
+        },
+        {
+          id: expect.any(Number) as number,
+          habitId: habit.id,
+          scheduledDate: twoDaysAgo,
+          status: HabitOccurrenceStatus.SKIPPED,
+          resolvedDate: today,
+        },
+        {
+          id: habitItems[0]?.occurrenceId,
+          habitId: habit.id,
+          scheduledDate: today,
+          status: HabitOccurrenceStatus.PENDING,
+          resolvedDate: null,
+        },
+      ]);
+
+      expect(
+        await occurrenceRepository.count({
+          where: {
+            habitId: habit.id,
+          },
+        }),
+      ).toBe(3);
+    });
+
+    it('includes a late habit occurrence completed today', async () => {
+      const today = getCurrentDateInTimeZone();
+
+      const yesterday = HabitScheduleCalculator.addDays(today, -1);
+
+      const habit = await createIntervalHabit(yesterday);
+
+      const occurrence = occurrenceRepository.create({
+        habitId: habit.id,
+        scheduledDate: yesterday,
+        status: HabitOccurrenceStatus.COMPLETED,
+        resolvedDate: today,
+      });
+
+      const savedOccurrence = await occurrenceRepository.save(occurrence);
+
+      const body = await getPlanner();
+
+      expect(body.items).toEqual([
+        {
+          type: 'habit',
+          occurrenceId: savedOccurrence.id,
+          habitId: habit.id,
+          title: 'Joggen',
+          status: HabitOccurrenceStatus.COMPLETED,
+          scheduledDate: yesterday,
+          scheduleType: HabitScheduleType.INTERVAL,
+          isOverdue: false,
+        },
+      ]);
+    });
+
+    it('keeps a habit skipped today visible when it was scheduled for today', async () => {
+      const today = getCurrentDateInTimeZone();
+      const habit = await createIntervalHabit(today);
+
+      const initialPlanner = await getPlanner();
+
+      const pendingOccurrence = initialPlanner.items
+        .filter(isHabitItem)
+        .find((item) => item.habitId === habit.id);
+
+      if (!pendingOccurrence) {
+        throw new Error('Expected a pending habit occurrence');
+      }
+
+      await request(httpServer)
+        .patch(`/habit-occurrences/${pendingOccurrence.occurrenceId}/status`)
+        .send({
+          status: HabitOccurrenceStatus.SKIPPED,
+        })
+        .expect(200);
+
+      const planner = await getPlanner();
+
+      expect(planner.items).toEqual([
+        {
+          type: 'habit',
+          occurrenceId: pendingOccurrence.occurrenceId,
+          habitId: habit.id,
+          title: 'Joggen',
+          status: HabitOccurrenceStatus.SKIPPED,
           scheduledDate: today,
           scheduleType: HabitScheduleType.INTERVAL,
           isOverdue: false,
@@ -403,12 +461,47 @@ describe('Day planner API (e2e)', () => {
       ]);
     });
 
+    it('excludes habit occurrences resolved on previous days', async () => {
+      const today = getCurrentDateInTimeZone();
+
+      const yesterday = HabitScheduleCalculator.addDays(today, -1);
+
+      const completedHabit = await createIntervalHabit(yesterday);
+
+      const skippedHabit = await createIntervalHabit(yesterday);
+
+      await occurrenceRepository.save(
+        occurrenceRepository.create({
+          habitId: completedHabit.id,
+          scheduledDate: yesterday,
+          status: HabitOccurrenceStatus.COMPLETED,
+          resolvedDate: yesterday,
+        }),
+      );
+
+      await occurrenceRepository.save(
+        occurrenceRepository.create({
+          habitId: skippedHabit.id,
+          scheduledDate: yesterday,
+          status: HabitOccurrenceStatus.SKIPPED,
+          resolvedDate: yesterday,
+        }),
+      );
+
+      // Beide nächsten Intervalltermine liegen
+      // erst morgen.
+      const body = await getPlanner();
+
+      expect(body.items).toEqual([]);
+      expect(await occurrenceRepository.count()).toBe(2);
+    });
+
     it('excludes completed todos from previous days', async () => {
       const today = getCurrentDateInTimeZone();
 
       const yesterday = HabitScheduleCalculator.addDays(today, -1);
 
-      const completedYesterday = todoRepository.create({
+      const todo = todoRepository.create({
         title: 'Gestern erledigt',
         completed: true,
         completedAt: new Date(`${yesterday}T12:00:00.000Z`),
@@ -417,19 +510,15 @@ describe('Day planner API (e2e)', () => {
         isFixed: false,
       });
 
-      await todoRepository.save(completedYesterday);
+      await todoRepository.save(todo);
 
-      const response = await request(httpServer)
-        .get('/day-planner/today')
-        .expect(200);
-
-      const body = response.body as DayPlannerResponseBody;
+      const body = await getPlanner();
 
       expect(body.items).toEqual([]);
     });
 
     it('excludes completed unscheduled todos', async () => {
-      const completedUnscheduledTodo = todoRepository.create({
+      const todo = todoRepository.create({
         title: 'Todo dump item',
         completed: true,
         completedAt: new Date(),
@@ -438,13 +527,9 @@ describe('Day planner API (e2e)', () => {
         isFixed: false,
       });
 
-      await todoRepository.save(completedUnscheduledTodo);
+      await todoRepository.save(todo);
 
-      const response = await request(httpServer)
-        .get('/day-planner/today')
-        .expect(200);
-
-      const body = response.body as DayPlannerResponseBody;
+      const body = await getPlanner();
 
       expect(body.items).toEqual([]);
     });
@@ -452,13 +537,7 @@ describe('Day planner API (e2e)', () => {
     it('returns an empty planner when nothing is due', async () => {
       const today = getCurrentDateInTimeZone();
 
-      const response = await request(httpServer)
-        .get('/day-planner/today')
-        .expect(200);
-
-      const body = response.body as DayPlannerResponseBody;
-
-      expect(body).toEqual({
+      expect(await getPlanner()).toEqual({
         date: today,
         items: [],
       });
