@@ -3,15 +3,15 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Server } from 'node:http';
 import request from 'supertest';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
+import { getCurrentDateInTimeZone } from '../src/common/date/date-only.utils';
 import { HabitEntity } from '../src/habits/entities/habit.entity';
 import { HabitScheduleType } from '../src/habits/enums/habit-schedule-type.enum';
 import { MissedOccurrencePolicy } from '../src/habits/enums/missed-occurrence-policy.enum';
 import { Weekday } from '../src/habits/enums/weekday.enum';
-import { getCurrentDateInTimeZone } from '../src/common/date/date-only.utils';
-import { HabitOccurrenceEntity } from '../src/habit-occurrences/entities/habit-occurrence.entity';
+import { clearHabitTestData } from './helpers/clear-habit-test-data';
 
 type HabitResponseBody = {
   id: number;
@@ -33,9 +33,9 @@ type ErrorResponseBody = {
 
 describe('Habits API (e2e)', () => {
   let app: INestApplication;
+  let dataSource: DataSource;
   let httpServer: Server;
   let habitRepository: Repository<HabitEntity>;
-  let occurrenceRepository: Repository<HabitOccurrenceEntity>;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -47,25 +47,38 @@ describe('Habits API (e2e)', () => {
 
     await app.init();
 
+    dataSource = app.get(DataSource);
+
+    if (dataSource.options.database !== 'habit_tracker_test') {
+      throw new Error('These tests require habit_tracker_test.');
+    }
+
     httpServer = app.getHttpServer() as Server;
 
     habitRepository = moduleFixture.get<Repository<HabitEntity>>(
       getRepositoryToken(HabitEntity),
     );
-
-    occurrenceRepository = moduleFixture.get<Repository<HabitOccurrenceEntity>>(
-      getRepositoryToken(HabitOccurrenceEntity),
-    );
   });
 
   beforeEach(async () => {
-    await occurrenceRepository.createQueryBuilder().delete().execute();
-
-    await habitRepository.createQueryBuilder().delete().execute();
+    await clearHabitTestData(dataSource);
   });
 
   afterAll(async () => {
-    await app.close();
+    if (!app) {
+      return;
+    }
+
+    try {
+      if (
+        dataSource?.isInitialized &&
+        dataSource.options.database === 'habit_tracker_test'
+      ) {
+        await clearHabitTestData(dataSource);
+      }
+    } finally {
+      await app.close();
+    }
   });
 
   describe('POST /habits', () => {
@@ -119,7 +132,6 @@ describe('Habits API (e2e)', () => {
       const body = response.body as HabitResponseBody;
 
       expect(body.scheduleType).toBe(HabitScheduleType.FIXED_WEEKDAYS);
-
       expect(body.startDate).toBe('2026-09-20');
 
       expect(body.weekdays).toEqual([Weekday.WEDNESDAY, Weekday.SATURDAY]);
@@ -253,6 +265,7 @@ describe('Habits API (e2e)', () => {
         isActive: false,
       });
 
+      // Übergangsstand: Die Update-API verwendet noch die Habit-Felder.
       const fixedWeekdayResponse = await request(httpServer)
         .patch(`/habits/${createdHabit.id}`)
         .send({
@@ -406,13 +419,13 @@ describe('Habits API (e2e)', () => {
 
     it('returns 404 for a missing habit', async () => {
       const response = await request(httpServer)
-        .get('/habits/999999')
+        .get('/habits/2147483647')
         .expect(404);
 
       const body = response.body as ErrorResponseBody;
 
       expect(body.statusCode).toBe(404);
-      expect(body.message).toBe('Habit with ID 999999 was not found');
+      expect(body.message).toBe('Habit with ID 2147483647 was not found');
     });
   });
 });

@@ -1,16 +1,16 @@
 import { INestApplication } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { Test } from '@nestjs/testing';
 import type { Server } from 'node:http';
 import request from 'supertest';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { AppModule } from '../src/app.module';
-import { getCurrentDateInTimeZone } from '../src/common/date/date-only.utils';
 import { configureApp } from '../src/configure-app';
+import { getCurrentDateInTimeZone } from '../src/common/date/date-only.utils';
 import { HabitOccurrenceEntity } from '../src/habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../src/habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitScheduleCalculator } from '../src/habit-occurrences/scheduling/habit-schedule-calculator';
 import { HabitEntity } from '../src/habits/entities/habit.entity';
+import { HabitScheduleVersionEntity } from '../src/habits/entities/habit-schedule-version.entity';
 import { HabitScheduleType } from '../src/habits/enums/habit-schedule-type.enum';
 import { MissedOccurrencePolicy } from '../src/habits/enums/missed-occurrence-policy.enum';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
@@ -88,13 +88,45 @@ function isHabitItem(
 
 describe('Day planner API (e2e)', () => {
   let app: INestApplication;
+  let dataSource: DataSource;
   let httpServer: Server;
   let todoRepository: Repository<TodoEntity>;
-  let habitRepository: Repository<HabitEntity>;
   let occurrenceRepository: Repository<HabitOccurrenceEntity>;
 
+  async function cleanup(): Promise<void> {
+    if (dataSource.options.database !== 'habit_tracker_test') {
+      throw new Error('Refusing to delete data outside habit_tracker_test.');
+    }
+
+    await dataSource.transaction(async (manager) => {
+      await manager
+        .getRepository(HabitOccurrenceEntity)
+        .createQueryBuilder()
+        .delete()
+        .execute();
+
+      await manager
+        .getRepository(HabitScheduleVersionEntity)
+        .createQueryBuilder()
+        .delete()
+        .execute();
+
+      await manager
+        .getRepository(HabitEntity)
+        .createQueryBuilder()
+        .delete()
+        .execute();
+
+      await manager
+        .getRepository(TodoEntity)
+        .createQueryBuilder()
+        .delete()
+        .execute();
+    });
+  }
+
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    const moduleFixture = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
@@ -103,31 +135,38 @@ describe('Day planner API (e2e)', () => {
 
     await app.init();
 
+    dataSource = app.get(DataSource);
+
+    if (dataSource.options.database !== 'habit_tracker_test') {
+      throw new Error('These tests require habit_tracker_test.');
+    }
+
     httpServer = app.getHttpServer() as Server;
 
-    todoRepository = moduleFixture.get<Repository<TodoEntity>>(
-      getRepositoryToken(TodoEntity),
-    );
+    todoRepository = dataSource.getRepository(TodoEntity);
 
-    habitRepository = moduleFixture.get<Repository<HabitEntity>>(
-      getRepositoryToken(HabitEntity),
-    );
-
-    occurrenceRepository = moduleFixture.get<Repository<HabitOccurrenceEntity>>(
-      getRepositoryToken(HabitOccurrenceEntity),
-    );
+    occurrenceRepository = dataSource.getRepository(HabitOccurrenceEntity);
   });
 
   beforeEach(async () => {
-    await occurrenceRepository.createQueryBuilder().delete().execute();
-
-    await habitRepository.createQueryBuilder().delete().execute();
-
-    await todoRepository.createQueryBuilder().delete().execute();
+    await cleanup();
   });
 
   afterAll(async () => {
-    await app.close();
+    if (!app) {
+      return;
+    }
+
+    try {
+      if (
+        dataSource?.isInitialized &&
+        dataSource.options.database === 'habit_tracker_test'
+      ) {
+        await cleanup();
+      }
+    } finally {
+      await app.close();
+    }
   });
 
   async function createTodo(
@@ -177,9 +216,7 @@ describe('Day planner API (e2e)', () => {
   describe('GET /day-planner/today', () => {
     it('combines due todos and habit occurrences', async () => {
       const today = getCurrentDateInTimeZone();
-
       const yesterday = HabitScheduleCalculator.addDays(today, -1);
-
       const tomorrow = HabitScheduleCalculator.addDays(today, 1);
 
       const unscheduledTodo = await createTodo('Todo dump item');
@@ -228,9 +265,7 @@ describe('Day planner API (e2e)', () => {
       expect(returnedTodoIds).toContain(overdueTodo.id);
       expect(returnedTodoIds).toContain(todayTodo.id);
       expect(returnedTodoIds).toContain(completedTodo.id);
-
       expect(returnedTodoIds).not.toContain(unscheduledTodo.id);
-
       expect(returnedTodoIds).not.toContain(futureTodo.id);
 
       const overdueItem = todoItems.find(
@@ -327,9 +362,7 @@ describe('Day planner API (e2e)', () => {
 
     it('keeps backfilled skips in history but excludes them from today', async () => {
       const today = getCurrentDateInTimeZone();
-
       const fourDaysAgo = HabitScheduleCalculator.addDays(today, -4);
-
       const twoDaysAgo = HabitScheduleCalculator.addDays(today, -2);
 
       const habit = await createIntervalHabit(fourDaysAgo);
@@ -394,7 +427,6 @@ describe('Day planner API (e2e)', () => {
 
     it('includes a late habit occurrence completed today', async () => {
       const today = getCurrentDateInTimeZone();
-
       const yesterday = HabitScheduleCalculator.addDays(today, -1);
 
       const habit = await createIntervalHabit(yesterday);
@@ -463,11 +495,9 @@ describe('Day planner API (e2e)', () => {
 
     it('excludes habit occurrences resolved on previous days', async () => {
       const today = getCurrentDateInTimeZone();
-
       const yesterday = HabitScheduleCalculator.addDays(today, -1);
 
       const completedHabit = await createIntervalHabit(yesterday);
-
       const skippedHabit = await createIntervalHabit(yesterday);
 
       await occurrenceRepository.save(
@@ -488,8 +518,7 @@ describe('Day planner API (e2e)', () => {
         }),
       );
 
-      // Beide nächsten Intervalltermine liegen
-      // erst morgen.
+      // Beide nächsten Intervalltermine liegen erst morgen.
       const body = await getPlanner();
 
       expect(body.items).toEqual([]);
@@ -498,7 +527,6 @@ describe('Day planner API (e2e)', () => {
 
     it('excludes completed todos from previous days', async () => {
       const today = getCurrentDateInTimeZone();
-
       const yesterday = HabitScheduleCalculator.addDays(today, -1);
 
       const todo = todoRepository.create({

@@ -9,12 +9,14 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { HabitEntity } from '../../habits/entities/habit.entity';
+import { HabitScheduleVersionEntity } from '../../habits/entities/habit-schedule-version.entity';
 import { HabitOccurrenceStatus } from '../enums/habit-occurrence-status.enum';
 
 @Entity({ name: 'habit_occurrences' })
 @Index(['habitId', 'scheduledDate'], {
   unique: true,
 })
+@Index(['scheduleVersionId'])
 export class HabitOccurrenceEntity {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -32,6 +34,21 @@ export class HabitOccurrenceEntity {
     name: 'habitId',
   })
   habit!: HabitEntity;
+
+  @Column({
+    type: 'integer',
+    nullable: true,
+  })
+  scheduleVersionId!: number | null;
+
+  @ManyToOne(() => HabitScheduleVersionEntity, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+  })
+  @JoinColumn({
+    name: 'scheduleVersionId',
+  })
+  scheduleVersion!: HabitScheduleVersionEntity | null;
 
   @Column({
     type: 'date',
