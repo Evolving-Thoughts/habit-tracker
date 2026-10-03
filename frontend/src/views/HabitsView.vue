@@ -82,7 +82,7 @@ async function onCreated(): Promise<void> {
   creationOpen.value = false;
 }
 function timerChanged(): void {
-  if (!(editingId.value !== null)) void loadHabits(false);
+  if (editingId.value === null) void loadHabits(false);
 }
 onMounted(loadHabits);
 onMounted(() => window.addEventListener("timer-data-changed", timerChanged));

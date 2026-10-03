@@ -4,8 +4,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, LessThanOrEqual } from 'typeorm';
+import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import {
+  DEFAULT_TIME_ZONE,
   getCurrentDateInTimeZone,
   initialScheduleInstant,
 } from '../common/date/date-only.utils';
@@ -66,31 +68,42 @@ export class HabitsService {
   }
 
   async findOne(userId: string, id: number): Promise<HabitResponseDto> {
-    const habit = await this.dataSource
-      .getRepository(HabitEntity)
-      .findOneBy({ id, userId });
+    // Reconcile and read one owned Habit under the same Habit lock and reference time.
+    // Opening its editor must not generate occurrences for every other Habit.
+    return this.dataSource.transaction(async (manager) => {
+      const habit = await this.scheduling.lockHabit(userId, manager, id);
+      const now = new Date();
+      await this.scheduling.reconcile(manager, habit, now);
 
-    if (!habit) {
-      throw new NotFoundException(`Habit with ID ${id} was not found`);
-    }
+      const pending = habit.isActive
+        ? await manager.getRepository(HabitOccurrenceEntity).findOneBy({
+            habitId: id,
+            status: HabitOccurrenceStatus.PENDING,
+            scheduledDate: LessThanOrEqual(
+              getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, now),
+            ),
+          })
+        : null;
 
-    const due = await this.scheduling.getToday(userId);
-    return this.scheduling.habitResponse(
-      habit,
-      await this.scheduling.getVersions(this.dataSource.manager, id),
-      new Date(),
-      due.find(
-        (item) =>
-          item.habitId === id && item.status === HabitOccurrenceStatus.PENDING,
-      ),
-    );
+      return this.scheduling.habitResponse(
+        habit,
+        await this.scheduling.getVersions(manager, id),
+        now,
+        pending ?? undefined,
+      );
+    });
   }
 
   async findVersions(
     userId: string,
     id: number,
   ): Promise<ScheduleVersionResponse[]> {
-    await this.findOne(userId, id);
+    // History needs ownership validation, not occurrence generation or a write lock.
+    const habit = await this.dataSource
+      .getRepository(HabitEntity)
+      .findOneBy({ id, userId });
+    if (!habit)
+      throw new NotFoundException(`Habit with ID ${id} was not found`);
 
     const versions = await this.scheduling.getVersions(
       this.dataSource.manager,

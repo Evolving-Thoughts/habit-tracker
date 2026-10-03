@@ -8,6 +8,7 @@ import {
 } from './auth-fixture';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
+import { UserEntity } from '../src/auth/auth.entities';
 import { configureApp } from '../src/configure-app';
 import {
   getCurrentDateInTimeZone,
@@ -323,6 +324,128 @@ describe('Habit domain and day planner (e2e)', () => {
       expect(body.timerOccurrenceId).toEqual(expect.any(Number));
       expect({ ...body, timerOccurrenceId: null }).toEqual(habit);
       expect(list.body).toEqual([body]);
+    });
+
+    it('reconciles only the requested Habit and leaves other Habits untouched', async () => {
+      const target = await create({ plannedDurationMinutes: 15 });
+      const others = [
+        await create({ title: 'Other A' }),
+        await create({ title: 'Other B' }),
+      ];
+      const sweep = jest.spyOn(scheduling, 'getToday');
+      const lock = jest.spyOn(scheduling, 'lockHabit');
+      const reconcile = jest.spyOn(scheduling, 'reconcile');
+      try {
+        const response = await request(server)
+          .get(`/habits/${target.id}`)
+          .expect(200);
+        const body = response.body as HabitResponseDto;
+        expect(body.timerOccurrenceId).toEqual(expect.any(Number));
+        expect(body.timerDurationMinutes).toBe(15);
+        expect(sweep).not.toHaveBeenCalled();
+        expect(lock).toHaveBeenCalledTimes(1);
+        expect(lock.mock.calls[0]?.[0]).toBe(TEST_USER);
+        expect(lock.mock.calls[0]?.[2]).toBe(target.id);
+        expect(reconcile).toHaveBeenCalledTimes(1);
+        expect(reconcile.mock.calls[0]?.[1].id).toBe(target.id);
+        expect(await pendingCount(target.id)).toBe(1);
+        for (const other of others)
+          expect(await pendingCount(other.id)).toBe(0);
+      } finally {
+        sweep.mockRestore();
+        lock.mockRestore();
+        reconcile.mockRestore();
+      }
+    });
+
+    it('reads schedule-version history without generation, reconciliation or write locks', async () => {
+      const target = await create();
+      const other = await create({ title: 'Other' });
+      const sweep = jest.spyOn(scheduling, 'getToday');
+      const generate = jest.spyOn(scheduling, 'generateForHabit');
+      const reconcile = jest.spyOn(scheduling, 'reconcile');
+      const lock = jest.spyOn(scheduling, 'lockHabit');
+      const versions = jest.spyOn(scheduling, 'getVersions');
+      try {
+        const response = await request(server)
+          .get(`/habits/${target.id}/schedule-versions`)
+          .expect(200);
+        expect(response.body as unknown[]).toHaveLength(1);
+        expect(sweep).not.toHaveBeenCalled();
+        expect(generate).not.toHaveBeenCalled();
+        expect(reconcile).not.toHaveBeenCalled();
+        expect(lock).not.toHaveBeenCalled();
+        expect(versions).toHaveBeenCalledTimes(1);
+        expect(versions.mock.calls[0]?.[1]).toBe(target.id);
+        expect(await pendingCount(target.id)).toBe(0);
+        expect(await pendingCount(other.id)).toBe(0);
+      } finally {
+        sweep.mockRestore();
+        generate.mockRestore();
+        reconcile.mockRestore();
+        lock.mockRestore();
+        versions.mockRestore();
+      }
+    });
+
+    it.each(['future', 'paused'] as const)(
+      'does not offer a timer for a %s Habit or reconcile unrelated Habits',
+      async (kind) => {
+        const target = await create({
+          plannedDurationMinutes: 15,
+          ...(kind === 'future' ? { startDate: relativeDate(2) } : {}),
+        });
+        if (kind === 'paused')
+          await request(server)
+            .patch(`/habits/${target.id}`)
+            .send({ isActive: false })
+            .expect(200);
+        const other = await create({ title: 'Unrelated' });
+        const response = await request(server)
+          .get(`/habits/${target.id}`)
+          .expect(200);
+        expect(response.body as HabitResponseDto).toMatchObject({
+          plannedDurationMinutes: 15,
+          timerOccurrenceId: null,
+          timerDurationMinutes: null,
+        });
+        expect(await pendingCount(other.id)).toBe(0);
+      },
+    );
+
+    it('checks ownership and soft-deletion before any reconciliation or version read', async () => {
+      const hidden = await create();
+      await request(server).delete(`/habits/${hidden.id}`).expect(204);
+      const foreignUser = await dataSource.getRepository(UserEntity).save({
+        email: 'scoped-reader@example.test',
+        passwordHash: 'unused-test-hash',
+        verifiedAt: new Date(),
+      });
+      const foreign = await dataSource
+        .getRepository(HabitEntity)
+        .save({ userId: foreignUser.id, title: 'Private', isActive: true });
+      const reconcile = jest.spyOn(scheduling, 'reconcile');
+      const sweep = jest.spyOn(scheduling, 'getToday');
+      const versions = jest.spyOn(scheduling, 'getVersions');
+      try {
+        for (const id of [hidden.id, foreign.id, 999999]) {
+          await request(server).get(`/habits/${id}`).expect(404);
+          await request(server)
+            .get(`/habits/${id}/schedule-versions`)
+            .expect(404);
+        }
+        expect(reconcile).not.toHaveBeenCalled();
+        expect(sweep).not.toHaveBeenCalled();
+        expect(versions).not.toHaveBeenCalled();
+      } finally {
+        reconcile.mockRestore();
+        sweep.mockRestore();
+        versions.mockRestore();
+        await dataSource.getRepository(HabitEntity).delete({ id: foreign.id });
+        await dataSource
+          .getRepository(UserEntity)
+          .delete({ id: foreignUser.id });
+      }
     });
 
     it('updates metadata without changing the schedule', async () => {

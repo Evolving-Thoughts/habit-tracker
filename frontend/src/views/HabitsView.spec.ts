@@ -87,6 +87,27 @@ describe("HabitsView", () => {
     await flushPromises();
     expect(wrapper.text()).not.toContain("Habits werden geladen");
   });
+  it("refreshes on target changes only when no Habit editor is open", async () => {
+    vi.mocked(getHabits).mockResolvedValue([habit()]);
+    const wrapper = mount(HabitsView);
+    await flushPromises();
+    window.dispatchEvent(new Event("timer-data-changed"));
+    await flushPromises();
+    expect(getHabits).toHaveBeenCalledTimes(2);
+    await wrapper
+      .get('[data-habit-id="10"] [data-edit-button]')
+      .trigger("click");
+    await flushPromises();
+    window.dispatchEvent(new Event("timer-data-changed"));
+    await flushPromises();
+    expect(getHabits).toHaveBeenCalledTimes(2);
+    expect(wrapper.find("dialog").exists()).toBe(true);
+    await wrapper.get(".modal-dialog__close").trigger("click");
+    await flushPromises();
+    window.dispatchEvent(new Event("timer-data-changed"));
+    await flushPromises();
+    expect(getHabits).toHaveBeenCalledTimes(3);
+  });
   it("shows an empty state with no persistent creation form", async () => {
     const wrapper = mount(HabitsView);
     await flushPromises();
