@@ -33,7 +33,7 @@ Die folgenden drei Terminals bleiben während des Tests geöffnet. Alle Pfade be
 ## 1. Frontend bauen und lokalen Gateway starten (Terminal A)
 
 ```powershell
-cd C:\Users\jonas\projects\habit-tracker\frontend
+cd C:\path\to\habit-tracker\frontend
 npm ci
 # Prozess-Variable überschreibt eine eventuell vorhandene direkte API-Adresse in .env.
 $env:VITE_API_BASE_URL = "/api"
@@ -77,7 +77,7 @@ Kein abschließender `/`, kein Pfad. Der Gateway erlaubt diese Adresse zusätzli
 Ein bisher laufendes Backend zuerst stoppen, damit nicht zwei Prozesse denselben Port belegen.
 
 ```powershell
-cd C:\Users\jonas\projects\habit-tracker\backend
+cd C:\path\to\habit-tracker\backend
 npm ci
 $env:FRONTEND_URL = "https://DEINE-ECHTE-ADRESSE.trycloudflare.com"
 $env:HOST = "127.0.0.1"
