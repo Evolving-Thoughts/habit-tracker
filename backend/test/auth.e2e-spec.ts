@@ -99,6 +99,41 @@ describe('Authentication and ownership (e2e)', () => {
       );
     await app?.close();
   });
+  it('uses matching Secure cookies for login and logout at an HTTPS tunnel origin', async () => {
+    await verified();
+    const previousOrigin = process.env.FRONTEND_URL;
+    process.env.FRONTEND_URL = 'https://test.trycloudflare.com';
+    try {
+      const result = await post('/auth/login', {
+        email: 'a@example.test',
+        password: PASSWORD,
+      }).expect(200);
+      const cookieHeader = (
+        result.headers['set-cookie'] as unknown as string[]
+      )[0];
+      expect(cookieHeader).toContain('; Secure');
+      expect(cookieHeader).toContain('; HttpOnly');
+      expect(cookieHeader).toContain('; SameSite=Strict');
+      expect(cookieHeader).toContain('; Path=/');
+      const cookie = cookieHeader.split(';')[0];
+      await authed(cookie).get('/auth/me').expect(200);
+      await request(server)
+        .post('/auth/login')
+        .set('Origin', previousOrigin!)
+        .send({ email: 'a@example.test', password: PASSWORD })
+        .expect(403);
+      const cleared = await authed(cookie).post('/auth/logout', {}).expect(204);
+      const clearedHeader = (
+        cleared.headers['set-cookie'] as unknown as string[]
+      )[0];
+      expect(clearedHeader).toContain('; Secure');
+      expect(clearedHeader).toContain('; HttpOnly');
+      expect(clearedHeader).toContain('; SameSite=Strict');
+      await authed(cookie).get('/auth/me').expect(401);
+    } finally {
+      process.env.FRONTEND_URL = previousOrigin;
+    }
+  });
   it('rejects anonymous access and never accepts a supplied owner', async () => {
     for (const path of [
       '/todos',

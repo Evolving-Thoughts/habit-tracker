@@ -1,4 +1,7 @@
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string;
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "/api").replace(
+  /\/$/,
+  "",
+);
 export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;

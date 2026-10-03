@@ -12,7 +12,9 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report",
-    "typecheck:e2e": "tsc -p tsconfig.e2e.json"
+    "typecheck:e2e": "tsc -p tsconfig.e2e.json",
+    "serve:tunnel": "node scripts/tunnel-server.mjs",
+    "test:tunnel": "node --test scripts/tunnel-server.test.mjs"
   },
   "dependencies": {
     "vue": "^3.5.42"
