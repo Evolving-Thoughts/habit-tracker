@@ -23,12 +23,12 @@ export class DayPlannerService {
     private readonly scheduling: HabitSchedulingService,
   ) {}
 
-  async getToday(): Promise<DayPlannerResponseDto> {
+  async getToday(userId: string): Promise<DayPlannerResponseDto> {
     const today = getCurrentDateInTimeZone();
 
     const [todos, occurrences] = await Promise.all([
-      this.findTodosForToday(today),
-      this.scheduling.getToday(),
+      this.findTodosForToday(userId, today),
+      this.scheduling.getToday(userId),
     ]);
 
     const items = [
@@ -61,10 +61,14 @@ export class DayPlannerService {
     return new DayPlannerResponseDto({ date: today, items });
   }
 
-  private findTodosForToday(today: string): Promise<TodoEntity[]> {
+  private findTodosForToday(
+    userId: string,
+    today: string,
+  ): Promise<TodoEntity[]> {
     return this.todoRepository
       .createQueryBuilder('todo')
       .where('"todo"."scheduledAt" IS NOT NULL')
+      .andWhere('"todo"."userId" = :userId', { userId })
       .andWhere(
         new Brackets((query) => {
           query

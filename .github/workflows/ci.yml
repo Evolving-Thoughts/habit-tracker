@@ -42,6 +42,7 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
+      - run: npm run lint
       - run: node --test test/browser-e2e/environment.test.cjs
       - run: npm test -- --runInBand
       - run: npm run build
@@ -79,6 +80,9 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U habit_tracker_e2e -d habit_tracker_browser_e2e"
           --health-interval 5s --health-timeout 5s --health-retries 10
+      mailpit:
+        image: axllent/mailpit:v1.29.4
+        ports: ["11025:1025", "18025:8025"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

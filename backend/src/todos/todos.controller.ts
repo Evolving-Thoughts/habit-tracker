@@ -1,3 +1,5 @@
+import { CurrentUser } from '../auth/auth.guard';
+import type { AuthUser } from '../auth/auth.dto';
 import {
   Body,
   Controller,
@@ -21,41 +23,49 @@ export class TodosController {
   constructor(private readonly todosService: TodosService) {}
 
   @Get()
-  async findAll(): Promise<TodoResponseDto[]> {
-    const todos = await this.todosService.findAll();
+  async findAll(@CurrentUser() user: AuthUser): Promise<TodoResponseDto[]> {
+    const todos = await this.todosService.findAll(user.id);
 
     return todos.map((todo) => TodoMapper.toResponseDto(todo));
   }
 
   @Get(':id')
   async findOne(
+    @CurrentUser() user: AuthUser,
     @Param('id', ParseIntPipe) id: number,
   ): Promise<TodoResponseDto> {
-    const todo = await this.todosService.findOne(id);
+    const todo = await this.todosService.findOne(user.id, id);
 
     return TodoMapper.toResponseDto(todo);
   }
 
   @Post()
-  async create(@Body() createTodoDto: CreateTodoDto): Promise<TodoResponseDto> {
-    const todo = await this.todosService.create(createTodoDto);
+  async create(
+    @CurrentUser() user: AuthUser,
+    @Body() createTodoDto: CreateTodoDto,
+  ): Promise<TodoResponseDto> {
+    const todo = await this.todosService.create(user.id, createTodoDto);
 
     return TodoMapper.toResponseDto(todo);
   }
 
   @Patch(':id')
   async update(
+    @CurrentUser() user: AuthUser,
     @Param('id', ParseIntPipe) id: number,
     @Body() updateTodoDto: UpdateTodoDto,
   ): Promise<TodoResponseDto> {
-    const todo = await this.todosService.update(id, updateTodoDto);
+    const todo = await this.todosService.update(user.id, id, updateTodoDto);
 
     return TodoMapper.toResponseDto(todo);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
-    await this.todosService.remove(id);
+  async remove(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<void> {
+    await this.todosService.remove(user.id, id);
   }
 }

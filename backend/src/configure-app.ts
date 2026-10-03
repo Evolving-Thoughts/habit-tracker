@@ -2,6 +2,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 
 export function configureApp(app: INestApplication): void {
   app.enableCors({
+    credentials: true,
     origin: process.env.FRONTEND_URL ?? 'http://localhost:5173',
   });
 

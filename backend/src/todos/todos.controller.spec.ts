@@ -68,7 +68,12 @@ describe('TodosController', () => {
     it('maps all todos to response DTOs', async () => {
       serviceMock.findAll.mockResolvedValue([todo]);
 
-      await expect(controller.findAll()).resolves.toEqual([
+      await expect(
+        controller.findAll({
+          id: '11111111-1111-4111-8111-111111111111',
+          email: 'test@example.test',
+        }),
+      ).resolves.toEqual([
         {
           id: 1,
           title: 'Learn NestJS',
@@ -88,7 +93,15 @@ describe('TodosController', () => {
     it('maps the requested todo to a response DTO', async () => {
       serviceMock.findOne.mockResolvedValue(todo);
 
-      await expect(controller.findOne(1)).resolves.toEqual({
+      await expect(
+        controller.findOne(
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            email: 'test@example.test',
+          },
+          1,
+        ),
+      ).resolves.toEqual({
         id: 1,
         title: 'Learn NestJS',
         completed: false,
@@ -98,7 +111,10 @@ describe('TodosController', () => {
         isFixed: false,
       });
 
-      expect(serviceMock.findOne).toHaveBeenCalledWith(1);
+      expect(serviceMock.findOne).toHaveBeenCalledWith(
+        '11111111-1111-4111-8111-111111111111',
+        1,
+      );
     });
   });
 
@@ -110,7 +126,15 @@ describe('TodosController', () => {
 
       serviceMock.create.mockResolvedValue(todo);
 
-      await expect(controller.create(createTodoDto)).resolves.toEqual({
+      await expect(
+        controller.create(
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            email: 'test@example.test',
+          },
+          createTodoDto,
+        ),
+      ).resolves.toEqual({
         id: 1,
         title: 'Learn NestJS',
         completed: false,
@@ -120,7 +144,10 @@ describe('TodosController', () => {
         isFixed: false,
       });
 
-      expect(serviceMock.create).toHaveBeenCalledWith(createTodoDto);
+      expect(serviceMock.create).toHaveBeenCalledWith(
+        '11111111-1111-4111-8111-111111111111',
+        createTodoDto,
+      );
     });
 
     it('creates and maps a scheduled fixed todo', async () => {
@@ -144,7 +171,15 @@ describe('TodosController', () => {
 
       serviceMock.create.mockResolvedValue(scheduledTodo);
 
-      await expect(controller.create(createTodoDto)).resolves.toEqual({
+      await expect(
+        controller.create(
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            email: 'test@example.test',
+          },
+          createTodoDto,
+        ),
+      ).resolves.toEqual({
         id: 2,
         title: 'Doctor appointment',
         completed: false,
@@ -154,7 +189,10 @@ describe('TodosController', () => {
         isFixed: true,
       });
 
-      expect(serviceMock.create).toHaveBeenCalledWith(createTodoDto);
+      expect(serviceMock.create).toHaveBeenCalledWith(
+        '11111111-1111-4111-8111-111111111111',
+        createTodoDto,
+      );
     });
   });
 
@@ -174,7 +212,16 @@ describe('TodosController', () => {
 
       serviceMock.update.mockResolvedValue(completedTodo);
 
-      await expect(controller.update(1, updateTodoDto)).resolves.toEqual({
+      await expect(
+        controller.update(
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            email: 'test@example.test',
+          },
+          1,
+          updateTodoDto,
+        ),
+      ).resolves.toEqual({
         id: 1,
         title: 'Learn NestJS',
         completed: true,
@@ -184,7 +231,11 @@ describe('TodosController', () => {
         isFixed: false,
       });
 
-      expect(serviceMock.update).toHaveBeenCalledWith(1, updateTodoDto);
+      expect(serviceMock.update).toHaveBeenCalledWith(
+        '11111111-1111-4111-8111-111111111111',
+        1,
+        updateTodoDto,
+      );
     });
 
     it('maps a reopened todo with completedAt null', async () => {
@@ -200,7 +251,16 @@ describe('TodosController', () => {
 
       serviceMock.update.mockResolvedValue(reopenedTodo);
 
-      await expect(controller.update(1, updateTodoDto)).resolves.toEqual({
+      await expect(
+        controller.update(
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            email: 'test@example.test',
+          },
+          1,
+          updateTodoDto,
+        ),
+      ).resolves.toEqual({
         id: 1,
         title: 'Learn NestJS',
         completed: false,
@@ -210,7 +270,11 @@ describe('TodosController', () => {
         isFixed: false,
       });
 
-      expect(serviceMock.update).toHaveBeenCalledWith(1, updateTodoDto);
+      expect(serviceMock.update).toHaveBeenCalledWith(
+        '11111111-1111-4111-8111-111111111111',
+        1,
+        updateTodoDto,
+      );
     });
 
     it('maps scheduling values', async () => {
@@ -231,7 +295,16 @@ describe('TodosController', () => {
 
       serviceMock.update.mockResolvedValue(updatedTodo);
 
-      await expect(controller.update(1, updateTodoDto)).resolves.toEqual({
+      await expect(
+        controller.update(
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            email: 'test@example.test',
+          },
+          1,
+          updateTodoDto,
+        ),
+      ).resolves.toEqual({
         id: 1,
         title: 'Learn NestJS',
         completed: false,
@@ -241,7 +314,11 @@ describe('TodosController', () => {
         isFixed: true,
       });
 
-      expect(serviceMock.update).toHaveBeenCalledWith(1, updateTodoDto);
+      expect(serviceMock.update).toHaveBeenCalledWith(
+        '11111111-1111-4111-8111-111111111111',
+        1,
+        updateTodoDto,
+      );
     });
   });
 
@@ -249,9 +326,20 @@ describe('TodosController', () => {
     it('removes the todo without returning a response body', async () => {
       serviceMock.remove.mockResolvedValue(undefined);
 
-      await expect(controller.remove(1)).resolves.toBeUndefined();
+      await expect(
+        controller.remove(
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            email: 'test@example.test',
+          },
+          1,
+        ),
+      ).resolves.toBeUndefined();
 
-      expect(serviceMock.remove).toHaveBeenCalledWith(1);
+      expect(serviceMock.remove).toHaveBeenCalledWith(
+        '11111111-1111-4111-8111-111111111111',
+        1,
+      );
     });
   });
 });
