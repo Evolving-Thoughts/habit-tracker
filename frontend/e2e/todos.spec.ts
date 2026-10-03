@@ -174,6 +174,7 @@ test("invalid Todo creation stays open without writing; Escape returns to plus",
 test("switching back to Dump before reopen finishes refreshes it after the write", async ({
   page,
   request,
+  context,
 }) => {
   const created = await request.post(`${API_URL}/todos`, {
     data: { title: "Verzögertes Todo" },
@@ -196,7 +197,10 @@ test("switching back to Dump before reopen finishes refreshes it after the write
   const started = new Promise<void>((resolve) => {
     entered = resolve;
   });
-  await page.route(`**/todos/${todo.id}`, async (route) => {
+  // A controlled PWA fetch is owned by the Service Worker. Page routing cannot
+  // delay its network request; context routing covers worker and frame requests.
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  await context.route(`**/todos/${todo.id}`, async (route) => {
     if (route.request().method() !== "PATCH") {
       await route.continue();
       return;
@@ -235,6 +239,6 @@ test("switching back to Dump before reopen finishes refreshes it after the write
     });
   } finally {
     release();
-    await page.unrouteAll({ behavior: "wait" });
+    await context.unrouteAll({ behavior: "wait" });
   }
 });

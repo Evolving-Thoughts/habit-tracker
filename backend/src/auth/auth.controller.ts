@@ -1,3 +1,4 @@
+import { sessionCookieOptions } from './auth.cookies';
 import type { AuthRequest } from './auth.guard';
 import type { AuthUser } from './auth.dto';
 import {
@@ -50,10 +51,7 @@ export class AuthController {
     await this.auth.limit('login', req.ip ?? 'unknown', dto.email);
     const result = await this.auth.login(dto);
     res.cookie(sessionCookie(), result.token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
+      ...sessionCookieOptions(),
       maxAge: SESSION_DAYS * 86400_000,
     });
     return result.user;
@@ -67,10 +65,7 @@ export class AuthController {
   ): Promise<void> {
     await this.auth.logout(readSession(req));
     res.clearCookie(sessionCookie(), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
+      ...sessionCookieOptions(),
     });
   }
   @Public()

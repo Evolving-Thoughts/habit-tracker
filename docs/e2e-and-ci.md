@@ -46,7 +46,9 @@ cd ..
 docker compose -f compose.e2e.yaml -p habit-tracker-e2e down
 ```
 
-Playwright startet und beendet Backend und Vite selbst. Normale Entwicklungsserver
+Playwright startet und beendet Backend und den Gateway der gebauten PWA selbst.
+Das Frontend wird automatisch mit `/api` gebaut; die Browser-Tests laufen somit
+über denselben Proxy und Service Worker wie beim HTTPS-Tunnel, nicht über Vite/HMR. Normale Entwicklungsserver
 auf 3000/5173 können parallel laufen. Die Testports **4310/4173 müssen frei sein**:
 vorhandene Server werden absichtlich nicht wiederverwendet. Nach Backend-Änderungen
 vor dem nächsten Browser-Test erneut `npm run build` im Backend ausführen.
@@ -117,7 +119,7 @@ bleiben zusätzlich durch die bestehenden Backend-Tests abgedeckt.
 
 1. **Backend tests and build**: `npm ci`, Schutzprüfungen, Jest, Build, Supertest
    mit eigener PostgreSQL-Serviceinstanz.
-2. **Frontend tests and build**: `npm ci`, Vitest, E2E-Typecheck, vue-tsc/Vite.
+2. **Frontend tests and build**: `npm ci`, Vitest, Gateway-Tests (`npm run test:tunnel`), E2E-Typecheck, vue-tsc/Vite.
 3. **Browser E2E**: eigene PostgreSQL-Serviceinstanz, Backend-Build, Playwright-
    Chromium installieren und beide Browserprojekte ausführen.
 
