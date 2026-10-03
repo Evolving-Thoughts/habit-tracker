@@ -1,11 +1,5 @@
 # Browser-E2E und CI
 
-> Status: Browser-Tests sind implementiert und lokal geprüft. Das Hochladen von
-> `.github/workflows/ci.yml` wurde vom GitHub-Token mit 403 verweigert. Der unten
-> beschriebene Actions-Workflow ist vorbereitet, aber noch nicht im Repository aktiv.
-> Dafür muss der Token Workflows-Schreibrechte erhalten oder die Datei lokal
-> durch einen berechtigten Nutzer committed werden.
-
 Dieser Block sichert den bestehenden Habit-Tracker ab. Er ergänzt weder Timer noch
 Authentifizierung und ändert keine Produkt-API oder Datenbank-Entities.
 
