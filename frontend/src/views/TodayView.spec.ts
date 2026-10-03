@@ -504,12 +504,41 @@ describe("TodayView creation flow", () => {
       .get('button[aria-label="Eintrag erstellen"]')
       .trigger("click");
     await wrapper.get('[data-test="choose-todo"]').trigger("click");
-    await wrapper.get(".create-dialog__close").trigger("click");
+    await wrapper.get(".modal-dialog__close").trigger("click");
     expect(wrapper.find("dialog").exists()).toBe(false);
     await wrapper
       .get('button[aria-label="Eintrag erstellen"]')
       .trigger("click");
     expect(wrapper.find('[data-test="choose-habit"]').exists()).toBe(true);
     expect(createTodo).not.toHaveBeenCalled();
+  });
+
+  it("opens a Habit editor in a modal and restores focus on close", async () => {
+    getTodayMock.mockResolvedValueOnce(makePlanner([makeHabit()]));
+    vi.mocked(getHabit).mockResolvedValue({
+      id: 10,
+      title: "Joggen",
+      isActive: true,
+      currentSchedule: null,
+      upcomingSchedule: null,
+    });
+    const wrapper = mount(TodayView, { attachTo: document.body });
+    await flushPromises();
+    const button = wrapper.get<HTMLButtonElement>("[data-edit-button]");
+    button.element.focus();
+    await button.trigger("click");
+    await flushPromises();
+    expect(wrapper.get("dialog").attributes("aria-label")).toBe(
+      "Habit bearbeiten",
+    );
+    expect(document.activeElement).toBe(
+      wrapper.get('dialog input[name="title"]').element,
+    );
+    await wrapper.get(".modal-dialog__close").trigger("click");
+    await flushPromises();
+    expect(document.activeElement).toBe(
+      wrapper.get("[data-edit-button]").element,
+    );
+    wrapper.unmount();
   });
 });

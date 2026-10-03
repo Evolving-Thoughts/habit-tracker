@@ -11,3 +11,6 @@ Object.defineProperty(HTMLDialogElement.prototype, "close", {
     this.removeAttribute("open");
   },
 });
+
+// jsdom cannot scroll a real viewport; browser checks cover actual scroll behavior.
+window.scrollTo = () => {};

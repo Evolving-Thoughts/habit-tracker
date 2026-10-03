@@ -225,7 +225,7 @@ describe("HabitsView", () => {
     const wrapper = mount(HabitsView);
     await flushPromises();
     await wrapper.get(".create-button").trigger("click");
-    await wrapper.get(".create-dialog__close").trigger("click");
+    await wrapper.get(".modal-dialog__close").trigger("click");
     expect(wrapper.find("dialog").exists()).toBe(false);
     expect(createHabit).not.toHaveBeenCalled();
     expect(getHabits).toHaveBeenCalledTimes(1);
@@ -336,5 +336,88 @@ describe("HabitsView", () => {
     expect(wrapper.find(".item-editor").exists()).toBe(false);
     expect(updateHabit).not.toHaveBeenCalled();
     expect(getHabits).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the modal locked during refresh and restores focus to the saved habit", async () => {
+    vi.mocked(getHabits).mockResolvedValueOnce([habit()]);
+    let finish!: (value: HabitResponse[]) => void;
+    vi.mocked(getHabits).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const wrapper = mount(HabitsView, { attachTo: document.body });
+    await flushPromises();
+    const button = wrapper.get<HTMLButtonElement>(
+      '[data-habit-id="10"] [data-edit-button]',
+    );
+    button.element.focus();
+    await button.trigger("click");
+    await flushPromises();
+    expect(document.activeElement).toBe(
+      wrapper.get('dialog input[name="title"]').element,
+    );
+    await wrapper.get('dialog input[name="title"]').setValue("Neuer Name");
+    await wrapper.get("dialog form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.find("dialog").exists()).toBe(true);
+    expect(
+      wrapper.get<HTMLButtonElement>(".modal-dialog__close").element.disabled,
+    ).toBe(true);
+    await wrapper.get("dialog form").trigger("submit");
+    await flushPromises();
+    expect(updateHabit).toHaveBeenCalledTimes(1);
+    finish([habit({ title: "Neuer Name" })]);
+    await flushPromises();
+    expect(wrapper.find("dialog").exists()).toBe(false);
+    expect(document.activeElement).toBe(
+      wrapper.get('[data-habit-id="10"] [data-edit-button]').element,
+    );
+    wrapper.unmount();
+  });
+  it("returns focus to plus after deleting the last habit", async () => {
+    vi.mocked(getHabits)
+      .mockResolvedValueOnce([habit()])
+      .mockResolvedValueOnce([]);
+    const wrapper = mount(HabitsView, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.get("[data-edit-button]").trigger("click");
+    await flushPromises();
+    await wrapper.get('[data-test="request-delete"]').trigger("click");
+    await wrapper.get('[data-test="confirm-delete"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find("dialog").exists()).toBe(false);
+    expect(document.activeElement).toBe(wrapper.get(".create-button").element);
+    wrapper.unmount();
+  });
+  it("keeps creation open and locked until the refreshed list arrives", async () => {
+    let finish!: (value: HabitResponse[]) => void;
+    vi.mocked(getHabits)
+      .mockReturnValueOnce(Promise.resolve([]))
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+    const wrapper = mount(HabitsView, { attachTo: document.body });
+    await flushPromises();
+    const plus = wrapper.get<HTMLButtonElement>(".create-button");
+    plus.element.focus();
+    await plus.trigger("click");
+    await flushPromises();
+    await wrapper.get('input[name="title"]').setValue("Joggen");
+    await wrapper.get("dialog form").trigger("submit");
+    await flushPromises();
+    expect(
+      wrapper.get<HTMLButtonElement>(".modal-dialog__close").element.disabled,
+    ).toBe(true);
+    await wrapper.get("dialog form").trigger("submit");
+    await flushPromises();
+    expect(createHabit).toHaveBeenCalledTimes(1);
+    finish([habit()]);
+    await flushPromises();
+    expect(wrapper.find("dialog").exists()).toBe(false);
+    expect(document.activeElement).toBe(wrapper.get(".create-button").element);
+    wrapper.unmount();
   });
 });

@@ -95,7 +95,7 @@ describe("CreateItemDialog", () => {
     await wrapper.get('input[name="title"]').setValue("Joggen");
     await wrapper.get("form").trigger("submit");
     expect(
-      wrapper.get<HTMLButtonElement>(".create-dialog__close").element.disabled,
+      wrapper.get<HTMLButtonElement>(".modal-dialog__close").element.disabled,
     ).toBe(true);
     for (const button of wrapper.findAll<HTMLButtonElement>(
       ".create-dialog__footer button",
@@ -123,7 +123,7 @@ describe("CreateItemDialog", () => {
     ).toBe("Test");
     expect(wrapper.emitted("created")).toBeUndefined();
     expect(
-      wrapper.get<HTMLButtonElement>(".create-dialog__close").element.disabled,
+      wrapper.get<HTMLButtonElement>(".modal-dialog__close").element.disabled,
     ).toBe(false);
   });
 });

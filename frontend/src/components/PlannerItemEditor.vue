@@ -30,6 +30,7 @@ import {
 const props = defineProps<{
   kind: "todo" | "habit";
   entityId: number;
+  embedded?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -370,8 +371,12 @@ onMounted(loadEntity);
 </script>
 
 <template>
-  <section class="item-editor" aria-labelledby="item-editor-heading">
-    <h2 id="item-editor-heading">
+  <section
+    class="item-editor"
+    :class="{ 'item-editor--embedded': embedded }"
+    :aria-labelledby="embedded ? undefined : 'item-editor-heading'"
+  >
+    <h2 v-if="!embedded" id="item-editor-heading">
       {{ kind === "todo" ? "Todo" : "Habit" }}
       bearbeiten
     </h2>
@@ -648,6 +653,11 @@ onMounted(loadEntity);
 </template>
 
 <style scoped>
+.item-editor.item-editor--embedded {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
 .item-editor {
   margin: 1.5rem 0;
   padding: 1rem;

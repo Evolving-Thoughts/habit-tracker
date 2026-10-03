@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { getHabits } from "../api/day-planner.api";
+import { useListFocus } from "../composables/useListFocus";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
-import PlannerItemEditor from "../components/PlannerItemEditor.vue";
+import EditItemDialog from "../components/EditItemDialog.vue";
 import type { HabitResponse } from "../types/habit";
 import { formatDateForGermanDisplay } from "../utils/date";
 import { formatHabitSchedule } from "../utils/habit";
+
+const page = ref<HTMLElement | null>(null);
+const listFocus = useListFocus(page);
 
 const habits = ref<HabitResponse[]>([]);
 const isLoading = ref(true);
@@ -29,8 +33,8 @@ const groups = computed(() => [
     items: habits.value.filter((habit) => !habit.isActive),
   },
 ]);
-async function loadHabits(): Promise<void> {
-  isLoading.value = true;
+async function loadHabits(showPageLoading = true): Promise<void> {
+  if (showPageLoading) isLoading.value = true;
   errorMessage.value = null;
   try {
     habits.value = await getHabits();
@@ -41,7 +45,7 @@ async function loadHabits(): Promise<void> {
         ? error.message
         : "Die Habits konnten nicht geladen werden.";
   } finally {
-    isLoading.value = false;
+    if (showPageLoading) isLoading.value = false;
   }
 }
 function openCreation(): void {
@@ -52,6 +56,7 @@ function openCreation(): void {
 function openEditing(habit: HabitResponse): void {
   if (isBusy.value || editingId.value !== null) return;
   successMessage.value = null;
+  listFocus.remember(`habit-${habit.id}`);
   editingId.value = habit.id;
 }
 function closeEditing(): void {
@@ -59,20 +64,25 @@ function closeEditing(): void {
   editorBusy.value = false;
 }
 async function onEditorChanged(): Promise<void> {
-  closeEditing();
   successMessage.value = "Habit-Liste aktualisiert.";
-  await loadHabits();
+  await loadHabits(false);
+  closeEditing();
 }
 async function onCreated(): Promise<void> {
-  creationOpen.value = false;
   successMessage.value = "Habit erstellt.";
-  await loadHabits();
+  await loadHabits(false);
+  creationOpen.value = false;
 }
 onMounted(loadHabits);
 </script>
 
 <template>
-  <main class="habits-view">
+  <main ref="page" class="habits-view">
+    <CreateButton
+      label="Habit erstellen"
+      :disabled="isBusy || editingId !== null"
+      @click="openCreation"
+    />
     <header class="habits-view__header">
       <div>
         <p class="habits-view__eyebrow">Deine Gewohnheiten</p>
@@ -83,16 +93,11 @@ onMounted(loadHabits);
         </p>
       </div>
       <div class="habits-view__header-actions">
-        <CreateButton
-          label="Habit erstellen"
-          :disabled="isBusy || editingId !== null"
-          @click="openCreation"
-        />
         <button
           class="habits-view__refresh"
           type="button"
           :disabled="isBusy || editingId !== null"
-          @click="loadHabits"
+          @click="loadHabits()"
         >
           Aktualisieren
         </button>
@@ -105,11 +110,12 @@ onMounted(loadHabits);
       @close="creationOpen = false"
       @created="onCreated"
     />
-    <PlannerItemEditor
+    <EditItemDialog
       v-if="editingId !== null"
       :key="editingId"
       kind="habit"
       :entity-id="editingId"
+      :return-focus="listFocus.returnFocus"
       @busy="editorBusy = $event"
       @changed="onEditorChanged"
       @close="closeEditing"
@@ -149,6 +155,7 @@ onMounted(loadHabits);
               v-for="habit in group.items"
               :key="habit.id"
               :data-habit-id="habit.id"
+              :data-focus-key="`habit-${habit.id}`"
               class="habit-card"
             >
               <div class="habit-card__heading">
@@ -168,6 +175,7 @@ onMounted(loadHabits);
                 >
                 <button
                   class="habit-card__edit"
+                  data-edit-button
                   type="button"
                   :aria-label="`${habit.title} bearbeiten`"
                   title="Bearbeiten"
@@ -240,7 +248,7 @@ onMounted(loadHabits);
 .habits-view {
   width: min(100% - 2rem, 46rem);
   margin: 0 auto;
-  padding: 2rem 0 4rem;
+  padding: 2rem 0 calc(6.5rem + env(safe-area-inset-bottom, 0px));
 }
 .habits-view__header {
   display: flex;
