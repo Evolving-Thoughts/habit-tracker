@@ -104,6 +104,7 @@ export class HabitSchedulingService {
     habit: HabitEntity,
     versions: HabitScheduleVersionEntity[],
     at = new Date(),
+    pending?: HabitOccurrenceEntity,
   ): HabitResponseDto {
     const active = this.activeVersion(versions, at);
 
@@ -115,6 +116,11 @@ export class HabitSchedulingService {
       id: habit.id,
       title: habit.title,
       isActive: habit.isActive,
+      plannedDurationMinutes: habit.plannedDurationMinutes,
+      timerOccurrenceId: pending?.id ?? null,
+      timerDurationMinutes: pending
+        ? (pending.plannedDurationMinutes ?? habit.plannedDurationMinutes)
+        : null,
       currentSchedule: active ? this.versionResponse(active) : null,
       upcomingSchedule: upcoming ? this.versionResponse(upcoming) : null,
     };

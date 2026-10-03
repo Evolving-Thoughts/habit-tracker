@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import {
   getToday,
   updateOccurrenceStatus,
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { useListFocus } from "../composables/useListFocus";
+import { notifyTargetChange } from "../composables/useTimer";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import PlannerItem from "../components/PlannerItem.vue";
@@ -133,6 +134,7 @@ async function toggleItem(item: DayPlannerItem): Promise<void> {
       );
     }
 
+    notifyTargetChange();
     await loadToday(false);
   } catch (error: unknown) {
     errorMessage.value =
@@ -155,6 +157,7 @@ async function skipHabit(item: DayPlannerHabitItem): Promise<void> {
   try {
     await updateOccurrenceStatus(item.occurrenceId, "skipped");
 
+    notifyTargetChange();
     await loadToday(false);
   } catch (error: unknown) {
     errorMessage.value =
@@ -190,6 +193,7 @@ function closeEditing(): void {
 }
 
 async function onEditorChanged(): Promise<void> {
+  notifyTargetChange();
   await loadToday(false);
   closeEditing();
 }
@@ -210,11 +214,19 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
     kind === "todo"
       ? "Todo erstellt. Ohne Zeitpunkt findest du es im Todo-Dump."
       : "Habit erstellt. Es erscheint ab seinem Startdatum an fälligen Tagen.";
+  notifyTargetChange();
   await loadToday(false);
   creationOpen.value = false;
 }
 
+function timerChanged(): void {
+  if (!false) void loadToday(false);
+}
 onMounted(() => loadToday());
+onMounted(() => window.addEventListener("timer-data-changed", timerChanged));
+onUnmounted(() =>
+  window.removeEventListener("timer-data-changed", timerChanged),
+);
 </script>
 
 <template>

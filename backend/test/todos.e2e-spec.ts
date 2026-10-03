@@ -7,7 +7,7 @@ import {
   seedAuth,
   TEST_USER,
 } from './auth-fixture';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
@@ -52,7 +52,9 @@ describe('Todos API (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await todoRepository.clear();
+    await app
+      .get(DataSource)
+      .query('TRUNCATE TABLE timers, todos RESTART IDENTITY');
   });
 
   afterAll(async () => {

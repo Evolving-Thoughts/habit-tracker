@@ -10,6 +10,9 @@ const response: HabitResponse = {
   id: 10,
   title: "Joggen",
   isActive: true,
+  plannedDurationMinutes: null,
+  timerOccurrenceId: null,
+  timerDurationMinutes: null,
   currentSchedule: null,
   upcomingSchedule: null,
 };
@@ -43,6 +46,29 @@ describe("CreateHabitForm", () => {
     ).toBe("");
     expect(wrapper.emitted("busy")).toEqual([[true], [false]]);
   });
+  it("saves an optional default duration and resets it", async () => {
+    const wrapper = mount(CreateHabitForm);
+    await wrapper.get('input[name="title"]').setValue("Gitarre");
+    await wrapper.get('input[name="duration"]').setValue("15");
+    await submit(wrapper);
+    expect(createHabit).toHaveBeenCalledWith(
+      expect.objectContaining({ plannedDurationMinutes: 15 }),
+    );
+    expect(
+      wrapper.get<HTMLInputElement>('input[name="duration"]').element.value,
+    ).toBe("");
+  });
+  it.each(["0", "-1", "1.5", "10081"])(
+    "rejects invalid default duration %s",
+    async (value) => {
+      const wrapper = mount(CreateHabitForm);
+      await wrapper.get('input[name="title"]').setValue("Gitarre");
+      await wrapper.get('input[name="duration"]').setValue(value);
+      await submit(wrapper);
+      expect(createHabit).not.toHaveBeenCalled();
+      expect(wrapper.get('[role="alert"]').text()).toContain("1 bis 10080");
+    },
+  );
   it("sends an explicit future start date and interval", async () => {
     const wrapper = mount(CreateHabitForm);
     await wrapper.get('input[name="title"]').setValue("Joggen");

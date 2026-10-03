@@ -62,6 +62,9 @@ function makeHabit(overrides: Partial<HabitResponse> = {}): HabitResponse {
     id: 10,
     title: "Joggen",
     isActive: true,
+    plannedDurationMinutes: null,
+    timerOccurrenceId: null,
+    timerDurationMinutes: null,
     currentSchedule: version(),
     upcomingSchedule: null,
     ...overrides,
@@ -93,6 +96,22 @@ describe("PlannerItemEditor", () => {
     vi.mocked(deleteHabit).mockResolvedValue(undefined);
   });
 
+  it("updates or clears a Habit default duration without changing its schedule", async () => {
+    vi.mocked(getHabit).mockResolvedValue(
+      makeHabit({ plannedDurationMinutes: 10 }),
+    );
+    const wrapper = mountHabitEditor();
+    await flushPromises();
+    expect(
+      wrapper.get<HTMLInputElement>('input[name="duration"]').element.value,
+    ).toBe("10");
+    await wrapper.get('input[name="duration"]').setValue("");
+    await save(wrapper);
+    expect(updateHabit).toHaveBeenCalledWith(10, {
+      plannedDurationMinutes: null,
+    });
+    expect(changeHabitSchedule).not.toHaveBeenCalled();
+  });
   it("saves a todo without changing an untouched timestamp", async () => {
     const wrapper = mount(PlannerItemEditor, {
       props: { kind: "todo", entityId: 1 },

@@ -9,7 +9,7 @@ export type DayPlannerTodoItemDto = {
   title: string;
   status: DayPlannerTodoStatus;
   scheduledDate: string;
-  scheduledAt: string;
+  scheduledAt: string | null;
   completedAt: string | null;
   plannedDurationMinutes: number | null;
   isFixed: boolean;
@@ -18,6 +18,7 @@ export type DayPlannerTodoItemDto = {
 
 export type DayPlannerHabitItemDto = {
   type: 'habit';
+  plannedDurationMinutes: number | null;
   occurrenceId: number;
   habitId: number;
   title: string;

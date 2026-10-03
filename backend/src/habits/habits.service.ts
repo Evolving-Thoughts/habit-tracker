@@ -1,3 +1,4 @@
+import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import {
   BadRequestException,
   Injectable,
@@ -38,6 +39,7 @@ export class HabitsService {
   }
 
   async findAll(userId: string): Promise<HabitResponseDto[]> {
+    const due = await this.scheduling.getToday(userId);
     const habits = await this.dataSource.getRepository(HabitEntity).find({
       where: { userId },
       order: { id: 'ASC' },
@@ -50,6 +52,12 @@ export class HabitsService {
         this.scheduling.habitResponse(
           habit,
           await this.scheduling.getVersions(this.dataSource.manager, habit.id),
+          new Date(),
+          due.find(
+            (item) =>
+              item.habitId === habit.id &&
+              item.status === HabitOccurrenceStatus.PENDING,
+          ),
         ),
       );
     }
@@ -66,9 +74,15 @@ export class HabitsService {
       throw new NotFoundException(`Habit with ID ${id} was not found`);
     }
 
+    const due = await this.scheduling.getToday(userId);
     return this.scheduling.habitResponse(
       habit,
       await this.scheduling.getVersions(this.dataSource.manager, id),
+      new Date(),
+      due.find(
+        (item) =>
+          item.habitId === id && item.status === HabitOccurrenceStatus.PENDING,
+      ),
     );
   }
 
@@ -102,6 +116,7 @@ export class HabitsService {
 
       const habit = await repository.save(
         repository.create({
+          plannedDurationMinutes: dto.plannedDurationMinutes ?? null,
           userId,
           title,
           isActive: true,
@@ -121,13 +136,19 @@ export class HabitsService {
     id: number,
     dto: UpdateHabitDto,
   ): Promise<HabitResponseDto> {
-    if (dto.title === undefined && dto.isActive === undefined) {
+    if (
+      dto.title === undefined &&
+      dto.isActive === undefined &&
+      dto.plannedDurationMinutes === undefined
+    ) {
       throw new BadRequestException('At least one property must be provided');
     }
 
     return this.dataSource.transaction(async (manager) => {
       const habit = await this.scheduling.lockHabit(userId, manager, id);
 
+      if (dto.plannedDurationMinutes !== undefined)
+        habit.plannedDurationMinutes = dto.plannedDurationMinutes;
       if (dto.title !== undefined) {
         habit.title = this.validTitle(dto.title);
       }

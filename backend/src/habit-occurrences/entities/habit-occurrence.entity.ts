@@ -22,6 +22,9 @@ export type HabitOccurrenceCancellationReason =
   where: `"status" = 'pending'`,
 })
 export class HabitOccurrenceEntity {
+  @Column({ type: 'integer', nullable: true })
+  plannedDurationMinutes!: number | null;
+
   @PrimaryGeneratedColumn()
   id!: number;
 

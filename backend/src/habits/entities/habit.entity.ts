@@ -21,6 +21,9 @@ export class HabitEntity {
   @JoinColumn({ name: 'userId' })
   user?: UserEntity;
 
+  @Column({ type: 'integer', nullable: true })
+  plannedDurationMinutes!: number | null;
+
   @PrimaryGeneratedColumn()
   id!: number;
 

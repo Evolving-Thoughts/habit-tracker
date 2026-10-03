@@ -1,3 +1,4 @@
+import { TimersModule } from './timers/timers.module';
 import { AuthModule } from './auth/auth.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -28,6 +29,7 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
       }),
     }),
     AuthModule,
+    TimersModule,
     TodosModule,
     HabitsModule,
     DayPlannerModule,

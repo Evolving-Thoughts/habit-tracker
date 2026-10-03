@@ -53,6 +53,7 @@ describe('Habit domain and day planner (e2e)', () => {
       throw new Error('Refusing to delete non-test data');
     }
 
+    await dataSource.query('DELETE FROM timers');
     await dataSource.transaction(async (manager) => {
       await manager
         .getRepository(HabitOccurrenceEntity)
@@ -318,8 +319,10 @@ describe('Habit domain and day planner (e2e)', () => {
 
       const list = await request(server).get('/habits').expect(200);
 
-      expect(single.body).toEqual(habit);
-      expect(list.body).toEqual([habit]);
+      const body = single.body as HabitResponseDto;
+      expect(body.timerOccurrenceId).toEqual(expect.any(Number));
+      expect({ ...body, timerOccurrenceId: null }).toEqual(habit);
+      expect(list.body).toEqual([body]);
     });
 
     it('updates metadata without changing the schedule', async () => {

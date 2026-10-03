@@ -60,6 +60,7 @@ function makeHabit(
 ): DayPlannerHabitItem {
   return {
     type: "habit",
+    plannedDurationMinutes: null,
     occurrenceId: 20,
     habitId: 10,
     title: "Joggen",
@@ -360,6 +361,9 @@ describe("TodayView habit schedule editing", () => {
       id: 10,
       title: "Joggen",
       isActive: true,
+      plannedDurationMinutes: null,
+      timerOccurrenceId: null,
+      timerDurationMinutes: null,
       upcomingSchedule: null,
       currentSchedule: {
         id: 100,
@@ -432,6 +436,9 @@ describe("TodayView creation flow", () => {
       id: 10,
       title: "Joggen",
       isActive: true,
+      plannedDurationMinutes: null,
+      timerOccurrenceId: null,
+      timerDurationMinutes: null,
       currentSchedule: null,
       upcomingSchedule: null,
     });
@@ -519,6 +526,9 @@ describe("TodayView creation flow", () => {
       id: 10,
       title: "Joggen",
       isActive: true,
+      plannedDurationMinutes: null,
+      timerOccurrenceId: null,
+      timerDurationMinutes: null,
       currentSchedule: null,
       upcomingSchedule: null,
     });

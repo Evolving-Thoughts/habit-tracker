@@ -33,6 +33,13 @@ test("Todo-Dump: create, persist, rename, complete/reopen and confirmed delete",
     .getByRole("button", { name: "TypeScript lernen erledigen", exact: true })
     .click();
   await expect(
+    page.getByRole("heading", { name: "TypeScript lernen", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Heute", exact: true })
+    .click();
+  await expect(
     page.getByRole("button", {
       name: "TypeScript lernen wieder öffnen",
       exact: true,
@@ -41,6 +48,8 @@ test("Todo-Dump: create, persist, rename, complete/reopen and confirmed delete",
   expect((await list(request, "todos"))[0]).toMatchObject({
     title: "TypeScript lernen",
     completed: true,
+    scheduledAt: null,
+    completedAt: expect.any(String),
     plannedDurationMinutes: 30,
   });
   await page
@@ -48,6 +57,10 @@ test("Todo-Dump: create, persist, rename, complete/reopen and confirmed delete",
       name: "TypeScript lernen wieder öffnen",
       exact: true,
     })
+    .click();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Todo-Dump", exact: true })
     .click();
   await page
     .getByRole("button", { name: "TypeScript lernen bearbeiten", exact: true })
