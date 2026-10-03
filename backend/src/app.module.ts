@@ -1,3 +1,4 @@
+import { AuthModule } from './auth/auth.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -16,6 +17,7 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
+        uuidExtension: 'pgcrypto',
         host: config.getOrThrow<string>('DB_HOST'),
         port: Number(config.getOrThrow<string>('DB_PORT')),
         username: config.getOrThrow<string>('DB_USER'),
@@ -25,6 +27,7 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
         synchronize: config.get<string>('NODE_ENV') !== 'production',
       }),
     }),
+    AuthModule,
     TodosModule,
     HabitsModule,
     DayPlannerModule,

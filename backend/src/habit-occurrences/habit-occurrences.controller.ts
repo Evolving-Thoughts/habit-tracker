@@ -1,3 +1,5 @@
+import { CurrentUser } from '../auth/auth.guard';
+import type { AuthUser } from '../auth/auth.dto';
 import {
   Body,
   Controller,
@@ -30,22 +32,28 @@ export class HabitOccurrencesController {
   constructor(private readonly scheduling: HabitSchedulingService) {}
 
   @Get('habit-occurrences/today')
-  async findToday(): Promise<HabitOccurrenceResponseDto[]> {
-    return (await this.scheduling.getToday()).map(response);
+  async findToday(
+    @CurrentUser() user: AuthUser,
+  ): Promise<HabitOccurrenceResponseDto[]> {
+    return (await this.scheduling.getToday(user.id)).map(response);
   }
 
   @Get('habits/:habitId/occurrences')
   async findByHabit(
+    @CurrentUser() user: AuthUser,
     @Param('habitId', ParseIntPipe) habitId: number,
   ): Promise<HabitOccurrenceResponseDto[]> {
-    return (await this.scheduling.history(habitId)).map(response);
+    return (await this.scheduling.history(user.id, habitId)).map(response);
   }
 
   @Patch('habit-occurrences/:id/status')
   async updateStatus(
+    @CurrentUser() user: AuthUser,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateOccurrenceStatusDto,
   ): Promise<HabitOccurrenceResponseDto> {
-    return response(await this.scheduling.changeStatus(id, dto.status));
+    return response(
+      await this.scheduling.changeStatus(user.id, id, dto.status),
+    );
   }
 }

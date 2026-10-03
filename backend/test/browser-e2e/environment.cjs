@@ -9,6 +9,7 @@ function browserEnvironment(source = process.env) {
     DB_USER: source.E2E_DB_USER ?? 'habit_tracker_e2e',
     DB_PASSWORD: source.E2E_DB_PASSWORD ?? 'e2e_local_only',
     DB_NAME: DATABASE, PORT: API_PORT, FRONTEND_URL,
+    SMTP_HOST: '127.0.0.1', SMTP_PORT: '11025', SMTP_SECURE: 'false', SMTP_USER: '', SMTP_PASSWORD: '', MAIL_FROM: 'Habit Tracker <noreply@habit-tracker.local>',
   };
   assertBrowserEnvironment(env);
   return env;

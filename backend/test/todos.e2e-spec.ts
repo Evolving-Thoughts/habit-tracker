@@ -2,7 +2,11 @@ import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Server } from 'node:http';
-import request from 'supertest';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  TEST_USER,
+} from './auth-fixture';
 import { Repository } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
@@ -38,6 +42,7 @@ describe('Todos API (e2e)', () => {
     configureApp(app);
 
     await app.init();
+    await seedAuth(app);
 
     httpServer = app.getHttpServer() as Server;
 
@@ -238,6 +243,7 @@ describe('Todos API (e2e)', () => {
   describe('PATCH /todos/:id', () => {
     it('rejects an empty update', async () => {
       const todo = todoRepository.create({
+        userId: TEST_USER,
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
@@ -261,6 +267,7 @@ describe('Todos API (e2e)', () => {
 
     it('allows false and null as explicit updates', async () => {
       const todo = todoRepository.create({
+        userId: TEST_USER,
         title: 'Learn NestJS',
         completed: true,
         completedAt: new Date(),
@@ -290,6 +297,7 @@ describe('Todos API (e2e)', () => {
 
     it('rejects removing the date from a fixed todo', async () => {
       const todo = todoRepository.create({
+        userId: TEST_USER,
         title: 'Doctor appointment',
         completed: false,
         completedAt: null,
@@ -315,6 +323,7 @@ describe('Todos API (e2e)', () => {
 
     it('allows removing a date when the todo becomes flexible', async () => {
       const todo = todoRepository.create({
+        userId: TEST_USER,
         title: 'Doctor appointment',
         completed: false,
         completedAt: null,

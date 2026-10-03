@@ -10,43 +10,7 @@ import type {
 } from "../types/habit";
 import type { CreateTodoInput, TodoResponse } from "../types/todo";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string;
-
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    let message = `Request failed with status ${response.status}`;
-    try {
-      const body: unknown = await response.json();
-      if (body !== null && typeof body === "object" && "message" in body) {
-        const detail = body.message;
-        if (typeof detail === "string") message = detail;
-        else if (
-          Array.isArray(detail) &&
-          detail.every((item) => typeof item === "string")
-        ) {
-          message = detail.join(" · ");
-        }
-      }
-    } catch {
-      // Non-JSON error responses still use the HTTP status fallback.
-    }
-    throw new Error(message);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return (await response.json()) as T;
-}
+import { request } from "./http";
 
 export function getToday(): Promise<DayPlannerResponse> {
   return request<DayPlannerResponse>("/day-planner/today");

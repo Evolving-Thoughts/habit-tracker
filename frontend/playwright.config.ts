@@ -16,6 +16,7 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:4173",
     locale: "de-DE",
+    extraHTTPHeaders: { Origin: "http://127.0.0.1:4173" },
     timezoneId: "Europe/Berlin",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",

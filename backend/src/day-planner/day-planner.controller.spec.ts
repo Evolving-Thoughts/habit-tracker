@@ -71,7 +71,12 @@ describe('DayPlannerController', () => {
 
       serviceMock.getToday.mockResolvedValue(response);
 
-      await expect(controller.getToday()).resolves.toEqual(response);
+      await expect(
+        controller.getToday({
+          id: '11111111-1111-4111-8111-111111111111',
+          email: 'test@example.test',
+        }),
+      ).resolves.toEqual(response);
 
       expect(serviceMock.getToday).toHaveBeenCalledTimes(1);
     });
@@ -84,7 +89,12 @@ describe('DayPlannerController', () => {
 
       serviceMock.getToday.mockResolvedValue(response);
 
-      await expect(controller.getToday()).resolves.toEqual(response);
+      await expect(
+        controller.getToday({
+          id: '11111111-1111-4111-8111-111111111111',
+          email: 'test@example.test',
+        }),
+      ).resolves.toEqual(response);
     });
   });
 });

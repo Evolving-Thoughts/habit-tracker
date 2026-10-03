@@ -1,7 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { Server } from 'node:http';
-import request from 'supertest';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  TEST_USER,
+} from './auth-fixture';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
@@ -182,6 +186,7 @@ describe('Habit domain and day planner (e2e)', () => {
     app = fixture.createNestApplication();
     configureApp(app);
     await app.init();
+    await seedAuth(app);
 
     dataSource = app.get(DataSource);
 
@@ -579,6 +584,7 @@ describe('Habit domain and day planner (e2e)', () => {
       expect(before.status).toBe(HabitOccurrenceStatus.PENDING);
 
       await scheduling.generateForHabit(
+        TEST_USER,
         habit.id,
         new Date(midnightInTimeZone(tomorrow).getTime() + 1000),
       );
@@ -609,6 +615,7 @@ describe('Habit domain and day planner (e2e)', () => {
       await change(habit.id, interval(3), changeDate);
 
       await scheduling.generateForHabit(
+        '11111111-1111-4111-8111-111111111111',
         habit.id,
         new Date(midnightInTimeZone(changeDate).getTime() + 1000),
       );
@@ -761,7 +768,7 @@ describe('Habit domain and day planner (e2e)', () => {
 
       try {
         await expect(
-          habitService.create({
+          habitService.create('11111111-1111-4111-8111-111111111111', {
             title: 'Rollback',
             schedule: interval(13),
           }),
@@ -794,7 +801,11 @@ describe('Habit domain and day planner (e2e)', () => {
         };
 
         await expect(
-          habitService.changeSchedule(habit.id, dto),
+          habitService.changeSchedule(
+            '11111111-1111-4111-8111-111111111111',
+            habit.id,
+            dto,
+          ),
         ).rejects.toThrow();
 
         const versions = await dataSource
@@ -819,6 +830,7 @@ describe('Habit domain and day planner (e2e)', () => {
 
       await repository.save(
         repository.create({
+          userId: TEST_USER,
           title: 'Overdue',
           completed: false,
           completedAt: null,
@@ -830,6 +842,7 @@ describe('Habit domain and day planner (e2e)', () => {
 
       await repository.save(
         repository.create({
+          userId: TEST_USER,
           title: 'Dump',
           completed: false,
           completedAt: null,
@@ -841,6 +854,7 @@ describe('Habit domain and day planner (e2e)', () => {
 
       await repository.save(
         repository.create({
+          userId: TEST_USER,
           title: 'Future',
           completed: false,
           completedAt: null,

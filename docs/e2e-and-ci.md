@@ -1,7 +1,8 @@
 # Browser-E2E und CI
 
-Dieser Block sichert den bestehenden Habit-Tracker ab. Er ergänzt weder Timer noch
-Authentifizierung und ändert keine Produkt-API oder Datenbank-Entities.
+**Authentifizierung:** Die Browser-Tests erstellen und verifizieren nun Testnutzer über eine separate Mailpit-Mailbox. Details und Einrichtung: [Anmeldung und Nutzertrennung](auth-and-ownership.md).
+
+Die ursprüngliche Testgrundlage änderte keine Produkt-API. Der anschließende Auth-Block ergänzt nun Anmeldung und Besitzer-Fremdschlüssel; siehe die verlinkte Anleitung. Timer sind weiterhin nicht enthalten.
 
 ## Testebenen
 
@@ -136,7 +137,7 @@ für `main` konfigurieren.
 
 ## Grenzen dieses Blocks
 
-Keine Authentifizierung/Nutzertrennung, kein Timer, keine PWA/Push-Meldungen.
+Anmeldung und Nutzertrennung sind inzwischen integriert. Weiterhin kein Timer und keine PWA/Push-Meldungen.
 Firefox/WebKit, echte Mobilgeräte und Deployment sind nicht Teil dieses ersten
 Sicherheitsnetzes. Die vorhandene pg/TypeORM-Deprecation-Warnung kann in den
 Backend-E2E-Tests weiterhin auftreten; sie wird hier nicht unterdrückt.

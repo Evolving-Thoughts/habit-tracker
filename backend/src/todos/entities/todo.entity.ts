@@ -1,5 +1,9 @@
+import { UserEntity } from '../../auth/auth.entities';
 import {
   Column,
+  Index,
+  JoinColumn,
+  ManyToOne,
   CreateDateColumn,
   DeleteDateColumn,
   Entity,
@@ -9,6 +13,14 @@ import {
 
 @Entity({ name: 'todos' })
 export class TodoEntity {
+  @Index()
+  @Column({ type: 'uuid' })
+  userId!: string;
+
+  @ManyToOne(() => UserEntity, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'userId' })
+  user?: UserEntity;
+
   @PrimaryGeneratedColumn()
   id!: number;
 

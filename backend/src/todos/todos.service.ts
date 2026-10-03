@@ -16,12 +16,15 @@ export class TodosService {
     private readonly todoRepository: Repository<TodoEntity>,
   ) {}
 
-  async findAll(): Promise<TodoEntity[]> {
-    return this.todoRepository.find();
+  async findAll(userId: string): Promise<TodoEntity[]> {
+    return this.todoRepository.find({
+      where: { userId },
+      order: { id: 'ASC' },
+    });
   }
 
-  async findOne(id: number): Promise<TodoEntity> {
-    const todo = await this.todoRepository.findOneBy({ id });
+  async findOne(userId: string, id: number): Promise<TodoEntity> {
+    const todo = await this.todoRepository.findOneBy({ id, userId });
 
     if (!todo) {
       throw new NotFoundException(`Todo with ID ${id} was not found`);
@@ -30,7 +33,10 @@ export class TodosService {
     return todo;
   }
 
-  async create(createTodoDto: CreateTodoDto): Promise<TodoEntity> {
+  async create(
+    userId: string,
+    createTodoDto: CreateTodoDto,
+  ): Promise<TodoEntity> {
     const scheduledAt = createTodoDto.scheduledAt
       ? new Date(createTodoDto.scheduledAt)
       : null;
@@ -40,6 +46,7 @@ export class TodosService {
     this.validateScheduling(isFixed, scheduledAt);
 
     const todo = this.todoRepository.create({
+      userId,
       title: createTodoDto.title,
       completed: false,
       completedAt: null,
@@ -51,7 +58,11 @@ export class TodosService {
     return this.todoRepository.save(todo);
   }
 
-  async update(id: number, updateTodoDto: UpdateTodoDto): Promise<TodoEntity> {
+  async update(
+    userId: string,
+    id: number,
+    updateTodoDto: UpdateTodoDto,
+  ): Promise<TodoEntity> {
     const hasChanges = Object.values(updateTodoDto).some(
       (value) => value !== undefined,
     );
@@ -87,11 +98,8 @@ export class TodosService {
       changes.isFixed = updateTodoDto.isFixed;
     }
 
-    const todo = await this.todoRepository.preload(changes);
-
-    if (!todo) {
-      throw new NotFoundException(`Todo with ID ${id} was not found`);
-    }
+    const todo = await this.findOne(userId, id);
+    Object.assign(todo, changes);
 
     if (updateTodoDto.completed === true) {
       // Bei einem wiederholten PATCH mit completed=true
@@ -108,8 +116,8 @@ export class TodosService {
     return this.todoRepository.save(todo);
   }
 
-  async remove(id: number): Promise<void> {
-    const todo = await this.findOne(id);
+  async remove(userId: string, id: number): Promise<void> {
+    const todo = await this.findOne(userId, id);
 
     await this.todoRepository.softRemove(todo);
   }

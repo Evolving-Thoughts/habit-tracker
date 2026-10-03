@@ -39,11 +39,12 @@ export class HabitSchedulingService {
   constructor(private readonly dataSource: DataSource) {}
 
   async lockHabit(
+    userId: string,
     manager: EntityManager,
     habitId: number,
   ): Promise<HabitEntity> {
     const habit = await manager.getRepository(HabitEntity).findOne({
-      where: { id: habitId },
+      where: { id: habitId, userId },
       lock: { mode: 'pessimistic_write' },
     });
 
@@ -120,13 +121,14 @@ export class HabitSchedulingService {
   }
 
   async changeSchedule(
+    userId: string,
     habitId: number,
     dto: ChangeHabitScheduleDto,
   ): Promise<HabitResponseDto> {
     const definition = normalizeSchedule(dto.schedule);
 
     return this.dataSource.transaction(async (manager) => {
-      const habit = await this.lockHabit(manager, habitId);
+      const habit = await this.lockHabit(userId, manager, habitId);
 
       // Erst nach dem Lock bestimmen: parallele Änderungen erhalten
       // ihre tatsächliche Reihenfolge.
@@ -185,9 +187,13 @@ export class HabitSchedulingService {
     });
   }
 
-  async generateForHabit(habitId: number, at?: Date): Promise<void> {
+  async generateForHabit(
+    userId: string,
+    habitId: number,
+    at?: Date,
+  ): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
-      const habit = await this.lockHabit(manager, habitId);
+      const habit = await this.lockHabit(userId, manager, habitId);
 
       await this.reconcile(manager, habit, at ?? new Date());
     });
@@ -441,6 +447,7 @@ export class HabitSchedulingService {
   }
 
   async changeStatus(
+    userId: string,
     id: number,
     targetStatus: HabitOccurrenceStatus,
   ): Promise<HabitOccurrenceEntity> {
@@ -456,7 +463,12 @@ export class HabitSchedulingService {
 
     const initial = await this.dataSource
       .getRepository(HabitOccurrenceEntity)
-      .findOneBy({ id });
+      .createQueryBuilder('occurrence')
+      .innerJoin('occurrence.habit', 'habit')
+      .where('occurrence.id = :id', { id })
+      .andWhere('"habit"."userId" = :userId', { userId })
+      .andWhere('"habit"."deletedAt" IS NULL')
+      .getOne();
 
     if (!initial) {
       throw new NotFoundException(
@@ -465,7 +477,7 @@ export class HabitSchedulingService {
     }
 
     return this.dataSource.transaction(async (manager) => {
-      const habit = await this.lockHabit(manager, initial.habitId);
+      const habit = await this.lockHabit(userId, manager, initial.habitId);
       const now = new Date();
       const today = getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, now);
 
@@ -535,10 +547,13 @@ export class HabitSchedulingService {
     });
   }
 
-  async history(habitId: number): Promise<HabitOccurrenceEntity[]> {
+  async history(
+    userId: string,
+    habitId: number,
+  ): Promise<HabitOccurrenceEntity[]> {
     const habit = await this.dataSource
       .getRepository(HabitEntity)
-      .findOneBy({ id: habitId });
+      .findOneBy({ id: habitId, userId });
 
     if (!habit) {
       throw new NotFoundException(`Habit with ID ${habitId} was not found`);
@@ -550,14 +565,14 @@ export class HabitSchedulingService {
     });
   }
 
-  async getToday(): Promise<HabitOccurrenceEntity[]> {
+  async getToday(userId: string): Promise<HabitOccurrenceEntity[]> {
     const habits = await this.dataSource.getRepository(HabitEntity).find({
-      where: { isActive: true },
+      where: { isActive: true, userId },
       order: { id: 'ASC' },
     });
 
     for (const habit of habits) {
-      await this.generateForHabit(habit.id);
+      await this.generateForHabit(userId, habit.id);
     }
 
     const today = getCurrentDateInTimeZone();
@@ -568,6 +583,7 @@ export class HabitSchedulingService {
       .innerJoinAndSelect('occurrence.habit', 'habit')
       .innerJoinAndSelect('occurrence.scheduleVersion', 'version')
       .where('"habit"."isActive" = true')
+      .andWhere('"habit"."userId" = :userId', { userId })
       .andWhere('"habit"."deletedAt" IS NULL')
       .andWhere(
         new Brackets((query) => {

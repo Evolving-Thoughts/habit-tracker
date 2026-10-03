@@ -37,8 +37,9 @@ export class HabitsService {
     return trimmed;
   }
 
-  async findAll(): Promise<HabitResponseDto[]> {
+  async findAll(userId: string): Promise<HabitResponseDto[]> {
     const habits = await this.dataSource.getRepository(HabitEntity).find({
+      where: { userId },
       order: { id: 'ASC' },
     });
 
@@ -56,10 +57,10 @@ export class HabitsService {
     return result;
   }
 
-  async findOne(id: number): Promise<HabitResponseDto> {
+  async findOne(userId: string, id: number): Promise<HabitResponseDto> {
     const habit = await this.dataSource
       .getRepository(HabitEntity)
-      .findOneBy({ id });
+      .findOneBy({ id, userId });
 
     if (!habit) {
       throw new NotFoundException(`Habit with ID ${id} was not found`);
@@ -71,8 +72,11 @@ export class HabitsService {
     );
   }
 
-  async findVersions(id: number): Promise<ScheduleVersionResponse[]> {
-    await this.findOne(id);
+  async findVersions(
+    userId: string,
+    id: number,
+  ): Promise<ScheduleVersionResponse[]> {
+    await this.findOne(userId, id);
 
     const versions = await this.scheduling.getVersions(
       this.dataSource.manager,
@@ -82,7 +86,7 @@ export class HabitsService {
     return versions.map((version) => this.scheduling.versionResponse(version));
   }
 
-  async create(dto: CreateHabitDto): Promise<HabitResponseDto> {
+  async create(userId: string, dto: CreateHabitDto): Promise<HabitResponseDto> {
     const title = this.validTitle(dto.title);
     const definition = normalizeSchedule(dto.schedule);
 
@@ -98,6 +102,7 @@ export class HabitsService {
 
       const habit = await repository.save(
         repository.create({
+          userId,
           title,
           isActive: true,
         }),
@@ -111,13 +116,17 @@ export class HabitsService {
     });
   }
 
-  async update(id: number, dto: UpdateHabitDto): Promise<HabitResponseDto> {
+  async update(
+    userId: string,
+    id: number,
+    dto: UpdateHabitDto,
+  ): Promise<HabitResponseDto> {
     if (dto.title === undefined && dto.isActive === undefined) {
       throw new BadRequestException('At least one property must be provided');
     }
 
     return this.dataSource.transaction(async (manager) => {
-      const habit = await this.scheduling.lockHabit(manager, id);
+      const habit = await this.scheduling.lockHabit(userId, manager, id);
 
       if (dto.title !== undefined) {
         habit.title = this.validTitle(dto.title);
@@ -142,15 +151,16 @@ export class HabitsService {
   }
 
   changeSchedule(
+    userId: string,
     id: number,
     dto: ChangeHabitScheduleDto,
   ): Promise<HabitResponseDto> {
-    return this.scheduling.changeSchedule(id, dto);
+    return this.scheduling.changeSchedule(userId, id, dto);
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(userId: string, id: number): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
-      const habit = await this.scheduling.lockHabit(manager, id);
+      const habit = await this.scheduling.lockHabit(userId, manager, id);
 
       await manager.getRepository(HabitEntity).softRemove(habit);
     });
