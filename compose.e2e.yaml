@@ -1,0 +1,17 @@
+# Standalone disposable PostgreSQL; never combines with the development Compose file.
+services:
+  postgres-e2e:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: habit_tracker_browser_e2e
+      POSTGRES_USER: habit_tracker_e2e
+      POSTGRES_PASSWORD: e2e_local_only
+    ports:
+      - "127.0.0.1:55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U habit_tracker_e2e -d habit_tracker_browser_e2e"]
+      interval: 2s
+      timeout: 5s
+      retries: 20

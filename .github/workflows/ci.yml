@@ -1,0 +1,110 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  backend:
+    name: Backend tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: habit_tracker_test
+          POSTGRES_USER: habit_tracker_e2e
+          POSTGRES_PASSWORD: e2e_local_only
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U habit_tracker_e2e -d habit_tracker_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: test
+      DB_HOST: 127.0.0.1
+      DB_PORT: "55432"
+      DB_USER: habit_tracker_e2e
+      DB_PASSWORD: e2e_local_only
+      DB_NAME: habit_tracker_test
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: node --test test/browser-e2e/environment.test.cjs
+      - run: npm test -- --runInBand
+      - run: npm run build
+      - run: npm run test:e2e -- --runInBand
+  frontend:
+    name: Frontend tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck:e2e
+      - run: npm run build
+  browser-e2e:
+    name: Browser E2E (desktop and mobile Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: habit_tracker_browser_e2e
+          POSTGRES_USER: habit_tracker_e2e
+          POSTGRES_PASSWORD: e2e_local_only
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U habit_tracker_e2e -d habit_tracker_browser_e2e"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+      - run: npm ci
+        working-directory: backend
+      - run: npm run build
+        working-directory: backend
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run test:e2e
+        working-directory: frontend
+      - name: Upload Playwright report and failure traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
