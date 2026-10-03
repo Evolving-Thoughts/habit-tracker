@@ -95,7 +95,9 @@ function stopUpdating(item: DayPlannerItem): void {
   );
 }
 
+let loadGeneration = 0;
 async function loadToday(showPageLoading = true): Promise<void> {
+  const generation = ++loadGeneration;
   if (showPageLoading) {
     isLoading.value = true;
   }
@@ -103,16 +105,17 @@ async function loadToday(showPageLoading = true): Promise<void> {
   errorMessage.value = null;
 
   try {
-    planner.value = await getToday();
+    const result = await getToday();
+    if (generation !== loadGeneration) return;
+    planner.value = result;
   } catch (error: unknown) {
+    if (generation !== loadGeneration) return;
     errorMessage.value =
       error instanceof Error
         ? error.message
         : "Ein unbekannter Fehler ist aufgetreten.";
   } finally {
-    if (showPageLoading) {
-      isLoading.value = false;
-    }
+    if (generation === loadGeneration) isLoading.value = false;
   }
 }
 
@@ -220,7 +223,13 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
 }
 
 function timerChanged(): void {
-  if (!false) void loadToday(false);
+  if (
+    !editorBusy.value &&
+    !editingTarget.value &&
+    !creationOpen.value &&
+    updatingKeys.value.length === 0
+  )
+    void loadToday(false);
 }
 onMounted(() => loadToday());
 onMounted(() => window.addEventListener("timer-data-changed", timerChanged));

@@ -45,23 +45,27 @@ const groups = computed(() => [
   { key: "open", title: "Offen", items: openTodos.value },
 ]);
 
+let loadGeneration = 0;
 async function loadTodos(showPageLoading = true): Promise<void> {
+  const generation = ++loadGeneration;
   if (showPageLoading) isLoading.value = true;
   errorMessage.value = null;
 
   try {
     const allTodos = await getTodos();
 
+    if (generation !== loadGeneration) return;
     todos.value = allTodos.filter(
       (todo) => todo.scheduledAt === null && !todo.completed,
     );
   } catch (error: unknown) {
+    if (generation !== loadGeneration) return;
     errorMessage.value =
       error instanceof Error
         ? error.message
         : "Die Todos konnten nicht geladen werden.";
   } finally {
-    if (showPageLoading) isLoading.value = false;
+    if (generation === loadGeneration) isLoading.value = false;
   }
 }
 

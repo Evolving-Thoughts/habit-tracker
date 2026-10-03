@@ -35,19 +35,24 @@ const groups = computed(() => [
     items: habits.value.filter((habit) => !habit.isActive),
   },
 ]);
+let loadGeneration = 0;
 async function loadHabits(showPageLoading = true): Promise<void> {
+  const generation = ++loadGeneration;
   if (showPageLoading) isLoading.value = true;
   errorMessage.value = null;
   try {
-    habits.value = await getHabits();
+    const result = await getHabits();
+    if (generation !== loadGeneration) return;
+    habits.value = result;
     hasLoaded.value = true;
   } catch (error: unknown) {
+    if (generation !== loadGeneration) return;
     errorMessage.value =
       error instanceof Error
         ? error.message
         : "Die Habits konnten nicht geladen werden.";
   } finally {
-    if (showPageLoading) isLoading.value = false;
+    if (generation === loadGeneration) isLoading.value = false;
   }
 }
 function openCreation(): void {

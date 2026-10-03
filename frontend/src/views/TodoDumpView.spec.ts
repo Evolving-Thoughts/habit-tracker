@@ -103,6 +103,25 @@ describe("TodoDumpView", () => {
     expect(wrapper.text()).toContain("Heute unter Abgeschlossen");
   });
 
+  it("keeps the latest refreshed state when an older initial read settles later", async () => {
+    let finishOld!: (value: TodoResponse[]) => void;
+    getTodosMock
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishOld = resolve;
+        }),
+      )
+      .mockResolvedValueOnce([makeTodo()]);
+    const wrapper = mountView();
+    await flushPromises();
+    window.dispatchEvent(new Event("timer-data-changed"));
+    await flushPromises();
+    expect(wrapper.findAll("[data-todo-id]")).toHaveLength(1);
+    expect(wrapper.text()).not.toContain("Todos werden geladen");
+    finishOld([makeTodo({ completed: true })]);
+    await flushPromises();
+    expect(wrapper.findAll("[data-todo-id]")).toHaveLength(1);
+  });
   it("shows an empty state", async () => {
     const wrapper = mountView();
 

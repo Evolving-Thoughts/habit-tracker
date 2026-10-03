@@ -76,7 +76,6 @@ async function complete(): Promise<void> {
       await updateTodoCompletion(target.targetId, true);
     else await updateOccurrenceStatus(target.targetId, "completed");
     notifyTargetChange();
-    window.dispatchEvent(new Event("timer-data-changed"));
     await controller.refresh();
   } catch (cause) {
     error.value =

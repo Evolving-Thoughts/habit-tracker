@@ -11,6 +11,8 @@ import {
 } from "../api/timers.api";
 export function notifyTargetChange(): void {
   window.dispatchEvent(new Event("timer-target-changed"));
+  // The write may finish after its originating view was unmounted.
+  window.dispatchEvent(new Event("timer-data-changed"));
 }
 export function createTimerController() {
   const timer = ref<Timer | null>(null);
@@ -87,10 +89,7 @@ export function createTimerController() {
       const response = await operation();
       if (!alive) return false;
       apply(response, started);
-      if (changed) {
-        notifyTargetChange();
-        window.dispatchEvent(new Event("timer-data-changed"));
-      }
+      if (changed) notifyTargetChange();
       return true;
     } catch (cause) {
       if (alive)
