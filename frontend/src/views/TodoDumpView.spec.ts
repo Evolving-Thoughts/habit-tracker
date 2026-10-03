@@ -2,6 +2,7 @@ import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   deleteTodo,
+  createTodo,
   getTodos,
   updateTodo,
   updateTodoCompletion,
@@ -430,6 +431,50 @@ describe("TodoDumpView", () => {
         .element.disabled,
     ).toBe(false);
 
+    expect(getTodosMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("TodoDumpView creation flow", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    getTodosMock.mockResolvedValue([]);
+    vi.mocked(createTodo).mockResolvedValue(makeTodo());
+  });
+  it("opens the Todo form directly without a Habit choice", async () => {
+    const wrapper = mount(TodoDumpView);
+    await flushPromises();
+    expect(wrapper.find(".create-todo").exists()).toBe(false);
+    await wrapper.get('button[aria-label="Todo erstellen"]').trigger("click");
+    expect(wrapper.find("dialog .create-todo").exists()).toBe(true);
+    expect(wrapper.find('[data-test="choose-habit"]').exists()).toBe(false);
+  });
+  it("closes on creation, reloads the dump and shows the created Todo", async () => {
+    getTodosMock.mockResolvedValueOnce([]).mockResolvedValueOnce([makeTodo()]);
+    const wrapper = mount(TodoDumpView);
+    await flushPromises();
+    await wrapper.get('button[aria-label="Todo erstellen"]').trigger("click");
+    await wrapper.get('dialog input[name="title"]').setValue("NestJS lernen");
+    await wrapper.get("dialog form").trigger("submit");
+    await flushPromises();
+    expect(createTodo).toHaveBeenCalledWith({
+      title: "NestJS lernen",
+      scheduledAt: null,
+      plannedDurationMinutes: null,
+      isFixed: false,
+    });
+    expect(wrapper.find("dialog").exists()).toBe(false);
+    expect(getTodosMock).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).toContain("NestJS lernen");
+    expect(wrapper.get('[role="status"]').text()).toContain("Todo erstellt");
+  });
+  it("cancels without creating or reloading", async () => {
+    const wrapper = mount(TodoDumpView);
+    await flushPromises();
+    await wrapper.get('button[aria-label="Todo erstellen"]').trigger("click");
+    await wrapper.get(".create-dialog__close").trigger("click");
+    expect(wrapper.find("dialog").exists()).toBe(false);
+    expect(createTodo).not.toHaveBeenCalled();
     expect(getTodosMock).toHaveBeenCalledTimes(1);
   });
 });

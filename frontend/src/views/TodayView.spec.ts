@@ -2,6 +2,10 @@ import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getToday,
+  createTodo,
+  createHabit,
+  getHabit,
+  changeHabitSchedule,
   updateOccurrenceStatus,
   updateTodoCompletion,
 } from "../api/day-planner.api";
@@ -15,12 +19,14 @@ import TodayView from "./TodayView.vue";
 vi.mock("../api/day-planner.api", () => ({
   getToday: vi.fn(),
   createTodo: vi.fn(),
+  createHabit: vi.fn(),
   updateOccurrenceStatus: vi.fn(),
   updateTodoCompletion: vi.fn(),
   getTodo: vi.fn(),
   getHabit: vi.fn(),
   updateTodo: vi.fn(),
   updateHabit: vi.fn(),
+  changeHabitSchedule: vi.fn(),
   deleteTodo: vi.fn(),
   deleteHabit: vi.fn(),
 }));
@@ -341,5 +347,169 @@ describe("TodayView", () => {
     await flushPromises();
 
     expect(getTodayMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("TodayView habit schedule editing", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T12:00:00Z"));
+    getTodayMock.mockResolvedValue(makePlanner([makeHabit()]));
+    vi.mocked(getHabit).mockResolvedValue({
+      id: 10,
+      title: "Joggen",
+      isActive: true,
+      upcomingSchedule: null,
+      currentSchedule: {
+        id: 100,
+        effectiveFrom: "2026-10-01",
+        effectiveAt: "2026-10-01T08:00:00Z",
+        endsAt: null,
+        cancelledAt: null,
+        firstDueDate: "2026-10-01",
+        schedule: {
+          type: "interval",
+          intervalDays: 2,
+          missedOccurrencePolicy: "carry_over",
+        },
+      },
+    });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("saves a future rule and reloads the planner", async () => {
+    vi.mocked(changeHabitSchedule).mockResolvedValue(await getHabit(10));
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    await wrapper
+      .get('button[aria-label="Joggen bearbeiten"]')
+      .trigger("click");
+    await flushPromises();
+    await wrapper.get('input[name="changeSchedule"]').setValue(true);
+    await wrapper.get('input[name="effectiveFrom"]').setValue("2026-10-10");
+    await wrapper.get('input[name="intervalDays"]').setValue("4");
+    await wrapper.get(".item-editor form").trigger("submit");
+    await flushPromises();
+    expect(changeHabitSchedule).toHaveBeenCalledWith(10, {
+      effectiveFrom: "2026-10-10",
+      schedule: {
+        type: "interval",
+        intervalDays: 4,
+        missedOccurrencePolicy: "carry_over",
+      },
+    });
+    expect(getTodayMock).toHaveBeenCalledTimes(2);
+    expect(wrapper.find(".item-editor").exists()).toBe(false);
+  });
+
+  it("preserves the editor and does not reload after a schedule conflict", async () => {
+    vi.mocked(changeHabitSchedule).mockRejectedValue(
+      new Error("Schedule conflict"),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    await wrapper
+      .get('button[aria-label="Joggen bearbeiten"]')
+      .trigger("click");
+    await flushPromises();
+    await wrapper.get('input[name="changeSchedule"]').setValue(true);
+    await wrapper.get(".item-editor form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.get('.item-editor [role="alert"]').text()).toBe(
+      "Schedule conflict",
+    );
+    expect(getTodayMock).toHaveBeenCalledTimes(1);
+    expect(wrapper.find(".item-editor").exists()).toBe(true);
+  });
+});
+
+describe("TodayView creation flow", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    getTodayMock.mockResolvedValue(makePlanner());
+    vi.mocked(createHabit).mockResolvedValue({
+      id: 10,
+      title: "Joggen",
+      isActive: true,
+      currentSchedule: null,
+      upcomingSchedule: null,
+    });
+    vi.mocked(createTodo).mockResolvedValue({
+      id: 1,
+      title: "Test",
+      completed: false,
+      completedAt: null,
+      scheduledAt: null,
+      plannedDurationMinutes: null,
+      isFixed: false,
+    });
+  });
+  it("hides the forms until plus is clicked and presents both choices", async () => {
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.find("dialog").exists()).toBe(false);
+    expect(wrapper.find(".create-todo").exists()).toBe(false);
+    await wrapper
+      .get('button[aria-label="Eintrag erstellen"]')
+      .trigger("click");
+    expect(wrapper.find('[data-test="choose-todo"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="choose-habit"]').exists()).toBe(true);
+  });
+  it.each(["todo", "habit"] as const)(
+    "creates a %s through plus and refreshes the planner",
+    async (kind) => {
+      const wrapper = mount(TodayView);
+      await flushPromises();
+      await wrapper
+        .get('button[aria-label="Eintrag erstellen"]')
+        .trigger("click");
+      await wrapper.get(`[data-test="choose-${kind}"]`).trigger("click");
+      await wrapper.get('dialog input[name="title"]').setValue("Test");
+      await wrapper.get("dialog form").trigger("submit");
+      await flushPromises();
+      expect(kind === "todo" ? createTodo : createHabit).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(wrapper.find("dialog").exists()).toBe(false);
+      expect(getTodayMock).toHaveBeenCalledTimes(2);
+      expect(wrapper.get('[role="status"]').text()).toContain(
+        kind === "todo" ? "Todo erstellt" : "Habit erstellt",
+      );
+    },
+  );
+  it("retains the habit creation form after failure without refreshing", async () => {
+    vi.mocked(createHabit).mockRejectedValueOnce(
+      new Error("Backend nicht erreichbar"),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    await wrapper
+      .get('button[aria-label="Eintrag erstellen"]')
+      .trigger("click");
+    await wrapper.get('[data-test="choose-habit"]').trigger("click");
+    await wrapper.get('dialog input[name="title"]').setValue("Joggen");
+    await wrapper.get("dialog form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.get('dialog [role="alert"]').text()).toBe(
+      "Backend nicht erreichbar",
+    );
+    expect(wrapper.find("dialog").exists()).toBe(true);
+    expect(getTodayMock).toHaveBeenCalledTimes(1);
+  });
+  it("closes on cancellation and resets the next opening to the choice", async () => {
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    await wrapper
+      .get('button[aria-label="Eintrag erstellen"]')
+      .trigger("click");
+    await wrapper.get('[data-test="choose-todo"]').trigger("click");
+    await wrapper.get(".create-dialog__close").trigger("click");
+    expect(wrapper.find("dialog").exists()).toBe(false);
+    await wrapper
+      .get('button[aria-label="Eintrag erstellen"]')
+      .trigger("click");
+    expect(wrapper.find('[data-test="choose-habit"]').exists()).toBe(true);
+    expect(createTodo).not.toHaveBeenCalled();
   });
 });

@@ -6,7 +6,8 @@ import {
   updateTodo,
   updateTodoCompletion,
 } from "../api/day-planner.api";
-import CreateTodoForm from "../components/CreateTodoForm.vue";
+import CreateButton from "../components/CreateButton.vue";
+import CreateItemDialog from "../components/CreateItemDialog.vue";
 import type { CreateTodoInput, TodoResponse } from "../types/todo";
 
 const todos = ref<TodoResponse[]>([]);
@@ -18,6 +19,7 @@ const successMessage = ref<string | null>(null);
 
 const selectedTodo = ref<TodoResponse | null>(null);
 const confirmDeletion = ref(false);
+const creationOpen = ref(false);
 
 const editTitle = ref("");
 const editScheduledAt = ref("");
@@ -235,6 +237,18 @@ async function removeSelectedTodo(): Promise<void> {
   }
 }
 
+function openCreation(): void {
+  if (isBusy.value || selectedTodo.value) return;
+  successMessage.value = null;
+  creationOpen.value = true;
+}
+async function onCreated(): Promise<void> {
+  creationOpen.value = false;
+  successMessage.value =
+    "Todo erstellt. Ohne Zeitpunkt erscheint es hier im Todo-Dump.";
+  await loadTodos();
+}
+
 onMounted(loadTodos);
 </script>
 
@@ -246,17 +260,29 @@ onMounted(loadTodos);
         <p>Ungeplante Aufgaben sammeln und bearbeiten.</p>
       </div>
 
-      <button
-        class="todo-dump__refresh"
-        type="button"
-        :disabled="isBusy"
-        @click="loadTodos()"
-      >
-        Aktualisieren
-      </button>
+      <div class="todo-dump__header-actions">
+        <CreateButton
+          label="Todo erstellen"
+          :disabled="isBusy || selectedTodo !== null"
+          @click="openCreation"
+        />
+        <button
+          class="todo-dump__refresh"
+          type="button"
+          :disabled="isBusy"
+          @click="loadTodos()"
+        >
+          Aktualisieren
+        </button>
+      </div>
     </header>
 
-    <CreateTodoForm @created="loadTodos()" />
+    <CreateItemDialog
+      v-if="creationOpen"
+      mode="todo"
+      @close="creationOpen = false"
+      @created="onCreated"
+    />
 
     <section
       v-if="selectedTodo"
@@ -463,6 +489,12 @@ onMounted(loadTodos);
 </template>
 
 <style scoped>
+.todo-dump__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
 .todo-dump {
   width: min(100% - 2rem, 46rem);
   margin: 0 auto;
@@ -727,6 +759,9 @@ onMounted(loadTodos);
 }
 
 @media (max-width: 32rem) {
+  .todo-dump__header {
+    flex-wrap: wrap;
+  }
   .todo-dump {
     width: min(100% - 1rem, 46rem);
     padding-top: 1rem;

@@ -1,5 +1,3 @@
-import type { HabitScheduleType } from "./day-planner";
-
 export type Weekday =
   | "monday"
   | "tuesday"
@@ -11,24 +9,50 @@ export type Weekday =
 
 export type MissedOccurrencePolicy = "carry_over" | "skip";
 
+// Each rule contains only the fields that its schedule type accepts.
+export type HabitScheduleRule =
+  | {
+      type: "interval";
+      intervalDays: number;
+      missedOccurrencePolicy: MissedOccurrencePolicy;
+    }
+  | {
+      type: "fixed_weekdays";
+      weekdays: Weekday[];
+      missedOccurrencePolicy: MissedOccurrencePolicy;
+    }
+  | { type: "weekly_target"; weeklyTarget: number };
+
+export type ScheduleVersionResponse = {
+  id: number;
+  effectiveFrom: string;
+  effectiveAt: string;
+  endsAt: string | null;
+  cancelledAt: string | null;
+  firstDueDate: string | null;
+  schedule: HabitScheduleRule;
+};
+
 export type HabitResponse = {
   id: number;
   title: string;
-  scheduleType: HabitScheduleType;
-  startDate: string;
-  intervalDays: number | null;
-  weekdays: Weekday[] | null;
-  weeklyTarget: number | null;
-  missedOccurrencePolicy: MissedOccurrencePolicy;
   isActive: boolean;
+  currentSchedule: ScheduleVersionResponse | null;
+  upcomingSchedule: ScheduleVersionResponse | null;
 };
 
 export type UpdateHabitInput = {
   title?: string;
-  scheduleType?: HabitScheduleType;
-  intervalDays?: number | null;
-  weekdays?: Weekday[] | null;
-  weeklyTarget?: number | null;
   isActive?: boolean;
-  missedOccurrencePolicy?: MissedOccurrencePolicy;
+};
+
+export type ChangeHabitScheduleInput = {
+  effectiveFrom?: string;
+  schedule: HabitScheduleRule;
+};
+
+export type CreateHabitInput = {
+  title: string;
+  startDate?: string;
+  schedule: HabitScheduleRule;
 };
