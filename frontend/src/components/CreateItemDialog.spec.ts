@@ -95,7 +95,7 @@ describe("CreateItemDialog", () => {
     await wrapper.get('input[name="title"]').setValue("Joggen");
     await wrapper.get("form").trigger("submit");
     expect(
-      wrapper.get<HTMLButtonElement>(".create-dialog__close").element.disabled,
+      wrapper.get<HTMLButtonElement>(".modal-dialog__close").element.disabled,
     ).toBe(true);
     for (const button of wrapper.findAll<HTMLButtonElement>(
       ".create-dialog__footer button",
@@ -123,7 +123,15 @@ describe("CreateItemDialog", () => {
     ).toBe("Test");
     expect(wrapper.emitted("created")).toBeUndefined();
     expect(
-      wrapper.get<HTMLButtonElement>(".create-dialog__close").element.disabled,
+      wrapper.get<HTMLButtonElement>(".modal-dialog__close").element.disabled,
     ).toBe(false);
   });
+});
+
+it("opens Habit management directly in Habit mode without a Todo choice", async () => {
+  const wrapper = mount(CreateItemDialog, { props: { mode: "habit" } });
+  await flushPromises();
+  expect(wrapper.find(".create-habit").exists()).toBe(true);
+  expect(wrapper.find('[data-test="choose-todo"]').exists()).toBe(false);
+  expect(wrapper.text()).not.toContain("Zurück zur Auswahl");
 });

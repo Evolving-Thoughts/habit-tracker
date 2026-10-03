@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import HabitsView from "./views/HabitsView.vue";
 import TodayView from "./views/TodayView.vue";
 import TodoDumpView from "./views/TodoDumpView.vue";
 
-const activeView = ref<"today" | "todo-dump">("today");
+const activeView = ref<"today" | "todo-dump" | "habits">("today");
 </script>
 
 <template>
@@ -23,15 +24,24 @@ const activeView = ref<"today" | "todo-dump">("today");
     >
       Todo-Dump
     </button>
+    <button
+      type="button"
+      :aria-pressed="activeView === 'habits'"
+      @click="activeView = 'habits'"
+    >
+      Habits
+    </button>
   </nav>
 
   <TodayView v-if="activeView === 'today'" />
-  <TodoDumpView v-else />
+  <TodoDumpView v-else-if="activeView === 'todo-dump'" />
+  <HabitsView v-else />
 </template>
 
 <style scoped>
 .app-navigation {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   width: min(100% - 2rem, 46rem);
   margin: 0 auto;
@@ -39,6 +49,7 @@ const activeView = ref<"today" | "todo-dump">("today");
 }
 
 .app-navigation button {
+  min-height: 2.75rem;
   padding: 0.65rem 1rem;
   border: 1px solid #ccd2dc;
   border-radius: 0.625rem;

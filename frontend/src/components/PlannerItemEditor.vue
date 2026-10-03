@@ -19,6 +19,7 @@ import type {
   UpdateHabitInput,
   Weekday,
 } from "../types/habit";
+import { formatHabitSchedule } from "../utils/habit";
 import type { CreateTodoInput } from "../types/todo";
 import {
   formatDateForGermanDisplay,
@@ -29,6 +30,7 @@ import {
 const props = defineProps<{
   kind: "todo" | "habit";
   entityId: number;
+  embedded?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -226,18 +228,7 @@ function fillSchedule(rule: HabitScheduleRule): void {
 }
 
 function describeSchedule(version: ScheduleVersionResponse): string {
-  const rule = version.schedule;
-  switch (rule.type) {
-    case "interval":
-      return `Alle ${rule.intervalDays} Tage`;
-    case "weekly_target":
-      return `${rule.weeklyTarget} Mal pro Woche`;
-    case "fixed_weekdays":
-      return weekdayOptions
-        .filter((option) => rule.weekdays.includes(option.value))
-        .map((option) => option.label)
-        .join(", ");
-  }
+  return formatHabitSchedule(version.schedule);
 }
 
 function editUpcomingSchedule(): void {
@@ -380,8 +371,12 @@ onMounted(loadEntity);
 </script>
 
 <template>
-  <section class="item-editor" aria-labelledby="item-editor-heading">
-    <h2 id="item-editor-heading">
+  <section
+    class="item-editor"
+    :class="{ 'item-editor--embedded': embedded }"
+    :aria-labelledby="embedded ? undefined : 'item-editor-heading'"
+  >
+    <h2 v-if="!embedded" id="item-editor-heading">
       {{ kind === "todo" ? "Todo" : "Habit" }}
       bearbeiten
     </h2>
@@ -658,6 +653,11 @@ onMounted(loadEntity);
 </template>
 
 <style scoped>
+.item-editor.item-editor--embedded {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
 .item-editor {
   margin: 1.5rem 0;
   padding: 1rem;
@@ -712,6 +712,7 @@ onMounted(loadEntity);
 }
 
 .item-editor small {
+  font-size: 0.875rem;
   color: #697386;
   line-height: 1.5;
 }
@@ -744,7 +745,7 @@ onMounted(loadEntity);
   border-radius: 0.5rem;
   background: #f2f4f8;
   color: #59657a;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   line-height: 1.5;
 }
 

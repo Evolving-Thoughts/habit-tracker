@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   changeHabitSchedule,
   createHabit,
+  getHabits,
   updateHabit,
 } from "./day-planner.api";
 const fetchMock = vi.fn<typeof fetch>();
@@ -101,4 +102,23 @@ describe("habit creation API", () => {
       },
     });
   });
+});
+
+it("loads all non-deleted habits from the management endpoint", async () => {
+  const habits = [
+    {
+      id: 10,
+      title: "Joggen",
+      isActive: false,
+      currentSchedule: null,
+      upcomingSchedule: null,
+    },
+  ];
+  fetchMock.mockResolvedValueOnce(
+    new Response(JSON.stringify(habits), { status: 200 }),
+  );
+  expect(await getHabits()).toEqual(habits);
+  const [url, init] = fetchMock.mock.calls[0]!;
+  expect(String(url)).toMatch(/\/habits$/);
+  expect(init?.method ?? "GET").toBe("GET");
 });

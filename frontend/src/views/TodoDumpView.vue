@@ -6,9 +6,14 @@ import {
   updateTodo,
   updateTodoCompletion,
 } from "../api/day-planner.api";
+import { useListFocus } from "../composables/useListFocus";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
+import ModalDialog from "../components/ModalDialog.vue";
 import type { CreateTodoInput, TodoResponse } from "../types/todo";
+
+const page = ref<HTMLElement | null>(null);
+const listFocus = useListFocus(page);
 
 const todos = ref<TodoResponse[]>([]);
 const isLoading = ref(true);
@@ -51,8 +56,8 @@ const groups = computed(() => [
   },
 ]);
 
-async function loadTodos(): Promise<void> {
-  isLoading.value = true;
+async function loadTodos(showPageLoading = true): Promise<void> {
+  if (showPageLoading) isLoading.value = true;
   errorMessage.value = null;
 
   try {
@@ -65,7 +70,7 @@ async function loadTodos(): Promise<void> {
         ? error.message
         : "Die Todos konnten nicht geladen werden.";
   } finally {
-    isLoading.value = false;
+    if (showPageLoading) isLoading.value = false;
   }
 }
 
@@ -97,6 +102,7 @@ function openEditing(todo: TodoResponse): void {
     return;
   }
 
+  listFocus.remember(`todo-${todo.id}`);
   selectedTodo.value = todo;
   confirmDeletion.value = false;
 
@@ -191,14 +197,13 @@ async function saveTodo(): Promise<void> {
 
     await updateTodo(todoId, input);
 
-    closeEditing();
-
     successMessage.value =
       input.scheduledAt === null
         ? "Änderungen gespeichert."
         : "Änderungen gespeichert. Das Todo ist jetzt eingeplant und nicht mehr im Todo-Dump.";
 
-    await loadTodos();
+    await loadTodos(false);
+    closeEditing();
   } catch (error: unknown) {
     errorMessage.value =
       error instanceof Error
@@ -223,10 +228,10 @@ async function removeSelectedTodo(): Promise<void> {
   try {
     await deleteTodo(todoId);
 
-    closeEditing();
     successMessage.value = "Todo gelöscht.";
 
-    await loadTodos();
+    await loadTodos(false);
+    closeEditing();
   } catch (error: unknown) {
     errorMessage.value =
       error instanceof Error
@@ -243,17 +248,22 @@ function openCreation(): void {
   creationOpen.value = true;
 }
 async function onCreated(): Promise<void> {
-  creationOpen.value = false;
   successMessage.value =
     "Todo erstellt. Ohne Zeitpunkt erscheint es hier im Todo-Dump.";
-  await loadTodos();
+  await loadTodos(false);
+  creationOpen.value = false;
 }
 
 onMounted(loadTodos);
 </script>
 
 <template>
-  <main class="todo-dump">
+  <main ref="page" class="todo-dump">
+    <CreateButton
+      label="Todo erstellen"
+      :disabled="isBusy || selectedTodo !== null"
+      @click="openCreation"
+    />
     <header class="todo-dump__header">
       <div>
         <h1>Todo-Dump</h1>
@@ -261,11 +271,6 @@ onMounted(loadTodos);
       </div>
 
       <div class="todo-dump__header-actions">
-        <CreateButton
-          label="Todo erstellen"
-          :disabled="isBusy || selectedTodo !== null"
-          @click="openCreation"
-        />
         <button
           class="todo-dump__refresh"
           type="button"
@@ -284,117 +289,128 @@ onMounted(loadTodos);
       @created="onCreated"
     />
 
-    <section
+    <ModalDialog
       v-if="selectedTodo"
-      class="todo-editor"
-      aria-labelledby="editing-heading"
+      class="dump-edit-dialog"
+      title="Todo bearbeiten"
+      :busy="isSaving"
+      :return-focus="listFocus.returnFocus"
+      focus-selector='input[name="editTitle"]'
+      @close="closeEditing"
     >
-      <h2 id="editing-heading">Todo bearbeiten</h2>
-
-      <form data-test="editing-form" novalidate @submit.prevent="saveTodo">
-        <fieldset :disabled="isBusy">
-          <div class="todo-editor__field">
-            <label for="edit-title">Titel</label>
-
-            <input
-              id="edit-title"
-              v-model="editTitle"
-              name="editTitle"
-              type="text"
-              maxlength="200"
-              required
-            />
-          </div>
-
-          <div class="todo-editor__row">
+      <section class="todo-editor">
+        <form data-test="editing-form" novalidate @submit.prevent="saveTodo">
+          <fieldset :disabled="isBusy">
             <div class="todo-editor__field">
-              <label for="edit-scheduled-at"> Zeitpunkt · optional </label>
+              <label for="edit-title">Titel</label>
 
               <input
-                id="edit-scheduled-at"
-                v-model="editScheduledAt"
-                name="editScheduledAt"
-                type="datetime-local"
-              />
-
-              <small> Lokale Zeitzone deines Geräts. </small>
-            </div>
-
-            <div class="todo-editor__field">
-              <label for="edit-duration"> Dauer in Minuten · optional </label>
-
-              <input
-                id="edit-duration"
-                v-model="editDuration"
-                name="editDuration"
-                type="number"
-                min="1"
-                step="1"
+                id="edit-title"
+                v-model="editTitle"
+                name="editTitle"
+                type="text"
+                maxlength="200"
+                required
               />
             </div>
-          </div>
 
-          <label class="todo-editor__checkbox">
-            <input v-model="editIsFixed" name="editIsFixed" type="checkbox" />
-            Fester Termin
-          </label>
+            <div class="todo-editor__row">
+              <div class="todo-editor__field">
+                <label for="edit-scheduled-at"> Zeitpunkt · optional </label>
 
-          <p class="todo-editor__hint">
-            Ohne Zeitpunkt bleibt das Todo im Dump. Die Bearbeitung verändert
-            seinen Erledigungsstatus nicht.
-          </p>
+                <input
+                  id="edit-scheduled-at"
+                  v-model="editScheduledAt"
+                  name="editScheduledAt"
+                  type="datetime-local"
+                />
 
-          <div class="todo-editor__actions">
-            <button class="todo-editor__save" type="submit">
-              {{ isSaving ? "Wird gespeichert …" : "Speichern" }}
-            </button>
-
-            <button
-              class="todo-dump__secondary"
-              type="button"
-              @click="closeEditing"
-            >
-              Abbrechen
-            </button>
-          </div>
-
-          <div class="todo-editor__delete">
-            <button
-              v-if="!confirmDeletion"
-              type="button"
-              data-test="dump-request-delete"
-              @click="confirmDeletion = true"
-            >
-              Todo löschen
-            </button>
-
-            <template v-else>
-              <p>„{{ selectedTodo.title }}“ wirklich löschen?</p>
-
-              <div class="todo-editor__actions">
-                <button
-                  type="button"
-                  data-test="dump-confirm-delete"
-                  @click="removeSelectedTodo"
-                >
-                  Ja, löschen
-                </button>
-
-                <button
-                  type="button"
-                  data-test="dump-cancel-delete"
-                  @click="confirmDeletion = false"
-                >
-                  Nicht löschen
-                </button>
+                <small> Lokale Zeitzone deines Geräts. </small>
               </div>
-            </template>
-          </div>
-        </fieldset>
-      </form>
-    </section>
 
-    <p v-if="errorMessage" class="todo-dump__error" role="alert">
+              <div class="todo-editor__field">
+                <label for="edit-duration"> Dauer in Minuten · optional </label>
+
+                <input
+                  id="edit-duration"
+                  v-model="editDuration"
+                  name="editDuration"
+                  type="number"
+                  min="1"
+                  step="1"
+                />
+              </div>
+            </div>
+
+            <label class="todo-editor__checkbox">
+              <input v-model="editIsFixed" name="editIsFixed" type="checkbox" />
+              Fester Termin
+            </label>
+
+            <p class="todo-editor__hint">
+              Ohne Zeitpunkt bleibt das Todo im Dump. Die Bearbeitung verändert
+              seinen Erledigungsstatus nicht.
+            </p>
+
+            <div class="todo-editor__actions">
+              <button class="todo-editor__save" type="submit">
+                {{ isSaving ? "Wird gespeichert …" : "Speichern" }}
+              </button>
+
+              <button
+                class="todo-dump__secondary"
+                type="button"
+                @click="closeEditing"
+              >
+                Abbrechen
+              </button>
+            </div>
+
+            <div class="todo-editor__delete">
+              <button
+                v-if="!confirmDeletion"
+                type="button"
+                data-test="dump-request-delete"
+                @click="confirmDeletion = true"
+              >
+                Todo löschen
+              </button>
+
+              <template v-else>
+                <p>„{{ selectedTodo.title }}“ wirklich löschen?</p>
+
+                <div class="todo-editor__actions">
+                  <button
+                    type="button"
+                    data-test="dump-confirm-delete"
+                    @click="removeSelectedTodo"
+                  >
+                    Ja, löschen
+                  </button>
+
+                  <button
+                    type="button"
+                    data-test="dump-cancel-delete"
+                    @click="confirmDeletion = false"
+                  >
+                    Nicht löschen
+                  </button>
+                </div>
+              </template>
+            </div>
+          </fieldset>
+        </form>
+        <p v-if="errorMessage" class="todo-dump__error" role="alert">
+          {{ errorMessage }}
+        </p>
+      </section>
+    </ModalDialog>
+
+    <p
+      v-if="errorMessage && !selectedTodo"
+      class="todo-dump__error"
+      role="alert"
+    >
       {{ errorMessage }}
     </p>
 
@@ -421,6 +437,7 @@ onMounted(loadTodos);
               v-for="todo in group.items"
               :key="todo.id"
               :data-todo-id="todo.id"
+              :data-focus-key="`todo-${todo.id}`"
               class="dump-item"
               :class="{
                 'dump-item--completed': todo.completed,
@@ -460,6 +477,7 @@ onMounted(loadTodos);
 
               <button
                 class="dump-item__edit"
+                data-edit-button
                 type="button"
                 :disabled="isBusy"
                 :aria-label="`${todo.title} bearbeiten`"
@@ -498,7 +516,7 @@ onMounted(loadTodos);
 .todo-dump {
   width: min(100% - 2rem, 46rem);
   margin: 0 auto;
-  padding: 2rem 0 4rem;
+  padding: 2rem 0 calc(6.5rem + env(safe-area-inset-bottom, 0px));
 }
 
 .todo-dump__header {
@@ -542,9 +560,9 @@ onMounted(loadTodos);
 }
 
 .todo-editor {
-  margin: 1.5rem 0;
-  padding: 1rem;
-  border: 1px solid #ccd2dc;
+  margin: 0;
+  padding: 0;
+  border: 0;
   border-radius: 0.875rem;
   background: #ffffff;
 }
@@ -565,6 +583,7 @@ onMounted(loadTodos);
 
 .todo-editor__field {
   display: grid;
+  align-content: start;
   gap: 0.375rem;
   min-width: 0;
 }
@@ -577,6 +596,7 @@ onMounted(loadTodos);
 
 .todo-editor__field input {
   width: 100%;
+  height: 3rem;
   min-width: 0;
   padding: 0.7rem;
   border: 1px solid #bfc7d4;
@@ -600,7 +620,7 @@ onMounted(loadTodos);
 .todo-editor__hint {
   margin: 0;
   color: #697386;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   line-height: 1.5;
 }
 
@@ -726,7 +746,7 @@ onMounted(loadTodos);
   gap: 0.75rem;
   margin-top: 0.5rem;
   color: #697386;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
 }
 
 .dump-item__edit {

@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import CreateHabitForm from "./CreateHabitForm.vue";
 import CreateTodoForm from "./CreateTodoForm.vue";
-
+import ModalDialog from "./ModalDialog.vue";
 type CreationStep = "choose" | "todo" | "habit";
-const props = defineProps<{ mode: "choose" | "todo" }>();
+const props = defineProps<{ mode: CreationStep }>();
 const emit = defineEmits<{ close: []; created: [kind: "todo" | "habit"] }>();
 const step = ref<CreationStep>(props.mode);
-const busy = ref(false);
-const dialog = ref<HTMLDialogElement | null>(null);
+const formBusy = ref(false);
+const refreshing = ref(false);
+const busy = computed(() => formBusy.value || refreshing.value);
 const heading = computed(() =>
   step.value === "choose"
     ? "Was möchtest du erstellen?"
@@ -16,54 +17,22 @@ const heading = computed(() =>
       ? "Neues Todo"
       : "Neues Habit",
 );
-let previousFocus: HTMLElement | null = null;
 function close(): void {
   if (!busy.value) emit("close");
 }
-async function focusContent(): Promise<void> {
-  await nextTick();
-  dialog.value
-    ?.querySelector<HTMLElement>(
-      'input[name="title"], [data-test="choose-todo"]',
-    )
-    ?.focus();
-}
 function created(kind: "todo" | "habit"): void {
+  refreshing.value = true;
   emit("created", kind);
 }
-watch(step, focusContent);
-onMounted(async () => {
-  previousFocus =
-    document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
-  dialog.value?.showModal();
-  await focusContent();
-});
-onUnmounted(() => {
-  if (previousFocus?.isConnected) previousFocus.focus();
-});
 </script>
 
 <template>
-  <dialog
-    ref="dialog"
+  <ModalDialog
     class="create-dialog"
-    :aria-label="heading"
-    @cancel.prevent="close"
+    :title="heading"
+    :busy="busy"
+    @close="close"
   >
-    <header class="create-dialog__header">
-      <h2>{{ heading }}</h2>
-      <button
-        class="create-dialog__close"
-        type="button"
-        aria-label="Erstellung schließen"
-        :disabled="busy"
-        @click="close"
-      >
-        <span aria-hidden="true">×</span>
-      </button>
-    </header>
     <template v-if="step === 'choose'">
       <p class="create-dialog__intro">
         Eine einzelne Aufgabe oder eine wiederkehrende Gewohnheit.
@@ -99,13 +68,13 @@ onUnmounted(() => {
     <CreateTodoForm
       v-else-if="step === 'todo'"
       embedded
-      @busy="busy = $event"
+      @busy="formBusy = $event"
       @created="created('todo')"
     />
     <CreateHabitForm
       v-else
       embedded
-      @busy="busy = $event"
+      @busy="formBusy = $event"
       @created="created('habit')"
     />
     <footer class="create-dialog__footer">
@@ -119,48 +88,10 @@ onUnmounted(() => {
       </button>
       <button type="button" :disabled="busy" @click="close">Abbrechen</button>
     </footer>
-  </dialog>
+  </ModalDialog>
 </template>
 
 <style scoped>
-.create-dialog {
-  width: min(calc(100% - 2rem), 34rem);
-  max-height: calc(100dvh - 2rem);
-  overflow-y: auto;
-  box-sizing: border-box;
-  margin: auto;
-  padding: 1.5rem;
-  border: 1px solid #d9dde5;
-  border-radius: 0.875rem;
-  background: #fff;
-  color: #182033;
-  box-shadow: 0 4px 24px rgb(15 23 42 / 15%);
-}
-.create-dialog::backdrop {
-  background: rgb(15 23 42 / 40%);
-}
-.create-dialog__header {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1.25rem;
-}
-.create-dialog h2 {
-  margin: 0;
-  font-size: 1.25rem;
-  line-height: 1.4;
-}
-.create-dialog__close {
-  flex: 0 0 2.75rem;
-  height: 2.75rem;
-  border: 0;
-  border-radius: 0.5rem;
-  background: #f2f4f8;
-  color: #39445a;
-  font-size: 1.75rem;
-  cursor: pointer;
-}
 .create-dialog__intro {
   margin: 0 0 1.25rem;
   color: #59657a;
@@ -239,11 +170,6 @@ onUnmounted(() => {
 .create-dialog button:focus-visible {
   outline: 3px solid rgb(53 103 220 / 30%);
   outline-offset: 2px;
-}
-@media (max-width: 32rem) {
-  .create-dialog {
-    padding: 1rem;
-  }
 }
 .create-dialog__choice-icon svg {
   width: 1.5rem;

@@ -137,6 +137,7 @@ function skip(): void {
 
     <button
       class="planner-item__edit"
+      data-edit-button
       type="button"
       :disabled="isUpdating"
       :aria-label="`${item.title} bearbeiten`"

@@ -5,10 +5,11 @@ import {
   updateOccurrenceStatus,
   updateTodoCompletion,
 } from "../api/day-planner.api";
+import { useListFocus } from "../composables/useListFocus";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import PlannerItem from "../components/PlannerItem.vue";
-import PlannerItemEditor from "../components/PlannerItemEditor.vue";
+import EditItemDialog from "../components/EditItemDialog.vue";
 import type {
   DayPlannerHabitItem,
   DayPlannerItem,
@@ -20,6 +21,9 @@ type EditingTarget = {
   kind: "todo" | "habit";
   entityId: number;
 };
+
+const page = ref<HTMLElement | null>(null);
+const listFocus = useListFocus(page);
 
 const planner = ref<DayPlannerResponse | null>(null);
 const isLoading = ref(true);
@@ -167,6 +171,7 @@ function openEditing(item: DayPlannerItem): void {
     return;
   }
 
+  listFocus.remember(getItemKey(item));
   editingTarget.value =
     item.type === "todo"
       ? {
@@ -185,9 +190,8 @@ function closeEditing(): void {
 }
 
 async function onEditorChanged(): Promise<void> {
-  closeEditing();
-
   await loadToday(false);
+  closeEditing();
 }
 
 function openCreation(): void {
@@ -202,19 +206,29 @@ function openCreation(): void {
   creationOpen.value = true;
 }
 async function onCreated(kind: "todo" | "habit"): Promise<void> {
-  creationOpen.value = false;
   creationMessage.value =
     kind === "todo"
       ? "Todo erstellt. Ohne Zeitpunkt findest du es im Todo-Dump."
       : "Habit erstellt. Es erscheint ab seinem Startdatum an fälligen Tagen.";
   await loadToday(false);
+  creationOpen.value = false;
 }
 
 onMounted(() => loadToday());
 </script>
 
 <template>
-  <main class="today-view">
+  <main ref="page" class="today-view">
+    <CreateButton
+      label="Eintrag erstellen"
+      :disabled="
+        isLoading ||
+        editorBusy ||
+        updatingKeys.length > 0 ||
+        editingTarget !== null
+      "
+      @click="openCreation"
+    />
     <header class="today-view__header">
       <div>
         <p class="today-view__eyebrow">Tagesplan</p>
@@ -227,16 +241,6 @@ onMounted(() => loadToday());
       </div>
 
       <div class="today-view__header-actions">
-        <CreateButton
-          label="Eintrag erstellen"
-          :disabled="
-            isLoading ||
-            editorBusy ||
-            updatingKeys.length > 0 ||
-            editingTarget !== null
-          "
-          @click="openCreation"
-        />
         <button
           class="today-view__refresh"
           type="button"
@@ -258,11 +262,12 @@ onMounted(() => loadToday());
       {{ creationMessage }}
     </p>
 
-    <PlannerItemEditor
+    <EditItemDialog
       v-if="editingTarget"
       :key="`${editingTarget.kind}-${editingTarget.entityId}`"
       :kind="editingTarget.kind"
       :entity-id="editingTarget.entityId"
+      :return-focus="listFocus.returnFocus"
       @busy="editorBusy = $event"
       @changed="onEditorChanged"
       @close="closeEditing"
@@ -293,6 +298,7 @@ onMounted(() => loadToday());
           <PlannerItem
             v-for="item in overdueItems"
             :key="getItemKey(item)"
+            :data-focus-key="getItemKey(item)"
             :item="item"
             :is-updating="isUpdating(item)"
             @toggle="toggleItem"
@@ -312,6 +318,7 @@ onMounted(() => loadToday());
           <PlannerItem
             v-for="item in openItems"
             :key="getItemKey(item)"
+            :data-focus-key="getItemKey(item)"
             :item="item"
             :is-updating="isUpdating(item)"
             @toggle="toggleItem"
@@ -331,6 +338,7 @@ onMounted(() => loadToday());
           <PlannerItem
             v-for="item in resolvedItems"
             :key="getItemKey(item)"
+            :data-focus-key="getItemKey(item)"
             :item="item"
             :is-updating="isUpdating(item)"
             @toggle="toggleItem"
@@ -360,7 +368,7 @@ onMounted(() => loadToday());
 .today-view {
   width: min(100% - 2rem, 46rem);
   margin: 0 auto;
-  padding: 2rem 0 4rem;
+  padding: 2rem 0 calc(6.5rem + env(safe-area-inset-bottom, 0px));
 }
 
 .today-view__header {

@@ -472,9 +472,49 @@ describe("TodoDumpView creation flow", () => {
     const wrapper = mount(TodoDumpView);
     await flushPromises();
     await wrapper.get('button[aria-label="Todo erstellen"]').trigger("click");
-    await wrapper.get(".create-dialog__close").trigger("click");
+    await wrapper.get(".modal-dialog__close").trigger("click");
     expect(wrapper.find("dialog").exists()).toBe(false);
     expect(createTodo).not.toHaveBeenCalled();
     expect(getTodosMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a focused modal and returns to the row on cancel", async () => {
+    getTodosMock.mockResolvedValueOnce([makeTodo()]);
+    const wrapper = mount(TodoDumpView, { attachTo: document.body });
+    await flushPromises();
+    const button = wrapper.get<HTMLButtonElement>("[data-edit-button]");
+    button.element.focus();
+    await button.trigger("click");
+    await flushPromises();
+    expect(document.activeElement).toBe(
+      wrapper.get('dialog input[name="editTitle"]').element,
+    );
+    await wrapper.get(".modal-dialog__close").trigger("click");
+    await flushPromises();
+    expect(document.activeElement).toBe(
+      wrapper.get('[data-todo-id="1"] [data-edit-button]').element,
+    );
+    expect(updateTodoMock).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+  it("returns to the neighbouring edit button after deletion", async () => {
+    getTodosMock
+      .mockResolvedValueOnce([
+        makeTodo(),
+        makeTodo({ id: 2, title: "Zweites Todo" }),
+      ])
+      .mockResolvedValueOnce([makeTodo({ id: 2, title: "Zweites Todo" })]);
+    const wrapper = mount(TodoDumpView, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.get('[data-todo-id="1"] [data-edit-button]').trigger("click");
+    await flushPromises();
+    await wrapper.get('[data-test="dump-request-delete"]').trigger("click");
+    await wrapper.get('[data-test="dump-confirm-delete"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find("dialog").exists()).toBe(false);
+    expect(document.activeElement).toBe(
+      wrapper.get('[data-todo-id="2"] [data-edit-button]').element,
+    );
+    wrapper.unmount();
   });
 });
