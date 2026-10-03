@@ -50,3 +50,9 @@ export type ChangeHabitScheduleInput = {
   effectiveFrom?: string;
   schedule: HabitScheduleRule;
 };
+
+export type CreateHabitInput = {
+  title: string;
+  startDate?: string;
+  schedule: HabitScheduleRule;
+};

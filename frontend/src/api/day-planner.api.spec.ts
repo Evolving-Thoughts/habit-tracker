@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { changeHabitSchedule, updateHabit } from "./day-planner.api";
+import {
+  changeHabitSchedule,
+  createHabit,
+  updateHabit,
+} from "./day-planner.api";
 const fetchMock = vi.fn<typeof fetch>();
 beforeEach(() => {
   vi.resetAllMocks();
@@ -69,5 +73,32 @@ describe("habit API contracts", () => {
     await expect(updateHabit(10, { title: "Joggen" })).rejects.toThrow(
       "Request failed with status 502",
     );
+  });
+});
+
+describe("habit creation API", () => {
+  it("posts the title and typed schedule without adding a legacy flat payload", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: 10 }), { status: 201 }),
+    );
+    await createHabit({
+      title: "Joggen",
+      schedule: {
+        type: "interval",
+        intervalDays: 2,
+        missedOccurrencePolicy: "carry_over",
+      },
+    });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toMatch(/\/habits$/);
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      title: "Joggen",
+      schedule: {
+        type: "interval",
+        intervalDays: 2,
+        missedOccurrencePolicy: "carry_over",
+      },
+    });
   });
 });

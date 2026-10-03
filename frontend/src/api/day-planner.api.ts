@@ -4,6 +4,7 @@ import type {
 } from "../types/day-planner";
 import type {
   ChangeHabitScheduleInput,
+  CreateHabitInput,
   HabitResponse,
   UpdateHabitInput,
 } from "../types/habit";
@@ -113,6 +114,13 @@ export function getTodo(todoId: number): Promise<TodoResponse> {
 export function deleteTodo(todoId: number): Promise<void> {
   return request<void>(`/todos/${todoId}`, {
     method: "DELETE",
+  });
+}
+
+export function createHabit(input: CreateHabitInput): Promise<HabitResponse> {
+  return request<HabitResponse>("/habits", {
+    method: "POST",
+    body: JSON.stringify(input),
   });
 }
 

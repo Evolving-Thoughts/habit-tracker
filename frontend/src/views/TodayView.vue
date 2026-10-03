@@ -5,7 +5,8 @@ import {
   updateOccurrenceStatus,
   updateTodoCompletion,
 } from "../api/day-planner.api";
-import CreateTodoForm from "../components/CreateTodoForm.vue";
+import CreateButton from "../components/CreateButton.vue";
+import CreateItemDialog from "../components/CreateItemDialog.vue";
 import PlannerItem from "../components/PlannerItem.vue";
 import PlannerItemEditor from "../components/PlannerItemEditor.vue";
 import type {
@@ -28,6 +29,8 @@ const updatingKeys = ref<string[]>([]);
 
 const editingTarget = ref<EditingTarget | null>(null);
 const editorBusy = ref(false);
+const creationOpen = ref(false);
+const creationMessage = ref<string | null>(null);
 
 const formattedDate = computed(() => {
   if (!planner.value) {
@@ -187,6 +190,26 @@ async function onEditorChanged(): Promise<void> {
   await loadToday(false);
 }
 
+function openCreation(): void {
+  if (
+    isLoading.value ||
+    editorBusy.value ||
+    updatingKeys.value.length ||
+    editingTarget.value
+  )
+    return;
+  creationMessage.value = null;
+  creationOpen.value = true;
+}
+async function onCreated(kind: "todo" | "habit"): Promise<void> {
+  creationOpen.value = false;
+  creationMessage.value =
+    kind === "todo"
+      ? "Todo erstellt. Ohne Zeitpunkt findest du es im Todo-Dump."
+      : "Habit erstellt. Es erscheint ab seinem Startdatum an fälligen Tagen.";
+  await loadToday(false);
+}
+
 onMounted(() => loadToday());
 </script>
 
@@ -203,17 +226,37 @@ onMounted(() => loadToday());
         </p>
       </div>
 
-      <button
-        class="today-view__refresh"
-        type="button"
-        :disabled="isLoading || editorBusy"
-        @click="loadToday()"
-      >
-        Aktualisieren
-      </button>
+      <div class="today-view__header-actions">
+        <CreateButton
+          label="Eintrag erstellen"
+          :disabled="
+            isLoading ||
+            editorBusy ||
+            updatingKeys.length > 0 ||
+            editingTarget !== null
+          "
+          @click="openCreation"
+        />
+        <button
+          class="today-view__refresh"
+          type="button"
+          :disabled="isLoading || editorBusy"
+          @click="loadToday()"
+        >
+          Aktualisieren
+        </button>
+      </div>
     </header>
 
-    <CreateTodoForm @created="loadToday(false)" />
+    <CreateItemDialog
+      v-if="creationOpen"
+      mode="choose"
+      @close="creationOpen = false"
+      @created="onCreated"
+    />
+    <p v-if="creationMessage" class="today-view__success" role="status">
+      {{ creationMessage }}
+    </p>
 
     <PlannerItemEditor
       v-if="editingTarget"
@@ -301,6 +344,19 @@ onMounted(() => loadToday());
 </template>
 
 <style scoped>
+.today-view__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+.today-view__success {
+  color: #146c43;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin: 0 0 1.5rem;
+}
+
 .today-view {
   width: min(100% - 2rem, 46rem);
   margin: 0 auto;
@@ -407,6 +463,9 @@ onMounted(() => loadToday());
 }
 
 @media (max-width: 32rem) {
+  .today-view__header {
+    flex-wrap: wrap;
+  }
   .today-view {
     width: min(100% - 1rem, 46rem);
     padding-top: 1rem;

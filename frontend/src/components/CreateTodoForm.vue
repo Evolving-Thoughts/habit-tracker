@@ -3,8 +3,11 @@ import { ref } from "vue";
 import { createTodo } from "../api/day-planner.api";
 import type { CreateTodoInput } from "../types/todo";
 
+defineProps<{ embedded?: boolean }>();
+
 const emit = defineEmits<{
   created: [];
+  busy: [value: boolean];
 }>();
 
 const title = ref("");
@@ -87,6 +90,7 @@ async function submit(): Promise<void> {
     const input = buildInput();
 
     isSubmitting.value = true;
+    emit("busy", true);
 
     await createTodo(input);
 
@@ -105,13 +109,18 @@ async function submit(): Promise<void> {
         : "Das Todo konnte nicht erstellt werden.";
   } finally {
     isSubmitting.value = false;
+    emit("busy", false);
   }
 }
 </script>
 
 <template>
-  <section class="create-todo" aria-labelledby="create-todo-heading">
-    <h2 id="create-todo-heading">Neues Todo</h2>
+  <section
+    class="create-todo"
+    :class="{ 'create-todo--embedded': embedded }"
+    :aria-labelledby="embedded ? undefined : 'create-todo-heading'"
+  >
+    <h2 v-if="!embedded" id="create-todo-heading">Neues Todo</h2>
 
     <form novalidate @submit.prevent="submit">
       <fieldset :disabled="isSubmitting">
@@ -186,6 +195,12 @@ async function submit(): Promise<void> {
 </template>
 
 <style scoped>
+.create-todo.create-todo--embedded {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .create-todo {
   margin-bottom: 2rem;
   padding: 1rem;
@@ -208,6 +223,7 @@ async function submit(): Promise<void> {
 
 .create-todo__field {
   display: grid;
+  align-content: start;
   gap: 0.375rem;
   min-width: 0;
 }
@@ -220,6 +236,7 @@ async function submit(): Promise<void> {
 
 .create-todo__field input {
   width: 100%;
+  height: 3rem;
   min-width: 0;
   padding: 0.7rem;
   border: 1px solid #bfc7d4;
@@ -231,7 +248,7 @@ async function submit(): Promise<void> {
 .create-todo__field small,
 .create-todo__hint {
   color: #697386;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   line-height: 1.5;
 }
 
@@ -248,6 +265,7 @@ async function submit(): Promise<void> {
   align-items: center;
   margin-top: 1rem;
   font-size: 0.875rem;
+  min-height: 2.75rem;
 }
 
 .create-todo button {
