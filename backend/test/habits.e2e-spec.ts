@@ -584,7 +584,7 @@ describe('Habit domain and day planner (e2e)', () => {
       expect(before.status).toBe(HabitOccurrenceStatus.PENDING);
 
       await scheduling.generateForHabit(
-        '11111111-1111-4111-8111-111111111111',
+        TEST_USER,
         habit.id,
         new Date(midnightInTimeZone(tomorrow).getTime() + 1000),
       );
