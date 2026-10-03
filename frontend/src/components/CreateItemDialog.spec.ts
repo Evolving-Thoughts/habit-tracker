@@ -127,3 +127,11 @@ describe("CreateItemDialog", () => {
     ).toBe(false);
   });
 });
+
+it("opens Habit management directly in Habit mode without a Todo choice", async () => {
+  const wrapper = mount(CreateItemDialog, { props: { mode: "habit" } });
+  await flushPromises();
+  expect(wrapper.find(".create-habit").exists()).toBe(true);
+  expect(wrapper.find('[data-test="choose-todo"]').exists()).toBe(false);
+  expect(wrapper.text()).not.toContain("Zurück zur Auswahl");
+});

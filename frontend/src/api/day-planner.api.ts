@@ -124,6 +124,10 @@ export function createHabit(input: CreateHabitInput): Promise<HabitResponse> {
   });
 }
 
+export function getHabits(): Promise<HabitResponse[]> {
+  return request<HabitResponse[]>("/habits");
+}
+
 export function getHabit(habitId: number): Promise<HabitResponse> {
   return request<HabitResponse>(`/habits/${habitId}`);
 }

@@ -4,7 +4,7 @@ import CreateHabitForm from "./CreateHabitForm.vue";
 import CreateTodoForm from "./CreateTodoForm.vue";
 
 type CreationStep = "choose" | "todo" | "habit";
-const props = defineProps<{ mode: "choose" | "todo" }>();
+const props = defineProps<{ mode: CreationStep }>();
 const emit = defineEmits<{ close: []; created: [kind: "todo" | "habit"] }>();
 const step = ref<CreationStep>(props.mode);
 const busy = ref(false);
