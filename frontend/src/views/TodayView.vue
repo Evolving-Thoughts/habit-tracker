@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import {
   getToday,
   updateOccurrenceStatus,
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { useListFocus } from "../composables/useListFocus";
+import { notifyTargetChange } from "../composables/useTimer";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import PlannerItem from "../components/PlannerItem.vue";
@@ -94,7 +95,9 @@ function stopUpdating(item: DayPlannerItem): void {
   );
 }
 
+let loadGeneration = 0;
 async function loadToday(showPageLoading = true): Promise<void> {
+  const generation = ++loadGeneration;
   if (showPageLoading) {
     isLoading.value = true;
   }
@@ -102,16 +105,17 @@ async function loadToday(showPageLoading = true): Promise<void> {
   errorMessage.value = null;
 
   try {
-    planner.value = await getToday();
+    const result = await getToday();
+    if (generation !== loadGeneration) return;
+    planner.value = result;
   } catch (error: unknown) {
+    if (generation !== loadGeneration) return;
     errorMessage.value =
       error instanceof Error
         ? error.message
         : "Ein unbekannter Fehler ist aufgetreten.";
   } finally {
-    if (showPageLoading) {
-      isLoading.value = false;
-    }
+    if (generation === loadGeneration) isLoading.value = false;
   }
 }
 
@@ -133,6 +137,7 @@ async function toggleItem(item: DayPlannerItem): Promise<void> {
       );
     }
 
+    notifyTargetChange();
     await loadToday(false);
   } catch (error: unknown) {
     errorMessage.value =
@@ -155,6 +160,7 @@ async function skipHabit(item: DayPlannerHabitItem): Promise<void> {
   try {
     await updateOccurrenceStatus(item.occurrenceId, "skipped");
 
+    notifyTargetChange();
     await loadToday(false);
   } catch (error: unknown) {
     errorMessage.value =
@@ -190,6 +196,7 @@ function closeEditing(): void {
 }
 
 async function onEditorChanged(): Promise<void> {
+  notifyTargetChange();
   await loadToday(false);
   closeEditing();
 }
@@ -210,11 +217,25 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
     kind === "todo"
       ? "Todo erstellt. Ohne Zeitpunkt findest du es im Todo-Dump."
       : "Habit erstellt. Es erscheint ab seinem Startdatum an fälligen Tagen.";
+  notifyTargetChange();
   await loadToday(false);
   creationOpen.value = false;
 }
 
+function timerChanged(): void {
+  if (
+    !editorBusy.value &&
+    !editingTarget.value &&
+    !creationOpen.value &&
+    updatingKeys.value.length === 0
+  )
+    void loadToday(false);
+}
 onMounted(() => loadToday());
+onMounted(() => window.addEventListener("timer-data-changed", timerChanged));
+onUnmounted(() =>
+  window.removeEventListener("timer-data-changed", timerChanged),
+);
 </script>
 
 <template>

@@ -10,7 +10,7 @@ export type DayPlannerTodoItem = {
   title: string;
   status: TodoStatus;
   scheduledDate: string;
-  scheduledAt: string;
+  scheduledAt: string | null;
   completedAt: string | null;
   plannedDurationMinutes: number | null;
   isFixed: boolean;
@@ -20,6 +20,7 @@ export type DayPlannerTodoItem = {
 export type DayPlannerHabitItem = {
   type: "habit";
   occurrenceId: number;
+  plannedDurationMinutes: number | null;
   habitId: number;
   title: string;
   status: HabitOccurrenceStatus;

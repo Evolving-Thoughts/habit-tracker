@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
+import TimerProvider from "./components/TimerProvider.vue";
 import HabitsView from "./views/HabitsView.vue";
 import TodayView from "./views/TodayView.vue";
 import TodoDumpView from "./views/TodoDumpView.vue";
@@ -89,7 +90,7 @@ const activeView = ref<"today" | "todo-dump" | "habits">("today");
     "
     @link-cleared="clearLink"
   />
-  <template v-else>
+  <TimerProvider v-else :key="user.id">
     <nav class="app-navigation" aria-label="Ansichten">
       <button
         type="button"
@@ -120,7 +121,7 @@ const activeView = ref<"today" | "todo-dump" | "habits">("today");
     <TodayView v-if="activeView === 'today'" />
     <TodoDumpView v-else-if="activeView === 'todo-dump'" />
     <HabitsView v-else />
-  </template>
+  </TimerProvider>
 </template>
 
 <style scoped>

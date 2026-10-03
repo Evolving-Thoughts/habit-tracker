@@ -134,6 +134,7 @@ async function loadEntity(): Promise<void> {
       title.value = habit.title;
       isActive.value = habit.isActive;
       loadedHabit.value = habit;
+      duration.value = habit.plannedDurationMinutes ?? "";
       const version = habit.currentSchedule ?? habit.upcomingSchedule;
       if (version) fillSchedule(version.schedule);
     }
@@ -245,6 +246,15 @@ function buildHabitInput(): UpdateHabitInput {
   if (value !== loadedHabit.value?.title) input.title = value;
   if (isActive.value !== loadedHabit.value?.isActive)
     input.isActive = isActive.value;
+  const minutes = String(duration.value).trim()
+    ? positiveInteger(
+        duration.value,
+        "Bitte wähle 1 bis 10080 ganze Minuten.",
+        10080,
+      )
+    : null;
+  if (minutes !== (loadedHabit.value?.plannedDurationMinutes ?? null))
+    input.plannedDurationMinutes = minutes;
   return input;
 }
 
@@ -431,6 +441,20 @@ onMounted(loadEntity);
         </template>
 
         <template v-else>
+          <label for="habit-edit-duration"
+            >Standarddauer in Minuten · optional</label
+          ><input
+            id="habit-edit-duration"
+            v-model="duration"
+            name="duration"
+            type="number"
+            min="1"
+            max="10080"
+            step="1"
+          /><small
+            >Die Standarddauer gilt für Ausführungen ohne eigene Dauer. Eine
+            Timeränderung gilt nur für die konkrete Ausführung.</small
+          >
           <label class="item-editor__checkbox">
             <input v-model="isActive" name="isActive" type="checkbox" />
             Habit aktiv

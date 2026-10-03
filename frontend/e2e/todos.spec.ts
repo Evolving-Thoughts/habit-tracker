@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { createTodo, today, visit, list } from "./helpers";
+import { API_URL } from "./environment";
 
 test("Todo-Dump: create, persist, rename, complete/reopen and confirmed delete", async ({
   page,
@@ -33,6 +34,13 @@ test("Todo-Dump: create, persist, rename, complete/reopen and confirmed delete",
     .getByRole("button", { name: "TypeScript lernen erledigen", exact: true })
     .click();
   await expect(
+    page.getByRole("heading", { name: "TypeScript lernen", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Heute", exact: true })
+    .click();
+  await expect(
     page.getByRole("button", {
       name: "TypeScript lernen wieder öffnen",
       exact: true,
@@ -41,6 +49,8 @@ test("Todo-Dump: create, persist, rename, complete/reopen and confirmed delete",
   expect((await list(request, "todos"))[0]).toMatchObject({
     title: "TypeScript lernen",
     completed: true,
+    scheduledAt: null,
+    completedAt: expect.any(String),
     plannedDurationMinutes: 30,
   });
   await page
@@ -48,6 +58,15 @@ test("Todo-Dump: create, persist, rename, complete/reopen and confirmed delete",
       name: "TypeScript lernen wieder öffnen",
       exact: true,
     })
+    .click();
+  // click() waits for the DOM action, not for the asynchronous PATCH/reload.
+  // An unscheduled reopened Todo must disappear from Today before the next step.
+  await expect(
+    page.getByRole("heading", { name: "TypeScript lernen", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Todo-Dump", exact: true })
     .click();
   await page
     .getByRole("button", { name: "TypeScript lernen bearbeiten", exact: true })
@@ -150,4 +169,72 @@ test("invalid Todo creation stays open without writing; Escape returns to plus",
   await page.keyboard.press("Escape");
   await expect(dialog).not.toBeVisible();
   await expect(page.locator(".create-button")).toBeFocused();
+});
+
+test("switching back to Dump before reopen finishes refreshes it after the write", async ({
+  page,
+  request,
+}) => {
+  const created = await request.post(`${API_URL}/todos`, {
+    data: { title: "Verzögertes Todo" },
+  });
+  expect(created.status()).toBe(201);
+  const todo = (await created.json()) as { id: number };
+  expect(
+    (
+      await request.patch(`${API_URL}/todos/${todo.id}`, {
+        data: { completed: true },
+      })
+    ).status(),
+  ).toBe(200);
+  await visit(page, "Heute");
+  let release!: () => void;
+  let entered!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  await page.route(`**/todos/${todo.id}`, async (route) => {
+    if (route.request().method() !== "PATCH") {
+      await route.continue();
+      return;
+    }
+    entered();
+    await gate;
+    await route.continue();
+  });
+  try {
+    await page
+      .getByRole("button", {
+        name: "Verzögertes Todo wieder öffnen",
+        exact: true,
+      })
+      .click();
+    await started;
+    await page
+      .getByRole("navigation")
+      .getByRole("button", { name: "Todo-Dump", exact: true })
+      .click();
+    // Prove that the newly mounted Dump first reads the old completed state.
+    await expect(
+      page.getByText("Dein Todo-Dump ist leer.", { exact: true }),
+    ).toBeVisible();
+    release();
+    await expect(
+      page.getByRole("button", {
+        name: "Verzögertes Todo bearbeiten",
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect((await list(request, "todos"))[0]).toMatchObject({
+      completed: false,
+      completedAt: null,
+      scheduledAt: null,
+    });
+  } finally {
+    release();
+    await page.unrouteAll({ behavior: "wait" });
+  }
 });

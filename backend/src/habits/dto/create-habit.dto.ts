@@ -4,6 +4,10 @@ import {
   IsDefined,
   IsNotEmpty,
   IsString,
+  IsOptional,
+  IsInt,
+  Min,
+  Max,
   Matches,
   MaxLength,
   ValidateIf,
@@ -12,6 +16,11 @@ import {
 import { ScheduleDto } from './schedule.dto';
 
 export class CreateHabitDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(10080)
+  readonly plannedDurationMinutes?: number | null;
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)

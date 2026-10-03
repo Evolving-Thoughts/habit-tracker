@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import {
   deleteTodo,
   getTodos,
@@ -7,6 +7,8 @@ import {
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { useListFocus } from "../composables/useListFocus";
+import ItemPlayButton from "../components/ItemPlayButton.vue";
+import { notifyTargetChange } from "../composables/useTimer";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import ModalDialog from "../components/ModalDialog.vue";
@@ -39,38 +41,31 @@ const openTodos = computed(() => {
   return todos.value.filter((todo) => !todo.completed);
 });
 
-const completedTodos = computed(() => {
-  return todos.value.filter((todo) => todo.completed);
-});
-
 const groups = computed(() => [
-  {
-    key: "open",
-    title: "Offen",
-    items: openTodos.value,
-  },
-  {
-    key: "completed",
-    title: "Erledigt",
-    items: completedTodos.value,
-  },
+  { key: "open", title: "Offen", items: openTodos.value },
 ]);
 
+let loadGeneration = 0;
 async function loadTodos(showPageLoading = true): Promise<void> {
+  const generation = ++loadGeneration;
   if (showPageLoading) isLoading.value = true;
   errorMessage.value = null;
 
   try {
     const allTodos = await getTodos();
 
-    todos.value = allTodos.filter((todo) => todo.scheduledAt === null);
+    if (generation !== loadGeneration) return;
+    todos.value = allTodos.filter(
+      (todo) => todo.scheduledAt === null && !todo.completed,
+    );
   } catch (error: unknown) {
+    if (generation !== loadGeneration) return;
     errorMessage.value =
       error instanceof Error
         ? error.message
         : "Die Todos konnten nicht geladen werden.";
   } finally {
-    if (showPageLoading) isLoading.value = false;
+    if (generation === loadGeneration) isLoading.value = false;
   }
 }
 
@@ -85,6 +80,9 @@ async function toggleTodo(todo: TodoResponse): Promise<void> {
 
   try {
     await updateTodoCompletion(todo.id, !todo.completed);
+    notifyTargetChange();
+    successMessage.value =
+      "Erledigt. Das Todo erscheint in Heute unter Abgeschlossen.";
 
     await loadTodos();
   } catch (error: unknown) {
@@ -196,6 +194,7 @@ async function saveTodo(): Promise<void> {
     isSaving.value = true;
 
     await updateTodo(todoId, input);
+    notifyTargetChange();
 
     successMessage.value =
       input.scheduledAt === null
@@ -227,6 +226,7 @@ async function removeSelectedTodo(): Promise<void> {
 
   try {
     await deleteTodo(todoId);
+    notifyTargetChange();
 
     successMessage.value = "Todo gelöscht.";
 
@@ -254,7 +254,14 @@ async function onCreated(): Promise<void> {
   creationOpen.value = false;
 }
 
+function timerChanged(): void {
+  if (!(isSaving.value || selectedTodo.value)) void loadTodos(false);
+}
 onMounted(loadTodos);
+onMounted(() => window.addEventListener("timer-data-changed", timerChanged));
+onUnmounted(() =>
+  window.removeEventListener("timer-data-changed", timerChanged),
+);
 </script>
 
 <template>
@@ -473,6 +480,15 @@ onMounted(loadTodos);
 
                   <span v-if="todo.completed"> Erledigt </span>
                 </div>
+                <ItemPlayButton
+                  kind="todo"
+                  :target-id="todo.id"
+                  :title="todo.title"
+                  :duration="todo.plannedDurationMinutes"
+                  :eligible="!todo.completed"
+                  :disabled="isBusy"
+                  class="dump-item__play"
+                />
               </div>
 
               <button
@@ -740,6 +756,9 @@ onMounted(loadTodos);
   overflow-wrap: anywhere;
 }
 
+.dump-item__play {
+  margin-top: 0.75rem;
+}
 .dump-item__metadata {
   display: flex;
   flex-wrap: wrap;

@@ -18,6 +18,7 @@ defineProps<{ embedded?: boolean }>();
 const emit = defineEmits<{ created: []; busy: [value: boolean] }>();
 const title = ref("");
 const startDate = ref("");
+const duration = ref<string | number>("");
 const scheduleType = ref<HabitScheduleType>("interval");
 const intervalDays = ref<string | number>(1);
 const weeklyTarget = ref<string | number>(3);
@@ -93,6 +94,15 @@ function buildInput(): CreateHabitInput {
   }
   return {
     title: trimmedTitle,
+    ...(String(duration.value).trim()
+      ? {
+          plannedDurationMinutes: integer(
+            duration.value,
+            "Bitte wähle 1 bis 10080 ganze Minuten.",
+            10080,
+          ),
+        }
+      : {}),
     ...(startDate.value ? { startDate: startDate.value } : {}),
     schedule,
   };
@@ -107,6 +117,7 @@ async function submit(): Promise<void> {
     await createHabit(input);
     title.value = "";
     startDate.value = "";
+    duration.value = "";
     emit("created");
   } catch (error: unknown) {
     errorMessage.value =
@@ -157,6 +168,21 @@ async function submit(): Promise<void> {
               >Gewählt: {{ formatDateForGermanDisplay(startDate) }}.</template
             >
           </small>
+        </div>
+        <div class="create-habit__field">
+          <label for="habit-duration">Standarddauer in Minuten · optional</label
+          ><input
+            id="habit-duration"
+            v-model="duration"
+            name="duration"
+            type="number"
+            min="1"
+            max="10080"
+            step="1"
+          /><small
+            >Mit einer Dauer kannst du fällige Ausführungen direkt per Timer
+            starten.</small
+          >
         </div>
         <div class="create-habit__field">
           <label for="habit-schedule-type">Habit-Art</label>

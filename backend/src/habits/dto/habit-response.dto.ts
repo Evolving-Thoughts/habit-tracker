@@ -29,6 +29,9 @@ export type ScheduleVersionResponse = {
 };
 
 export type HabitResponseDto = {
+  plannedDurationMinutes: number | null;
+  timerOccurrenceId: number | null;
+  timerDurationMinutes: number | null;
   id: number;
   title: string;
   isActive: boolean;

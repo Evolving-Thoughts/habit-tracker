@@ -31,6 +31,7 @@ function makeHabit(
 ): DayPlannerHabitItem {
   return {
     type: "habit",
+    plannedDurationMinutes: null,
     occurrenceId: 20,
     habitId: 10,
     title: "Joggen",
@@ -63,6 +64,22 @@ describe("PlannerItem", () => {
     expect(wrapper.get(".planner-item__status").text()).toBe("Offen");
   });
 
+  it("shows actual completion time for an unscheduled Todo without a fake planning time or Play", () => {
+    const wrapper = mount(PlannerItem, {
+      props: {
+        item: makeTodo({
+          scheduledAt: null,
+          completedAt: "2026-10-02T18:30:00Z",
+          status: "completed",
+        }),
+        isUpdating: false,
+      },
+    });
+    expect(wrapper.text()).toContain("Erledigt um 20:30");
+    expect(
+      wrapper.find('[aria-label="Timer für NestJS lernen starten"]').exists(),
+    ).toBe(false);
+  });
   it("emits toggle with the original item", async () => {
     const item = makeTodo();
 

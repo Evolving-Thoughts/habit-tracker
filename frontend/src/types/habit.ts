@@ -37,11 +37,15 @@ export type HabitResponse = {
   id: number;
   title: string;
   isActive: boolean;
+  plannedDurationMinutes: number | null;
+  timerOccurrenceId: number | null;
+  timerDurationMinutes: number | null;
   currentSchedule: ScheduleVersionResponse | null;
   upcomingSchedule: ScheduleVersionResponse | null;
 };
 
 export type UpdateHabitInput = {
+  plannedDurationMinutes?: number | null;
   title?: string;
   isActive?: boolean;
 };
@@ -52,6 +56,7 @@ export type ChangeHabitScheduleInput = {
 };
 
 export type CreateHabitInput = {
+  plannedDurationMinutes?: number | null;
   title: string;
   startDate?: string;
   schedule: HabitScheduleRule;

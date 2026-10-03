@@ -78,6 +78,50 @@ describe("TodoDumpView", () => {
     expect(wrapper.findAll("[data-todo-id]")).toHaveLength(1);
   });
 
+  it("excludes completed Dump todos and removes a newly completed todo", async () => {
+    getTodosMock
+      .mockResolvedValueOnce([
+        makeTodo(),
+        makeTodo({
+          id: 2,
+          title: "Schon erledigt",
+          completed: true,
+          completedAt: "2026-10-02T10:00:00Z",
+        }),
+      ])
+      .mockResolvedValueOnce([
+        makeTodo({ completed: true, completedAt: "2026-10-02T10:00:00Z" }),
+      ]);
+    const wrapper = mountView();
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("Schon erledigt");
+    await wrapper
+      .get('button[aria-label="NestJS lernen erledigen"]')
+      .trigger("click");
+    await flushPromises();
+    expect(wrapper.findAll("[data-todo-id]")).toHaveLength(0);
+    expect(wrapper.text()).toContain("Heute unter Abgeschlossen");
+  });
+
+  it("keeps the latest refreshed state when an older initial read settles later", async () => {
+    let finishOld!: (value: TodoResponse[]) => void;
+    getTodosMock
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishOld = resolve;
+        }),
+      )
+      .mockResolvedValueOnce([makeTodo()]);
+    const wrapper = mountView();
+    await flushPromises();
+    window.dispatchEvent(new Event("timer-data-changed"));
+    await flushPromises();
+    expect(wrapper.findAll("[data-todo-id]")).toHaveLength(1);
+    expect(wrapper.text()).not.toContain("Todos werden geladen");
+    finishOld([makeTodo({ completed: true })]);
+    await flushPromises();
+    expect(wrapper.findAll("[data-todo-id]")).toHaveLength(1);
+  });
   it("shows an empty state", async () => {
     const wrapper = mountView();
 
@@ -100,10 +144,7 @@ describe("TodoDumpView", () => {
     expect(wrapper.text()).not.toContain("Dein Todo-Dump ist leer.");
   });
 
-  it.each([
-    [false, true, "erledigen"],
-    [true, false, "wieder öffnen"],
-  ] as const)(
+  it.each([[false, true, "erledigen"]] as const)(
     "changes completion from %s to %s",
     async (completed, target, action) => {
       getTodosMock.mockResolvedValue([makeTodo({ completed })]);

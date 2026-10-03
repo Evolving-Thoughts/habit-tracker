@@ -12,6 +12,9 @@ const habit: HabitResponse = {
   id: 10,
   title: "Joggen",
   isActive: true,
+  plannedDurationMinutes: null,
+  timerOccurrenceId: null,
+  timerDurationMinutes: null,
   currentSchedule: null,
   upcomingSchedule: null,
 };

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import ItemPlayButton from "./ItemPlayButton.vue";
 import {
   formatDateForGermanDisplay,
   formatTimeForGermanDisplay,
@@ -107,24 +108,42 @@ function skip(): void {
           {{ formatDateForGermanDisplay(item.scheduledDate) }}
         </span>
 
-        <span v-if="item.type === 'todo'">
+        <span
+          v-if="
+            item.type === 'todo' &&
+            item.status === 'pending' &&
+            item.scheduledAt
+          "
+        >
           {{ formatTimeForGermanDisplay(item.scheduledAt) }}
         </span>
 
-        <span
-          v-if="item.type === 'todo' && item.plannedDurationMinutes !== null"
-        >
+        <span v-if="item.plannedDurationMinutes != null">
           {{ item.plannedDurationMinutes }} Min.
         </span>
 
+        <span
+          v-if="
+            item.type === 'todo' &&
+            item.status === 'completed' &&
+            item.completedAt
+          "
+          >Erledigt um {{ formatTimeForGermanDisplay(item.completedAt) }}</span
+        >
         <span v-if="item.type === 'todo' && item.isFixed"> Fester Termin </span>
       </div>
 
-      <div
-        v-if="item.type === 'habit' && item.status === 'pending'"
-        class="planner-item__actions"
-      >
+      <div v-if="item.status === 'pending'" class="planner-item__actions">
+        <ItemPlayButton
+          :kind="item.type === 'todo' ? 'todo' : 'occurrence'"
+          :target-id="item.type === 'todo' ? item.todoId : item.occurrenceId"
+          :title="item.title"
+          :duration="item.plannedDurationMinutes"
+          :eligible="true"
+          :disabled="isUpdating"
+        />
         <button
+          v-if="item.type === 'habit'"
           class="planner-item__skip-button"
           type="button"
           :disabled="isUpdating"
@@ -282,6 +301,9 @@ function skip(): void {
 }
 
 .planner-item__actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
   margin-top: 0.75rem;
 }
 

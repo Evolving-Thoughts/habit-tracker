@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { getHabits } from "../api/day-planner.api";
 import { useListFocus } from "../composables/useListFocus";
+import ItemPlayButton from "../components/ItemPlayButton.vue";
+import { notifyTargetChange } from "../composables/useTimer";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
@@ -33,19 +35,24 @@ const groups = computed(() => [
     items: habits.value.filter((habit) => !habit.isActive),
   },
 ]);
+let loadGeneration = 0;
 async function loadHabits(showPageLoading = true): Promise<void> {
+  const generation = ++loadGeneration;
   if (showPageLoading) isLoading.value = true;
   errorMessage.value = null;
   try {
-    habits.value = await getHabits();
+    const result = await getHabits();
+    if (generation !== loadGeneration) return;
+    habits.value = result;
     hasLoaded.value = true;
   } catch (error: unknown) {
+    if (generation !== loadGeneration) return;
     errorMessage.value =
       error instanceof Error
         ? error.message
         : "Die Habits konnten nicht geladen werden.";
   } finally {
-    if (showPageLoading) isLoading.value = false;
+    if (generation === loadGeneration) isLoading.value = false;
   }
 }
 function openCreation(): void {
@@ -65,6 +72,7 @@ function closeEditing(): void {
 }
 async function onEditorChanged(): Promise<void> {
   successMessage.value = "Habit-Liste aktualisiert.";
+  notifyTargetChange();
   await loadHabits(false);
   closeEditing();
 }
@@ -73,7 +81,14 @@ async function onCreated(): Promise<void> {
   await loadHabits(false);
   creationOpen.value = false;
 }
+function timerChanged(): void {
+  if (editingId.value === null) void loadHabits(false);
+}
 onMounted(loadHabits);
+onMounted(() => window.addEventListener("timer-data-changed", timerChanged));
+onUnmounted(() =>
+  window.removeEventListener("timer-data-changed", timerChanged),
+);
 </script>
 
 <template>
@@ -196,6 +211,31 @@ onMounted(loadHabits);
                   </svg>
                 </button>
               </div>
+              <div
+                v-if="
+                  habit.plannedDurationMinutes || habit.timerDurationMinutes
+                "
+                class="habit-card__timer"
+              >
+                <ItemPlayButton
+                  kind="occurrence"
+                  :target-id="habit.timerOccurrenceId"
+                  :title="habit.title"
+                  :duration="
+                    habit.timerDurationMinutes ?? habit.plannedDurationMinutes
+                  "
+                  :eligible="habit.isActive && habit.timerOccurrenceId !== null"
+                  :disabled="isBusy"
+                />
+                <span
+                  >{{
+                    habit.timerDurationMinutes ?? habit.plannedDurationMinutes
+                  }}
+                  Min.<small v-if="habit.timerOccurrenceId === null"
+                    >Keine offene fällige Ausführung</small
+                  ></span
+                >
+              </div>
               <dl class="habit-card__schedules">
                 <template v-if="habit.currentSchedule">
                   <dt>Aktueller Zeitplan</dt>
@@ -245,6 +285,17 @@ onMounted(loadHabits);
 </template>
 
 <style scoped>
+.habit-card__timer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  color: #59657a;
+}
+.habit-card__timer small {
+  display: block;
+  font-size: 0.875rem;
+}
 .habits-view {
   width: min(100% - 2rem, 46rem);
   margin: 0 auto;

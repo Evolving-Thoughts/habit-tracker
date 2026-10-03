@@ -47,12 +47,16 @@ export class DayPlannerService {
 
       const firstTime =
         first.type === 'todo'
-          ? first.scheduledAt
+          ? (first.scheduledAt ??
+            first.completedAt ??
+            `${first.scheduledDate}T00:00:00Z`)
           : `${first.scheduledDate}T00:00:00.000Z`;
 
       const secondTime =
         second.type === 'todo'
-          ? second.scheduledAt
+          ? (second.scheduledAt ??
+            second.completedAt ??
+            `${second.scheduledDate}T00:00:00Z`)
           : `${second.scheduledDate}T00:00:00.000Z`;
 
       return firstTime.localeCompare(secondTime);
@@ -67,8 +71,7 @@ export class DayPlannerService {
   ): Promise<TodoEntity[]> {
     return this.todoRepository
       .createQueryBuilder('todo')
-      .where('"todo"."scheduledAt" IS NOT NULL')
-      .andWhere('"todo"."userId" = :userId', { userId })
+      .where('"todo"."userId" = :userId', { userId })
       .andWhere(
         new Brackets((query) => {
           query
@@ -94,13 +97,13 @@ export class DayPlannerService {
   }
 
   private mapTodo(todo: TodoEntity, today: string): DayPlannerTodoItemDto {
-    if (todo.scheduledAt === null) {
-      throw new Error('Expected a scheduled todo');
-    }
+    const displayInstant = todo.scheduledAt ?? todo.completedAt;
+    if (!displayInstant)
+      throw new Error('Expected a planned or completed todo');
 
     const scheduledDate = getCurrentDateInTimeZone(
       DEFAULT_TIME_ZONE,
-      todo.scheduledAt,
+      displayInstant,
     );
 
     return {
@@ -109,7 +112,7 @@ export class DayPlannerService {
       title: todo.title,
       status: todo.completed ? 'completed' : 'pending',
       scheduledDate,
-      scheduledAt: todo.scheduledAt.toISOString(),
+      scheduledAt: todo.scheduledAt?.toISOString() ?? null,
       completedAt: todo.completedAt?.toISOString() ?? null,
       plannedDurationMinutes: todo.plannedDurationMinutes,
       isFixed: todo.isFixed,
@@ -127,6 +130,9 @@ export class DayPlannerService {
 
     return {
       type: 'habit',
+      plannedDurationMinutes:
+        occurrence.plannedDurationMinutes ??
+        occurrence.habit.plannedDurationMinutes,
       occurrenceId: occurrence.id,
       habitId: occurrence.habitId,
       title: occurrence.habit.title,
