@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
+import PushSettings from "./components/PushSettings.vue";
 import TimerProvider from "./components/TimerProvider.vue";
 import HabitsView from "./views/HabitsView.vue";
 import TodayView from "./views/TodayView.vue";
@@ -115,6 +116,7 @@ const activeView = ref<"today" | "todo-dump" | "habits">("today");
         Habits
       </button>
       <button type="button" @click="signOut">Abmelden</button>
+      <PushSettings />
       <span class="account-email">{{ user.email }}</span>
     </nav>
 

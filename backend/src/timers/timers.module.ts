@@ -9,5 +9,6 @@ import { TimersService } from './timers.service';
   imports: [TypeOrmModule.forFeature([TimerEntity]), HabitsModule],
   controllers: [TimersController],
   providers: [TimerClock, TimersService],
+  exports: [TimerClock, TimersService],
 })
 export class TimersModule {}

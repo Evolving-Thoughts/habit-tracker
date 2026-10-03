@@ -63,6 +63,8 @@ export class TimerEntity {
   endsAt!: Date | null;
   @Column({ type: 'timestamptz', nullable: true })
   finishedAt!: Date | null;
+  @Column({ type: 'timestamptz', nullable: true })
+  pushHandledAt!: Date | null;
   @CreateDateColumn({ type: 'timestamptz', default: () => 'clock_timestamp()' })
   createdAt!: Date;
   @UpdateDateColumn({ type: 'timestamptz' })

@@ -74,7 +74,7 @@ describe('Synced timers and Dump completion (e2e)', () => {
   });
   async function clear() {
     await db.query(
-      'TRUNCATE TABLE timers, habit_occurrences, habit_schedule_versions, habits, todos, auth_tokens, auth_sessions, auth_rate_limits, users RESTART IDENTITY',
+      'TRUNCATE TABLE push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, auth_tokens, auth_sessions, auth_rate_limits, users RESTART IDENTITY',
     );
   }
   beforeEach(async () => {
