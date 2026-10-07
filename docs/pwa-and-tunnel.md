@@ -1,6 +1,6 @@
 # Android-PWA über einen kostenlosen HTTPS-Tunnel testen
 
-Dieser Schritt liefert eine installierbare **Online-PWA**, noch **keine Push-Meldungen** und keinen Android-Wecker. Der bestehende servergestützte Timer berechnet nach Rückkehr seine verbleibende Zeit; bei gesperrtem Handy wird JavaScript nicht zuverlässig ausgeführt. Eine Endbenachrichtigung ist ein separater nächster Schritt.
+Dieser PWA-Schritt liefert eine installierbare **Online-PWA**, keinen Android-Wecker. Timer-Web-Push ist im separaten Schritt [Timer-Push](timer-push.md) beschrieben. Der bestehende servergestützte Timer berechnet nach Rückkehr seine verbleibende Zeit; bei gesperrtem Handy wird JavaScript nicht zuverlässig ausgeführt. Eine Endbenachrichtigung ist ein separater nächster Schritt.
 
 Das Repository bleibt privat. Es wird kein Hosting-Konto, keine Domain und keine Router-Portfreigabe benötigt. Cloudflare Quick Tunnel gibt dir eine temporäre, **öffentlich erreichbare** HTTPS-Adresse. Sie ist kein Passwortschutz: Anmeldung und exakter Origin schützen die API. Nur mit Testdaten verwenden, den Tunnel danach stoppen. Das ist eine Entwicklungs-Testlösung, kein produktives Deployment.
 
@@ -96,13 +96,13 @@ HTTPS im `FRONTEND_URL` aktiviert jetzt **Secure + HttpOnly + SameSite=Strict** 
 3. Chrome-Menü öffnen und **„App installieren“** bzw. **„Zum Startbildschirm hinzufügen“** wählen. Die Bezeichnung hängt von Chrome/Android ab; ein automatisches Installations-Popup wird nicht erzwungen.
 4. App vom Startbildschirm öffnen: eigenständiges Fenster statt normalem Browser-Tab.
 5. Todo/Habit erstellen, bearbeiten, neu starten und anmelden/abmelden prüfen. Optional zweites Konto zur Datentrennung testen.
-6. Timer starten, Handy einige Zeit sperren, entsperren und App öffnen: verbleibende Zeit wird neu berechnet/synchronisiert. **Noch keine Benachrichtigung bei Timer-Ende erwarten.**
+6. Timer starten, Handy einige Zeit sperren, entsperren und App öffnen: verbleibende Zeit wird neu berechnet/synchronisiert. Ohne Einrichtung aus [Timer-Push](timer-push.md) noch keine Benachrichtigung bei Timer-Ende erwarten.
 
 Browser-Tests prüfen Manifest/Icons, Service-Worker-Steuerung, reale Anmeldung/CRUD über `/api`, Cache-Schutz und Desktop/Pixel-7-Emulation. Installation ins echte Android-System und Verhalten unter echter Displaysperre bitte zusätzlich manuell testen; Emulation ersetzt das nicht.
 
 ## Online-only und Sicherheit
 
-- Der Service Worker nutzt ausschließlich das Netzwerk. **Kein Cache Storage, kein IndexedDB-Datenspeicher, keine Offline-API-Queue, kein Precache.**
+- App/API bleiben netzwerkbasiert: **kein Cache Storage, keine privaten Daten in IndexedDB, keine Offline-API-Queue, kein Precache**. Der Push-Schritt speichert nur eine Geräte-Opt-in-Einstellung und eine undurchsichtige Abonnement-ID in IndexedDB; keine Konto-, Todo-/Habit-Inhalte oder Session-Token.
 - Private API-Antworten tragen `Cache-Control: no-store`; der Worker fordert `/api` ohne HTTP-Cache an. Abmelden kann daher keine alten Antworten aus einem PWA-Cache zurückbringen.
 - Nur öffentliche, versionierte JS-/CSS-Assets dürfen im normalen HTTP-Cache liegen. HTML, Manifest und Worker werden nicht HTTP-gecacht.
 - Bei Netzausfall kann eine bereits offene Oberfläche zuletzt geladene Daten im Arbeitsspeicher zeigen; neue Requests/Speichern benötigen die Verbindung. Ein Offline-Neustart der App wird nicht unterstützt.

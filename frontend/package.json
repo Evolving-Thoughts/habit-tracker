@@ -14,7 +14,8 @@
     "test:e2e:report": "playwright show-report",
     "typecheck:e2e": "tsc -p tsconfig.e2e.json",
     "serve:tunnel": "node scripts/tunnel-server.mjs",
-    "test:tunnel": "node --test scripts/tunnel-server.test.mjs"
+    "test:tunnel": "node --test scripts/tunnel-server.test.mjs",
+    "test:push-worker": "node --test scripts/push-worker.test.mjs"
   },
   "dependencies": {
     "vue": "^3.5.42"
@@ -25,6 +26,7 @@
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/test-utils": "^2.5.1",
     "@vue/tsconfig": "^0.9.1",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^30.1.1",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",

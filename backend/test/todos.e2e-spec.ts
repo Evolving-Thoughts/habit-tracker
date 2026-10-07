@@ -54,7 +54,9 @@ describe('Todos API (e2e)', () => {
   beforeEach(async () => {
     await app
       .get(DataSource)
-      .query('TRUNCATE TABLE timers, todos RESTART IDENTITY');
+      .query(
+        'TRUNCATE TABLE push_deliveries, push_subscriptions, timers, todos RESTART IDENTITY',
+      );
   });
 
   afterAll(async () => {

@@ -193,9 +193,20 @@ export class AuthService {
       : null;
   }
   async logout(raw: string | undefined): Promise<void> {
-    if (raw)
-      await this.db
-        .getRepository(SessionEntity)
-        .delete({ hash: tokenHash(raw) });
+    if (!raw) return;
+    const hash = tokenHash(raw);
+    const session = await this.db
+      .getRepository(SessionEntity)
+      .findOneBy({ hash });
+    if (!session) return;
+    // Serialize revocation with Push dispatch and timer transitions; the session FK
+    // removes this device's subscriptions/deliveries in the same transaction.
+    await this.db.transaction(async (manager) => {
+      await manager.findOne(UserEntity, {
+        where: { id: session.userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      await manager.delete(SessionEntity, { hash });
+    });
   }
 }

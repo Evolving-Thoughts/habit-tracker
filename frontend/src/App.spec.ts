@@ -15,6 +15,7 @@ function mountApp() {
   return mount(App, {
     global: {
       stubs: {
+        PushSettings: { template: "<button>Benachrichtigungen</button>" },
         TodayView: { template: '<main data-view="today">Today</main>' },
         TodoDumpView: { template: '<main data-view="dump">Dump</main>' },
         HabitsView: { template: '<main data-view="habits">Habits</main>' },
@@ -27,7 +28,7 @@ describe("App navigation", () => {
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
-    expect(wrapper.findAll("nav button")).toHaveLength(4);
+    expect(wrapper.findAll("nav button")).toHaveLength(5);
   });
   it("opens the habit overview and marks only that navigation button active", async () => {
     const wrapper = mountApp();

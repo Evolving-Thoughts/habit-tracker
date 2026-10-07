@@ -12,7 +12,7 @@ async function reset() {
     const { rows } = await client.query('SELECT current_database() AS name');
     if (rows[0]?.name !== DATABASE) throw new Error('Refusing to reset an unexpected database');
     // All FK-related tables together; deliberately no CASCADE and no public reset endpoint.
-    await client.query('TRUNCATE TABLE timers, "habit_occurrences", "habit_schedule_versions", "habits", "todos", "auth_tokens", "auth_sessions", "auth_rate_limits", "users" RESTART IDENTITY');
+    await client.query('TRUNCATE TABLE push_deliveries, push_subscriptions, timers, "habit_occurrences", "habit_schedule_versions", "habits", "todos", "auth_tokens", "auth_sessions", "auth_rate_limits", "users" RESTART IDENTITY');
   } finally { await client.end(); }
 }
 reset().catch(error => { console.error(error.message); process.exitCode = 1; });

@@ -179,6 +179,17 @@ export class TimersService {
       }))
     );
   }
+  // Internal worker/receipt hook. Caller MUST hold the same user write lock as timer transitions.
+  async notificationTimer(
+    manager: EntityManager,
+    userId: string,
+    id: string,
+    now: Date,
+  ): Promise<TimerEntity | null> {
+    const current = await this.findCurrent(manager, userId);
+    if (current?.id !== id) return null;
+    return this.reconcile(manager, userId, current, now);
+  }
   async current(userId: string): Promise<TimerResponse> {
     return this.transaction(userId, async (manager) => {
       const timer = await this.findCurrent(manager, userId);

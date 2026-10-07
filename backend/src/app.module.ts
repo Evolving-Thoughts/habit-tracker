@@ -1,3 +1,4 @@
+import { PushModule } from './push/push.module';
 import { TimersModule } from './timers/timers.module';
 import { AuthModule } from './auth/auth.module';
 import { Module } from '@nestjs/common';
@@ -30,6 +31,7 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
     }),
     AuthModule,
     TimersModule,
+    PushModule,
     TodosModule,
     HabitsModule,
     DayPlannerModule,

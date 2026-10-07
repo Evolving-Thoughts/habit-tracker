@@ -87,7 +87,7 @@ describe('Authentication and ownership (e2e)', () => {
   });
   beforeEach(async () => {
     await db.query(
-      'TRUNCATE TABLE timers, habit_occurrences, habit_schedule_versions, habits, todos, auth_tokens, auth_sessions, auth_rate_limits, users RESTART IDENTITY',
+      'TRUNCATE TABLE push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, auth_tokens, auth_sessions, auth_rate_limits, users RESTART IDENTITY',
     );
     messages.length = 0;
     mailer.send.mockClear();
@@ -95,7 +95,7 @@ describe('Authentication and ownership (e2e)', () => {
   afterAll(async () => {
     if (db?.isInitialized)
       await db.query(
-        'TRUNCATE TABLE timers, habit_occurrences, habit_schedule_versions, habits, todos, auth_tokens, auth_sessions, auth_rate_limits, users RESTART IDENTITY',
+        'TRUNCATE TABLE push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, auth_tokens, auth_sessions, auth_rate_limits, users RESTART IDENTITY',
       );
     await app?.close();
   });
