@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import PushSettings from "./components/PushSettings.vue";
 import TimerProvider from "./components/TimerProvider.vue";
+import HistoryView from "./views/HistoryView.vue";
 import HabitsView from "./views/HabitsView.vue";
 import TodayView from "./views/TodayView.vue";
 import TodoDumpView from "./views/TodoDumpView.vue";
@@ -70,7 +71,7 @@ onUnmounted(() => {
   window.removeEventListener("auth-expired", expire);
   window.removeEventListener("hashchange", readLink);
 });
-const activeView = ref<"today" | "todo-dump" | "habits">("today");
+const activeView = ref<"today" | "todo-dump" | "habits" | "history">("today");
 </script>
 
 <template>
@@ -115,6 +116,13 @@ const activeView = ref<"today" | "todo-dump" | "habits">("today");
       >
         Habits
       </button>
+      <button
+        type="button"
+        :aria-pressed="activeView === 'history'"
+        @click="activeView = 'history'"
+      >
+        Verlauf
+      </button>
       <button type="button" @click="signOut">Abmelden</button>
       <PushSettings />
       <span class="account-email">{{ user.email }}</span>
@@ -122,7 +130,8 @@ const activeView = ref<"today" | "todo-dump" | "habits">("today");
 
     <TodayView v-if="activeView === 'today'" />
     <TodoDumpView v-else-if="activeView === 'todo-dump'" />
-    <HabitsView v-else />
+    <HabitsView v-else-if="activeView === 'habits'" />
+    <HistoryView v-else />
   </TimerProvider>
 </template>
 

@@ -18,17 +18,18 @@ function mountApp() {
         PushSettings: { template: "<button>Benachrichtigungen</button>" },
         TodayView: { template: '<main data-view="today">Today</main>' },
         TodoDumpView: { template: '<main data-view="dump">Dump</main>' },
+        HistoryView: { template: '<main data-view="history">History</main>' },
         HabitsView: { template: '<main data-view="habits">Habits</main>' },
       },
     },
   });
 }
 describe("App navigation", () => {
-  it("starts with Today and offers three views", async () => {
+  it("starts with Today and offers four views", async () => {
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
-    expect(wrapper.findAll("nav button")).toHaveLength(5);
+    expect(wrapper.findAll("nav button")).toHaveLength(6);
   });
   it("opens the habit overview and marks only that navigation button active", async () => {
     const wrapper = mountApp();
@@ -54,6 +55,18 @@ describe("App navigation", () => {
   });
 });
 
+describe("History navigation", () => {
+  it("opens history and marks it active", async () => {
+    const wrapper = mountApp();
+    await flushPromises();
+    await wrapper.findAll("nav button")[3]!.trigger("click");
+    expect(wrapper.find('[data-view="history"]').exists()).toBe(true);
+    expect(wrapper.findAll("nav button")[3]!.attributes("aria-pressed")).toBe(
+      "true",
+    );
+  });
+});
+
 describe("App authentication boundary", () => {
   it("does not mount private views for an anonymous user", async () => {
     vi.mocked(getMe).mockResolvedValueOnce(null);
@@ -75,7 +88,7 @@ describe("App authentication boundary", () => {
     const wrapper = mountApp();
     await flushPromises();
     await wrapper.findAll("nav button")[2]!.trigger("click");
-    await wrapper.findAll("nav button")[3]!.trigger("click");
+    await wrapper.findAll("nav button")[4]!.trigger("click");
     await flushPromises();
     expect(logout).toHaveBeenCalled();
     expect(wrapper.find("[data-view]").exists()).toBe(false);
