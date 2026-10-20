@@ -1,3 +1,4 @@
+import { HistoryModule } from './history/history.module';
 import { PushModule } from './push/push.module';
 import { TimersModule } from './timers/timers.module';
 import { AuthModule } from './auth/auth.module';
@@ -35,6 +36,7 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
     TodosModule,
     HabitsModule,
     DayPlannerModule,
+    HistoryModule,
   ],
   controllers: [AppController],
   providers: [AppService],

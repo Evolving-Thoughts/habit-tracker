@@ -88,6 +88,9 @@ test("switching requires confirmation and completing a Dump Todo persists it in 
       exact: true,
     })
     .click();
+  await expect(
+    page.getByRole("complementary", { name: "Aktueller Timer" }),
+  ).toContainText("Erste Aufgabe");
   const old = (await read(request)).timer!.id;
   await page
     .getByRole("button", {
@@ -246,6 +249,9 @@ test("a remote replacement closes an old local stop confirmation", async ({
       exact: true,
     })
     .click();
+  // A click can finish before the start POST has committed. Wait for the
+  // authoritative response to render before reading its replacement ID.
+  await expect(page.getByRole("complementary")).toContainText("Erster Timer");
   const old = (await read(request)).timer!;
   await page
     .getByRole("button", { name: "Timer stoppen", exact: true })

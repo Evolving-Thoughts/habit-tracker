@@ -58,6 +58,9 @@ export class HabitOccurrenceEntity {
   })
   status!: HabitOccurrenceStatus;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  resolvedAt!: Date | null;
+
   @Column({ type: 'date', nullable: true })
   resolvedDate!: string | null;
 

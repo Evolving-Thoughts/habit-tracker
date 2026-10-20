@@ -547,6 +547,8 @@ export class HabitSchedulingService {
       occurrence.status = targetStatus;
       occurrence.resolvedDate =
         targetStatus === HabitOccurrenceStatus.PENDING ? null : today;
+      occurrence.resolvedAt =
+        targetStatus === HabitOccurrenceStatus.COMPLETED ? now : null;
       occurrence.cancellationReason = null;
 
       return repository.save(occurrence);
