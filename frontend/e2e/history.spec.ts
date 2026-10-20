@@ -211,3 +211,178 @@ test("History: error retry and logout do not retain private results", async ({
   ).toBeVisible();
   await expect(page.locator(".history-view")).toHaveCount(0);
 });
+
+test("History week: open plans, overdue Todos and weekly targets stay read-only", async ({
+  page,
+  request,
+}) => {
+  const date = await today(request);
+  const overdueDate = daysAfter(date, -10);
+  for (const [title, scheduledAt] of [
+    ["Überfälliger Artikel", `${overdueDate}T10:00:00Z`],
+    ["Heutiger Termin", `${date}T10:00:00Z`],
+  ] as const) {
+    expect(
+      (
+        await request.post(`${API_URL}/todos`, {
+          data: { title, scheduledAt, plannedDurationMinutes: 15 },
+        })
+      ).status(),
+    ).toBe(201);
+  }
+  for (const [title, schedule] of [
+    ["Tägliche Gitarre", { type: "interval", intervalDays: 1 }],
+    ["Leseziel", { type: "weekly_target", weeklyTarget: 3 }],
+  ] as const) {
+    expect(
+      (
+        await request.post(`${API_URL}/habits`, { data: { title, schedule } })
+      ).status(),
+    ).toBe(201);
+  }
+  const stored = await request.get(`${API_URL}/habits`);
+  const habits = (await stored.json()) as { id: number }[];
+  await page.goto("/");
+  await history(page);
+  const before = await Promise.all(
+    habits.map(async (h) => {
+      const result = await request.get(`${API_URL}/habits/${h.id}/occurrences`);
+      expect(result.ok()).toBeTruthy();
+      return result.json() as Promise<unknown>;
+    }),
+  );
+  await page.getByRole("button", { name: "Woche", exact: true }).click();
+  const day = page.locator(`details[data-date="${date}"]`);
+  await expect(day.locator("summary")).toContainText("3 offen / geplant");
+  await day.locator("summary").click();
+  const planned = day.getByRole("region", {
+    name: "Offen / geplant",
+    exact: true,
+  });
+  await expect(planned).toContainText(
+    `überfällig seit ${overdueDate.split("-").reverse().join(".")}`,
+  );
+  await expect(planned).toContainText("Tägliche Gitarre");
+  await expect(planned.getByRole("button")).toHaveCount(0);
+  const targets = page.getByRole("region", {
+    name: "Wochenziele",
+    exact: true,
+  });
+  await expect(targets).toContainText("Leseziel");
+  await expect(targets).toContainText("Noch 3 von 3 Ausführungen");
+  await expect(page.locator(".empty")).toHaveCount(0);
+  await expect(page.locator("body")).toHaveJSProperty(
+    "scrollWidth",
+    await page.locator("body").evaluate((el) => el.clientWidth),
+  );
+  await page.screenshot({
+    path: test.info().outputPath("week-open-plans.png"),
+    fullPage: true,
+  });
+  await page.locator('[name="historyFilter"]').selectOption("todos");
+  await expect(targets).toHaveCount(0);
+  await expect(day.locator("summary")).toContainText("2 offen / geplant");
+  await page.locator('[name="historyFilter"]').selectOption("habits");
+  await expect(day.locator("summary")).toContainText("1 offen / geplant");
+  await expect(targets).toBeVisible();
+  await page.locator('[name="historyDate"]').fill(daysAfter(date, -14));
+  await expect(page.locator(".planned-item")).toHaveCount(0);
+  await expect(targets).toHaveCount(0);
+  const after = await Promise.all(
+    habits.map(
+      async (h) =>
+        (
+          await request.get(`${API_URL}/habits/${h.id}/occurrences`)
+        ).json() as Promise<unknown>,
+    ),
+  );
+  expect(after).toEqual(before);
+});
+
+test("History forecast: future date placement, schedule change, pause and deletion", async ({
+  page,
+  request,
+}) => {
+  const date = await today(request);
+  const later = daysAfter(date, 14);
+  const weekDay = new Date(`${later}T12:00:00Z`).getUTCDay();
+  const monday = daysAfter(later, -((weekDay + 6) % 7));
+  const dates = Array.from({ length: 7 }, (_, index) =>
+    daysAfter(monday, index),
+  );
+  const ids: number[] = [];
+  for (const title of [
+    "Wechselnder Rhythmus",
+    "Pausierter Rhythmus",
+    "Gelöschter Rhythmus",
+  ]) {
+    const result = await request.post(`${API_URL}/habits`, {
+      data: { title, schedule: { type: "interval", intervalDays: 1 } },
+    });
+    expect(result.status()).toBe(201);
+    ids.push(((await result.json()) as { id: number }).id);
+  }
+  expect(
+    (
+      await request.post(`${API_URL}/habits/${ids[0]}/schedule-changes`, {
+        data: {
+          effectiveFrom: dates[3],
+          schedule: { type: "fixed_weekdays", weekdays: ["friday", "sunday"] },
+        },
+      })
+    ).status(),
+  ).toBe(201);
+  expect(
+    (
+      await request.patch(`${API_URL}/habits/${ids[1]}`, {
+        data: { isActive: false },
+      })
+    ).status(),
+  ).toBe(200);
+  expect(
+    (
+      await request.delete(`${API_URL}/habits/${ids[2]}`, { data: {} })
+    ).status(),
+  ).toBe(204);
+  expect(
+    (
+      await request.post(`${API_URL}/todos`, {
+        data: {
+          title: "Geplanter Artikel",
+          scheduledAt: `${dates[1]}T10:00:00Z`,
+        },
+      })
+    ).status(),
+  ).toBe(201);
+  await page.goto("/");
+  await history(page);
+  await page.locator('[name="historyDate"]').fill(monday);
+  await page.getByRole("button", { name: "Woche", exact: true }).click();
+  await expect(page.locator("details.week-day")).toHaveCount(7);
+  const expected = [
+    ["Wechselnder Rhythmus"],
+    ["Geplanter Artikel", "Wechselnder Rhythmus"],
+    ["Wechselnder Rhythmus"],
+    [],
+    ["Wechselnder Rhythmus"],
+    [],
+    ["Wechselnder Rhythmus"],
+  ];
+  for (let index = 0; index < 7; index++) {
+    const day = page.locator(`details[data-date="${dates[index]}"]`);
+    await day.locator("summary").click();
+    await expect(day.locator(".planned-item strong")).toHaveText(
+      expected[index]!,
+    );
+  }
+  await expect(page.locator(".week-days")).not.toContainText(
+    "Pausierter Rhythmus",
+  );
+  await expect(page.locator(".week-days")).not.toContainText(
+    "Gelöschter Rhythmus",
+  );
+  await page.locator('[name="historyFilter"]').selectOption("todos");
+  await expect(page.locator(".planned-item strong")).toHaveText([
+    "Geplanter Artikel",
+  ]);
+});

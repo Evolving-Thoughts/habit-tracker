@@ -1,6 +1,6 @@
 # Verlauf: Tag und Woche
 
-„Verlauf“ zeigt gespeicherte erledigte Todos und erledigte/übersprungene Habit-Ausführungen. Es ist eine reine Leseansicht: kein Timerstart, keine Bearbeitung, kein Nachberechnen vergangener Ausführungen beim Öffnen.
+„Verlauf“ zeigt gespeicherte erledigte Todos und erledigte/übersprungene Habit-Ausführungen. Es ist eine reine Leseansicht: kein Timerstart, keine Bearbeitung, kein Nachtragen vergangener Ausführungen beim Öffnen. In aktuellen und zukünftigen Wochen ergänzt eine schreibfreie Vorausschau die gespeicherte Historie.
 
 ## Anzeige
 
@@ -20,7 +20,17 @@
 - Wieder geöffnete Todos/Ausführungen verlieren den aktuellen Erledigungseintrag. Es gibt noch kein unveränderliches Ereignisjournal für jede Erledigung/Wiederöffnung.
 - Karten nutzen den gespeicherten aktuellen Titel. Umbenennen verändert daher auch den angezeigten Titel früherer Ergebnisse; Titel-Snapshots sind nicht Bestandteil dieses PRs.
 - Dauer ist die **geplante**, nicht tatsächlich gemessene Arbeitszeit. Für Habits wird die konkrete Ausführungsdauer bevorzugt, ansonsten die aktuelle Standarddauer genutzt. Keine Zeitstatistik oder historische Dauer-Snapshots.
-- Nur bereits gespeicherte Ausführungen werden angezeigt. Wenn der Generator verpasste Termine noch nicht verarbeitet hat, tauchen deren Skips erst nach regulärer Generierung (z.B. „Heute“) auf. Der Verlauf selbst schreibt keine Nachträge.
+- Als erledigt/übersprungen werden nur bereits gespeicherte Ausführungen angezeigt. Wenn der Generator verpasste Termine noch nicht verarbeitet hat, tauchen deren Skips erst nach regulärer Generierung (z.B. „Heute“) auf. Der Verlauf selbst schreibt keine Nachträge.
+
+## Offen / geplant in der Woche
+
+- Aktuelle und zukünftige Wochen zeigen **Offen / geplant** pro Tag, getrennt von Erledigt/Übersprungen. Die Tagesansicht bleibt ein reiner Rückblick.
+- Nicht erledigte, nicht gelöschte Todos mit Termin stehen am geplanten Berlin-Tag. Überfällige Todos aus beliebig früheren Tagen stehen ausschließlich heute in der aktuellen Woche, markiert **überfällig seit …**. Ungeplante Dump-Todos werden keinem Tag zugewiesen.
+- Vergangene Wochen enthalten keine offenen Einträge und keine Wochenziel-Vorausschau. Vergangene Tage der laufenden Woche zeigen keine ungelösten Aufgaben rückwirkend.
+- Intervalle und feste Wochentage werden im Speicher aus den gültigen, nicht stornierten Regelversionen berechnet; inklusive Beginn, exklusivem Ende, Intervallanker und Missed-Occurrence-Policy. Ein noch gültiger Carry-over-Habit-Termin erscheint heute mit seinem ursprünglichen Termin; abgelaufene Slots werden nicht als offen erfunden.
+- Bereits erledigte, übersprungene und abgebrochene Slots sind nicht zusätzlich geplant. Eine heutige Habit-Erledigung verhindert einen weiteren offenen Slot heute, wie in der bestehenden Terminlogik. Pausierte und gelöschte Habits werden nicht prognostiziert.
+- **Wochenziele** stehen separat ohne erfundene Ausführungstage. Angezeigt werden Ziel, bekannte Erledigungen und verbleibende Ausführungen, mindestens null. Wie beim Scheduler zählen alle Erledigungen dieses Habits in der Kalenderwoche, auch unter vorherigen Regeln. Bei Regelwechseln wird jede gültige Wochenzielversion mit ihrem verbleibenden Gültigkeitsbereich angezeigt.
+- Die Vorschau ist der aktuelle Planungsstand, keine Garantie zukünftiger Erledigungen oder Aktivität. Bekannte zukünftige Regelwechsel werden berücksichtigt; heutige Pausen/Standarddauern/Titel gelten, bis sie geändert werden. Weder Forecasts noch fehlende Skips werden gespeichert, keine Generation/Reconciliation wird angestoßen.
 
 ## API
 
@@ -29,15 +39,15 @@
 - `date` optional: aktueller Berlin-Tag.
 - `view`: `day` (Standard) oder `week`; für Woche wird das Datum auf die zugehörige Montag–Sonntag-Woche abgebildet.
 - `filter`: `all` (Standard), `todos`, `habits`.
-- Antwort: `today`, `timeZone`, `startDate`, `endDate`, `days: [{date, items}]`. Auch leere Tage werden zurückgegeben; IDs sind zusammen mit `type` eindeutig.
+- Antwort: `today`, `timeZone`, `startDate`, `endDate`, `days: [{date, items}]`. Nur `view=week` ergänzt `days[].planned` und `weeklyTargets` (in vergangenen Wochen leer). Geplante Einträge haben stabile `key`s; berechnete Habit-Slots haben `id: null`, gespeicherte offene Einträge ihre reale ID. Auch leere Tage werden zurückgegeben; IDs sind zusammen mit `type` eindeutig.
 - Gültige Kalenderdaten und begrenzter Bereich von einem Tag oder sieben Tagen. Jahr mindestens 1000; inklusive exklusiver oberer Query-Grenze höchstens 9999. Ungültige/mehrfach angegebene Parameter und unbekannte Optionen: 400.
 - Authentifiziert, ausschließlich eigene Daten, `Cache-Control: no-store`. Kein Nutzer-ID-Parameter und keine private API-Zwischenspeicherung im Service Worker.
-- Beide Datenabfragen laufen in einer read-only verwendeten Repeatable-Read-Transaktion für einen konsistenten Snapshot. Keine Abhängigkeit vom Occurrence-Generator.
+- Alle Datenabfragen laufen in einer read-only verwendeten Repeatable-Read-Transaktion für einen konsistenten Snapshot. Keine Abhängigkeit vom Occurrence-Generator.
 
 ## Entwicklung und Tests
 
 Kein DB-Reset nötig. Die nullable Spalte `habit_occurrences.resolvedAt` wird durch das bestehende Entwicklungsschema-Synchronize angelegt. Produktiv ist dafür eine explizite Migration nötig; keine erfundene Rückfüllung alter Uhrzeiten.
 
-Tests prüfen Nutzertrennung einschließlich gelöschter Beziehungen, Berlin-Mitternacht und beide DST-Wechsel, Montag/Jahreswechsel, verspätete Erledigungen, geplante Skip-Tage, Soft-Delete, Reopen, idempotente Erledigung, reine Lesezugriffe, Filter, Leer-/Fehlerzustände und veraltete Frontend-Antworten. Browser-E2E nutzen die echten App-/API-/Datenbank-Komponenten.
+Tests prüfen zusätzlich überfällige/geplante Todos, Intervall-/Wochentagsprognosen, Regelwechsel, Wochenzielzählung, Filter und unveränderte Datenbankzeilen beim Lesen. Tests prüfen Nutzertrennung einschließlich gelöschter Beziehungen, Berlin-Mitternacht und beide DST-Wechsel, Montag/Jahreswechsel, verspätete Erledigungen, geplante Skip-Tage, Soft-Delete, Reopen, idempotente Erledigung, reine Lesezugriffe, Filter, Leer-/Fehlerzustände und veraltete Frontend-Antworten. Browser-E2E nutzen die echten App-/API-/Datenbank-Komponenten.
 
 Noch nicht enthalten: Monatskalender, Streaks, Quoten, Diagramme, echtes Zeittracking oder unveränderliche Ereignis-Snapshots.

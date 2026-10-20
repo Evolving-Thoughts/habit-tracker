@@ -224,4 +224,80 @@ describe("HistoryView", () => {
     expect(mock).toHaveBeenCalledTimes(count);
     expect(w.get('[role="alert"]').text()).toContain("gültiges Datum");
   });
+  it("renders planned items and weekly goals without history actions or a false empty state", async () => {
+    const data = response();
+    data.days[0]!.planned = [
+      {
+        key: "todo:2",
+        type: "todo",
+        id: 2,
+        habitId: null,
+        title: "Offener Artikel",
+        date: "2026-10-07",
+        scheduledDate: "2026-10-05",
+        isOverdue: true,
+        plannedDurationMinutes: 15,
+      },
+      {
+        key: "habit:3:2026-10-07",
+        type: "habit",
+        id: null,
+        habitId: 3,
+        title: "Gitarre",
+        date: "2026-10-07",
+        scheduledDate: "2026-10-07",
+        isOverdue: false,
+        plannedDurationMinutes: null,
+      },
+    ];
+    data.weeklyTargets = [
+      {
+        key: "weekly:4",
+        habitId: 4,
+        title: "Lesen",
+        target: 3,
+        completed: 1,
+        remaining: 2,
+        fromDate: "2026-10-07",
+        untilDate: "2026-10-11",
+      },
+    ];
+    mock.mockResolvedValue(data);
+    const w = mount(HistoryView);
+    await flushPromises();
+    await w.findAll(".mode button")[1]!.trigger("click");
+    await flushPromises();
+    expect(w.find(".empty").exists()).toBe(false);
+    expect(w.get("summary").text()).toContain("2 offen / geplant");
+    const planned = w.get('section[aria-label="Offen / geplant"]');
+    expect(planned.text()).toContain("überfällig seit 05.10.2026");
+    expect(planned.text()).toContain("Geplant für 07.10.2026");
+    expect(planned.text()).toContain("Geplant: 15 Min.");
+    expect(planned.findAll("button")).toHaveLength(0);
+    expect(w.get('section[aria-label="Wochenziele"]').text()).toContain(
+      "Noch 2 von 3 Ausführungen",
+    );
+  });
+  it("shows completed weekly targets without inventing open day entries", async () => {
+    const data = response();
+    data.weeklyTargets = [
+      {
+        key: "weekly:4",
+        habitId: 4,
+        title: "Lesen",
+        target: 3,
+        completed: 3,
+        remaining: 0,
+        fromDate: "2026-10-07",
+        untilDate: "2026-10-11",
+      },
+    ];
+    mock.mockResolvedValue(data);
+    const w = mount(HistoryView);
+    await flushPromises();
+    await w.findAll(".mode button")[1]!.trigger("click");
+    await flushPromises();
+    expect(w.text()).toContain("Noch 0 von 3 Ausführungen");
+    expect(w.findAll(".planned-item")).toHaveLength(0);
+  });
 });

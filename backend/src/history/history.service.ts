@@ -1,5 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
+import { HabitEntity } from '../habits/entities/habit.entity';
+import { HabitScheduleVersionEntity } from '../habits/entities/habit-schedule-version.entity';
+import {
+  forecastSlots,
+  plannedHabits,
+  weeklyTargets,
+} from './history-planning';
 import {
   DEFAULT_TIME_ZONE,
   getCurrentDateInTimeZone,
@@ -9,13 +16,20 @@ import { TodoEntity } from '../todos/entities/todo.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { addHistoryDays, historyRange } from './history-range';
-import { HistoryQueryDto, HistoryResponse, HistoryItem } from './history.dto';
+import {
+  HistoryQueryDto,
+  HistoryResponse,
+  HistoryItem,
+  HistoryPlannedItem,
+  HistoryWeeklyTarget,
+} from './history.dto';
 
 @Injectable()
 export class HistoryService {
   constructor(private readonly db: DataSource) {}
   async get(userId: string, query: HistoryQueryDto): Promise<HistoryResponse> {
-    const today = getCurrentDateInTimeZone();
+    const now = new Date();
+    const today = getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, now);
     const dates = historyRange(query.date ?? today, query.view ?? 'day');
     const startDate = dates[0];
     const endDate = dates[dates.length - 1];
@@ -96,7 +110,12 @@ export class HistoryService {
           a.type.localeCompare(b.type) ||
           a.id - b.id,
       );
+      const planning =
+        query.view === 'week'
+          ? await this.plan(manager, userId, filter, dates, today, now)
+          : null;
       return {
+        ...(planning ? { weeklyTargets: planning.targets } : {}),
         today,
         timeZone: DEFAULT_TIME_ZONE,
         startDate,
@@ -104,8 +123,99 @@ export class HistoryService {
         days: dates.map((date) => ({
           date,
           items: items.filter((item) => item.date === date),
+          ...(planning
+            ? { planned: planning.items.filter((item) => item.date === date) }
+            : {}),
         })),
       };
     });
+  }
+
+  private async plan(
+    manager: EntityManager,
+    userId: string,
+    filter: string,
+    dates: string[],
+    today: string,
+    now: Date,
+  ): Promise<{ items: HistoryPlannedItem[]; targets: HistoryWeeklyTarget[] }> {
+    const items: HistoryPlannedItem[] = [];
+    if (dates[dates.length - 1] < today) return { items, targets: [] };
+    if (filter !== 'habits') {
+      const todos = await manager
+        .getRepository(TodoEntity)
+        .createQueryBuilder('todo')
+        .where('"todo"."userId" = :userId', { userId })
+        .andWhere('"todo"."completed" = false')
+        .andWhere('"todo"."scheduledAt" < :end', {
+          end: midnightInTimeZone(addHistoryDays(dates[dates.length - 1], 1)),
+        })
+        .andWhere('("todo"."scheduledAt" >= :start OR :current = true)', {
+          start: midnightInTimeZone(dates[0]),
+          current: dates.includes(today),
+        })
+        .getMany();
+      for (const todo of todos) {
+        const scheduledDate = getCurrentDateInTimeZone(
+          DEFAULT_TIME_ZONE,
+          todo.scheduledAt!,
+        );
+        const date = scheduledDate < today ? today : scheduledDate;
+        if (dates.includes(date))
+          items.push({
+            key: `todo:${todo.id}`,
+            type: 'todo',
+            id: todo.id,
+            habitId: null,
+            title: todo.title,
+            date,
+            scheduledDate,
+            isOverdue: scheduledDate < today,
+            plannedDurationMinutes: todo.plannedDurationMinutes,
+          });
+      }
+    }
+    if (filter === 'todos') return { items, targets: [] };
+    const habits = await manager
+      .getRepository(HabitEntity)
+      .find({ where: { userId, isActive: true } });
+    if (!habits.length) return { items, targets: [] };
+    const versions = await manager
+      .getRepository(HabitScheduleVersionEntity)
+      .createQueryBuilder('version')
+      .where('"version"."habitId" IN (:...ids)', {
+        ids: habits.map((habit) => habit.id),
+      })
+      .andWhere('"version"."cancelledAt" IS NULL')
+      .orderBy('"version"."effectiveAt"', 'ASC')
+      .addOrderBy('"version"."id"', 'ASC')
+      .getMany();
+    const slots = forecastSlots(versions, dates, today, now);
+    const earliest = slots.reduce(
+      (date, slot) => (slot.scheduledDate < date ? slot.scheduledDate : date),
+      dates[0],
+    );
+    const occurrences = await manager
+      .getRepository(HabitOccurrenceEntity)
+      .createQueryBuilder('occurrence')
+      .where('"occurrence"."habitId" IN (:...ids)', {
+        ids: habits.map((habit) => habit.id),
+      })
+      .andWhere(
+        '("occurrence"."scheduledDate" BETWEEN :earliest AND :end OR "occurrence"."resolvedDate" BETWEEN :start AND :end)',
+        { earliest, start: dates[0], end: dates[dates.length - 1] },
+      )
+      .getMany();
+    items.push(...plannedHabits(habits, slots, occurrences, today));
+    items.sort(
+      (a, b) =>
+        a.scheduledDate.localeCompare(b.scheduledDate) ||
+        a.title.localeCompare(b.title, 'de') ||
+        a.key.localeCompare(b.key),
+    );
+    return {
+      items,
+      targets: weeklyTargets(habits, versions, occurrences, dates, today, now),
+    };
   }
 }

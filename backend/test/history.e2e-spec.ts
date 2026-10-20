@@ -19,7 +19,12 @@ import { HabitOccurrenceStatus as Status } from '../src/habit-occurrences/enums/
 import { HabitScheduleType } from '../src/habits/enums/habit-schedule-type.enum';
 import { MissedOccurrencePolicy } from '../src/habits/enums/missed-occurrence-policy.enum';
 import { HistoryResponse } from '../src/history/history.dto';
-import { getCurrentDateInTimeZone } from '../src/common/date/date-only.utils';
+import { addHistoryDays, historyRange } from '../src/history/history-range';
+import { Weekday } from '../src/habits/enums/weekday.enum';
+import {
+  getCurrentDateInTimeZone,
+  midnightInTimeZone,
+} from '../src/common/date/date-only.utils';
 const OTHER = '22222222-2222-4222-8222-222222222222';
 describe('History API (e2e)', () => {
   let app: INestApplication;
@@ -333,5 +338,203 @@ describe('History API (e2e)', () => {
       (await db.getRepository(HabitOccurrenceEntity).findOneByOrFail({ id }))
         .resolvedAt,
     ).toBeNull();
+  });
+  it('plans open scheduled Todos, carries overdue Todos only into today and protects isolation', async () => {
+    const date = getCurrentDateInTimeZone();
+    const earlier = addHistoryDays(date, -10);
+    const future = historyRange(addHistoryDays(date, 14), 'week');
+    await todo({
+      title: 'Overdue',
+      completed: false,
+      completedAt: null,
+      scheduledAt: midnightInTimeZone(earlier),
+    });
+    await todo({
+      title: 'Today',
+      completed: false,
+      completedAt: null,
+      scheduledAt: midnightInTimeZone(date),
+    });
+    await todo({
+      title: 'Future',
+      completed: false,
+      completedAt: null,
+      scheduledAt: midnightInTimeZone(future[2]),
+    });
+    await todo({ title: 'Dump', completed: false, completedAt: null });
+    await todo({
+      title: 'Other',
+      userId: OTHER,
+      completed: false,
+      completedAt: null,
+      scheduledAt: midnightInTimeZone(earlier),
+    });
+    const deleted = await todo({
+      title: 'Deleted',
+      completed: false,
+      completedAt: null,
+      scheduledAt: midnightInTimeZone(date),
+    });
+    await db.getRepository(TodoEntity).softDelete(deleted.id);
+    const current = await get(`date=${date}&view=week`);
+    expect(
+      current.days
+        .flatMap((day) => day.planned ?? [])
+        .map((item) => item.title)
+        .sort(),
+    ).toEqual(['Overdue', 'Today']);
+    expect(current.days.find((day) => day.date === date)?.planned).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Overdue',
+          date,
+          scheduledDate: earlier,
+          isOverdue: true,
+        }),
+      ]),
+    );
+    expect(
+      (await get(`date=${earlier}&view=week`)).days.every(
+        (day) => day.planned?.length === 0,
+      ),
+    ).toBe(true);
+    const later = await get(`date=${future[0]}&view=week`);
+    expect(later.days[2].planned?.map((item) => item.title)).toEqual([
+      'Future',
+    ]);
+    expect(later.days.flatMap((day) => day.planned ?? [])).toHaveLength(1);
+    expect(
+      (await get(`date=${date}&view=week&filter=habits`)).days.every(
+        (day) => !day.planned?.length,
+      ),
+    ).toBe(true);
+    expect((await get(`date=${date}`)).days[0].planned).toBeUndefined();
+  });
+  it('forecasts interval, fixed weekdays and version changes without any database writes', async () => {
+    const dates = historyRange(
+      addHistoryDays(getCurrentDateInTimeZone(), 14),
+      'week',
+    );
+    async function habit(title: string, changes: Partial<HabitEntity> = {}) {
+      return db
+        .getRepository(HabitEntity)
+        .save({ title, userId: TEST_USER, isActive: true, ...changes });
+    }
+    async function version(
+      habitId: number,
+      changes: Partial<HabitScheduleVersionEntity> = {},
+    ) {
+      return db.getRepository(HabitScheduleVersionEntity).save({
+        habitId,
+        type: HabitScheduleType.INTERVAL,
+        intervalDays: 2,
+        firstDueDate: dates[0],
+        effectiveAt: midnightInTimeZone(dates[0]),
+        missedOccurrencePolicy: MissedOccurrencePolicy.CARRY_OVER,
+        ...changes,
+      });
+    }
+    const h = await habit('Interval');
+    const v = await version(h.id, { endsAt: midnightInTimeZone(dates[3]) });
+    await version(h.id, {
+      type: HabitScheduleType.FIXED_WEEKDAYS,
+      intervalDays: null,
+      firstDueDate: null,
+      weekdays: [Weekday.FRIDAY, Weekday.SUNDAY],
+      effectiveAt: midnightInTimeZone(dates[3]),
+    });
+    const fixed = await habit('Fixed');
+    await version(fixed.id, {
+      type: HabitScheduleType.FIXED_WEEKDAYS,
+      intervalDays: null,
+      firstDueDate: null,
+      weekdays: [Weekday.TUESDAY],
+    });
+    for (const changes of [
+      { isActive: false },
+      { deletedAt: new Date() },
+      { userId: OTHER },
+    ])
+      await version((await habit('Hidden', changes)).id);
+    const cancelled = await habit('Cancelled');
+    await version(cancelled.id, { cancelledAt: new Date() });
+    await db.getRepository(HabitOccurrenceEntity).save({
+      habitId: h.id,
+      scheduleVersionId: v.id,
+      scheduledDate: dates[0],
+      status: Status.SKIPPED,
+      resolvedDate: dates[0],
+    });
+    const before = await db.query<unknown[]>(
+      'SELECT * FROM habit_occurrences ORDER BY id',
+    );
+    const beforeVersions = await db.query<unknown[]>(
+      'SELECT * FROM habit_schedule_versions ORDER BY id',
+    );
+    const beforeHabits = await db.query<unknown[]>(
+      'SELECT * FROM habits ORDER BY id',
+    );
+    const result = await get(`date=${dates[0]}&view=week`);
+    expect(
+      result.days.map((day) => day.planned?.map((item) => item.title)),
+    ).toEqual([
+      [],
+      ['Fixed'],
+      ['Interval'],
+      [],
+      ['Interval'],
+      [],
+      ['Interval'],
+    ]);
+    expect(result.days[2].planned?.[0].id).toBeNull();
+    expect(
+      (await get(`date=${dates[0]}&view=week&filter=todos`)).days.every(
+        (day) => !day.planned?.length,
+      ),
+    ).toBe(true);
+    expect(
+      await db.query('SELECT * FROM habit_occurrences ORDER BY id'),
+    ).toEqual(before);
+    expect(
+      await db.query('SELECT * FROM habit_schedule_versions ORDER BY id'),
+    ).toEqual(beforeVersions);
+    expect(await db.query('SELECT * FROM habits ORDER BY id')).toEqual(
+      beforeHabits,
+    );
+  });
+  it('shows a weekly target separately and counts completions under previous schedules', async () => {
+    const date = getCurrentDateInTimeZone();
+    const dates = historyRange(date, 'week');
+    const o = await occurrence({ scheduledDate: dates[0], resolvedDate: date });
+    await db
+      .getRepository(HabitScheduleVersionEntity)
+      .update(o.scheduleVersionId, { endsAt: new Date() });
+    await db.getRepository(HabitScheduleVersionEntity).save({
+      habitId: o.habitId,
+      type: HabitScheduleType.WEEKLY_TARGET,
+      weeklyTarget: 3,
+      effectiveAt: new Date(),
+      missedOccurrencePolicy: MissedOccurrencePolicy.SKIP,
+    });
+    const before = await db.getRepository(HabitOccurrenceEntity).find();
+    const body = await get(`date=${date}&view=week`);
+    expect(body.weeklyTargets).toEqual([
+      expect.objectContaining({
+        habitId: o.habitId,
+        completed: 1,
+        remaining: 2,
+        target: 3,
+      }),
+    ]);
+    expect(body.days.every((day) => !day.planned?.length)).toBe(true);
+    expect(
+      (await get(`date=${date}&view=week&filter=todos`)).weeklyTargets,
+    ).toEqual([]);
+    expect(
+      (await get(`date=${addHistoryDays(date, -14)}&view=week`)).weeklyTargets,
+    ).toEqual([]);
+    expect(await db.getRepository(HabitOccurrenceEntity).find()).toEqual(
+      before,
+    );
   });
 });
