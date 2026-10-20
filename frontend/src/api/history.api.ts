@@ -2,11 +2,11 @@ import { request } from "./http";
 import type {
   HistoryResponse,
   HistoryFilter,
-  HistoryView,
+  HistoryViewMode,
 } from "../types/history";
 export function getHistory(
   date: string,
-  view: HistoryView,
+  view: HistoryViewMode,
   filter: HistoryFilter,
   signal?: AbortSignal,
 ): Promise<HistoryResponse> {

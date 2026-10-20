@@ -44,4 +44,4 @@ export type HistoryResponse = {
   }[];
 };
 export type HistoryFilter = "all" | "todos" | "habits";
-export type HistoryView = "day" | "week";
+export type HistoryViewMode = "day" | "week";

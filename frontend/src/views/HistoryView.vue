@@ -6,7 +6,7 @@ import HistoryPlannedItems from "../components/HistoryPlannedItems.vue";
 import type {
   HistoryResponse,
   HistoryFilter,
-  HistoryView,
+  HistoryViewMode,
 } from "../types/history";
 import {
   getCurrentDateInTimeZone,
@@ -19,7 +19,7 @@ import {
   supportedHistoryDate,
 } from "../utils/history";
 const date = ref(getCurrentDateInTimeZone());
-const view = ref<HistoryView>("day");
+const view = ref<HistoryViewMode>("day");
 const filter = ref<HistoryFilter>("all");
 const result = ref<HistoryResponse | null>(null);
 const loading = ref(true);
