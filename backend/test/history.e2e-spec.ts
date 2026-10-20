@@ -107,7 +107,7 @@ describe('History API (e2e)', () => {
   it('defaults to the current Berlin day and includes an empty day', async () => {
     const body = await get('');
     expect(body.today).toBe(getCurrentDateInTimeZone());
-    expect(body.days).toEqual([{ date: body.today, items: [] }]);
+    expect(body.days).toEqual([{ date: body.today, items: [], planned: [] }]);
     expect(body.timeZone).toBe('Europe/Berlin');
   });
   it.each([
@@ -408,7 +408,11 @@ describe('History API (e2e)', () => {
         (day) => !day.planned?.length,
       ),
     ).toBe(true);
-    expect((await get(`date=${date}`)).days[0].planned).toBeUndefined();
+    expect(
+      (await get(`date=${date}`)).days[0].planned
+        ?.map((item) => item.title)
+        .sort(),
+    ).toEqual(['Overdue', 'Today']);
   });
   it('forecasts interval, fixed weekdays and version changes without any database writes', async () => {
     const dates = historyRange(
@@ -536,5 +540,85 @@ describe('History API (e2e)', () => {
     expect(await db.getRepository(HabitOccurrenceEntity).find()).toEqual(
       before,
     );
+  });
+  it('day planning matches week placement for interval/fixed slots and keeps forecast reads side-effect free', async () => {
+    const dates = historyRange(
+      addHistoryDays(getCurrentDateInTimeZone(), 14),
+      'week',
+    );
+    for (const [title, type] of [
+      ['Interval', HabitScheduleType.INTERVAL],
+      ['Fixed', HabitScheduleType.FIXED_WEEKDAYS],
+    ] as const) {
+      const h = await db
+        .getRepository(HabitEntity)
+        .save({ userId: TEST_USER, title, isActive: true });
+      await db.getRepository(HabitScheduleVersionEntity).save({
+        habitId: h.id,
+        type,
+        effectiveAt: midnightInTimeZone(dates[0]),
+        firstDueDate: type === HabitScheduleType.INTERVAL ? dates[0] : null,
+        intervalDays: type === HabitScheduleType.INTERVAL ? 2 : null,
+        weekdays:
+          type === HabitScheduleType.FIXED_WEEKDAYS
+            ? [Weekday.MONDAY, Weekday.FRIDAY]
+            : null,
+        missedOccurrencePolicy: MissedOccurrencePolicy.CARRY_OVER,
+      });
+    }
+    const before = await db.getRepository(HabitOccurrenceEntity).find();
+    const week = await get(`date=${dates[0]}&view=week`);
+    for (const date of dates) {
+      const day = await get(`date=${date}`);
+      expect(day.days[0].planned).toEqual(
+        week.days.find((item) => item.date === date)?.planned,
+      );
+    }
+    expect(
+      (await get(`date=${dates[0]}&filter=todos`)).days[0].planned,
+    ).toEqual([]);
+    expect(
+      (await get(`date=${addHistoryDays(getCurrentDateInTimeZone(), -1)}`))
+        .days[0].planned,
+    ).toEqual([]);
+    expect(await db.getRepository(HabitOccurrenceEntity).find()).toEqual(
+      before,
+    );
+  });
+  it('daily weekly-target progress includes completions on other days and under prior versions', async () => {
+    const date = getCurrentDateInTimeZone();
+    const dates = historyRange(addHistoryDays(date, 14), 'week');
+    const o = await occurrence({
+      scheduledDate: dates[0],
+      resolvedDate: dates[0],
+    });
+    await db
+      .getRepository(HabitScheduleVersionEntity)
+      .update(o.scheduleVersionId, { endsAt: midnightInTimeZone(dates[1]) });
+    await db.getRepository(HabitScheduleVersionEntity).save({
+      habitId: o.habitId,
+      type: HabitScheduleType.WEEKLY_TARGET,
+      weeklyTarget: 3,
+      effectiveAt: midnightInTimeZone(dates[1]),
+      missedOccurrencePolicy: MissedOccurrencePolicy.SKIP,
+    });
+    const day = await get(`date=${dates[3]}`);
+    expect(day.weeklyTargets).toEqual([
+      expect.objectContaining({
+        habitId: o.habitId,
+        completed: 1,
+        remaining: 2,
+        fromDate: dates[3],
+        untilDate: dates[3],
+      }),
+    ]);
+    expect(day.days[0].planned).toEqual([]);
+    expect((await get(`date=${dates[3]}&filter=todos`)).weeklyTargets).toEqual(
+      [],
+    );
+    expect(
+      (await get(`date=${addHistoryDays(date, -1)}`)).weeklyTargets,
+    ).toEqual([]);
+    await get('date=9999-12-30');
   });
 });

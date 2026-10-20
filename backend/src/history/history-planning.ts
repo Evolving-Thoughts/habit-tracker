@@ -151,6 +151,7 @@ export function weeklyTargets(
   dates: string[],
   today: string,
   now: Date,
+  countRange = { startDate: dates[0], endDate: dates[dates.length - 1] },
 ): HistoryWeeklyTarget[] {
   const result: HistoryWeeklyTarget[] = [];
   for (const version of versions) {
@@ -186,8 +187,8 @@ export function weeklyTargets(
         item.habitId === habit.id &&
         item.status === Status.COMPLETED &&
         item.resolvedDate !== null &&
-        item.resolvedDate >= dates[0] &&
-        item.resolvedDate <= dates[dates.length - 1],
+        item.resolvedDate >= countRange.startDate &&
+        item.resolvedDate <= countRange.endDate,
     ).length;
     result.push({
       key: `weekly:${version.id}`,

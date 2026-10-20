@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { getHistory } from "../api/history.api";
 import HistoryItem from "../components/HistoryItem.vue";
+import HistoryPlannedItems from "../components/HistoryPlannedItems.vue";
 import type {
   HistoryResponse,
   HistoryFilter,
@@ -103,9 +104,9 @@ onUnmounted(() => {
       <p class="eyebrow">Dein Rückblick</p>
       <h1>Verlauf</h1>
       <p class="intro">
-        Erledigte Aufgaben und übersprungene Habit-Ausführungen. Die
-        Wochenansicht zeigt zusätzlich offene und geplante Einträge. Tage gelten
-        in Europe/Berlin.
+        Erledigte Aufgaben und übersprungene Habit-Ausführungen. Für heute und
+        zukünftige Tage zusätzlich offene und geplante Einträge. Tage gelten in
+        Europe/Berlin.
       </p>
     </header>
     <div class="history-controls">
@@ -163,7 +164,45 @@ onUnmounted(() => {
           filter === "all" ? "" : " für diesen Filter"
         }}.
       </p>
+      <section
+        v-if="result.weeklyTargets?.length"
+        class="weekly-targets"
+        aria-label="Wochenziele"
+      >
+        <h2>Wochenziele</h2>
+        <p>
+          Ohne festen Tag · bekannte Erledigungen dieser Kalenderwoche zählen
+          auch nach einem Regelwechsel.
+        </p>
+        <ul>
+          <li v-for="target in result.weeklyTargets" :key="target.key">
+            <strong>{{ target.title }}</strong>
+            <span
+              >Noch {{ target.remaining }} von {{ target.target }} Ausführungen
+              · {{ target.completed }} erledigt</span
+            >
+            <small
+              >Gültig {{ formatDateForGermanDisplay(target.fromDate) }} –
+              {{ formatDateForGermanDisplay(target.untilDate) }}</small
+            >
+          </li>
+        </ul>
+      </section>
+      <p v-if="result.endDate >= result.today" class="planning-note">
+        Vorausschau nach aktuellem Stand: Habit-Termine werden nur berechnet,
+        nicht angelegt. Pausierte und gelöschte Habits sind nicht eingeplant.
+      </p>
       <template v-if="view === 'day'">
+        <section
+          v-if="result.days[0]!.planned?.length"
+          aria-label="Offen / geplant"
+          class="history-group planned-group"
+        >
+          <h2>
+            Offen / geplant <span>{{ result.days[0]!.planned!.length }}</span>
+          </h2>
+          <HistoryPlannedItems :items="result.days[0]!.planned!" />
+        </section>
         <section
           v-for="group in groups"
           :key="group.status"
@@ -190,35 +229,6 @@ onUnmounted(() => {
         </section>
       </template>
       <div v-else class="week-days">
-        <section
-          v-if="result.weeklyTargets?.length"
-          class="weekly-targets"
-          aria-label="Wochenziele"
-        >
-          <h2>Wochenziele</h2>
-          <p>
-            Ohne festen Tag · bekannte Erledigungen dieser Kalenderwoche zählen
-            auch nach einem Regelwechsel.
-          </p>
-          <ul>
-            <li v-for="target in result.weeklyTargets" :key="target.key">
-              <strong>{{ target.title }}</strong>
-              <span
-                >Noch {{ target.remaining }} von
-                {{ target.target }} Ausführungen ·
-                {{ target.completed }} erledigt</span
-              >
-              <small
-                >Gültig {{ formatDateForGermanDisplay(target.fromDate) }} –
-                {{ formatDateForGermanDisplay(target.untilDate) }}</small
-              >
-            </li>
-          </ul>
-        </section>
-        <p v-if="result.endDate >= result.today" class="planning-note">
-          Vorausschau nach aktuellem Stand: Habit-Termine werden nur berechnet,
-          nicht angelegt. Pausierte und gelöschte Habits sind nicht eingeplant.
-        </p>
         <details
           v-for="day in result.days"
           :key="day.date"
@@ -245,29 +255,7 @@ onUnmounted(() => {
               class="planned-group"
             >
               <h3>Offen / geplant</h3>
-              <ul>
-                <li
-                  v-for="item in day.planned"
-                  :key="item.key"
-                  class="planned-item"
-                >
-                  <span class="planned-kind">{{
-                    item.type === "todo" ? "Todo" : "Habit"
-                  }}</span>
-                  <strong>{{ item.title }}</strong>
-                  <span v-if="item.isOverdue" class="overdue"
-                    >überfällig seit
-                    {{ formatDateForGermanDisplay(item.scheduledDate) }}</span
-                  >
-                  <span v-else
-                    >Geplant für
-                    {{ formatDateForGermanDisplay(item.scheduledDate) }}</span
-                  >
-                  <span v-if="item.plannedDurationMinutes !== null"
-                    >Geplant: {{ item.plannedDurationMinutes }} Min.</span
-                  >
-                </li>
-              </ul>
+              <HistoryPlannedItems :items="day.planned" />
             </section>
             <section
               v-for="group in groups"
@@ -470,31 +458,21 @@ summary span {
 .weekly-targets h2 {
   margin-top: 0;
 }
-.weekly-targets ul,
-.planned-group ul {
+.weekly-targets ul {
   padding: 0;
   list-style: none;
 }
-.weekly-targets li,
-.planned-item {
+.weekly-targets li {
   display: grid;
   gap: 0.35rem;
   padding: 0.75rem 0;
   overflow-wrap: anywhere;
 }
-.weekly-targets li + li,
-.planned-item + .planned-item {
+.weekly-targets li + li {
   border-top: 1px solid #e4e8ef;
 }
-.planned-item span,
 .weekly-targets small {
   font-size: 0.8125rem;
   color: #61718c;
-}
-.planned-item .planned-kind {
-  font-weight: 700;
-}
-.planned-item .overdue {
-  color: #973e17;
 }
 </style>

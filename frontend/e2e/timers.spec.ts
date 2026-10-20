@@ -88,6 +88,9 @@ test("switching requires confirmation and completing a Dump Todo persists it in 
       exact: true,
     })
     .click();
+  await expect(
+    page.getByRole("complementary", { name: "Aktueller Timer" }),
+  ).toContainText("Erste Aufgabe");
   const old = (await read(request)).timer!.id;
   await page
     .getByRole("button", {

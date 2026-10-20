@@ -244,6 +244,12 @@ test("History week: open plans, overdue Todos and weekly targets stay read-only"
   const habits = (await stored.json()) as { id: number }[];
   await page.goto("/");
   await history(page);
+  await expect(
+    page.getByRole("region", { name: "Offen / geplant", exact: true }),
+  ).toContainText("Tägliche Gitarre");
+  await expect(
+    page.getByRole("region", { name: "Wochenziele", exact: true }),
+  ).toContainText("Noch 3 von 3 Ausführungen");
   const before = await Promise.all(
     habits.map(async (h) => {
       const result = await request.get(`${API_URL}/habits/${h.id}/occurrences`);
@@ -385,4 +391,98 @@ test("History forecast: future date placement, schedule change, pause and deleti
   await expect(page.locator(".planned-item strong")).toHaveText([
     "Geplanter Artikel",
   ]);
+});
+
+test("History day: date placement, filters, overdue plans and completion refresh", async ({
+  page,
+  request,
+}) => {
+  const date = await today(request);
+  const tomorrow = daysAfter(date, 1);
+  const old = daysAfter(date, -10);
+  const response = await request.post(`${API_URL}/todos`, {
+    data: { title: "Überfälliges Todo", scheduledAt: `${old}T10:00:00Z` },
+  });
+  expect(response.status()).toBe(201);
+  const todo = (await response.json()) as { id: number };
+  expect(
+    (
+      await request.post(`${API_URL}/todos`, {
+        data: {
+          title: "Morgiger Termin",
+          scheduledAt: `${tomorrow}T10:00:00Z`,
+        },
+      })
+    ).status(),
+  ).toBe(201);
+  const created = await request.post(`${API_URL}/habits`, {
+    data: {
+      title: "Täglicher Habit",
+      schedule: { type: "interval", intervalDays: 1 },
+    },
+  });
+  expect(created.status()).toBe(201);
+  const habit = (await created.json()) as { id: number };
+  await page.goto("/");
+  await history(page);
+  const planned = page.getByRole("region", {
+    name: "Offen / geplant",
+    exact: true,
+  });
+  await expect(planned.locator(".planned-item strong")).toHaveText([
+    "Überfälliges Todo",
+    "Täglicher Habit",
+  ]);
+  await expect(planned).toContainText(
+    `überfällig seit ${old.split("-").reverse().join(".")}`,
+  );
+  await expect(planned.getByRole("button")).toHaveCount(0);
+  const before = (await (
+    await request.get(`${API_URL}/habits/${habit.id}/occurrences`)
+  ).json()) as unknown;
+  await page.locator('[name="historyDate"]').fill(tomorrow);
+  await expect(planned.locator(".planned-item strong")).toHaveText([
+    "Morgiger Termin",
+    "Täglicher Habit",
+  ]);
+  await expect(planned).not.toContainText("überfällig");
+  await page.locator('[name="historyFilter"]').selectOption("todos");
+  await expect(planned.locator(".planned-item strong")).toHaveText([
+    "Morgiger Termin",
+  ]);
+  await page.locator('[name="historyFilter"]').selectOption("habits");
+  await expect(planned.locator(".planned-item strong")).toHaveText([
+    "Täglicher Habit",
+  ]);
+  await expect(page.locator(".empty")).toHaveCount(0);
+  expect(
+    await (
+      await request.get(`${API_URL}/habits/${habit.id}/occurrences`)
+    ).json(),
+  ).toEqual(before);
+  await page.locator('[name="historyFilter"]').selectOption("all");
+  await page.locator('[name="historyDate"]').fill(date);
+  expect(
+    (
+      await request.patch(`${API_URL}/todos/${todo.id}`, {
+        data: { completed: true },
+      })
+    ).status(),
+  ).toBe(200);
+  await page
+    .getByRole("button", { name: "Aktualisieren", exact: true })
+    .click();
+  await expect(planned.locator(".planned-item strong")).toHaveText([
+    "Täglicher Habit",
+  ]);
+  await expect(
+    page.getByRole("region", { name: "Erledigt", exact: true }),
+  ).toContainText("Überfälliges Todo");
+  await page.screenshot({
+    path: test.info().outputPath("day-open-plans.png"),
+    fullPage: true,
+  });
+  await page.locator('[name="historyDate"]').fill(daysAfter(date, -14));
+  await expect(planned).toHaveCount(0);
+  await expect(page.locator(".empty")).toBeVisible();
 });

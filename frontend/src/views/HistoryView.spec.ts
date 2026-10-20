@@ -265,6 +265,16 @@ describe("HistoryView", () => {
     mock.mockResolvedValue(data);
     const w = mount(HistoryView);
     await flushPromises();
+    expect(w.get('section[aria-label="Offen / geplant"]').text()).toContain(
+      "Offener Artikel",
+    );
+    expect(w.get('section[aria-label="Offen / geplant"] h2').text()).toContain(
+      "2",
+    );
+    expect(w.get('section[aria-label="Wochenziele"]').text()).toContain(
+      "Noch 2 von 3 Ausführungen",
+    );
+    expect(w.find(".empty").exists()).toBe(false);
     await w.findAll(".mode button")[1]!.trigger("click");
     await flushPromises();
     expect(w.find(".empty").exists()).toBe(false);

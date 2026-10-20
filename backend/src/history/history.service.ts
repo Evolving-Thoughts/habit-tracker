@@ -110,12 +110,16 @@ export class HistoryService {
           a.type.localeCompare(b.type) ||
           a.id - b.id,
       );
-      const planning =
-        query.view === 'week'
-          ? await this.plan(manager, userId, filter, dates, today, now)
-          : null;
+      const planning = await this.plan(
+        manager,
+        userId,
+        filter,
+        dates,
+        today,
+        now,
+      );
       return {
-        ...(planning ? { weeklyTargets: planning.targets } : {}),
+        weeklyTargets: planning.targets,
         today,
         timeZone: DEFAULT_TIME_ZONE,
         startDate,
@@ -123,9 +127,7 @@ export class HistoryService {
         days: dates.map((date) => ({
           date,
           items: items.filter((item) => item.date === date),
-          ...(planning
-            ? { planned: planning.items.filter((item) => item.date === date) }
-            : {}),
+          planned: planning.items.filter((item) => item.date === date),
         })),
       };
     });
@@ -195,6 +197,16 @@ export class HistoryService {
       (date, slot) => (slot.scheduledDate < date ? slot.scheduledDate : date),
       dates[0],
     );
+    // Target progress is scoped to the selected calendar week even in day view.
+    // Clamp its upper boundary at the supported four-digit calendar maximum.
+    const weekday = new Date(`${dates[0]}T12:00:00Z`).getUTCDay();
+    const weekStart = addHistoryDays(dates[0], -((weekday + 6) % 7));
+    const last = new Date(`${weekStart}T12:00:00Z`);
+    last.setUTCDate(last.getUTCDate() + 6);
+    const weekEnd =
+      last.getUTCFullYear() > 9999
+        ? '9999-12-31'
+        : last.toISOString().slice(0, 10);
     const occurrences = await manager
       .getRepository(HabitOccurrenceEntity)
       .createQueryBuilder('occurrence')
@@ -202,8 +214,8 @@ export class HistoryService {
         ids: habits.map((habit) => habit.id),
       })
       .andWhere(
-        '("occurrence"."scheduledDate" BETWEEN :earliest AND :end OR "occurrence"."resolvedDate" BETWEEN :start AND :end)',
-        { earliest, start: dates[0], end: dates[dates.length - 1] },
+        '("occurrence"."scheduledDate" BETWEEN :earliest AND :end OR "occurrence"."resolvedDate" BETWEEN :weekStart AND :weekEnd)',
+        { earliest, end: dates[dates.length - 1], weekStart, weekEnd },
       )
       .getMany();
     items.push(...plannedHabits(habits, slots, occurrences, today));
@@ -215,7 +227,10 @@ export class HistoryService {
     );
     return {
       items,
-      targets: weeklyTargets(habits, versions, occurrences, dates, today, now),
+      targets: weeklyTargets(habits, versions, occurrences, dates, today, now, {
+        startDate: weekStart,
+        endDate: weekEnd,
+      }),
     };
   }
 }
