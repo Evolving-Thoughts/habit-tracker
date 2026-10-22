@@ -18,7 +18,8 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "push:keys": "node scripts/generate-push-keys.cjs"
+    "push:keys": "node scripts/generate-push-keys.cjs",
+    "migration:run": "npm run build && node scripts/migrate.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.7",

@@ -1,3 +1,4 @@
+import { getDeletionPreview } from "../api/todo-hierarchy.api";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -17,6 +18,7 @@ import type {
 import type { TodoResponse } from "../types/todo";
 import PlannerItemEditor from "./PlannerItemEditor.vue";
 
+vi.mock("../api/todo-hierarchy.api", () => ({ getDeletionPreview: vi.fn() }));
 vi.mock("../api/day-planner.api", () => ({
   getTodo: vi.fn(),
   getHabit: vi.fn(),
@@ -85,6 +87,13 @@ async function save(wrapper: ReturnType<typeof mountHabitEditor>) {
 describe("PlannerItemEditor", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(getDeletionPreview).mockResolvedValue({
+      confirmationToken: "a".repeat(64),
+      todos: [
+        { id: 1, title: "NestJS lernen", parentId: null, completed: false },
+      ],
+      timers: [],
+    });
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-02T12:00:00Z"));
     vi.mocked(getTodo).mockResolvedValue(todo);
@@ -484,7 +493,8 @@ describe("PlannerItemEditor", () => {
       expect(deleteHabit).not.toHaveBeenCalled();
       await wrapper.get('[data-test="confirm-delete"]').trigger("click");
       await flushPromises();
-      if (kind === "todo") expect(deleteTodo).toHaveBeenCalledWith(1);
+      if (kind === "todo")
+        expect(deleteTodo).toHaveBeenCalledWith(1, "a".repeat(64));
       else expect(deleteHabit).toHaveBeenCalledWith(10);
       expect(wrapper.emitted("changed")).toEqual([[]]);
     },

@@ -24,6 +24,14 @@ export class TodoEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
+  @Index('IDX_todos_parent')
+  @Column({ type: 'integer', nullable: true })
+  parentId!: number | null;
+
+  @ManyToOne(() => TodoEntity, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'parentId', foreignKeyConstraintName: 'FK_todos_parent' })
+  parent?: TodoEntity | null;
+
   @Column({
     type: 'varchar',
     length: 200,

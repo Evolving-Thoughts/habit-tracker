@@ -3,7 +3,7 @@ import { ref } from "vue";
 import { createTodo } from "../api/day-planner.api";
 import type { CreateTodoInput } from "../types/todo";
 
-defineProps<{ embedded?: boolean }>();
+const props = defineProps<{ embedded?: boolean; parentId?: number | null }>();
 
 const emit = defineEmits<{
   created: [];
@@ -88,6 +88,7 @@ async function submit(): Promise<void> {
 
   try {
     const input = buildInput();
+    if (props.parentId !== undefined) input.parentId = props.parentId;
 
     isSubmitting.value = true;
     emit("busy", true);

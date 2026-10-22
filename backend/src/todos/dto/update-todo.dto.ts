@@ -11,6 +11,11 @@ import {
 
 export class UpdateTodoDto {
   @IsOptional()
+  @IsInt()
+  @Min(1)
+  readonly parentId?: number | null;
+
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)

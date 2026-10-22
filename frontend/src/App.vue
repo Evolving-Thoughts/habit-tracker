@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import PushSettings from "./components/PushSettings.vue";
 import TimerProvider from "./components/TimerProvider.vue";
+import TodoHierarchyView from "./views/TodoHierarchyView.vue";
 import HistoryView from "./views/HistoryView.vue";
 import HabitsView from "./views/HabitsView.vue";
 import TodayView from "./views/TodayView.vue";
@@ -71,7 +72,9 @@ onUnmounted(() => {
   window.removeEventListener("auth-expired", expire);
   window.removeEventListener("hashchange", readLink);
 });
-const activeView = ref<"today" | "todo-dump" | "habits" | "history">("today");
+const activeView = ref<
+  "today" | "todo-dump" | "habits" | "history" | "hierarchy"
+>("today");
 </script>
 
 <template>
@@ -111,6 +114,13 @@ const activeView = ref<"today" | "todo-dump" | "habits" | "history">("today");
       </button>
       <button
         type="button"
+        :aria-pressed="activeView === 'hierarchy'"
+        @click="activeView = 'hierarchy'"
+      >
+        Aufgabenbaum
+      </button>
+      <button
+        type="button"
         :aria-pressed="activeView === 'habits'"
         @click="activeView = 'habits'"
       >
@@ -130,6 +140,7 @@ const activeView = ref<"today" | "todo-dump" | "habits" | "history">("today");
 
     <TodayView v-if="activeView === 'today'" />
     <TodoDumpView v-else-if="activeView === 'todo-dump'" />
+    <TodoHierarchyView v-else-if="activeView === 'hierarchy'" />
     <HabitsView v-else-if="activeView === 'habits'" />
     <HistoryView v-else />
   </TimerProvider>

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { getDeletionPreview } from "../api/todo-hierarchy.api";
+import type { DeletionPreview } from "../types/todo-hierarchy";
+import TodoDeletionSummary from "./TodoDeletionSummary.vue";
+
 import { computed, onMounted, ref } from "vue";
 import {
   changeHabitSchedule,
@@ -44,6 +48,27 @@ const isSaving = ref(false);
 const hasLoaded = ref(false);
 const errorMessage = ref<string | null>(null);
 const confirmDeletion = ref(false);
+const deletionPreview = ref<DeletionPreview | null>(null);
+async function requestDeletion(): Promise<void> {
+  if (isBusy.value) return;
+  errorMessage.value = null;
+  deletionPreview.value = null;
+  isSaving.value = true;
+  emit("busy", true);
+  try {
+    if (props.kind === "todo")
+      deletionPreview.value = await getDeletionPreview(props.entityId);
+    confirmDeletion.value = true;
+  } catch (error) {
+    errorMessage.value =
+      error instanceof Error
+        ? error.message
+        : "Löschvorschau konnte nicht geladen werden.";
+  } finally {
+    isSaving.value = false;
+    emit("busy", false);
+  }
+}
 
 const title = ref("");
 
@@ -362,7 +387,10 @@ async function remove(): Promise<void> {
 
   try {
     if (props.kind === "todo") {
-      await deleteTodo(props.entityId);
+      await deleteTodo(
+        props.entityId,
+        deletionPreview.value?.confirmationToken,
+      );
     } else {
       await deleteHabit(props.entityId);
     }
@@ -371,6 +399,8 @@ async function remove(): Promise<void> {
   } catch (error: unknown) {
     errorMessage.value =
       error instanceof Error ? error.message : "Löschen fehlgeschlagen.";
+    confirmDeletion.value = false;
+    deletionPreview.value = null;
   } finally {
     isSaving.value = false;
     emit("busy", false);
@@ -639,12 +669,16 @@ onMounted(loadEntity);
             v-if="!confirmDeletion"
             type="button"
             data-test="request-delete"
-            @click="confirmDeletion = true"
+            @click="requestDeletion"
           >
             {{ kind === "todo" ? "Todo löschen" : "Gesamtes Habit löschen" }}
           </button>
 
           <template v-else>
+            <TodoDeletionSummary
+              v-if="deletionPreview"
+              :preview="deletionPreview"
+            />
             <p>„{{ title }}“ wirklich löschen?</p>
 
             <p v-if="kind === 'habit'">
