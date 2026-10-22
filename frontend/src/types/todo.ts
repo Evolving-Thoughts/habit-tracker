@@ -1,4 +1,5 @@
 export type CreateTodoInput = {
+  parentId?: number | null;
   title: string;
   scheduledAt: string | null;
   plannedDurationMinutes: number | null;

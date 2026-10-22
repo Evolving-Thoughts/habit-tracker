@@ -12,6 +12,7 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { DeleteTodoDto } from './dto/delete-todo.dto';
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { TodoResponseDto } from './dto/todo-response.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
@@ -27,6 +28,19 @@ export class TodosController {
     const todos = await this.todosService.findAll(user.id);
 
     return todos.map((todo) => TodoMapper.toResponseDto(todo));
+  }
+
+  @Get('hierarchy')
+  async hierarchy(@CurrentUser() user: AuthUser) {
+    return this.todosService.hierarchy(user.id);
+  }
+
+  @Get(':id/deletion-preview')
+  async deletionPreview(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.todosService.deletionPreview(user.id, id);
   }
 
   @Get(':id')
@@ -65,7 +79,8 @@ export class TodosController {
   async remove(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseIntPipe) id: number,
+    @Body() dto?: DeleteTodoDto,
   ): Promise<void> {
-    await this.todosService.remove(user.id, id);
+    await this.todosService.remove(user.id, id, dto?.confirmationToken);
   }
 }

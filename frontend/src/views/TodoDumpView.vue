@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { getDeletionPreview } from "../api/todo-hierarchy.api";
+import type { DeletionPreview } from "../types/todo-hierarchy";
+import TodoDeletionSummary from "../components/TodoDeletionSummary.vue";
+
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import {
   deleteTodo,
@@ -26,6 +30,25 @@ const successMessage = ref<string | null>(null);
 
 const selectedTodo = ref<TodoResponse | null>(null);
 const confirmDeletion = ref(false);
+const deletionPreview = ref<DeletionPreview | null>(null);
+async function requestDeletion(): Promise<void> {
+  if (isBusy.value) return;
+  errorMessage.value = null;
+  deletionPreview.value = null;
+  isSaving.value = true;
+  try {
+    deletionPreview.value = await getDeletionPreview(selectedTodo.value!.id);
+    confirmDeletion.value = true;
+  } catch (error) {
+    errorMessage.value =
+      error instanceof Error
+        ? error.message
+        : "Löschvorschau konnte nicht geladen werden.";
+  } finally {
+    isSaving.value = false;
+  }
+}
+
 const creationOpen = ref(false);
 
 const editTitle = ref("");
@@ -225,7 +248,7 @@ async function removeSelectedTodo(): Promise<void> {
   successMessage.value = null;
 
   try {
-    await deleteTodo(todoId);
+    await deleteTodo(todoId, deletionPreview.value?.confirmationToken);
     notifyTargetChange();
 
     successMessage.value = "Todo gelöscht.";
@@ -237,6 +260,8 @@ async function removeSelectedTodo(): Promise<void> {
       error instanceof Error
         ? error.message
         : "Das Todo konnte nicht gelöscht werden.";
+    confirmDeletion.value = false;
+    deletionPreview.value = null;
   } finally {
     isSaving.value = false;
   }
@@ -378,12 +403,16 @@ onUnmounted(() =>
                 v-if="!confirmDeletion"
                 type="button"
                 data-test="dump-request-delete"
-                @click="confirmDeletion = true"
+                @click="requestDeletion"
               >
                 Todo löschen
               </button>
 
               <template v-else>
+                <TodoDeletionSummary
+                  v-if="deletionPreview"
+                  :preview="deletionPreview"
+                />
                 <p>„{{ selectedTodo.title }}“ wirklich löschen?</p>
 
                 <div class="todo-editor__actions">

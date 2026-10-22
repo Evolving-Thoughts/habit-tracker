@@ -5,6 +5,7 @@ export class TodoMapper {
   static toResponseDto(todo: TodoEntity): TodoResponseDto {
     return new TodoResponseDto({
       id: todo.id,
+      parentId: todo.parentId ?? null,
       title: todo.title,
       completed: todo.completed,
       completedAt: todo.completedAt?.toISOString() ?? null,

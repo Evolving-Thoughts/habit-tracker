@@ -1,5 +1,6 @@
 export type TodoResponseDtoProperties = {
   id: number;
+  parentId?: number | null;
   title: string;
   completed: boolean;
   completedAt: string | null;
@@ -10,6 +11,7 @@ export type TodoResponseDtoProperties = {
 
 export class TodoResponseDto {
   readonly id: number;
+  readonly parentId: number | null;
   readonly title: string;
   readonly completed: boolean;
   readonly completedAt: string | null;
@@ -19,6 +21,7 @@ export class TodoResponseDto {
 
   constructor(properties: TodoResponseDtoProperties) {
     this.id = properties.id;
+    this.parentId = properties.parentId ?? null;
     this.title = properties.title;
     this.completed = properties.completed;
     this.completedAt = properties.completedAt;
