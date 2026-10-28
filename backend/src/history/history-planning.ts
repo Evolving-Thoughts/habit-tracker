@@ -13,6 +13,7 @@ import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occur
 import { HabitOccurrenceStatus as Status } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { expiresAt, slotStartsAt } from '../habits/scheduling/schedule-rules';
 import { HistoryPlannedItem, HistoryWeeklyTarget } from './history.dto';
+import { effectiveDuration } from '../timers/timer-target';
 
 // Bounded calendar arithmetic: never replay years of historical generation.
 export function isPlannedDate(
@@ -129,8 +130,9 @@ export function plannedHabits(
         date: slot.date,
         scheduledDate: slot.scheduledDate,
         isOverdue: slot.scheduledDate < today,
-        plannedDurationMinutes:
-          stored?.plannedDurationMinutes ?? habit.plannedDurationMinutes,
+        plannedDurationMinutes: stored
+          ? effectiveDuration(stored, habit)
+          : habit.plannedDurationMinutes,
       },
     ];
   });

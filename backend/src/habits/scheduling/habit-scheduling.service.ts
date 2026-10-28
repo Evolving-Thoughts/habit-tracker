@@ -10,6 +10,7 @@ import { dayOf, weekRange } from '../../common/date/local-day';
 import { Clock } from '../../common/clock';
 import { lockUser, UserUnitOfWork } from '../../common/user-unit-of-work';
 import { ownedOccurrences } from '../../habit-occurrences/owned-occurrences';
+import { effectiveDuration, releaseTimers } from '../../timers/timer-target';
 import {
   HabitOccurrenceCancellationReason,
   HabitOccurrenceEntity,
@@ -120,9 +121,7 @@ export class HabitSchedulingService {
       isActive: habit.isActive,
       plannedDurationMinutes: habit.plannedDurationMinutes,
       timerOccurrenceId: pending?.id ?? null,
-      timerDurationMinutes: pending
-        ? (pending.plannedDurationMinutes ?? habit.plannedDurationMinutes)
-        : null,
+      timerDurationMinutes: pending ? effectiveDuration(pending, habit) : null,
       currentSchedule: active ? this.versionResponse(active) : null,
       upcomingSchedule: upcoming ? this.versionResponse(upcoming) : null,
     };
@@ -262,6 +261,7 @@ export class HabitSchedulingService {
         if (expiry <= version.endsAt) {
           await this.resolve(
             manager,
+            habit,
             occurrence,
             HabitOccurrenceStatus.SKIPPED,
             today,
@@ -269,6 +269,7 @@ export class HabitSchedulingService {
         } else {
           await this.resolve(
             manager,
+            habit,
             occurrence,
             HabitOccurrenceStatus.CANCELLED,
             dayOf(version.endsAt),
@@ -278,6 +279,7 @@ export class HabitSchedulingService {
       } else if (habit.isActive && expiry <= now) {
         await this.resolve(
           manager,
+          habit,
           occurrence,
           HabitOccurrenceStatus.SKIPPED,
           today,
@@ -400,6 +402,7 @@ export class HabitSchedulingService {
       if (pending) {
         await this.resolve(
           manager,
+          habit,
           pending,
           HabitOccurrenceStatus.CANCELLED,
           today,
@@ -439,6 +442,7 @@ export class HabitSchedulingService {
 
   private async resolve(
     manager: EntityManager,
+    habit: HabitEntity,
     occurrence: HabitOccurrenceEntity,
     status: HabitOccurrenceStatus,
     resolvedDate: string,
@@ -449,6 +453,10 @@ export class HabitSchedulingService {
     occurrence.cancellationReason = reason;
 
     await manager.getRepository(HabitOccurrenceEntity).save(occurrence);
+    // A resolved occurrence is no timer target any more.
+    await releaseTimers(manager, habit.userId, {
+      occurrenceIds: [occurrence.id],
+    });
   }
 
   async changeStatus(
@@ -545,7 +553,10 @@ export class HabitSchedulingService {
         targetStatus === HabitOccurrenceStatus.COMPLETED ? now : null;
       occurrence.cancellationReason = null;
 
-      return repository.save(occurrence);
+      const saved = await repository.save(occurrence);
+      if (targetStatus !== HabitOccurrenceStatus.PENDING)
+        await releaseTimers(manager, userId, { occurrenceIds: [id] });
+      return saved;
     });
   }
 

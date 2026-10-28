@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  TIMER_DURATION_MESSAGE,
+  TIMER_MAX_MINUTES,
+} from "../utils/timer-duration";
 import { computed, onMounted, ref } from "vue";
 import {
   changeHabitSchedule,
@@ -211,8 +215,8 @@ function buildHabitInput(): UpdateHabitInput {
   const minutes = String(duration.value).trim()
     ? positiveInteger(
         duration.value,
-        "Bitte wähle 1 bis 10080 ganze Minuten.",
-        10080,
+        TIMER_DURATION_MESSAGE,
+        TIMER_MAX_MINUTES,
       )
     : null;
   if (minutes !== (loadedHabit.value?.plannedDurationMinutes ?? null))
@@ -411,7 +415,7 @@ onMounted(loadEntity);
             name="duration"
             type="number"
             min="1"
-            max="10080"
+            :max="TIMER_MAX_MINUTES"
             step="1"
           /><small
             >Die Standarddauer gilt für Ausführungen ohne eigene Dauer. Eine

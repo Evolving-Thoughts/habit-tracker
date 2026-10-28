@@ -443,7 +443,7 @@ onUnmounted(() =>
                   :target-id="todo.id"
                   :title="todo.title"
                   :duration="todo.plannedDurationMinutes"
-                  :eligible="!todo.completed"
+                  :eligible="todo.timerEligible"
                   :disabled="isBusy"
                   class="dump-item__play"
                 />

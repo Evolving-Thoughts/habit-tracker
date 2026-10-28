@@ -139,7 +139,7 @@ function skip(): void {
           :target-id="item.type === 'todo' ? item.todoId : item.occurrenceId"
           :title="item.title"
           :duration="item.plannedDurationMinutes"
-          :eligible="true"
+          :eligible="item.timerEligible"
           :disabled="isUpdating"
         />
         <button

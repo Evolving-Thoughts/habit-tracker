@@ -51,6 +51,7 @@ function makeTodo(
     plannedDurationMinutes: 30,
     isFixed: false,
     isOverdue: false,
+    timerEligible: true,
     ...overrides,
   };
 }
@@ -68,6 +69,7 @@ function makeHabit(
     scheduledDate: "2026-10-02",
     scheduleType: "interval",
     isOverdue: false,
+    timerEligible: true,
     ...overrides,
   };
 }
@@ -450,6 +452,7 @@ describe("TodayView creation flow", () => {
       scheduledAt: null,
       plannedDurationMinutes: null,
       isFixed: false,
+      timerEligible: true,
     });
   });
   it("hides the forms until plus is clicked and presents both choices", async () => {

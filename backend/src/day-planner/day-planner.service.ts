@@ -4,6 +4,11 @@ import { Brackets, Repository } from 'typeorm';
 import { DEFAULT_TIME_ZONE } from '../common/date/date-only.utils';
 import { dayOf } from '../common/date/local-day';
 import { Clock } from '../common/clock';
+import {
+  effectiveDuration,
+  isOccurrenceTimerEligible,
+  isTodoTimerEligible,
+} from '../timers/timer-target';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
@@ -114,6 +119,7 @@ export class DayPlannerService {
       plannedDurationMinutes: todo.plannedDurationMinutes,
       isFixed: todo.isFixed,
       isOverdue: !todo.completed && scheduledDate < today,
+      timerEligible: isTodoTimerEligible(todo),
     };
   }
 
@@ -127,9 +133,7 @@ export class DayPlannerService {
 
     return {
       type: 'habit',
-      plannedDurationMinutes:
-        occurrence.plannedDurationMinutes ??
-        occurrence.habit.plannedDurationMinutes,
+      plannedDurationMinutes: effectiveDuration(occurrence, occurrence.habit),
       occurrenceId: occurrence.id,
       habitId: occurrence.habitId,
       title: occurrence.habit.title,
@@ -139,6 +143,11 @@ export class DayPlannerService {
       isOverdue:
         occurrence.status === HabitOccurrenceStatus.PENDING &&
         occurrence.scheduledDate < today,
+      timerEligible: isOccurrenceTimerEligible(
+        occurrence,
+        occurrence.habit,
+        today,
+      ),
     };
   }
 }

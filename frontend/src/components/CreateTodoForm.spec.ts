@@ -20,6 +20,7 @@ const response: TodoResponse = {
   scheduledAt: null,
   plannedDurationMinutes: null,
   isFixed: false,
+  timerEligible: true,
 };
 
 describe("CreateTodoForm", () => {

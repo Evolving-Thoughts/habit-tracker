@@ -321,6 +321,23 @@ describe('Synced timers and Dump completion (e2e)', () => {
     await client().delete(`/todos/${next}`).expect(204);
     expect((await read()).timer).toBeNull();
   });
+  it('stops the stored timer in the same request that ends its target', async () => {
+    // No later read may be needed: the row itself is stopped immediately.
+    const stored = async () =>
+      (await db.getRepository(TimerEntity).find())
+        .filter((t) => t.state !== 'stopped')
+        .map((t) => t.state);
+    const id = await todo();
+    await start({ kind: 'todo', targetId: id });
+    await client().patch(`/todos/${id}`).send({ completed: true }).expect(200);
+    expect(await stored()).toEqual([]);
+    const h = await habit();
+    const available = (await client().get(`/habits/${h.id}`).expect(200))
+      .body as HabitResponseDto;
+    await start({ kind: 'occurrence', targetId: available.timerOccurrenceId! });
+    await client().delete(`/habits/${h.id}`).expect(204);
+    expect(await stored()).toEqual([]);
+  });
   it('stops when the linked Habit is paused or its occurrence is skipped', async () => {
     const h = await habit();
     const getAvailable = async () =>

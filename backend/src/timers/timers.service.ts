@@ -7,11 +7,18 @@ import {
 import { EntityManager, In } from 'typeorm';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
-import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
 import { dayOf } from '../common/date/local-day';
 import { TimerEntity } from './timer.entity';
 import { StartTimerDto } from './timer.dto';
+import {
+  effectiveDuration,
+  isOccurrenceTimerEligible,
+  isTodoTimerEligible,
+  isValidTimerDuration,
+  TIMER_MAX_MINUTES,
+  TIMER_MIN_MINUTES,
+} from './timer-target';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { ownedOccurrences } from '../habit-occurrences/owned-occurrences';
@@ -82,7 +89,7 @@ export class TimersService {
         lock: { mode: 'pessimistic_write' },
       });
       if (!todo) throw new NotFoundException('Todo nicht gefunden.');
-      if (todo.completed)
+      if (!isTodoTimerEligible(todo))
         throw new ConflictException('Erledigte Todos zuerst wieder öffnen.');
       return todo;
     }
@@ -99,11 +106,7 @@ export class TimersService {
     const occurrence = await manager.findOneByOrFail(HabitOccurrenceEntity, {
       id,
     });
-    if (
-      !habit.isActive ||
-      occurrence.status !== HabitOccurrenceStatus.PENDING ||
-      occurrence.scheduledDate > dayOf(now)
-    )
+    if (!isOccurrenceTimerEligible(occurrence, habit, dayOf(now)))
       throw new ConflictException('Keine offene fällige Habit-Ausführung.');
     occurrence.habit = habit;
     return occurrence;
@@ -216,13 +219,12 @@ export class TimersService {
       );
       const minutes =
         dto.durationMinutes ??
-        target.plannedDurationMinutes ??
         (target instanceof HabitOccurrenceEntity
-          ? target.habit.plannedDurationMinutes
-          : null);
-      if (!Number.isInteger(minutes) || minutes! < 1 || minutes! > 10080)
+          ? effectiveDuration(target, target.habit)
+          : target.plannedDurationMinutes);
+      if (!isValidTimerDuration(minutes))
         throw new BadRequestException(
-          'Eine Dauer zwischen 1 und 10080 Minuten ist erforderlich.',
+          `Eine Dauer zwischen ${TIMER_MIN_MINUTES} und ${TIMER_MAX_MINUTES} Minuten ist erforderlich.`,
         );
       if (active && (active.state === 'running' || active.state === 'paused')) {
         const same =
@@ -239,7 +241,7 @@ export class TimersService {
         active.endsAt = null;
         await manager.save(active);
       }
-      await this.persistDuration(manager, target, minutes!);
+      await this.persistDuration(manager, target, minutes);
       // Determine deadline only after acquiring locks and persisting the target duration.
       now = this.clock.now();
       const timer = await manager.save(
@@ -251,9 +253,9 @@ export class TimersService {
           title:
             target instanceof TodoEntity ? target.title : target.habit.title,
           state: 'running',
-          durationMinutes: minutes!,
-          remainingMilliseconds: minutes! * 60_000,
-          endsAt: new Date(now.getTime() + minutes! * 60_000),
+          durationMinutes: minutes,
+          remainingMilliseconds: minutes * 60_000,
+          endsAt: new Date(now.getTime() + minutes * 60_000),
           finishedAt: null,
         }),
       );

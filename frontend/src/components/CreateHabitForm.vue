@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  TIMER_DURATION_MESSAGE,
+  TIMER_MAX_MINUTES,
+} from "../utils/timer-duration";
 import { ref } from "vue";
 import { createHabit } from "../api/day-planner.api";
 import type {
@@ -98,8 +102,8 @@ function buildInput(): CreateHabitInput {
       ? {
           plannedDurationMinutes: integer(
             duration.value,
-            "Bitte wähle 1 bis 10080 ganze Minuten.",
-            10080,
+            TIMER_DURATION_MESSAGE,
+            TIMER_MAX_MINUTES,
           ),
         }
       : {}),
@@ -177,7 +181,7 @@ async function submit(): Promise<void> {
             name="duration"
             type="number"
             min="1"
-            max="10080"
+            :max="TIMER_MAX_MINUTES"
             step="1"
           /><small
             >Mit einer Dauer kannst du fällige Ausführungen direkt per Timer

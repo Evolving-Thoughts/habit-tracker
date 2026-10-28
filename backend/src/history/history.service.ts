@@ -15,6 +15,7 @@ import {
   weekRange,
 } from '../common/date/local-day';
 import { Clock } from '../common/clock';
+import { effectiveDuration } from '../timers/timer-target';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
@@ -101,9 +102,10 @@ export class HistoryService {
               : occurrence.scheduledDate,
           scheduledDate: occurrence.scheduledDate,
           resolvedAt: occurrence.resolvedAt?.toISOString() ?? null,
-          plannedDurationMinutes:
-            occurrence.plannedDurationMinutes ??
-            occurrence.habit.plannedDurationMinutes,
+          plannedDurationMinutes: effectiveDuration(
+            occurrence,
+            occurrence.habit,
+          ),
           deleted: occurrence.habit.deletedAt !== null,
         })),
       ];

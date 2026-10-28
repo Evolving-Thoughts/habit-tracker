@@ -37,6 +37,7 @@ const todo: TodoResponse = {
   scheduledAt: "2026-10-02T08:00:12.000Z",
   plannedDurationMinutes: 30,
   isFixed: false,
+  timerEligible: true,
 };
 const interval: HabitScheduleRule = {
   type: "interval",

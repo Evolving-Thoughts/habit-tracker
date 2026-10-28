@@ -22,6 +22,7 @@ function makeTodo(
     plannedDurationMinutes: 30,
     isFixed: true,
     isOverdue: false,
+    timerEligible: true,
     ...overrides,
   };
 }
@@ -39,6 +40,7 @@ function makeHabit(
     scheduledDate: "2026-10-02",
     scheduleType: "interval",
     isOverdue: false,
+    timerEligible: true,
     ...overrides,
   };
 }

@@ -1,4 +1,5 @@
 import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { TIMER_MAX_MINUTES, TIMER_MIN_MINUTES } from './timer-target';
 export class StartTimerDto {
   @IsIn(['todo', 'occurrence'])
   kind!: 'todo' | 'occurrence';
@@ -7,8 +8,8 @@ export class StartTimerDto {
   targetId!: number;
   @IsOptional()
   @IsInt()
-  @Min(1)
-  @Max(10080)
+  @Min(TIMER_MIN_MINUTES)
+  @Max(TIMER_MAX_MINUTES)
   durationMinutes?: number;
   @IsOptional()
   @IsUUID()
@@ -16,7 +17,7 @@ export class StartTimerDto {
 }
 export class ChangeTimerDurationDto {
   @IsInt()
-  @Min(1)
-  @Max(10080)
+  @Min(TIMER_MIN_MINUTES)
+  @Max(TIMER_MAX_MINUTES)
   durationMinutes!: number;
 }

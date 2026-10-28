@@ -10,6 +10,7 @@ import { initialScheduleInstant } from '../common/date/date-only.utils';
 import { dayOf } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
+import { releaseTimers } from '../timers/timer-target';
 import { CreateHabitDto } from './dto/create-habit.dto';
 import { UpdateHabitDto } from './dto/update-habit.dto';
 import { ChangeHabitScheduleDto } from './dto/change-habit-schedule.dto';
@@ -178,6 +179,8 @@ export class HabitsService {
       }
 
       await manager.getRepository(HabitEntity).save(habit);
+      if (!habit.isActive)
+        await releaseTimers(manager, userId, { habitId: habit.id });
 
       const now = this.clock.now();
 
@@ -204,6 +207,7 @@ export class HabitsService {
       const habit = await this.scheduling.lockHabit(userId, manager, id);
 
       await manager.getRepository(HabitEntity).softRemove(habit);
+      await releaseTimers(manager, userId, { habitId: habit.id });
     });
   }
 }

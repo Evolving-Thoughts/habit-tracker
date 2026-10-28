@@ -34,6 +34,7 @@ function makeTodo(overrides: Partial<TodoResponse> = {}): TodoResponse {
     scheduledAt: null,
     plannedDurationMinutes: 30,
     isFixed: false,
+    timerEligible: true,
     ...overrides,
   };
 }
