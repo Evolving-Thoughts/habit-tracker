@@ -8,12 +8,14 @@ import { DeepPartial, Repository } from 'typeorm';
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
 import { TodoEntity } from './entities/todo.entity';
+import { Clock } from '../common/clock';
 
 @Injectable()
 export class TodosService {
   constructor(
     @InjectRepository(TodoEntity)
     private readonly todoRepository: Repository<TodoEntity>,
+    private readonly clock: Clock,
   ) {}
 
   async findAll(userId: string): Promise<TodoEntity[]> {
@@ -104,7 +106,7 @@ export class TodosService {
     if (updateTodoDto.completed === true) {
       // Bei einem wiederholten PATCH mit completed=true
       // bleibt der ursprüngliche Zeitpunkt erhalten.
-      todo.completedAt ??= new Date();
+      todo.completedAt ??= this.clock.now();
     }
 
     if (updateTodoDto.completed === false) {

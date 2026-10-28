@@ -254,7 +254,7 @@ describe("TodoDumpView", () => {
 
     getTodosMock.mockResolvedValueOnce([makeTodo()]).mockResolvedValueOnce([
       makeTodo({
-        scheduledAt: new Date(localDateTime).toISOString(),
+        scheduledAt: "2026-10-02T08:00:00.000Z",
         isFixed: true,
       }),
     ]);
@@ -277,7 +277,7 @@ describe("TodoDumpView", () => {
 
     expect(updateTodoMock).toHaveBeenCalledWith(1, {
       title: "NestJS lernen",
-      scheduledAt: new Date(localDateTime).toISOString(),
+      scheduledAt: "2026-10-02T08:00:00.000Z",
       plannedDurationMinutes: 30,
       isFixed: true,
     });

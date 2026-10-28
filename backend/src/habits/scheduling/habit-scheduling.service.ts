@@ -5,17 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Brackets, DataSource, EntityManager } from 'typeorm';
-import {
-  changeScheduleInstant,
-  DEFAULT_TIME_ZONE,
-  getCurrentDateInTimeZone,
-} from '../../common/date/date-only.utils';
+import { changeScheduleInstant } from '../../common/date/date-only.utils';
+import { dayOf, weekRange } from '../../common/date/local-day';
+import { Clock } from '../../common/clock';
 import {
   HabitOccurrenceCancellationReason,
   HabitOccurrenceEntity,
 } from '../../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../../habit-occurrences/enums/habit-occurrence-status.enum';
-import { HabitScheduleCalculator } from '../../habit-occurrences/scheduling/habit-schedule-calculator';
 import { ChangeHabitScheduleDto } from '../dto/change-habit-schedule.dto';
 import {
   HabitResponseDto,
@@ -36,7 +33,10 @@ import {
 
 @Injectable()
 export class HabitSchedulingService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly clock: Clock,
+  ) {}
 
   async lockHabit(
     userId: string,
@@ -88,10 +88,7 @@ export class HabitSchedulingService {
   ): ScheduleVersionResponse {
     return {
       id: version.id,
-      effectiveFrom: getCurrentDateInTimeZone(
-        DEFAULT_TIME_ZONE,
-        version.effectiveAt,
-      ),
+      effectiveFrom: dayOf(version.effectiveAt),
       effectiveAt: version.effectiveAt.toISOString(),
       endsAt: version.endsAt?.toISOString() ?? null,
       cancelledAt: version.cancelledAt?.toISOString() ?? null,
@@ -103,7 +100,7 @@ export class HabitSchedulingService {
   habitResponse(
     habit: HabitEntity,
     versions: HabitScheduleVersionEntity[],
-    at = new Date(),
+    at = this.clock.now(),
     pending?: HabitOccurrenceEntity,
   ): HabitResponseDto {
     const active = this.activeVersion(versions, at);
@@ -138,7 +135,7 @@ export class HabitSchedulingService {
 
       // Erst nach dem Lock bestimmen: parallele Änderungen erhalten
       // ihre tatsächliche Reihenfolge.
-      const now = new Date();
+      const now = this.clock.now();
       const effectiveAt = changeScheduleInstant(dto.effectiveFrom, now);
 
       await this.reconcile(manager, habit, now);
@@ -201,7 +198,7 @@ export class HabitSchedulingService {
     await this.dataSource.transaction(async (manager) => {
       const habit = await this.lockHabit(userId, manager, habitId);
 
-      await this.reconcile(manager, habit, at ?? new Date());
+      await this.reconcile(manager, habit, at ?? this.clock.now());
     });
   }
 
@@ -210,7 +207,7 @@ export class HabitSchedulingService {
     habit: HabitEntity,
     now: Date,
   ): Promise<void> {
-    const today = getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, now);
+    const today = dayOf(now);
     const versions = await this.getVersions(manager, habit.id);
 
     const usable = versions.filter((version) => version.cancelledAt === null);
@@ -269,7 +266,7 @@ export class HabitSchedulingService {
             manager,
             occurrence,
             HabitOccurrenceStatus.CANCELLED,
-            getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, version.endsAt),
+            dayOf(version.endsAt),
             'schedule_changed',
           );
         }
@@ -332,10 +329,7 @@ export class HabitSchedulingService {
               resolvedDate = today;
             } else {
               status = HabitOccurrenceStatus.CANCELLED;
-              resolvedDate = getCurrentDateInTimeZone(
-                DEFAULT_TIME_ZONE,
-                version.endsAt,
-              );
+              resolvedDate = dayOf(version.endsAt);
               reason = 'schedule_changed';
             }
           } else if (expiry <= now) {
@@ -380,7 +374,7 @@ export class HabitSchedulingService {
       return;
     }
 
-    const week = HabitScheduleCalculator.getWeekRange(today);
+    const week = weekRange(today);
 
     const completedThisWeek = occurrences.filter(
       (item) =>
@@ -484,8 +478,8 @@ export class HabitSchedulingService {
 
     return this.dataSource.transaction(async (manager) => {
       const habit = await this.lockHabit(userId, manager, initial.habitId);
-      const now = new Date();
-      const today = getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, now);
+      const now = this.clock.now();
+      const today = dayOf(now);
 
       await this.reconcile(manager, habit, now);
 
@@ -583,7 +577,7 @@ export class HabitSchedulingService {
       await this.generateForHabit(userId, habit.id);
     }
 
-    const today = getCurrentDateInTimeZone();
+    const today = this.clock.today();
 
     return this.dataSource
       .getRepository(HabitOccurrenceEntity)

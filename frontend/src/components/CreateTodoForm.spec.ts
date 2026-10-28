@@ -70,7 +70,7 @@ describe("CreateTodoForm", () => {
 
     expect(createTodoMock).toHaveBeenCalledWith({
       title: "Arzttermin",
-      scheduledAt: new Date(localDateTime).toISOString(),
+      scheduledAt: "2026-10-02T08:00:00.000Z",
       plannedDurationMinutes: 30,
       isFixed: true,
     });

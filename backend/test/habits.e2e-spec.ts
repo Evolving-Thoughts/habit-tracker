@@ -29,7 +29,7 @@ import { HabitSchedulingService } from '../src/habits/scheduling/habit-schedulin
 import { HabitOccurrenceResponseDto } from '../src/habit-occurrences/dto/habit-occurrence-response.dto';
 import { HabitOccurrenceEntity } from '../src/habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../src/habit-occurrences/enums/habit-occurrence-status.enum';
-import { HabitScheduleCalculator } from '../src/habit-occurrences/scheduling/habit-schedule-calculator';
+import { addDays, weekRange } from '../src/common/date/local-day';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
 
 describe('Habit domain and day planner (e2e)', () => {
@@ -46,8 +46,7 @@ describe('Habit domain and day planner (e2e)', () => {
 
   const date = (): string => getCurrentDateInTimeZone();
 
-  const relativeDate = (days: number): string =>
-    HabitScheduleCalculator.addDays(date(), days);
+  const relativeDate = (days: number): string => addDays(date(), days);
 
   async function clear(): Promise<void> {
     if (dataSource.options.database !== 'habit_tracker_test') {
@@ -815,7 +814,7 @@ describe('Habit domain and day planner (e2e)', () => {
     });
 
     it('preserves weekly completions across versions', async () => {
-      const week = HabitScheduleCalculator.getWeekRange(date());
+      const week = weekRange(date());
 
       const habit = await create({
         startDate: week.startDate,

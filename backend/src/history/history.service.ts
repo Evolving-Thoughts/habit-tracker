@@ -7,15 +7,18 @@ import {
   plannedHabits,
   weeklyTargets,
 } from './history-planning';
+import { DEFAULT_TIME_ZONE } from '../common/date/date-only.utils';
 import {
-  DEFAULT_TIME_ZONE,
-  getCurrentDateInTimeZone,
-  midnightInTimeZone,
-} from '../common/date/date-only.utils';
+  dayOf,
+  endOfDay,
+  startOfDay,
+  weekRange,
+} from '../common/date/local-day';
+import { Clock } from '../common/clock';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
-import { addHistoryDays, historyRange } from './history-range';
+import { historyRange } from './history-range';
 import {
   HistoryQueryDto,
   HistoryResponse,
@@ -26,10 +29,13 @@ import {
 
 @Injectable()
 export class HistoryService {
-  constructor(private readonly db: DataSource) {}
+  constructor(
+    private readonly db: DataSource,
+    private readonly clock: Clock,
+  ) {}
   async get(userId: string, query: HistoryQueryDto): Promise<HistoryResponse> {
-    const now = new Date();
-    const today = getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, now);
+    const now = this.clock.now();
+    const today = dayOf(now);
     const dates = historyRange(query.date ?? today, query.view ?? 'day');
     const startDate = dates[0];
     const endDate = dates[dates.length - 1];
@@ -48,8 +54,8 @@ export class HistoryService {
               .andWhere(
                 '"todo"."completedAt" >= :start AND "todo"."completedAt" < :end',
                 {
-                  start: midnightInTimeZone(startDate),
-                  end: midnightInTimeZone(addHistoryDays(endDate, 1)),
+                  start: startOfDay(startDate),
+                  end: endOfDay(endDate),
                 },
               )
               .getMany();
@@ -77,10 +83,8 @@ export class HistoryService {
           habitId: null,
           title: todo.title,
           status: 'completed' as const,
-          date: getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, todo.completedAt!),
-          scheduledDate: todo.scheduledAt
-            ? getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, todo.scheduledAt)
-            : null,
+          date: dayOf(todo.completedAt!),
+          scheduledDate: todo.scheduledAt ? dayOf(todo.scheduledAt) : null,
           resolvedAt: todo.completedAt!.toISOString(),
           plannedDurationMinutes: todo.plannedDurationMinutes,
           deleted: todo.deletedAt !== null,
@@ -150,18 +154,15 @@ export class HistoryService {
         .where('"todo"."userId" = :userId', { userId })
         .andWhere('"todo"."completed" = false')
         .andWhere('"todo"."scheduledAt" < :end', {
-          end: midnightInTimeZone(addHistoryDays(dates[dates.length - 1], 1)),
+          end: endOfDay(dates[dates.length - 1]),
         })
         .andWhere('("todo"."scheduledAt" >= :start OR :current = true)', {
-          start: midnightInTimeZone(dates[0]),
+          start: startOfDay(dates[0]),
           current: dates.includes(today),
         })
         .getMany();
       for (const todo of todos) {
-        const scheduledDate = getCurrentDateInTimeZone(
-          DEFAULT_TIME_ZONE,
-          todo.scheduledAt!,
-        );
+        const scheduledDate = dayOf(todo.scheduledAt!);
         const date = scheduledDate < today ? today : scheduledDate;
         if (dates.includes(date))
           items.push({
@@ -199,14 +200,7 @@ export class HistoryService {
     );
     // Target progress is scoped to the selected calendar week even in day view.
     // Clamp its upper boundary at the supported four-digit calendar maximum.
-    const weekday = new Date(`${dates[0]}T12:00:00Z`).getUTCDay();
-    const weekStart = addHistoryDays(dates[0], -((weekday + 6) % 7));
-    const last = new Date(`${weekStart}T12:00:00Z`);
-    last.setUTCDate(last.getUTCDate() + 6);
-    const weekEnd =
-      last.getUTCFullYear() > 9999
-        ? '9999-12-31'
-        : last.toISOString().slice(0, 10);
+    const { startDate: weekStart, endDate: weekEnd } = weekRange(dates[0]);
     const occurrences = await manager
       .getRepository(HabitOccurrenceEntity)
       .createQueryBuilder('occurrence')

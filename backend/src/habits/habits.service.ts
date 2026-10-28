@@ -6,11 +6,9 @@ import {
 } from '@nestjs/common';
 import { DataSource, LessThanOrEqual } from 'typeorm';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
-import {
-  DEFAULT_TIME_ZONE,
-  getCurrentDateInTimeZone,
-  initialScheduleInstant,
-} from '../common/date/date-only.utils';
+import { initialScheduleInstant } from '../common/date/date-only.utils';
+import { dayOf } from '../common/date/local-day';
+import { Clock } from '../common/clock';
 import { CreateHabitDto } from './dto/create-habit.dto';
 import { UpdateHabitDto } from './dto/update-habit.dto';
 import { ChangeHabitScheduleDto } from './dto/change-habit-schedule.dto';
@@ -28,6 +26,7 @@ export class HabitsService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly scheduling: HabitSchedulingService,
+    private readonly clock: Clock,
   ) {}
 
   private validTitle(title: string): string {
@@ -54,7 +53,7 @@ export class HabitsService {
         this.scheduling.habitResponse(
           habit,
           await this.scheduling.getVersions(this.dataSource.manager, habit.id),
-          new Date(),
+          this.clock.now(),
           due.find(
             (item) =>
               item.habitId === habit.id &&
@@ -72,16 +71,14 @@ export class HabitsService {
     // Opening its editor must not generate occurrences for every other Habit.
     return this.dataSource.transaction(async (manager) => {
       const habit = await this.scheduling.lockHabit(userId, manager, id);
-      const now = new Date();
+      const now = this.clock.now();
       await this.scheduling.reconcile(manager, habit, now);
 
       const pending = habit.isActive
         ? await manager.getRepository(HabitOccurrenceEntity).findOneBy({
             habitId: id,
             status: HabitOccurrenceStatus.PENDING,
-            scheduledDate: LessThanOrEqual(
-              getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, now),
-            ),
+            scheduledDate: LessThanOrEqual(dayOf(now)),
           })
         : null;
 
@@ -118,10 +115,10 @@ export class HabitsService {
     const definition = normalizeSchedule(dto.schedule);
 
     return this.dataSource.transaction(async (manager) => {
-      const now = new Date();
+      const now = this.clock.now();
 
       const effectiveAt = initialScheduleInstant(
-        dto.startDate ?? getCurrentDateInTimeZone(),
+        dto.startDate ?? dayOf(now),
         now,
       );
 
@@ -172,7 +169,7 @@ export class HabitsService {
 
       await manager.getRepository(HabitEntity).save(habit);
 
-      const now = new Date();
+      const now = this.clock.now();
 
       await this.scheduling.reconcile(manager, habit, now);
 

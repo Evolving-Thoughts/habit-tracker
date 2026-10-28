@@ -1,10 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
-import {
-  DEFAULT_TIME_ZONE,
-  getCurrentDateInTimeZone,
-} from '../common/date/date-only.utils';
+import { DEFAULT_TIME_ZONE } from '../common/date/date-only.utils';
+import { dayOf } from '../common/date/local-day';
+import { Clock } from '../common/clock';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
@@ -21,10 +20,11 @@ export class DayPlannerService {
     @InjectRepository(TodoEntity)
     private readonly todoRepository: Repository<TodoEntity>,
     private readonly scheduling: HabitSchedulingService,
+    private readonly clock: Clock,
   ) {}
 
   async getToday(userId: string): Promise<DayPlannerResponseDto> {
-    const today = getCurrentDateInTimeZone();
+    const today = this.clock.today();
 
     const [todos, occurrences] = await Promise.all([
       this.findTodosForToday(userId, today),
@@ -101,10 +101,7 @@ export class DayPlannerService {
     if (!displayInstant)
       throw new Error('Expected a planned or completed todo');
 
-    const scheduledDate = getCurrentDateInTimeZone(
-      DEFAULT_TIME_ZONE,
-      displayInstant,
-    );
+    const scheduledDate = dayOf(displayInstant);
 
     return {
       type: 'todo',

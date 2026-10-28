@@ -13,6 +13,7 @@ import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import ModalDialog from "../components/ModalDialog.vue";
 import type { CreateTodoInput, TodoResponse } from "../types/todo";
+import { buildTodoInput } from "../utils/todo-input";
 
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
@@ -128,55 +129,12 @@ function closeEditing(): void {
 }
 
 function buildUpdateInput(): CreateTodoInput {
-  const title = editTitle.value.trim();
-
-  if (!title) {
-    throw new Error("Bitte gib einen Titel ein.");
-  }
-
-  if (title.length > 200) {
-    throw new Error("Der Titel darf höchstens 200 Zeichen enthalten.");
-  }
-
-  let scheduledAt: string | null = null;
-
-  if (editScheduledAt.value) {
-    const date = new Date(editScheduledAt.value);
-
-    if (Number.isNaN(date.getTime())) {
-      throw new Error("Bitte gib einen gültigen Zeitpunkt ein.");
-    }
-
-    scheduledAt = date.toISOString();
-  }
-
-  if (editIsFixed.value && scheduledAt === null) {
-    throw new Error("Ein fester Termin benötigt einen Zeitpunkt.");
-  }
-
-  let plannedDurationMinutes: number | null = null;
-
-  const rawDuration = editDuration.value;
-
-  const isDurationEmpty =
-    typeof rawDuration === "string" && rawDuration.trim() === "";
-
-  if (!isDurationEmpty) {
-    const duration = Number(rawDuration);
-
-    if (!Number.isInteger(duration) || duration < 1) {
-      throw new Error("Die Dauer muss eine ganze Zahl ab 1 Minute sein.");
-    }
-
-    plannedDurationMinutes = duration;
-  }
-
-  return {
-    title,
-    scheduledAt,
-    plannedDurationMinutes,
+  return buildTodoInput({
+    title: editTitle.value,
+    scheduledAt: editScheduledAt.value,
+    duration: editDuration.value,
     isFixed: editIsFixed.value,
-  };
+  });
 }
 
 async function saveTodo(): Promise<void> {
@@ -332,7 +290,7 @@ onUnmounted(() =>
                   type="datetime-local"
                 />
 
-                <small> Lokale Zeitzone deines Geräts. </small>
+                <small> Uhrzeit in deutscher Zeit (Europe/Berlin). </small>
               </div>
 
               <div class="todo-editor__field">

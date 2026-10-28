@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TodoEntity } from './entities/todo.entity';
 import { TodosService } from './todos.service';
+import { Clock } from '../common/clock';
 
 type TodoRepositoryMock = jest.Mocked<
   Pick<
@@ -41,6 +42,7 @@ describe('TodosService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TodosService,
+        Clock,
         {
           provide: getRepositoryToken(TodoEntity),
           useValue: repository,

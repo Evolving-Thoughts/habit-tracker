@@ -1,16 +1,17 @@
+import { midnightInTimeZone } from '../common/date/date-only.utils';
 import {
-  DEFAULT_TIME_ZONE,
-  getCurrentDateInTimeZone,
-  midnightInTimeZone,
-} from '../common/date/date-only.utils';
+  addDays,
+  daysBetween,
+  dayOf,
+  endOfDay,
+  weekdayOf,
+} from '../common/date/local-day';
 import { HabitEntity } from '../habits/entities/habit.entity';
 import { HabitScheduleVersionEntity } from '../habits/entities/habit-schedule-version.entity';
 import { HabitScheduleType } from '../habits/enums/habit-schedule-type.enum';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
-import { HabitScheduleCalculator } from '../habit-occurrences/scheduling/habit-schedule-calculator';
 import { HabitOccurrenceStatus as Status } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { expiresAt, slotStartsAt } from '../habits/scheduling/schedule-rules';
-import { addHistoryDays } from './history-range';
 import { HistoryPlannedItem, HistoryWeeklyTarget } from './history.dto';
 
 // Bounded calendar arithmetic: never replay years of historical generation.
@@ -18,8 +19,7 @@ export function isPlannedDate(
   version: HabitScheduleVersionEntity,
   date: string,
 ): boolean {
-  if (date < getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, version.effectiveAt))
-    return false;
+  if (date < dayOf(version.effectiveAt)) return false;
   if (version.type === HabitScheduleType.INTERVAL) {
     if (
       !version.firstDueDate ||
@@ -27,16 +27,11 @@ export function isPlannedDate(
       date < version.firstDueDate
     )
       return false;
-    const days = Math.round(
-      (Date.parse(`${date}T12:00:00Z`) -
-        Date.parse(`${version.firstDueDate}T12:00:00Z`)) /
-        86400000,
-    );
-    return days % version.intervalDays === 0;
+    return daysBetween(version.firstDueDate, date) % version.intervalDays === 0;
   }
   return (
     version.type === HabitScheduleType.FIXED_WEEKDAYS &&
-    HabitScheduleCalculator.isFixedWeekday(date, version.weekdays ?? [])
+    (version.weekdays ?? []).includes(weekdayOf(date))
   );
 }
 export type ForecastSlot = {
@@ -67,15 +62,11 @@ export function forecastSlots(
           version.intervalDays &&
           date >= version.firstDueDate
         ) {
-          const elapsed = Math.round(
-            (Date.parse(`${date}T12:00:00Z`) -
-              Date.parse(`${version.firstDueDate}T12:00:00Z`)) /
-              86400000,
-          );
-          candidate = addHistoryDays(date, -(elapsed % version.intervalDays));
+          const elapsed = daysBetween(version.firstDueDate, date);
+          candidate = addDays(date, -(elapsed % version.intervalDays));
         } else {
           for (let offset = 1; offset <= 6; offset++) {
-            const previous = addHistoryDays(date, -offset);
+            const previous = addDays(date, -offset);
             if (isPlannedDate(version, previous)) {
               candidate = previous;
               break;
@@ -169,7 +160,7 @@ export function weeklyTargets(
     const activeDates = dates.filter(
       (date) =>
         date >= today &&
-        version.effectiveAt < midnightInTimeZone(addHistoryDays(date, 1)) &&
+        version.effectiveAt < endOfDay(date) &&
         (version.endsAt === null ||
           version.endsAt >
             new Date(

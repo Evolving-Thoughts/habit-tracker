@@ -19,7 +19,8 @@ import { HabitOccurrenceStatus as Status } from '../src/habit-occurrences/enums/
 import { HabitScheduleType } from '../src/habits/enums/habit-schedule-type.enum';
 import { MissedOccurrencePolicy } from '../src/habits/enums/missed-occurrence-policy.enum';
 import { HistoryResponse } from '../src/history/history.dto';
-import { addHistoryDays, historyRange } from '../src/history/history-range';
+import { addDays as addHistoryDays } from '../src/common/date/local-day';
+import { historyRange } from '../src/history/history-range';
 import { Weekday } from '../src/habits/enums/weekday.enum';
 import {
   getCurrentDateInTimeZone,

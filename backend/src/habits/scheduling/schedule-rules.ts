@@ -1,10 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
+import { midnightInTimeZone } from '../../common/date/date-only.utils';
 import {
-  DEFAULT_TIME_ZONE,
-  getCurrentDateInTimeZone,
-  midnightInTimeZone,
-} from '../../common/date/date-only.utils';
-import { HabitScheduleCalculator } from '../../habit-occurrences/scheduling/habit-schedule-calculator';
+  addDays as addCalendarDays,
+  dayOf,
+  weekdayOf,
+} from '../../common/date/local-day';
 import { ScheduleDto } from '../dto/schedule.dto';
 import { ScheduleRuleResponse } from '../dto/habit-response.dto';
 import { HabitScheduleVersionEntity } from '../entities/habit-schedule-version.entity';
@@ -136,7 +136,7 @@ export function buildVersion(
     cancelledAt: null,
     firstDueDate:
       definition.type === HabitScheduleType.INTERVAL
-        ? getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, effectiveAt)
+        ? dayOf(effectiveAt)
         : null,
   });
 
@@ -165,13 +165,7 @@ export function sameSchedule(
 
 function addDays(date: string, days: number): string {
   try {
-    const result = HabitScheduleCalculator.addDays(date, days);
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(result)) {
-      throw new Error('Unsupported date');
-    }
-
-    return result;
+    return addCalendarDays(date, days);
   } catch {
     throw new BadRequestException(
       'Schedule date is outside the supported calendar range',
@@ -202,12 +196,10 @@ export function nextScheduledDate(
   }
 
   let candidate =
-    afterDate === null
-      ? getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, version.effectiveAt)
-      : addDays(afterDate, 1);
+    afterDate === null ? dayOf(version.effectiveAt) : addDays(afterDate, 1);
 
   for (let attempt = 0; attempt < 7; attempt += 1) {
-    if (HabitScheduleCalculator.isFixedWeekday(candidate, version.weekdays)) {
+    if (version.weekdays.includes(weekdayOf(candidate))) {
       return candidate;
     }
 

@@ -10,17 +10,14 @@ import { TodoEntity } from '../todos/entities/todo.entity';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
-import {
-  getCurrentDateInTimeZone,
-  DEFAULT_TIME_ZONE,
-} from '../common/date/date-only.utils';
+import { dayOf } from '../common/date/local-day';
 import { TimerEntity } from './timer.entity';
 import { StartTimerDto } from './timer.dto';
+import { Clock } from '../common/clock';
 import {
-  TimerClock,
   remainingAfterDurationChange,
   remainingMilliseconds,
-} from './timer.clock';
+} from './timer-math';
 export interface TimerResponse {
   serverNow: string;
   timer: null | {
@@ -40,7 +37,7 @@ export class TimersService {
   constructor(
     private readonly db: DataSource,
     private readonly scheduling: HabitSchedulingService,
-    private readonly clock: TimerClock,
+    private readonly clock: Clock,
   ) {}
   private async transaction<T>(
     userId: string,
@@ -116,8 +113,7 @@ export class TimersService {
     if (
       !habit.isActive ||
       occurrence.status !== HabitOccurrenceStatus.PENDING ||
-      occurrence.scheduledDate >
-        getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, now)
+      occurrence.scheduledDate > dayOf(now)
     )
       throw new ConflictException('Keine offene fällige Habit-Ausführung.');
     occurrence.habit = habit;

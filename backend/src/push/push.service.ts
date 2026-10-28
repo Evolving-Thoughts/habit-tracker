@@ -11,7 +11,7 @@ import { DataSource, EntityManager, MoreThan, LessThanOrEqual } from 'typeorm';
 import { SessionEntity, UserEntity } from '../auth/auth.entities';
 import { tokenHash } from '../auth/auth.crypto';
 import { TimerEntity } from '../timers/timer.entity';
-import { TimerClock } from '../timers/timer.clock';
+import { Clock } from '../common/clock';
 import { TimersService } from '../timers/timers.service';
 import { PushDeliveryEntity, PushSubscriptionEntity } from './push.entities';
 import { SubscribeDto } from './push.dto';
@@ -26,7 +26,7 @@ export class PushService {
   constructor(
     private readonly db: DataSource,
     private readonly timers: TimersService,
-    private readonly clock: TimerClock,
+    private readonly clock: Clock,
     private readonly transport: PushTransport,
   ) {}
   config() {

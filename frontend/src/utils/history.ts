@@ -1,14 +1,11 @@
 import type { HistoryItem } from "../types/history";
-import { formatDateForGermanDisplay, isValidIsoDate } from "./date";
-export function addDays(date: string, days: number): string {
-  const value = new Date(`${date}T12:00:00Z`);
-  value.setUTCDate(value.getUTCDate() + days);
-  return value.toISOString().slice(0, 10);
-}
-export function weekStart(date: string): string {
-  const day = new Date(`${date}T12:00:00Z`).getUTCDay();
-  return addDays(date, -((day + 6) % 7));
-}
+import {
+  addDays,
+  formatDateForGermanDisplay,
+  isValidIsoDate,
+  weekStart,
+} from "./date";
+export { addDays, weekStart };
 export function dayLabel(date: string): string {
   const weekday = new Intl.DateTimeFormat("de-DE", {
     weekday: "long",

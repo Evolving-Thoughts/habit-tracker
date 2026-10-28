@@ -3,6 +3,7 @@ import { PushModule } from './push/push.module';
 import { TimersModule } from './timers/timers.module';
 import { AuthModule } from './auth/auth.module';
 import { Module } from '@nestjs/common';
+import { ClockModule } from './common/clock';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
@@ -30,6 +31,7 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
         synchronize: config.get<string>('NODE_ENV') !== 'production',
       }),
     }),
+    ClockModule,
     AuthModule,
     TimersModule,
     PushModule,

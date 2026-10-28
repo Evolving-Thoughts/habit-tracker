@@ -1,10 +1,3 @@
-import { Injectable } from '@nestjs/common';
-@Injectable()
-export class TimerClock {
-  now(): Date {
-    return new Date();
-  }
-}
 export function remainingMilliseconds(endsAt: Date, now: Date): number {
   return Math.max(0, endsAt.getTime() - now.getTime());
 }
