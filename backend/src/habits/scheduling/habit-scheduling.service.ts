@@ -8,6 +8,8 @@ import { Brackets, DataSource, EntityManager } from 'typeorm';
 import { changeScheduleInstant } from '../../common/date/date-only.utils';
 import { dayOf, weekRange } from '../../common/date/local-day';
 import { Clock } from '../../common/clock';
+import { lockUser, UserUnitOfWork } from '../../common/user-unit-of-work';
+import { ownedOccurrences } from '../../habit-occurrences/owned-occurrences';
 import {
   HabitOccurrenceCancellationReason,
   HabitOccurrenceEntity,
@@ -36,13 +38,16 @@ export class HabitSchedulingService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly clock: Clock,
+    private readonly unitOfWork: UserUnitOfWork,
   ) {}
 
+  /** Locks the owner first, then the habit (same order as timers and todos). */
   async lockHabit(
     userId: string,
     manager: EntityManager,
     habitId: number,
   ): Promise<HabitEntity> {
+    await lockUser(manager, userId);
     const habit = await manager.getRepository(HabitEntity).findOne({
       where: { id: habitId, userId },
       lock: { mode: 'pessimistic_write' },
@@ -130,7 +135,7 @@ export class HabitSchedulingService {
   ): Promise<HabitResponseDto> {
     const definition = normalizeSchedule(dto.schedule);
 
-    return this.dataSource.transaction(async (manager) => {
+    return this.unitOfWork.run(userId, async (manager) => {
       const habit = await this.lockHabit(userId, manager, habitId);
 
       // Erst nach dem Lock bestimmen: parallele Änderungen erhalten
@@ -195,7 +200,7 @@ export class HabitSchedulingService {
     habitId: number,
     at?: Date,
   ): Promise<void> {
-    await this.dataSource.transaction(async (manager) => {
+    await this.unitOfWork.run(userId, async (manager) => {
       const habit = await this.lockHabit(userId, manager, habitId);
 
       await this.reconcile(manager, habit, at ?? this.clock.now());
@@ -461,13 +466,8 @@ export class HabitSchedulingService {
       throw new BadRequestException('Invalid manual status');
     }
 
-    const initial = await this.dataSource
-      .getRepository(HabitOccurrenceEntity)
-      .createQueryBuilder('occurrence')
-      .innerJoin('occurrence.habit', 'habit')
-      .where('occurrence.id = :id', { id })
-      .andWhere('"habit"."userId" = :userId', { userId })
-      .andWhere('"habit"."deletedAt" IS NULL')
+    const initial = await ownedOccurrences(this.dataSource.manager, userId)
+      .andWhere('occurrence.id = :id', { id })
       .getOne();
 
     if (!initial) {
@@ -476,7 +476,7 @@ export class HabitSchedulingService {
       );
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    return this.unitOfWork.run(userId, async (manager) => {
       const habit = await this.lockHabit(userId, manager, initial.habitId);
       const now = this.clock.now();
       const today = dayOf(now);
@@ -567,26 +567,33 @@ export class HabitSchedulingService {
     });
   }
 
+  /** Reconciles every active habit of the user in one locked transaction, then reads today's occurrences. */
   async getToday(userId: string): Promise<HabitOccurrenceEntity[]> {
-    const habits = await this.dataSource.getRepository(HabitEntity).find({
+    return this.unitOfWork.run(userId, (manager) =>
+      this.todayIn(manager, userId),
+    );
+  }
+
+  private async todayIn(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<HabitOccurrenceEntity[]> {
+    const now = this.clock.now();
+    const habits = await manager.getRepository(HabitEntity).find({
       where: { isActive: true, userId },
       order: { id: 'ASC' },
+      lock: { mode: 'pessimistic_write' },
     });
 
     for (const habit of habits) {
-      await this.generateForHabit(userId, habit.id);
+      await this.reconcile(manager, habit, now);
     }
 
-    const today = this.clock.today();
+    const today = dayOf(now);
 
-    return this.dataSource
-      .getRepository(HabitOccurrenceEntity)
-      .createQueryBuilder('occurrence')
-      .innerJoinAndSelect('occurrence.habit', 'habit')
+    return ownedOccurrences(manager, userId, { select: true })
       .innerJoinAndSelect('occurrence.scheduleVersion', 'version')
-      .where('"habit"."isActive" = true')
-      .andWhere('"habit"."userId" = :userId', { userId })
-      .andWhere('"habit"."deletedAt" IS NULL')
+      .andWhere('"habit"."isActive" = true')
       .andWhere(
         new Brackets((query) => {
           query

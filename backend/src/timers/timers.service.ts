@@ -4,8 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, EntityManager, In } from 'typeorm';
-import { UserEntity } from '../auth/auth.entities';
+import { EntityManager, In } from 'typeorm';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
@@ -14,6 +13,8 @@ import { dayOf } from '../common/date/local-day';
 import { TimerEntity } from './timer.entity';
 import { StartTimerDto } from './timer.dto';
 import { Clock } from '../common/clock';
+import { UserUnitOfWork } from '../common/user-unit-of-work';
+import { ownedOccurrences } from '../habit-occurrences/owned-occurrences';
 import {
   remainingAfterDurationChange,
   remainingMilliseconds,
@@ -35,23 +36,16 @@ export interface TimerResponse {
 @Injectable()
 export class TimersService {
   constructor(
-    private readonly db: DataSource,
     private readonly scheduling: HabitSchedulingService,
     private readonly clock: Clock,
+    private readonly unitOfWork: UserUnitOfWork,
   ) {}
-  private async transaction<T>(
+  // Same per-user lock for every timer transition, across all devices/app processes.
+  private transaction<T>(
     userId: string,
     operation: (manager: EntityManager) => Promise<T>,
   ): Promise<T> {
-    return this.db.transaction(async (manager) => {
-      // Same per-user lock for every timer transition, across all devices/app processes.
-      const user = await manager.findOne(UserEntity, {
-        where: { id: userId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!user) throw new NotFoundException();
-      return operation(manager);
-    });
+    return this.unitOfWork.run(userId, operation);
   }
   private response(timer: TimerEntity | null, now: Date): TimerResponse {
     return {
@@ -92,13 +86,8 @@ export class TimersService {
         throw new ConflictException('Erledigte Todos zuerst wieder öffnen.');
       return todo;
     }
-    const first = await manager
-      .getRepository(HabitOccurrenceEntity)
-      .createQueryBuilder('o')
-      .innerJoin('o.habit', 'h')
-      .where('o.id = :id', { id })
-      .andWhere('h.userId = :userId', { userId })
-      .andWhere('h.deletedAt IS NULL')
+    const first = await ownedOccurrences(manager, userId)
+      .andWhere('occurrence.id = :id', { id })
       .getOne();
     if (!first) throw new NotFoundException('Habit-Ausführung nicht gefunden.');
     const habit = await this.scheduling.lockHabit(
