@@ -14,6 +14,11 @@ describe("Berlin wall-clock input", () => {
     expect(fromLocalInput(input)).toBe(iso);
     expect(toLocalInput(iso)).toBe(input);
   });
+  it("moves a non-existent spring-forward time to after the gap", () => {
+    // 02:00–03:00 does not exist on 29 March 2026 in Berlin.
+    expect(fromLocalInput("2026-03-29T02:30")).toBe("2026-03-29T01:30:00.000Z");
+    expect(toLocalInput("2026-03-29T01:30:00.000Z")).toBe("2026-03-29T03:30");
+  });
   it.each(["", "2026-02-30T10:00", "02.10.2026 10:00"])(
     "rejects %s",
     (input) => expect(fromLocalInput(input)).toBeNull(),
