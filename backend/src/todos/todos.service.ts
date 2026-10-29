@@ -2,114 +2,102 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, In, Repository } from 'typeorm';
 import { createHash } from 'node:crypto';
+import { EntityManager, Repository } from 'typeorm';
+import { Clock } from '../common/clock';
+import { UserUnitOfWork } from '../common/user-unit-of-work';
+import {
+  discardTimersOfTodos,
+  releaseTimers,
+  timersOfTodos,
+} from '../timers/timer-target';
 import { TimerEntity } from '../timers/timer.entity';
-import { UserEntity } from '../auth/auth.entities';
 import { CreateTodoDto } from './dto/create-todo.dto';
+import {
+  DeletionPreviewResponse,
+  HierarchyTodoResponse,
+} from './dto/todo-hierarchy-response.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
 import { TodoEntity } from './entities/todo.entity';
 import { TodoMapper } from './mappers/todo.mapper';
-import { hierarchyProgress, validateParent } from './todo-hierarchy';
 import { backlogTodos } from './todo-agenda';
+import {
+  CorruptHierarchyError,
+  InvalidPlacementError,
+  TodoTree,
+} from './todo-hierarchy';
+import { ancestorChain, subtree } from './todo-hierarchy.queries';
+
+type DeletionSnapshot = {
+  todos: TodoEntity[];
+  timers: TimerEntity[];
+  confirmationToken: string;
+};
 
 @Injectable()
 export class TodosService {
   constructor(
     @InjectRepository(TodoEntity)
     private readonly todoRepository: Repository<TodoEntity>,
+    private readonly clock: Clock,
+    private readonly unitOfWork: UserUnitOfWork,
   ) {}
 
-  async findAll(userId: string): Promise<TodoEntity[]> {
+  findAll(userId: string): Promise<TodoEntity[]> {
     return this.todoRepository.find({
       where: { userId },
       order: { id: 'ASC' },
     });
   }
+
   /** Open todos without a date (Todo-Dump). */
   backlog(userId: string): Promise<TodoEntity[]> {
     return backlogTodos(this.todoRepository.manager, userId);
   }
+
   async findOne(userId: string, id: number): Promise<TodoEntity> {
     const todo = await this.todoRepository.findOneBy({ id, userId });
     if (!todo) throw new NotFoundException(`Todo with ID ${id} was not found`);
     return todo;
   }
-  async hierarchy(userId: string) {
-    // One statement returns a coherent tree snapshot; compute all progress bottom-up.
+
+  /** Every todo with its subtree progress, from one consistent read. */
+  async hierarchy(userId: string): Promise<HierarchyTodoResponse[]> {
     const todos = await this.findAll(userId);
-    const progress = hierarchyProgress(todos);
+    const progress = this.tree(todos).progress();
     return todos.map((todo) => ({
       ...TodoMapper.toResponseDto(todo),
       progress: progress.get(todo.id)!,
     }));
   }
-  private async transaction<T>(
-    userId: string,
-    operation: (
-      repository: Repository<TodoEntity>,
-      manager: EntityManager,
-    ) => Promise<T>,
-  ): Promise<T> {
-    return this.todoRepository.manager.transaction(async (manager) => {
-      // Same lock order as TimersService: user row first, then owned todos.
-      const user = await manager.findOne(UserEntity, {
-        where: { id: userId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!user) throw new NotFoundException();
-      return operation(manager.getRepository(TodoEntity), manager);
-    });
-  }
-  private async reopenAncestors(
-    repository: Repository<TodoEntity>,
-    todos: TodoEntity[],
-    parentId: number | null,
-  ): Promise<void> {
-    const byId = new Map(todos.map((t) => [t.id, t]));
-    const changed: TodoEntity[] = [],
-      seen = new Set<number>();
-    let current = parentId;
-    while (current !== null) {
-      if (seen.has(current))
-        throw new ConflictException('Invalid todo hierarchy');
-      seen.add(current);
-      const parent = byId.get(current);
-      if (!parent) throw new ConflictException('Invalid todo hierarchy');
-      if (parent.completed || parent.completedAt !== null) {
-        parent.completed = false;
-        parent.completedAt = null;
-        changed.push(parent);
-      }
-      current = parent.parentId ?? null;
-    }
-    if (changed.length) await repository.save(changed, { chunk: 500 });
-  }
+
   async create(userId: string, dto: CreateTodoDto): Promise<TodoEntity> {
     const scheduledAt = dto.scheduledAt ? new Date(dto.scheduledAt) : null;
     const isFixed = dto.isFixed ?? false;
     this.validateScheduling(isFixed, scheduledAt);
-    return this.transaction(userId, async (repository) => {
-      const todos = await repository.find({ where: { userId } });
-      validateParent(todos, -1, dto.parentId ?? null);
-      const todo = repository.create({
-        userId,
-        title: dto.title,
-        parentId: dto.parentId ?? null,
-        completed: false,
-        completedAt: null,
-        scheduledAt,
-        plannedDurationMinutes: dto.plannedDurationMinutes ?? null,
-        isFixed,
-      });
-      const saved = await repository.save(todo);
-      await this.reopenAncestors(repository, todos, saved.parentId);
-      return saved;
+    const parentId = dto.parentId ?? null;
+    return this.unitOfWork.run(userId, async (manager) => {
+      await this.assertCanPlace(manager, userId, null, parentId);
+      const repository = manager.getRepository(TodoEntity);
+      return repository.save(
+        repository.create({
+          userId,
+          parentId,
+          title: dto.title,
+          completed: false,
+          completedAt: null,
+          scheduledAt,
+          plannedDurationMinutes: dto.plannedDurationMinutes ?? null,
+          isFixed,
+        }),
+      );
     });
   }
+
   async update(
     userId: string,
     id: number,
@@ -117,15 +105,15 @@ export class TodosService {
   ): Promise<TodoEntity> {
     if (!Object.values(dto).some((value) => value !== undefined))
       throw new BadRequestException('At least one property must be provided');
-    return this.transaction(userId, async (repository) => {
-      const todos = await repository.find({ where: { userId } });
-      const todo = todos.find((t) => t.id === id);
+    return this.unitOfWork.run(userId, async (manager) => {
+      const repository = manager.getRepository(TodoEntity);
+      const todo = await repository.findOneBy({ id, userId });
       if (!todo)
         throw new NotFoundException(`Todo with ID ${id} was not found`);
-      const oldParent = todo.parentId ?? null;
-      const wasCompleted = todo.completed;
-      const parent = dto.parentId === undefined ? oldParent : dto.parentId;
-      validateParent(todos, id, parent);
+      if (dto.parentId !== undefined && dto.parentId !== todo.parentId) {
+        await this.assertCanPlace(manager, userId, id, dto.parentId);
+        todo.parentId = dto.parentId;
+      }
       if (dto.title !== undefined) todo.title = dto.title;
       if (dto.scheduledAt !== undefined)
         todo.scheduledAt =
@@ -135,123 +123,31 @@ export class TodosService {
       if (dto.isFixed !== undefined) todo.isFixed = dto.isFixed;
       if (dto.completed !== undefined) {
         todo.completed = dto.completed;
-        if (dto.completed) todo.completedAt ??= new Date();
+        // A repeated completion keeps the original timestamp.
+        if (dto.completed) todo.completedAt ??= this.clock.now();
         else todo.completedAt = null;
       }
-      todo.parentId = parent;
       this.validateScheduling(todo.isFixed, todo.scheduledAt);
-      const children = new Map<number, TodoEntity[]>();
-      for (const node of todos)
-        if (node.parentId != null) {
-          const group = children.get(node.parentId) ?? [];
-          group.push(node);
-          children.set(node.parentId, group);
-        }
-      let subtreeOpen = false;
-      const stack = [todo],
-        seen = new Set<number>();
-      while (stack.length) {
-        const node = stack.pop()!;
-        if (seen.has(node.id))
-          throw new ConflictException('Invalid todo hierarchy');
-        seen.add(node.id);
-        if (!node.completed) subtreeOpen = true;
-        for (const child of children.get(node.id) ?? []) stack.push(child);
-      }
       const saved = await repository.save(todo);
-      if (
-        (wasCompleted && dto.completed === false) ||
-        (parent !== oldParent && subtreeOpen)
-      )
-        await this.reopenAncestors(repository, todos, parent);
+      // A completed todo is no timer target any more.
+      if (todo.completed)
+        await releaseTimers(manager, userId, { todoIds: [id] });
       return saved;
     });
   }
-  private async deletionSnapshot(
+
+  async deletionPreview(
     userId: string,
     id: number,
-    repository: Repository<TodoEntity>,
-    manager: EntityManager,
-  ) {
-    const todos = await repository.find({
-      where: { userId },
-      order: { id: 'ASC' },
-    });
-    const root = todos.find((t) => t.id === id);
-    if (!root) throw new NotFoundException(`Todo with ID ${id} was not found`);
-    const children = new Map<number, TodoEntity[]>();
-    for (const node of todos)
-      if (node.parentId != null) {
-        const group = children.get(node.parentId) ?? [];
-        group.push(node);
-        children.set(node.parentId, group);
-      }
-    const stack = [root],
-      items: TodoEntity[] = [],
-      seen = new Set<number>();
-    while (stack.length) {
-      const node = stack.pop()!;
-      if (seen.has(node.id))
-        throw new ConflictException('Invalid todo hierarchy');
-      seen.add(node.id);
-      items.push(node);
-      for (const child of children.get(node.id) ?? []) stack.push(child);
-    }
-    items.sort((a, b) => a.id - b.id);
-    // Filter user-owned timers in memory to avoid an unbounded SQL parameter list.
-    const timers = await manager
-      .getRepository(TimerEntity)
-      .createQueryBuilder('timer')
-      .where('timer.userId = :userId', { userId })
-      .orderBy('timer.id', 'ASC')
-      .getMany();
-    const affectedTimers = timers.filter(
-      (t) => t.todoId !== null && seen.has(t.todoId),
-    );
-    const confirmationToken = createHash('sha256')
-      .update(
-        JSON.stringify({
-          userId,
-          id,
-          items: items.map((t) => [
-            t.id,
-            t.parentId,
-            t.title,
-            t.completed,
-            t.completedAt,
-            t.scheduledAt,
-            t.isFixed,
-            t.plannedDurationMinutes,
-            t.updatedAt,
-          ]),
-          timers: affectedTimers.map((t) => [
-            t.id,
-            t.title,
-            t.state,
-            t.endsAt,
-            t.remainingMilliseconds,
-            t.durationMinutes,
-            t.updatedAt,
-          ]),
-        }),
-      )
-      .digest('hex');
-    return { items, timers: affectedTimers, confirmationToken };
-  }
-  async deletionPreview(userId: string, id: number) {
-    return this.transaction(userId, async (repository, manager) => {
-      const snapshot = await this.deletionSnapshot(
-        userId,
-        id,
-        repository,
-        manager,
-      );
+  ): Promise<DeletionPreviewResponse> {
+    return this.unitOfWork.run(userId, async (manager) => {
+      const snapshot = await this.deletionSnapshot(manager, userId, id);
       return {
         confirmationToken: snapshot.confirmationToken,
-        todos: snapshot.items.map((t) => ({
+        todos: snapshot.todos.map((t) => ({
           id: t.id,
           title: t.title,
-          parentId: t.parentId,
+          parentId: t.parentId ?? null,
           completed: t.completed,
         })),
         timers: snapshot.timers.map((t) => ({
@@ -263,43 +159,91 @@ export class TodosService {
       };
     });
   }
+
+  /**
+   * Deletes the todo with its whole subtree and their timers, but only if
+   * nothing changed since the preview that issued `confirmationToken`.
+   * Soft delete keeps completion history; it all happens in one transaction.
+   */
   async remove(
     userId: string,
     id: number,
-    confirmationToken?: string,
+    confirmationToken: string,
   ): Promise<void> {
-    await this.transaction(userId, async (repository, manager) => {
-      const snapshot = await this.deletionSnapshot(
-        userId,
-        id,
-        repository,
-        manager,
-      );
-      // Legacy single-Todo delete remains compatible only when no timer is affected.
-      if (
-        confirmationToken !== snapshot.confirmationToken &&
-        (confirmationToken !== undefined ||
-          snapshot.items.length > 1 ||
-          snapshot.timers.length > 0)
-      )
+    await this.unitOfWork.run(userId, async (manager) => {
+      const snapshot = await this.deletionSnapshot(manager, userId, id);
+      if (confirmationToken !== snapshot.confirmationToken)
         throw new ConflictException(
-          'Deletion preview changed or confirmation is missing. Review the preview again.',
+          'Deletion preview changed. Review the preview again.',
         );
-      // Bounded batches, one transaction. Preserve completedAt and all history records.
-      for (let offset = 0; offset < snapshot.timers.length; offset += 500) {
-        await manager.delete(TimerEntity, {
-          userId,
-          id: In(snapshot.timers.slice(offset, offset + 500).map((t) => t.id)),
-        });
-      }
-      for (let offset = 0; offset < snapshot.items.length; offset += 500) {
-        await repository.softDelete({
-          userId,
-          id: In(snapshot.items.slice(offset, offset + 500).map((t) => t.id)),
-        });
-      }
+      const ids = snapshot.todos.map((t) => t.id);
+      await discardTimersOfTodos(manager, userId, ids);
+      await manager
+        .getRepository(TodoEntity)
+        .createQueryBuilder()
+        .softDelete()
+        .where('"userId" = :userId', { userId })
+        .andWhere('"id" = ANY(:ids)', { ids })
+        .execute();
     });
   }
+
+  private async deletionSnapshot(
+    manager: EntityManager,
+    userId: string,
+    id: number,
+  ): Promise<DeletionSnapshot> {
+    const todos = await subtree(manager, userId, id);
+    if (!todos.length)
+      throw new NotFoundException(`Todo with ID ${id} was not found`);
+    const timers = await timersOfTodos(
+      manager,
+      userId,
+      todos.map((t) => t.id),
+    );
+    // updatedAt changes with every edit, so it fingerprints each row.
+    const confirmationToken = createHash('sha256')
+      .update(
+        JSON.stringify({
+          userId,
+          id,
+          todos: todos.map((t) => [t.id, t.parentId, t.updatedAt]),
+          timers: timers.map((t) => [t.id, t.state, t.updatedAt]),
+        }),
+      )
+      .digest('hex');
+    return { todos, timers, confirmationToken };
+  }
+
+  /** Validates a placement against the parent's live ancestor chain. */
+  private async assertCanPlace(
+    manager: EntityManager,
+    userId: string,
+    id: number | null,
+    parentId: number | null,
+  ): Promise<void> {
+    if (parentId === null) return;
+    const chain = await ancestorChain(manager, userId, parentId);
+    try {
+      this.tree(chain).assertCanPlace(id, parentId);
+    } catch (error) {
+      if (error instanceof InvalidPlacementError)
+        throw new BadRequestException(error.message);
+      throw error;
+    }
+  }
+
+  private tree(todos: TodoEntity[]): TodoTree<TodoEntity> {
+    try {
+      return TodoTree.of(todos);
+    } catch (error) {
+      // A cycle in stored data is our fault, not the client's.
+      if (error instanceof CorruptHierarchyError)
+        throw new InternalServerErrorException(error.message);
+      throw error;
+    }
+  }
+
   private validateScheduling(isFixed: boolean, scheduledAt: Date | null): void {
     if (isFixed && scheduledAt === null)
       throw new BadRequestException('A fixed todo requires a scheduled date');

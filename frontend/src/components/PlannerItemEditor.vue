@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { getDeletionPreview } from "../api/todo-hierarchy.api";
-import type { DeletionPreview } from "../types/todo-hierarchy";
+import { useTodoDeletion } from "../composables/useTodoDeletion";
 import TodoDeletionSummary from "./TodoDeletionSummary.vue";
 
 import {
@@ -11,7 +10,6 @@ import { computed, onMounted, ref } from "vue";
 import {
   changeHabitSchedule,
   deleteHabit,
-  deleteTodo,
   getHabit,
   getTodo,
   updateHabit,
@@ -54,16 +52,19 @@ const isSaving = ref(false);
 const hasLoaded = ref(false);
 const errorMessage = ref<string | null>(null);
 const confirmDeletion = ref(false);
-const deletionPreview = ref<DeletionPreview | null>(null);
+const {
+  preview: deletionPreview,
+  prepare: prepareDeletion,
+  confirm: confirmPreviewedDeletion,
+  cancel: cancelDeletion,
+} = useTodoDeletion();
 async function requestDeletion(): Promise<void> {
   if (isBusy.value) return;
   errorMessage.value = null;
-  deletionPreview.value = null;
   isSaving.value = true;
   emit("busy", true);
   try {
-    if (props.kind === "todo")
-      deletionPreview.value = await getDeletionPreview(props.entityId);
+    if (props.kind === "todo") await prepareDeletion(props.entityId);
     confirmDeletion.value = true;
   } catch (error) {
     errorMessage.value =
@@ -341,10 +342,7 @@ async function remove(): Promise<void> {
 
   try {
     if (props.kind === "todo") {
-      await deleteTodo(
-        props.entityId,
-        deletionPreview.value?.confirmationToken,
-      );
+      await confirmPreviewedDeletion();
     } else {
       await deleteHabit(props.entityId);
     }
@@ -354,7 +352,6 @@ async function remove(): Promise<void> {
     errorMessage.value =
       error instanceof Error ? error.message : "Löschen fehlgeschlagen.";
     confirmDeletion.value = false;
-    deletionPreview.value = null;
   } finally {
     isSaving.value = false;
     emit("busy", false);
@@ -645,7 +642,13 @@ onMounted(loadEntity);
                 Ja, löschen
               </button>
 
-              <button type="button" @click="confirmDeletion = false">
+              <button
+                type="button"
+                @click="
+                  confirmDeletion = false;
+                  cancelDeletion();
+                "
+              >
                 Nicht löschen
               </button>
             </div>

@@ -1,15 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from "vue";
-import {
-  getTodoHierarchy,
-  getDeletionPreview,
-} from "../api/todo-hierarchy.api";
-import {
-  updateTodo,
-  updateTodoCompletion,
-  deleteTodo,
-} from "../api/day-planner.api";
-import type { HierarchyTodo, DeletionPreview } from "../types/todo-hierarchy";
+import { computed, nextTick, ref } from "vue";
+import { getTodoHierarchy } from "../api/todo-hierarchy.api";
+import { updateTodo, updateTodoCompletion } from "../api/day-planner.api";
+import type { HierarchyTodo } from "../types/todo-hierarchy";
 import {
   hierarchyChildren,
   visibleHierarchy,
@@ -22,22 +15,39 @@ import ItemPlayButton from "../components/ItemPlayButton.vue";
 import TodoDeletionSummary from "../components/TodoDeletionSummary.vue";
 import { useListFocus } from "../composables/useListFocus";
 import { notifyDataChanged } from "../composables/data-sync";
+import { useLoader } from "../composables/useLoader";
+import { useTodoDeletion } from "../composables/useTodoDeletion";
 const page = ref<HTMLElement | null>(null),
   listFocus = useListFocus(page);
-const todos = ref<HierarchyTodo[]>([]),
-  collapsed = ref(new Set<number>());
-const loading = ref(true),
-  saving = ref(false),
+const collapsed = ref(new Set<number>());
+const saving = ref(false),
   error = ref(""),
   success = ref("");
 const action = ref<"create" | "move" | "edit" | "delete" | null>(null),
   selected = ref<HierarchyTodo | null>(null);
 const formBusy = ref(false),
-  parent = ref(""),
-  preview = ref<DeletionPreview | null>(null);
+  parent = ref("");
+const {
+  preview,
+  prepare: prepareDeletion,
+  confirm: confirmPreviewedDeletion,
+  cancel: cancelDeletion,
+} = useTodoDeletion();
 const dragged = ref<number | null>(null),
   dropTarget = ref<number | null | undefined>(undefined);
 const busy = computed(() => saving.value || formBusy.value);
+// Refreshes after timer and other views' changes, unless a dialog is open.
+const {
+  data: todos,
+  isLoading: loading,
+  errorMessage: loadError,
+  reload: load,
+} = useLoader(getTodoHierarchy, {
+  initial: [] as HierarchyTodo[],
+  fallbackError: "Aufgaben konnten nicht geladen werden.",
+  refreshOnChange: () => !busy.value && action.value === null,
+});
+const shownError = computed(() => error.value || loadError.value || "");
 const rows = computed(() => visibleHierarchy(todos.value, collapsed.value));
 const children = computed(() => hierarchyChildren(todos.value));
 const parentOptions = computed(() => {
@@ -46,17 +56,6 @@ const parentOptions = computed(() => {
     : new Set<number>();
   return todos.value.filter((t) => !excluded.has(t.id));
 });
-async function load() {
-  loading.value = true;
-  error.value = "";
-  try {
-    todos.value = await getTodoHierarchy();
-  } catch (e) {
-    error.value = message(e);
-  } finally {
-    loading.value = false;
-  }
-}
 function message(e: unknown) {
   return e instanceof Error ? e.message : "Änderung fehlgeschlagen.";
 }
@@ -64,10 +63,14 @@ function close() {
   if (!busy.value) {
     action.value = null;
     selected.value = null;
-    preview.value = null;
+    cancelDeletion();
   }
 }
-async function run(fn: () => Promise<unknown>, text: string) {
+async function run(
+  fn: () => Promise<unknown>,
+  text: string,
+  { notify = true } = {},
+) {
   if (busy.value) return;
   const activeLabel = document.activeElement?.getAttribute("aria-label");
   const hadDialog = action.value !== null;
@@ -76,12 +79,11 @@ async function run(fn: () => Promise<unknown>, text: string) {
   success.value = "";
   try {
     await fn();
-    notifyDataChanged();
+    if (notify) notifyDataChanged();
     await load();
-    if (error.value) return;
+    if (loadError.value) return;
     success.value = text;
     action.value = null;
-    preview.value = null;
     selected.value = null;
   } catch (e) {
     error.value = message(e);
@@ -162,7 +164,7 @@ async function requestDelete(todo: HierarchyTodo) {
   saving.value = true;
   error.value = "";
   try {
-    preview.value = await getDeletionPreview(todo.id);
+    await prepareDeletion(todo.id);
     action.value = "delete";
   } catch (e) {
     error.value = message(e);
@@ -172,16 +174,12 @@ async function requestDelete(todo: HierarchyTodo) {
 }
 async function confirmDelete() {
   if (!selected.value || !preview.value) return;
-  await run(
-    () => deleteTodo(selected.value!.id, preview.value!.confirmationToken),
-    "Teilbaum gelöscht. Verlauf bleibt erhalten.",
-  );
-  if (error.value) {
-    action.value = null;
-    preview.value = null;
-  }
+  // confirm() announces the change itself.
+  await run(confirmPreviewedDeletion, "Teilbaum gelöscht. Verlauf bleibt erhalten.", {
+    notify: false,
+  });
+  if (error.value) action.value = null;
 }
-onMounted(load);
 </script>
 <template>
   <main ref="page" class="hierarchy">
@@ -202,15 +200,15 @@ onMounted(load);
         ＋ Todo
       </button>
     </header>
-    <p v-if="error" role="alert">
-      {{ error }}
-      <button v-if="!action" type="button" :disabled="busy" @click="load">
+    <p v-if="shownError" role="alert">
+      {{ shownError }}
+      <button v-if="!action" type="button" :disabled="busy" @click="load()">
         Erneut laden
       </button>
     </p>
     <p v-if="success" role="status">{{ success }}</p>
     <p v-if="loading" role="status">Aufgaben werden geladen …</p>
-    <p v-else-if="!todos.length && !error">
+    <p v-else-if="!todos.length && !shownError">
       Noch keine Todos. Lege dein erstes Todo an.
     </p>
     <template v-else-if="todos.length">
@@ -299,7 +297,7 @@ onMounted(load);
               :target-id="todo.id"
               :title="todo.title"
               :duration="todo.plannedDurationMinutes"
-              :eligible="!todo.completed"
+              :eligible="todo.timerEligible"
               :disabled="busy"
             /><button
               type="button"

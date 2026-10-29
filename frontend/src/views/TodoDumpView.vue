@@ -1,11 +1,8 @@
 <script setup lang="ts">
-import { getDeletionPreview } from "../api/todo-hierarchy.api";
-import type { DeletionPreview } from "../types/todo-hierarchy";
-import TodoDeletionSummary from "../components/TodoDeletionSummary.vue";
-
 import { computed, ref } from "vue";
+import TodoDeletionSummary from "../components/TodoDeletionSummary.vue";
+import { useTodoDeletion } from "../composables/useTodoDeletion";
 import {
-  deleteTodo,
   getBacklogTodos,
   updateTodo,
   updateTodoCompletion,
@@ -27,16 +24,19 @@ const isSaving = ref(false);
 const successMessage = ref<string | null>(null);
 
 const selectedTodo = ref<TodoResponse | null>(null);
-const confirmDeletion = ref(false);
-const deletionPreview = ref<DeletionPreview | null>(null);
+const {
+  preview: deletionPreview,
+  prepare: prepareDeletion,
+  confirm: confirmPreviewedDeletion,
+  cancel: cancelDeletion,
+} = useTodoDeletion();
+const confirmDeletion = computed(() => deletionPreview.value !== null);
 async function requestDeletion(): Promise<void> {
   if (isBusy.value) return;
   errorMessage.value = null;
-  deletionPreview.value = null;
   isSaving.value = true;
   try {
-    deletionPreview.value = await getDeletionPreview(selectedTodo.value!.id);
-    confirmDeletion.value = true;
+    await prepareDeletion(selectedTodo.value!.id);
   } catch (error) {
     errorMessage.value =
       error instanceof Error
@@ -106,7 +106,7 @@ function openEditing(todo: TodoResponse): void {
 
   listFocus.remember(`todo-${todo.id}`);
   selectedTodo.value = todo;
-  confirmDeletion.value = false;
+  cancelDeletion();
 
   editTitle.value = todo.title;
 
@@ -123,7 +123,7 @@ function openEditing(todo: TodoResponse): void {
 
 function closeEditing(): void {
   selectedTodo.value = null;
-  confirmDeletion.value = false;
+  cancelDeletion();
 
   editTitle.value = "";
   editScheduledAt.value = "";
@@ -179,15 +179,12 @@ async function removeSelectedTodo(): Promise<void> {
     return;
   }
 
-  const todoId = selectedTodo.value.id;
-
   isSaving.value = true;
   errorMessage.value = null;
   successMessage.value = null;
 
   try {
-    await deleteTodo(todoId, deletionPreview.value?.confirmationToken);
-    notifyDataChanged();
+    await confirmPreviewedDeletion();
 
     successMessage.value = "Todo gelöscht.";
 
@@ -198,8 +195,6 @@ async function removeSelectedTodo(): Promise<void> {
       error instanceof Error
         ? error.message
         : "Das Todo konnte nicht gelöscht werden.";
-    confirmDeletion.value = false;
-    deletionPreview.value = null;
   } finally {
     isSaving.value = false;
   }
@@ -357,7 +352,7 @@ async function onCreated(): Promise<void> {
                   <button
                     type="button"
                     data-test="dump-cancel-delete"
-                    @click="confirmDeletion = false"
+                    @click="cancelDeletion"
                   >
                     Nicht löschen
                   </button>

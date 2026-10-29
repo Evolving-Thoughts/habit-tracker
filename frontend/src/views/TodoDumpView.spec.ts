@@ -30,6 +30,7 @@ const deleteTodoMock = vi.mocked(deleteTodo);
 function makeTodo(overrides: Partial<TodoResponse> = {}): TodoResponse {
   return {
     id: 1,
+    parentId: null,
     title: "NestJS lernen",
     completed: false,
     completedAt: null,

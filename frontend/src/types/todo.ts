@@ -8,6 +8,8 @@ export type CreateTodoInput = {
 
 export type TodoResponse = {
   id: number;
+  /** Parent in the todo hierarchy; null for a root. */
+  parentId: number | null;
   title: string;
   completed: boolean;
   completedAt: string | null;

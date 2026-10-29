@@ -14,6 +14,7 @@ const createTodoMock = vi.mocked(createTodo);
 
 const response: TodoResponse = {
   id: 1,
+  parentId: null,
   title: "NestJS lernen",
   completed: false,
   completedAt: null,

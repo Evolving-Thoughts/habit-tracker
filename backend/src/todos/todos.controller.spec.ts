@@ -350,13 +350,14 @@ describe('TodosController', () => {
             email: 'test@example.test',
           },
           1,
+          { confirmationToken: 'a'.repeat(64) },
         ),
       ).resolves.toBeUndefined();
 
       expect(serviceMock.remove).toHaveBeenCalledWith(
         '11111111-1111-4111-8111-111111111111',
         1,
-        undefined,
+        'a'.repeat(64),
       );
     });
   });

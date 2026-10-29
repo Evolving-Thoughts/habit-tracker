@@ -1,5 +1,11 @@
-import { BadRequestException } from '@nestjs/common';
-
+/**
+ * Todo hierarchy: every rule about the tree, over an in-memory snapshot of
+ * todos (all of a user's todos, an ancestor chain, or a subtree). No I/O and
+ * no framework exceptions; the service maps the two error types to HTTP.
+ *
+ * A parent's own completion is independent of its subtree: nothing here
+ * completes or reopens other nodes. Progress shows the subtree state.
+ */
 export interface HierarchyTodo {
   id: number;
   parentId?: number | null;
@@ -15,84 +21,146 @@ export interface TodoProgress {
   todoCount: number;
 }
 
-/** Iterative postorder: O(n) time/space, no recursion and no depth cap. */
-export function hierarchyProgress(
-  todos: HierarchyTodo[],
-): Map<number, TodoProgress> {
-  const byId = new Map(todos.map((t) => [t.id, t]));
-  const parents = new Map<number, number>();
-  const pending = new Map<number, number>();
-  const totals = new Map(
-    todos.map((t) => [
-      t.id,
-      {
-        count: 1,
-        done: Number(t.completed),
-        known: t.plannedDurationMinutes ?? 0,
-        doneDuration: t.completed ? (t.plannedDurationMinutes ?? 0) : 0,
-        missing: Number(t.plannedDurationMinutes == null),
-      },
-    ]),
-  );
-  for (const t of todos) pending.set(t.id, 0);
-  for (const t of todos) {
-    if (t.parentId != null) {
-      if (!byId.has(t.parentId))
-        throw new BadRequestException('Invalid todo hierarchy');
-      parents.set(t.id, t.parentId);
-      pending.set(t.parentId, pending.get(t.parentId)! + 1);
-    }
+/** The requested placement is invalid (client error). */
+export class InvalidPlacementError extends Error {}
+/** Stored data contains a cycle (server-side integrity problem). */
+export class CorruptHierarchyError extends Error {
+  constructor() {
+    super('Invalid todo hierarchy');
   }
-  const queue = todos.filter((t) => pending.get(t.id) === 0).map((t) => t.id);
-  const result = new Map<number, TodoProgress>();
-  for (let i = 0; i < queue.length; i++) {
-    const id = queue[i],
-      a = totals.get(id)!;
-    const duration = a.missing === 0;
-    const completed = duration ? a.doneDuration : a.done;
-    const total = duration ? a.known : a.count;
-    result.set(id, {
-      mode: duration ? 'duration' : 'count',
-      completed,
-      total,
-      percentage: total > 0 ? (completed / total) * 100 : 0,
-      knownDurationMinutes: a.known,
-      todoCount: a.count,
-    });
-    const parent = parents.get(id);
-    if (parent !== undefined) {
-      const p = totals.get(parent)!;
-      p.count += a.count;
-      p.done += a.done;
-      p.known += a.known;
-      p.doneDuration += a.doneDuration;
-      p.missing += a.missing;
-      pending.set(parent, pending.get(parent)! - 1);
-      if (pending.get(parent) === 0) queue.push(parent);
-    }
-  }
-  if (result.size !== todos.length)
-    throw new BadRequestException('Invalid todo hierarchy');
-  return result;
 }
 
-/** Walk target ancestors to reject a cycle, without recursive calls. */
-export function validateParent(
-  todos: HierarchyTodo[],
-  id: number,
-  parentId: number | null,
-): void {
-  const byId = new Map(todos.map((t) => [t.id, t]));
-  const seen = new Set<number>([id]);
-  let current = parentId;
-  while (current !== null) {
-    if (seen.has(current))
-      throw new BadRequestException(
-        'A todo cannot be moved below itself or a descendant',
-      );
-    seen.add(current);
-    const parent = byId.get(current);
-    if (!parent) throw new BadRequestException('Parent is unavailable');
-    current = parent.parentId ?? null;
+export class TodoTree<T extends HierarchyTodo> {
+  private constructor(
+    private readonly byId: Map<number, T>,
+    private readonly children: Map<number, T[]>,
+    /** Nodes without a parent in the snapshot, in id order. */
+    readonly roots: T[],
+  ) {}
+
+  /**
+   * Builds the tree. A node whose parent is not in the snapshot counts as a
+   * root, so a partial snapshot (or an orphan) never breaks reading.
+   * Throws CorruptHierarchyError if the stored parents form a cycle.
+   */
+  static of<T extends HierarchyTodo>(todos: T[]): TodoTree<T> {
+    const sorted = [...todos].sort((a, b) => a.id - b.id);
+    const byId = new Map(sorted.map((todo) => [todo.id, todo]));
+    const children = new Map<number, T[]>();
+    const roots: T[] = [];
+    for (const todo of sorted) {
+      const parentId = todo.parentId ?? null;
+      if (parentId === null || !byId.has(parentId)) roots.push(todo);
+      else {
+        const siblings = children.get(parentId);
+        if (siblings) siblings.push(todo);
+        else children.set(parentId, [todo]);
+      }
+    }
+    const tree = new TodoTree(byId, children, roots);
+    // Every node must be reachable from a root; the rest sit on a cycle.
+    let reachable = 0;
+    tree.walk(roots, () => reachable++);
+    if (reachable !== byId.size) throw new CorruptHierarchyError();
+    return tree;
+  }
+
+  get(id: number): T | undefined {
+    return this.byId.get(id);
+  }
+
+  /** The node and all its descendants, in id order. */
+  subtree(rootId: number): T[] {
+    const root = this.byId.get(rootId);
+    if (!root) return [];
+    const nodes: T[] = [];
+    this.walk([root], (node) => nodes.push(node));
+    return nodes.sort((a, b) => a.id - b.id);
+  }
+
+  /**
+   * Checks that todo `id` (null for a new todo) may sit below `parentId`.
+   * The snapshot must contain the parent's ancestor chain.
+   */
+  assertCanPlace(id: number | null, parentId: number | null): void {
+    let current = parentId;
+    const seen = new Set<number>();
+    while (current !== null) {
+      if (current === id)
+        throw new InvalidPlacementError(
+          'A todo cannot be moved below itself or a descendant',
+        );
+      if (seen.has(current)) throw new CorruptHierarchyError();
+      seen.add(current);
+      const node = this.byId.get(current);
+      if (!node) {
+        if (current === parentId)
+          throw new InvalidPlacementError('Parent is unavailable');
+        return; // The chain ends at a node whose parent is gone: a root.
+      }
+      current = node.parentId ?? null;
+    }
+  }
+
+  /** Bottom-up progress of every subtree; each node counts once. */
+  progress(): Map<number, TodoProgress> {
+    const totals = new Map<
+      number,
+      {
+        count: number;
+        done: number;
+        known: number;
+        doneMinutes: number;
+        missing: number;
+      }
+    >();
+    const result = new Map<number, TodoProgress>();
+    // Reverse pre-order visits every child before its parent (iterative, no depth limit).
+    const order: T[] = [];
+    this.walk(this.roots, (node) => order.push(node));
+    for (const node of order.reverse()) {
+      const own = {
+        count: 1,
+        done: Number(node.completed),
+        known: node.plannedDurationMinutes ?? 0,
+        doneMinutes: node.completed ? (node.plannedDurationMinutes ?? 0) : 0,
+        missing: Number(node.plannedDurationMinutes == null),
+      };
+      for (const child of this.children.get(node.id) ?? []) {
+        const sub = totals.get(child.id)!;
+        own.count += sub.count;
+        own.done += sub.done;
+        own.known += sub.known;
+        own.doneMinutes += sub.doneMinutes;
+        own.missing += sub.missing;
+      }
+      totals.set(node.id, own);
+      const byDuration = own.missing === 0;
+      const completed = byDuration ? own.doneMinutes : own.done;
+      const total = byDuration ? own.known : own.count;
+      result.set(node.id, {
+        mode: byDuration ? 'duration' : 'count',
+        completed,
+        total,
+        percentage: total > 0 ? (completed / total) * 100 : 0,
+        knownDurationMinutes: own.known,
+        todoCount: own.count,
+      });
+    }
+    return result;
+  }
+
+  /** Iterative depth-first walk from `starts`, never visiting a node twice. */
+  private walk(starts: T[], visit: (node: T) => void): void {
+    const stack = [...starts].reverse();
+    const seen = new Set<number>();
+    while (stack.length) {
+      const node = stack.pop()!;
+      if (seen.has(node.id)) continue;
+      seen.add(node.id);
+      visit(node);
+      const next = this.children.get(node.id) ?? [];
+      for (let i = next.length - 1; i >= 0; i--) stack.push(next[i]);
+    }
   }
 }

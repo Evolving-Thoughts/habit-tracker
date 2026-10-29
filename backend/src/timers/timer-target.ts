@@ -83,3 +83,35 @@ export async function releaseTimers(
     )
     .execute();
 }
+
+/** Timers (any state) that belong to these todos, for previews of destructive changes. */
+export function timersOfTodos(
+  manager: EntityManager,
+  userId: string,
+  todoIds: number[],
+): Promise<TimerEntity[]> {
+  if (!todoIds.length) return Promise.resolve([]);
+  return manager
+    .getRepository(TimerEntity)
+    .createQueryBuilder('timer')
+    .where('"timer"."userId" = :userId', { userId })
+    .andWhere('"timer"."todoId" = ANY(:todoIds)', { todoIds })
+    .orderBy('"timer"."id"', 'ASC')
+    .getMany();
+}
+
+/** Deletes the timer rows of deleted todos (their history lives on the todos). */
+export async function discardTimersOfTodos(
+  manager: EntityManager,
+  userId: string,
+  todoIds: number[],
+): Promise<void> {
+  if (!todoIds.length) return;
+  await manager
+    .createQueryBuilder()
+    .delete()
+    .from(TimerEntity)
+    .where('"userId" = :userId', { userId })
+    .andWhere('"todoId" = ANY(:todoIds)', { todoIds })
+    .execute();
+}

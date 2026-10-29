@@ -7,10 +7,7 @@ export type TodoProgress = {
   knownDurationMinutes: number;
   todoCount: number;
 };
-export type HierarchyTodo = TodoResponse & {
-  parentId: number | null;
-  progress: TodoProgress;
-};
+export type HierarchyTodo = TodoResponse & { progress: TodoProgress };
 export type DeletionPreview = {
   confirmationToken: string;
   todos: {

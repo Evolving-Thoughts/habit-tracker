@@ -86,13 +86,15 @@ describe('Todo hierarchy T2/T3 PostgreSQL API', () => {
     expect(
       await db.getRepository(TodoEntity).findOneBy({ id: b.id }),
     ).toMatchObject({ parentId: root.id });
+    // Reopening a child never reopens its parent (history stays intact).
+    const doneAt = (await tree()).find((t) => t.id === root.id)?.completedAt;
     await patch(a.id, { completed: false });
     expect((await tree()).find((t) => t.id === root.id)).toMatchObject({
-      completed: false,
-      completedAt: null,
+      completed: true,
+      completedAt: doneAt,
     });
   });
-  it('preserves parent schedule, fixation, duration and paused timer when adding a child', async () => {
+  it('preserves parent completion, schedule, fixation, duration and paused timer when adding a child', async () => {
     const root = await create('Root', null, 60);
     await patch(root.id, {
       scheduledAt: '2026-01-01T10:00:00Z',
@@ -110,21 +112,23 @@ describe('Todo hierarchy T2/T3 PostgreSQL API', () => {
     const before = await db
       .getRepository(TimerEntity)
       .findOneByOrFail({ id: timer.id });
-    await patch(root.id, { completed: true });
     await create('Child', root.id);
     const after = await db
       .getRepository(TimerEntity)
       .findOneByOrFail({ id: timer.id });
     expect(after).toEqual(before);
+    await patch(root.id, { completed: true });
+    const doneAt = (await tree()).find((t) => t.id === root.id)?.completedAt;
+    await create('Second child', root.id);
     expect((await tree()).find((t) => t.id === root.id)).toMatchObject({
-      completed: false,
-      completedAt: null,
+      completed: true,
+      completedAt: doneAt,
       isFixed: true,
       plannedDurationMinutes: 60,
       scheduledAt: '2026-01-01T10:00:00.000Z',
     });
   });
-  it('moves the entire subtree and reopens target ancestors, without changing old parent properties', async () => {
+  it('moves the entire subtree without changing completion of old or new ancestors', async () => {
     const old = await create('Old'),
       root = await create('Moving', old.id),
       child = await create('Open', root.id),
@@ -134,7 +138,7 @@ describe('Todo hierarchy T2/T3 PostgreSQL API', () => {
     await patch(old.id, { completed: true });
     await patch(root.id, { parentId: target.id });
     const rows = await tree();
-    expect(rows.find((t) => t.id === target.id)?.completed).toBe(false);
+    expect(rows.find((t) => t.id === target.id)?.completed).toBe(true);
     expect(rows.find((t) => t.id === old.id)?.completed).toBe(true);
     expect(rows.find((t) => t.id === child.id)?.parentId).toBe(root.id);
     await patch(root.id, { parentId: null });
@@ -172,7 +176,12 @@ describe('Todo hierarchy T2/T3 PostgreSQL API', () => {
       .expect(404);
     expect((await tree()).some((t) => t.id === foreign.id)).toBe(false);
     const deleted = await create('Deleted');
-    await request(server).delete(`/todos/${deleted.id}`).expect(204);
+    await request(server)
+      .delete(`/todos/${deleted.id}`)
+      .send({
+        confirmationToken: (await preview(deleted.id)).confirmationToken,
+      })
+      .expect(204);
     await request(server)
       .post('/todos')
       .send({ title: 'Invalid', parentId: deleted.id })
@@ -191,16 +200,16 @@ describe('Todo hierarchy T2/T3 PostgreSQL API', () => {
   it('returns a read-only deletion preview, rejects stale confirmation, deletes paused timers and preserves history', async () => {
     const root = await create('Root', null, 60),
       child = await create('Child', root.id, 30);
+    await patch(child.id, { completed: true });
     const started = await request(server)
       .post('/timers')
-      .send({ kind: 'todo', targetId: child.id })
+      .send({ kind: 'todo', targetId: root.id })
       .expect(201);
     const timer = (started.body as { timer: { id: string } }).timer;
     await request(server)
       .post(`/timers/${timer.id}/pause`)
       .send({})
       .expect(201);
-    await patch(child.id, { completed: true });
     const completion = (await tree()).find(
       (t) => t.id === child.id,
     )?.completedAt;
@@ -208,7 +217,8 @@ describe('Todo hierarchy T2/T3 PostgreSQL API', () => {
     expect(first.todos).toHaveLength(2);
     expect(first.timers).toMatchObject([{ id: timer.id, state: 'paused' }]);
     expect(await tree()).toHaveLength(2);
-    await request(server).delete(`/todos/${root.id}`).expect(409);
+    // A confirmation token is required for every delete.
+    await request(server).delete(`/todos/${root.id}`).expect(400);
     await create('Added after preview', root.id);
     await request(server)
       .delete(`/todos/${root.id}`)

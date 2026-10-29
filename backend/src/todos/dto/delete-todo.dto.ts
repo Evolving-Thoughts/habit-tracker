@@ -1,7 +1,7 @@
-import { IsOptional, IsString, Matches } from 'class-validator';
+import { IsString, Matches } from 'class-validator';
 export class DeleteTodoDto {
-  @IsOptional()
+  /** From GET /todos/:id/deletion-preview; required for every delete. */
   @IsString()
   @Matches(/^[a-f0-9]{64}$/)
-  readonly confirmationToken?: string;
+  readonly confirmationToken!: string;
 }

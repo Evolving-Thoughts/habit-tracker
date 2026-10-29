@@ -7,7 +7,7 @@ The Today, Todo-Dump, Habits and History views remain available. Every Todo,
 including a parent, retains its own completion checkbox, schedule, duration,
 fixed/flexible flag and timer eligibility. There is no separate Goal entity.
 
-T2 delivers hierarchy creation, progress, completion/reopening, atomic moves,
+T2 delivers hierarchy creation, progress, independent completion, atomic moves,
 root moves and timer/planner integration. T3 adds editing and confirmed subtree
 soft-deletion. Existing Today/Dump editors use the same deletion-preview contract.
 No sibling sorting, archive/restore, Habit contribution or new time-accounting
@@ -17,11 +17,11 @@ rules are introduced. The existing one-active-timer-per-user rule remains in pla
 
 1. Sketch a tree containing an explicitly completed parent with open children.
    Explain why its checkbox and subtree progress can disagree without being a bug.
-2. Read `todo-hierarchy.ts`. Work out the parent-plus-five-children example on paper:
-   the denominator is six, not five. Then add durations to every node.
-3. Trace `TodosService.update`: validation, own-property changes, subtree move,
-   ancestor reopening and transaction commit. Identify the invariant protected
-   by each check before reading the corresponding test.
+2. Read `todo-hierarchy.ts` (`TodoTree`). Work out the parent-plus-five-children
+   example on paper: the denominator is six, not five. Then add durations to every node.
+3. Trace `TodosService.update`: the ancestor-chain query, `assertCanPlace`,
+   own-property changes and the timer release on completion. Identify the
+   invariant protected by each check before reading the corresponding test.
 4. Try implementing an iterative postorder traversal independently. Compare it
    with the reference only after it handles a deep chain and a branching tree.
 5. Read the deletion preview and predict what happens if another device adds a
@@ -29,7 +29,9 @@ rules are introduced. The existing one-active-timer-per-user rule remains in pla
 
 The complete runnable reference is the repository source, not the disposable UI
 prototype. The main files are the Todo entity/DTOs, `TodosService`,
-`todo-hierarchy.ts`, `TodoHierarchyView.vue`, `TodoDeletionSummary.vue` and their tests.
+`todo-hierarchy.ts` (pure tree rules), `todo-hierarchy.queries.ts` (recursive
+ancestor/subtree reads), `TodoHierarchyView.vue`, `useTodoDeletion.ts`,
+`TodoDeletionSummary.vue` and their tests.
 
 ## Architecture and invariants
 
@@ -43,22 +45,25 @@ The frontend's filtered move choices are convenience, not authorization.
 
 ### Atomic mutation and concurrency
 
-Every Todo mutation runs in a PostgreSQL transaction and locks the owning user
-row first. This is the same lock order used by the existing timer service.
+Every Todo mutation runs in the per-user unit of work (`UserUnitOfWork`), which
+locks the owning user row first — the same lock order as timers, habits and push.
 Consequently two inverse moves cannot both commit, and a timer duration update
 cannot overwrite an older copy of a Todo that was moved concurrently.
 
-Opening a child, adding an open child, or moving a subtree containing any open
-Todo under a completed parent reopens the affected ancestors and clears their
-completion timestamps. Explicit parent completion never completes children and
-child completion never auto-completes parents. Repeated completion preserves the
-original timestamp. Old/source ancestors are not auto-completed by a move.
-Other parent attributes and existing timers remain unchanged.
+A Todo's completion is its own: nothing completes or reopens other nodes.
+Adding or reopening a child, or moving an open subtree below a completed parent,
+leaves that parent completed with its original `completedAt`, so its entry in
+the history stays where it was. The parent's progress shows the open work below
+it. Repeated completion preserves the original timestamp. Completing a Todo stops
+its timer in the same transaction (see `timers/timer-target.ts`).
 
 ### Progress and deep trees
 
 `GET /todos/hierarchy` reads one owner-scoped snapshot, then computes progress
-bottom-up in O(n) time and space. Parent and intermediate nodes each count once.
+bottom-up in O(n) time and space. A Todo whose parent is missing counts as a root,
+so one bad row cannot hide the whole tree; a stored cycle is reported as a 500.
+Create, move and delete do not load the whole tree: they read only the parent's
+ancestor chain or the affected subtree with recursive queries on the parent index. Parent and intermediate nodes each count once.
 All durations present: completed planned minutes / total planned minutes.
 Any missing duration: completed Todo count / total Todo count. The known duration
 sum is then displayed as a minimum estimate.
@@ -66,8 +71,8 @@ sum is then displayed as a minimum estimate.
 Traversal uses explicit queues/stacks, not recursively nested calls or recursive
 Vue components. There is no configured functional depth limit. Visual indentation
 is capped after six levels to preserve usable width; the actual level remains
-visible and navigation is not capped. Database deletion and ancestor saves use
-batches of 500 within one transaction.
+visible and navigation is not capped. Deletion binds the subtree ids as one array
+parameter, so its SQL size does not grow with the subtree.
 
 Executed checks include 20,000 levels for the pure backend/frontend algorithms
 and 2,000 levels through PostgreSQL load, preview and deletion (about 197 ms in
@@ -85,16 +90,15 @@ whole user's tree; pagination/virtualization would require further load testing.
 4. Under the same per-user lock, the server computes the current snapshot again.
    If the subtree, relevant properties or timer state changed, it returns **409**.
    The user must request and review a fresh preview.
-5. Otherwise all attached timers are physically deleted, their pending delivery
+5. Otherwise all attached timers are deleted (via `timer-target.ts`), their pending delivery
    records follow existing FK cascades, and the entire Todo subtree is soft-deleted.
    Any failure rolls all changes back. No visible orphan children remain.
 
 The token is a stale-state check, not a credential or substitute for ownership.
 It is never stored as a password. A repeat after successful deletion returns
-404 and makes no additional changes. For backward compatibility, a single leaf
-without any attached timers still accepts the pre-existing DELETE contract;
-all shipped UI paths now request a preview before confirming. A missing token is
-rejected for larger subtrees or any attached timer.
+404 and makes no additional changes. Every delete requires a token: a request
+without one is rejected with 400. The frontend's `useTodoDeletion` composable is
+the one place that loads a preview and sends its token.
 
 Soft deletion retains Todo records and their original `completedAt`. The existing
 history reader uses `withDeleted()`, so previous completion entries remain visible.
@@ -120,6 +124,8 @@ npm run migration:run
 
 5. Deploy/start the updated backend and frontend using the existing project workflow.
 
+`npm run migration:run` builds the backend and applies every pending migration in
+`dist/migrations` with the app's own database settings (`database.options.ts`).
 The versioned `TodoHierarchy1792620000000` migration adds only the nullable column,
 index and restrictive FK. It does not clear records or assign existing parents.
 It is idempotent for already synchronized development schemas and is recorded in
@@ -134,7 +140,7 @@ data. No `docker compose down -v`, schema reset or production deployment is need
 - `parentId` added to ordinary Todo responses (null for roots).
 - `GET /todos/hierarchy`: flat owner-scoped Todo list with per-node `progress`.
 - `GET /todos/:id/deletion-preview`: complete affected Todo/timer list and token.
-- `DELETE /todos/:id`: optional token with the compatibility restriction above.
+- `DELETE /todos/:id`: requires `{ "confirmationToken": "..." }` from the preview.
 
 Existing Todo GET/PATCH, authentication, Today, history and timer contracts remain
 otherwise unchanged. Hierarchy summaries are not inserted as extra planner rows.

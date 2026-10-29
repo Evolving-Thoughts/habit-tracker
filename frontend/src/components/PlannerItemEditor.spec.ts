@@ -33,6 +33,7 @@ afterEach(() => vi.useRealTimers());
 
 const todo: TodoResponse = {
   id: 1,
+  parentId: null,
   title: "NestJS lernen",
   completed: false,
   completedAt: null,

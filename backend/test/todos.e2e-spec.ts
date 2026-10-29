@@ -222,8 +222,16 @@ describe('Todos API (e2e)', () => {
       expect(reopenedTodo.completed).toBe(false);
       expect(reopenedTodo.completedAt).toBeNull();
 
+      await request(httpServer).delete(`/todos/${createdTodo.id}`).expect(400);
+      const preview = await request(httpServer)
+        .get(`/todos/${createdTodo.id}/deletion-preview`)
+        .expect(200);
       await request(httpServer)
         .delete(`/todos/${createdTodo.id}`)
+        .send({
+          confirmationToken: (preview.body as { confirmationToken: string })
+            .confirmationToken,
+        })
         .expect(204)
         .expect('');
 

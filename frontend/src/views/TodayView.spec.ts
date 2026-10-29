@@ -446,6 +446,7 @@ describe("TodayView creation flow", () => {
     });
     vi.mocked(createTodo).mockResolvedValue({
       id: 1,
+      parentId: null,
       title: "Test",
       completed: false,
       completedAt: null,

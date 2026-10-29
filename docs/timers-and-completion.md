@@ -13,7 +13,7 @@ One running **or paused** timer per signed-in user, shared by all devices. Exist
 - Pause before changing the total duration. Already elapsed time is retained: 2-minute timer after 30 seconds -> change to 3 minutes -> 2:30 remaining. If the shortened total is already elapsed, the timer finishes.
 - Duration changes persist on the Todo or **only on that specific Habit occurrence**. They do not change the Habit default. Editing a target's default/planned duration outside the timer does not silently change the active deadline.
 - Expiration shows **Zeit abgelaufen**, not automatic completion. A separate check icon completes the target explicitly; Stop closes a finished timer.
-- Resolving/deleting the linked target, pausing the Habit, or cancelling/expiring its occurrence stops an obsolete linked timer during the next reconciliation. This includes an occurrence becoming non-actionable at a schedule/week boundary. There is no independent timer detached from a target.
+- Completing/deleting the linked Todo, pausing/deleting the Habit, or resolving its occurrence (completed, skipped, cancelled, expired) stops the linked timer in the same transaction (`releaseTimers` in `backend/src/timers/timer-target.ts`). An occurrence that only becomes non-actionable by the passage of time (schedule/week boundary) is stopped at the next reconciliation. There is no independent timer detached from a target.
 
 ## Locked Android / multiple devices
 

@@ -13,6 +13,10 @@ import {
   Post,
 } from '@nestjs/common';
 import { DeleteTodoDto } from './dto/delete-todo.dto';
+import {
+  DeletionPreviewResponse,
+  HierarchyTodoResponse,
+} from './dto/todo-hierarchy-response.dto';
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { TodoResponseDto } from './dto/todo-response.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
@@ -38,15 +42,15 @@ export class TodosController {
   }
 
   @Get('hierarchy')
-  async hierarchy(@CurrentUser() user: AuthUser) {
+  hierarchy(@CurrentUser() user: AuthUser): Promise<HierarchyTodoResponse[]> {
     return this.todosService.hierarchy(user.id);
   }
 
   @Get(':id/deletion-preview')
-  async deletionPreview(
+  deletionPreview(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseIntPipe) id: number,
-  ) {
+  ): Promise<DeletionPreviewResponse> {
     return this.todosService.deletionPreview(user.id, id);
   }
 
@@ -86,8 +90,8 @@ export class TodosController {
   async remove(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto?: DeleteTodoDto,
+    @Body() dto: DeleteTodoDto,
   ): Promise<void> {
-    await this.todosService.remove(user.id, id, dto?.confirmationToken);
+    await this.todosService.remove(user.id, id, dto.confirmationToken);
   }
 }

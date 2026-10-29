@@ -24,6 +24,7 @@ describe("CreateItemDialog", () => {
     vi.mocked(createHabit).mockResolvedValue(habit);
     vi.mocked(createTodo).mockResolvedValue({
       id: 1,
+      parentId: null,
       title: "Test",
       completed: false,
       completedAt: null,
