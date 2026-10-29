@@ -1,10 +1,13 @@
 import { midnightInTimeZone } from '../../common/date/date-only.utils';
+import { addDays } from '../../common/date/local-day';
 import { HabitScheduleType } from '../enums/habit-schedule-type.enum';
 import { MissedOccurrencePolicy } from '../enums/missed-occurrence-policy.enum';
 import { Weekday } from '../enums/weekday.enum';
 import {
   buildVersion,
   expiresAt,
+  isScheduledOn,
+  latestSlotOnOrBefore,
   nextScheduledDate,
   normalizeSchedule,
   sameSchedule,
@@ -139,5 +142,53 @@ describe('schedule rules', () => {
         missedOccurrencePolicy: MissedOccurrencePolicy.CARRY_OVER,
       }),
     ).toThrow();
+  });
+
+  describe('direct slot check agrees with generation', () => {
+    const cases: [string, Parameters<typeof normalizeSchedule>[0]][] = [
+      ['every day', { type: HabitScheduleType.INTERVAL, intervalDays: 1 }],
+      ['every 3 days', { type: HabitScheduleType.INTERVAL, intervalDays: 3 }],
+      ['every 10 days', { type: HabitScheduleType.INTERVAL, intervalDays: 10 }],
+      [
+        'Mon/Wed/Sun',
+        {
+          type: HabitScheduleType.FIXED_WEEKDAYS,
+          weekdays: [Weekday.MONDAY, Weekday.WEDNESDAY, Weekday.SUNDAY],
+        },
+      ],
+      [
+        'Saturday',
+        {
+          type: HabitScheduleType.FIXED_WEEKDAYS,
+          weekdays: [Weekday.SATURDAY],
+        },
+      ],
+    ];
+    // Spans the March and October DST changes.
+    const start = new Date('2026-03-10T15:00:00Z');
+
+    it.each(cases)('%s', (_name, schedule) => {
+      const version = buildVersion(1, normalizeSchedule(schedule), start);
+      const generated = new Set<string>();
+      for (
+        let slot = nextScheduledDate(version, null);
+        slot <= '2026-11-30';
+        slot = nextScheduledDate(version, slot)
+      )
+        generated.add(slot);
+      let latest: string | null = null;
+      for (let day = '2026-03-01'; day <= '2026-11-30'; day = addDays(day, 1)) {
+        expect(isScheduledOn(version, day)).toBe(generated.has(day));
+        if (generated.has(day)) latest = day;
+        // Weekday schedules look back one week; intervals find any slot.
+        const expected =
+          schedule.type === HabitScheduleType.FIXED_WEEKDAYS &&
+          latest !== null &&
+          addDays(latest, 6) < day
+            ? null
+            : latest;
+        expect(latestSlotOnOrBefore(version, day)).toBe(expected);
+      }
+    });
   });
 });

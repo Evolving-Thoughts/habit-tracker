@@ -1,40 +1,19 @@
 import { midnightInTimeZone } from '../common/date/date-only.utils';
-import {
-  addDays,
-  daysBetween,
-  dayOf,
-  endOfDay,
-  weekdayOf,
-} from '../common/date/local-day';
+import { endOfDay } from '../common/date/local-day';
 import { HabitEntity } from '../habits/entities/habit.entity';
 import { HabitScheduleVersionEntity } from '../habits/entities/habit-schedule-version.entity';
 import { HabitScheduleType } from '../habits/enums/habit-schedule-type.enum';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus as Status } from '../habit-occurrences/enums/habit-occurrence-status.enum';
-import { expiresAt, slotStartsAt } from '../habits/scheduling/schedule-rules';
+import {
+  expiresAt,
+  isScheduledOn,
+  latestSlotOnOrBefore,
+  slotStartsAt,
+} from '../habits/scheduling/schedule-rules';
 import { HistoryPlannedItem, HistoryWeeklyTarget } from './history.dto';
 import { effectiveDuration } from '../timers/timer-target';
 
-// Bounded calendar arithmetic: never replay years of historical generation.
-export function isPlannedDate(
-  version: HabitScheduleVersionEntity,
-  date: string,
-): boolean {
-  if (date < dayOf(version.effectiveAt)) return false;
-  if (version.type === HabitScheduleType.INTERVAL) {
-    if (
-      !version.firstDueDate ||
-      !version.intervalDays ||
-      date < version.firstDueDate
-    )
-      return false;
-    return daysBetween(version.firstDueDate, date) % version.intervalDays === 0;
-  }
-  return (
-    version.type === HabitScheduleType.FIXED_WEEKDAYS &&
-    (version.weekdays ?? []).includes(weekdayOf(date))
-  );
-}
 export type ForecastSlot = {
   version: HabitScheduleVersionEntity;
   date: string;
@@ -55,27 +34,11 @@ export function forecastSlots(
       continue;
     for (const date of dates) {
       if (date < today) continue;
-      let candidate = date;
-      if (date === today && !isPlannedDate(version, date)) {
-        if (
-          version.type === HabitScheduleType.INTERVAL &&
-          version.firstDueDate &&
-          version.intervalDays &&
-          date >= version.firstDueDate
-        ) {
-          const elapsed = daysBetween(version.firstDueDate, date);
-          candidate = addDays(date, -(elapsed % version.intervalDays));
-        } else {
-          for (let offset = 1; offset <= 6; offset++) {
-            const previous = addDays(date, -offset);
-            if (isPlannedDate(version, previous)) {
-              candidate = previous;
-              break;
-            }
-          }
-        }
-      }
-      if (!isPlannedDate(version, candidate)) continue;
+      // Today may still show the latest unexpired slot (carry-over).
+      const candidate =
+        date === today ? latestSlotOnOrBefore(version, date) : date;
+      if (candidate === null) continue;
+      if (!isScheduledOn(version, candidate)) continue;
       const starts = slotStartsAt(version, candidate);
       if (
         version.endsAt !== null &&

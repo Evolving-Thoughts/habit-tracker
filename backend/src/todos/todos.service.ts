@@ -11,6 +11,7 @@ import { TodoEntity } from './entities/todo.entity';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { releaseTimers } from '../timers/timer-target';
+import { backlogTodos } from './todo-agenda';
 
 @Injectable()
 export class TodosService {
@@ -26,6 +27,11 @@ export class TodosService {
       where: { userId },
       order: { id: 'ASC' },
     });
+  }
+
+  /** Open todos without a date (Todo-Dump). */
+  backlog(userId: string): Promise<TodoEntity[]> {
+    return backlogTodos(this.todoRepository.manager, userId);
   }
 
   async findOne(userId: string, id: number): Promise<TodoEntity> {

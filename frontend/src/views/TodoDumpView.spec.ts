@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   deleteTodo,
   createTodo,
-  getTodos,
+  getBacklogTodos,
   updateTodo,
   updateTodoCompletion,
 } from "../api/day-planner.api";
@@ -11,7 +11,7 @@ import type { TodoResponse } from "../types/todo";
 import TodoDumpView from "./TodoDumpView.vue";
 
 vi.mock("../api/day-planner.api", () => ({
-  getTodos: vi.fn(),
+  getBacklogTodos: vi.fn(),
   createTodo: vi.fn(),
   updateTodo: vi.fn(),
   updateTodoCompletion: vi.fn(),
@@ -20,7 +20,7 @@ vi.mock("../api/day-planner.api", () => ({
 
 enableAutoUnmount(afterEach);
 
-const getTodosMock = vi.mocked(getTodos);
+const backlogMock = vi.mocked(getBacklogTodos);
 const updateTodoMock = vi.mocked(updateTodo);
 const completionMock = vi.mocked(updateTodoCompletion);
 const deleteTodoMock = vi.mocked(deleteTodo);
@@ -53,49 +53,28 @@ describe("TodoDumpView", () => {
   beforeEach(() => {
     vi.resetAllMocks();
 
-    getTodosMock.mockResolvedValue([]);
+    backlogMock.mockResolvedValue([]);
     completionMock.mockResolvedValue(undefined);
     updateTodoMock.mockResolvedValue(makeTodo());
     deleteTodoMock.mockResolvedValue(undefined);
   });
 
-  it("shows only unscheduled todos", async () => {
-    getTodosMock.mockResolvedValueOnce([
-      makeTodo(),
-      makeTodo({
-        id: 2,
-        title: "Geplanter Termin",
-        scheduledAt: "2026-10-02T10:00:00.000Z",
-      }),
-    ]);
+  it("shows the server's backlog (open todos without a date)", async () => {
+    backlogMock.mockResolvedValueOnce([makeTodo()]);
 
     const wrapper = mountView();
 
     await flushPromises();
 
+    expect(backlogMock).toHaveBeenCalled();
     expect(wrapper.text()).toContain("NestJS lernen");
-    expect(wrapper.text()).not.toContain("Geplanter Termin");
-
     expect(wrapper.findAll("[data-todo-id]")).toHaveLength(1);
   });
 
-  it("excludes completed Dump todos and removes a newly completed todo", async () => {
-    getTodosMock
-      .mockResolvedValueOnce([
-        makeTodo(),
-        makeTodo({
-          id: 2,
-          title: "Schon erledigt",
-          completed: true,
-          completedAt: "2026-10-02T10:00:00Z",
-        }),
-      ])
-      .mockResolvedValueOnce([
-        makeTodo({ completed: true, completedAt: "2026-10-02T10:00:00Z" }),
-      ]);
+  it("removes a newly completed todo after reloading the backlog", async () => {
+    backlogMock.mockResolvedValueOnce([makeTodo()]).mockResolvedValueOnce([]);
     const wrapper = mountView();
     await flushPromises();
-    expect(wrapper.text()).not.toContain("Schon erledigt");
     await wrapper
       .get('button[aria-label="NestJS lernen erledigen"]')
       .trigger("click");
@@ -106,7 +85,7 @@ describe("TodoDumpView", () => {
 
   it("keeps the latest refreshed state when an older initial read settles later", async () => {
     let finishOld!: (value: TodoResponse[]) => void;
-    getTodosMock
+    backlogMock
       .mockReturnValueOnce(
         new Promise((resolve) => {
           finishOld = resolve;
@@ -132,7 +111,7 @@ describe("TodoDumpView", () => {
   });
 
   it("shows a loading error without an empty-state message", async () => {
-    getTodosMock.mockRejectedValueOnce(new Error("Backend nicht erreichbar"));
+    backlogMock.mockRejectedValueOnce(new Error("Backend nicht erreichbar"));
 
     const wrapper = mountView();
 
@@ -148,7 +127,7 @@ describe("TodoDumpView", () => {
   it.each([[false, true, "erledigen"]] as const)(
     "changes completion from %s to %s",
     async (completed, target, action) => {
-      getTodosMock.mockResolvedValue([makeTodo({ completed })]);
+      backlogMock.mockResolvedValue([makeTodo({ completed })]);
 
       const wrapper = mountView();
 
@@ -165,12 +144,12 @@ describe("TodoDumpView", () => {
 
       expect(completionMock).toHaveBeenCalledWith(1, target);
 
-      expect(getTodosMock).toHaveBeenCalledTimes(2);
+      expect(backlogMock).toHaveBeenCalledTimes(2);
     },
   );
 
   it("prefills the editor with title and duration", async () => {
-    getTodosMock.mockResolvedValueOnce([makeTodo()]);
+    backlogMock.mockResolvedValueOnce([makeTodo()]);
 
     const wrapper = mountView();
 
@@ -190,7 +169,7 @@ describe("TodoDumpView", () => {
   });
 
   it("updates title and duration without scheduling the todo", async () => {
-    getTodosMock.mockResolvedValueOnce([makeTodo()]).mockResolvedValueOnce([
+    backlogMock.mockResolvedValueOnce([makeTodo()]).mockResolvedValueOnce([
       makeTodo({
         title: "Vue lernen",
         plannedDurationMinutes: 45,
@@ -226,7 +205,7 @@ describe("TodoDumpView", () => {
   });
 
   it("allows clearing the duration", async () => {
-    getTodosMock.mockResolvedValue([makeTodo()]);
+    backlogMock.mockResolvedValue([makeTodo()]);
 
     const wrapper = mountView();
 
@@ -253,12 +232,8 @@ describe("TodoDumpView", () => {
   it("schedules a todo and removes it from the dump after reload", async () => {
     const localDateTime = "2026-10-02T10:00";
 
-    getTodosMock.mockResolvedValueOnce([makeTodo()]).mockResolvedValueOnce([
-      makeTodo({
-        scheduledAt: "2026-10-02T08:00:00.000Z",
-        isFixed: true,
-      }),
-    ]);
+    // A scheduled todo leaves the server's backlog.
+    backlogMock.mockResolvedValueOnce([makeTodo()]).mockResolvedValueOnce([]);
 
     const wrapper = mountView();
 
@@ -287,7 +262,7 @@ describe("TodoDumpView", () => {
   });
 
   it("rejects a blank title", async () => {
-    getTodosMock.mockResolvedValueOnce([makeTodo()]);
+    backlogMock.mockResolvedValueOnce([makeTodo()]);
 
     const wrapper = mountView();
 
@@ -311,7 +286,7 @@ describe("TodoDumpView", () => {
   });
 
   it("rejects a fixed todo without a scheduled time", async () => {
-    getTodosMock.mockResolvedValueOnce([makeTodo()]);
+    backlogMock.mockResolvedValueOnce([makeTodo()]);
 
     const wrapper = mountView();
 
@@ -335,7 +310,7 @@ describe("TodoDumpView", () => {
   });
 
   it("preserves editing input when saving fails", async () => {
-    getTodosMock.mockResolvedValueOnce([makeTodo()]);
+    backlogMock.mockResolvedValueOnce([makeTodo()]);
 
     updateTodoMock.mockRejectedValueOnce(new Error("Speichern fehlgeschlagen"));
 
@@ -361,11 +336,11 @@ describe("TodoDumpView", () => {
       wrapper.get<HTMLInputElement>('input[name="editTitle"]').element.value,
     ).toBe("Vue lernen");
 
-    expect(getTodosMock).toHaveBeenCalledTimes(1);
+    expect(backlogMock).toHaveBeenCalledTimes(1);
   });
 
   it("cancels editing without saving", async () => {
-    getTodosMock.mockResolvedValueOnce([makeTodo()]);
+    backlogMock.mockResolvedValueOnce([makeTodo()]);
 
     const wrapper = mountView();
 
@@ -391,7 +366,7 @@ describe("TodoDumpView", () => {
   });
 
   it("deletes a dump todo only after confirmation", async () => {
-    getTodosMock.mockResolvedValueOnce([makeTodo()]).mockResolvedValueOnce([]);
+    backlogMock.mockResolvedValueOnce([makeTodo()]).mockResolvedValueOnce([]);
 
     const wrapper = mountView();
 
@@ -420,7 +395,7 @@ describe("TodoDumpView", () => {
   });
 
   it("cancels deletion without removing the todo", async () => {
-    getTodosMock.mockResolvedValueOnce([makeTodo()]);
+    backlogMock.mockResolvedValueOnce([makeTodo()]);
 
     const wrapper = mountView();
 
@@ -444,7 +419,7 @@ describe("TodoDumpView", () => {
   });
 
   it("keeps the editor open when deletion fails", async () => {
-    getTodosMock.mockResolvedValueOnce([makeTodo()]);
+    backlogMock.mockResolvedValueOnce([makeTodo()]);
 
     deleteTodoMock.mockRejectedValueOnce(new Error("Löschen fehlgeschlagen"));
 
@@ -473,14 +448,14 @@ describe("TodoDumpView", () => {
         .element.disabled,
     ).toBe(false);
 
-    expect(getTodosMock).toHaveBeenCalledTimes(1);
+    expect(backlogMock).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("TodoDumpView creation flow", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    getTodosMock.mockResolvedValue([]);
+    backlogMock.mockResolvedValue([]);
     vi.mocked(createTodo).mockResolvedValue(makeTodo());
   });
   it("opens the Todo form directly without a Habit choice", async () => {
@@ -492,7 +467,7 @@ describe("TodoDumpView creation flow", () => {
     expect(wrapper.find('[data-test="choose-habit"]').exists()).toBe(false);
   });
   it("closes on creation, reloads the dump and shows the created Todo", async () => {
-    getTodosMock.mockResolvedValueOnce([]).mockResolvedValueOnce([makeTodo()]);
+    backlogMock.mockResolvedValueOnce([]).mockResolvedValueOnce([makeTodo()]);
     const wrapper = mount(TodoDumpView);
     await flushPromises();
     await wrapper.get('button[aria-label="Todo erstellen"]').trigger("click");
@@ -506,7 +481,7 @@ describe("TodoDumpView creation flow", () => {
       isFixed: false,
     });
     expect(wrapper.find("dialog").exists()).toBe(false);
-    expect(getTodosMock).toHaveBeenCalledTimes(2);
+    expect(backlogMock).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain("NestJS lernen");
     expect(wrapper.get('[role="status"]').text()).toContain("Todo erstellt");
   });
@@ -517,11 +492,11 @@ describe("TodoDumpView creation flow", () => {
     await wrapper.get(".modal-dialog__close").trigger("click");
     expect(wrapper.find("dialog").exists()).toBe(false);
     expect(createTodo).not.toHaveBeenCalled();
-    expect(getTodosMock).toHaveBeenCalledTimes(1);
+    expect(backlogMock).toHaveBeenCalledTimes(1);
   });
 
   it("opens a focused modal and returns to the row on cancel", async () => {
-    getTodosMock.mockResolvedValueOnce([makeTodo()]);
+    backlogMock.mockResolvedValueOnce([makeTodo()]);
     const wrapper = mount(TodoDumpView, { attachTo: document.body });
     await flushPromises();
     const button = wrapper.get<HTMLButtonElement>("[data-edit-button]");
@@ -540,7 +515,7 @@ describe("TodoDumpView creation flow", () => {
     wrapper.unmount();
   });
   it("returns to the neighbouring edit button after deletion", async () => {
-    getTodosMock
+    backlogMock
       .mockResolvedValueOnce([
         makeTodo(),
         makeTodo({ id: 2, title: "Zweites Todo" }),

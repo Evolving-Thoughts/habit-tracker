@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { midnightInTimeZone } from '../../common/date/date-only.utils';
 import {
   addDays as addCalendarDays,
+  daysBetween,
   dayOf,
   weekdayOf,
 } from '../../common/date/local-day';
@@ -207,6 +208,54 @@ export function nextScheduledDate(
   }
 
   throw new BadRequestException('Could not calculate scheduled date');
+}
+
+/**
+ * Whether `date` is a slot of the version, computed directly (no replay of
+ * generation history). Must agree with iterating nextScheduledDate; the
+ * spec cross-checks both. Weekly-target versions have no fixed slots.
+ */
+export function isScheduledOn(
+  version: HabitScheduleVersionEntity,
+  date: string,
+): boolean {
+  if (date < dayOf(version.effectiveAt)) return false;
+  if (version.type === HabitScheduleType.INTERVAL) {
+    if (
+      !version.firstDueDate ||
+      !version.intervalDays ||
+      date < version.firstDueDate
+    )
+      return false;
+    return daysBetween(version.firstDueDate, date) % version.intervalDays === 0;
+  }
+  return (
+    version.type === HabitScheduleType.FIXED_WEEKDAYS &&
+    (version.weekdays ?? []).includes(weekdayOf(date))
+  );
+}
+
+/** The latest slot of the version on or before `date`, or null. */
+export function latestSlotOnOrBefore(
+  version: HabitScheduleVersionEntity,
+  date: string,
+): string | null {
+  if (isScheduledOn(version, date)) return date;
+  if (
+    version.type === HabitScheduleType.INTERVAL &&
+    version.firstDueDate &&
+    version.intervalDays &&
+    date >= version.firstDueDate
+  ) {
+    const elapsed = daysBetween(version.firstDueDate, date);
+    const slot = addDays(date, -(elapsed % version.intervalDays));
+    return isScheduledOn(version, slot) ? slot : null;
+  }
+  for (let offset = 1; offset <= 6; offset++) {
+    const previous = addDays(date, -offset);
+    if (isScheduledOn(version, previous)) return previous;
+  }
+  return null;
 }
 
 export function expiresAt(

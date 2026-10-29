@@ -1,7 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository } from 'typeorm';
-import { DEFAULT_TIME_ZONE } from '../common/date/date-only.utils';
+import { DataSource } from 'typeorm';
 import { dayOf } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import {
@@ -14,6 +12,11 @@ import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occur
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import {
+  completedTodos,
+  openScheduledTodos,
+  placeOpenTodo,
+} from '../todos/todo-agenda';
+import {
   DayPlannerHabitItemDto,
   DayPlannerResponseDto,
   DayPlannerTodoItemDto,
@@ -22,8 +25,7 @@ import {
 @Injectable()
 export class DayPlannerService {
   constructor(
-    @InjectRepository(TodoEntity)
-    private readonly todoRepository: Repository<TodoEntity>,
+    private readonly db: DataSource,
     private readonly scheduling: HabitSchedulingService,
     private readonly clock: Clock,
   ) {}
@@ -70,43 +72,29 @@ export class DayPlannerService {
     return new DayPlannerResponseDto({ date: today, items });
   }
 
-  private findTodosForToday(
+  private async findTodosForToday(
     userId: string,
     today: string,
   ): Promise<TodoEntity[]> {
-    return this.todoRepository
-      .createQueryBuilder('todo')
-      .where('"todo"."userId" = :userId', { userId })
-      .andWhere(
-        new Brackets((query) => {
-          query
-            .where(
-              `"todo"."completed" = false
-               AND DATE(
-                 "todo"."scheduledAt" AT TIME ZONE :timeZone
-               ) <= :today`,
-              { timeZone: DEFAULT_TIME_ZONE, today },
-            )
-            .orWhere(
-              `"todo"."completed" = true
-               AND DATE(
-                 "todo"."completedAt" AT TIME ZONE :timeZone
-               ) = :today`,
-              { timeZone: DEFAULT_TIME_ZONE, today },
-            );
-        }),
-      )
-      .orderBy('"todo"."scheduledAt"', 'ASC')
-      .addOrderBy('"todo"."id"', 'ASC')
-      .getMany();
+    const day = { firstDay: today, lastDay: today };
+    const [open, completed] = await Promise.all([
+      openScheduledTodos(this.db.manager, userId, {
+        ...day,
+        includeOverdue: true,
+      }),
+      completedTodos(this.db.manager, userId, day),
+    ]);
+    return [...open, ...completed];
   }
 
   private mapTodo(todo: TodoEntity, today: string): DayPlannerTodoItemDto {
+    // Open todos follow the agenda; completed ones stay on their own day.
+    const placement = todo.completed ? null : placeOpenTodo(todo, today);
     const displayInstant = todo.scheduledAt ?? todo.completedAt;
     if (!displayInstant)
       throw new Error('Expected a planned or completed todo');
 
-    const scheduledDate = dayOf(displayInstant);
+    const scheduledDate = placement?.scheduledDate ?? dayOf(displayInstant);
 
     return {
       type: 'todo',
@@ -118,7 +106,7 @@ export class DayPlannerService {
       completedAt: todo.completedAt?.toISOString() ?? null,
       plannedDurationMinutes: todo.plannedDurationMinutes,
       isFixed: todo.isFixed,
-      isOverdue: !todo.completed && scheduledDate < today,
+      isOverdue: placement?.isOverdue ?? false,
       timerEligible: isTodoTimerEligible(todo),
     };
   }

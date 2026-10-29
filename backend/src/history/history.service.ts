@@ -8,15 +8,14 @@ import {
   weeklyTargets,
 } from './history-planning';
 import { DEFAULT_TIME_ZONE } from '../common/date/date-only.utils';
-import {
-  dayOf,
-  endOfDay,
-  startOfDay,
-  weekRange,
-} from '../common/date/local-day';
+import { dayOf, weekRange } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import { effectiveDuration } from '../timers/timer-target';
-import { TodoEntity } from '../todos/entities/todo.entity';
+import {
+  completedTodos,
+  openScheduledTodos,
+  placeOpenTodo,
+} from '../todos/todo-agenda';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { historyRange } from './history-range';
@@ -46,20 +45,11 @@ export class HistoryService {
       const todos =
         filter === 'habits'
           ? []
-          : await manager
-              .getRepository(TodoEntity)
-              .createQueryBuilder('todo')
-              .withDeleted()
-              .where('"todo"."userId" = :userId', { userId })
-              .andWhere('"todo"."completed" = true')
-              .andWhere(
-                '"todo"."completedAt" >= :start AND "todo"."completedAt" < :end',
-                {
-                  start: startOfDay(startDate),
-                  end: endOfDay(endDate),
-                },
-              )
-              .getMany();
+          : await completedTodos(manager, userId, {
+              firstDay: startDate,
+              lastDay: endDate,
+              withDeleted: true,
+            });
       const occurrences =
         filter === 'todos'
           ? []
@@ -150,22 +140,13 @@ export class HistoryService {
     const items: HistoryPlannedItem[] = [];
     if (dates[dates.length - 1] < today) return { items, targets: [] };
     if (filter !== 'habits') {
-      const todos = await manager
-        .getRepository(TodoEntity)
-        .createQueryBuilder('todo')
-        .where('"todo"."userId" = :userId', { userId })
-        .andWhere('"todo"."completed" = false')
-        .andWhere('"todo"."scheduledAt" < :end', {
-          end: endOfDay(dates[dates.length - 1]),
-        })
-        .andWhere('("todo"."scheduledAt" >= :start OR :current = true)', {
-          start: startOfDay(dates[0]),
-          current: dates.includes(today),
-        })
-        .getMany();
+      const todos = await openScheduledTodos(manager, userId, {
+        firstDay: dates[0],
+        lastDay: dates[dates.length - 1],
+        includeOverdue: dates.includes(today),
+      });
       for (const todo of todos) {
-        const scheduledDate = dayOf(todo.scheduledAt!);
-        const date = scheduledDate < today ? today : scheduledDate;
+        const { scheduledDate, date, isOverdue } = placeOpenTodo(todo, today);
         if (dates.includes(date))
           items.push({
             key: `todo:${todo.id}`,
@@ -175,7 +156,7 @@ export class HistoryService {
             title: todo.title,
             date,
             scheduledDate,
-            isOverdue: scheduledDate < today,
+            isOverdue,
             plannedDurationMinutes: todo.plannedDurationMinutes,
           });
       }

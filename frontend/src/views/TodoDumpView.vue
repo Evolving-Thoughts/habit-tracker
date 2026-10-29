@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import {
   deleteTodo,
-  getTodos,
+  getBacklogTodos,
   updateTodo,
   updateTodoCompletion,
 } from "../api/day-planner.api";
@@ -38,12 +38,8 @@ const isBusy = computed(() => {
   return isLoading.value || isSaving.value;
 });
 
-const openTodos = computed(() => {
-  return todos.value.filter((todo) => !todo.completed);
-});
-
 const groups = computed(() => [
-  { key: "open", title: "Offen", items: openTodos.value },
+  { key: "open", title: "Offen", items: todos.value },
 ]);
 
 let loadGeneration = 0;
@@ -53,12 +49,10 @@ async function loadTodos(showPageLoading = true): Promise<void> {
   errorMessage.value = null;
 
   try {
-    const allTodos = await getTodos();
+    const backlog = await getBacklogTodos();
 
     if (generation !== loadGeneration) return;
-    todos.value = allTodos.filter(
-      (todo) => todo.scheduledAt === null && !todo.completed,
-    );
+    todos.value = backlog;
   } catch (error: unknown) {
     if (generation !== loadGeneration) return;
     errorMessage.value =
