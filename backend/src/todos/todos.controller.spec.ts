@@ -27,6 +27,7 @@ describe('TodosController', () => {
 
   const todo: TodoEntity = {
     id: 1,
+    userId: '11111111-1111-4111-8111-111111111111',
     title: 'Learn NestJS',
     completed: false,
     completedAt: null,
@@ -82,6 +83,7 @@ describe('TodosController', () => {
           scheduledAt: null,
           plannedDurationMinutes: null,
           isFixed: false,
+          timerEligible: true,
         },
       ]);
 
@@ -109,6 +111,7 @@ describe('TodosController', () => {
         scheduledAt: null,
         plannedDurationMinutes: null,
         isFixed: false,
+        timerEligible: true,
       });
 
       expect(serviceMock.findOne).toHaveBeenCalledWith(
@@ -142,6 +145,7 @@ describe('TodosController', () => {
         scheduledAt: null,
         plannedDurationMinutes: null,
         isFixed: false,
+        timerEligible: true,
       });
 
       expect(serviceMock.create).toHaveBeenCalledWith(
@@ -187,6 +191,7 @@ describe('TodosController', () => {
         scheduledAt: '2026-09-20T10:00:00.000Z',
         plannedDurationMinutes: 30,
         isFixed: true,
+        timerEligible: true,
       });
 
       expect(serviceMock.create).toHaveBeenCalledWith(
@@ -229,6 +234,7 @@ describe('TodosController', () => {
         scheduledAt: null,
         plannedDurationMinutes: null,
         isFixed: false,
+        timerEligible: false,
       });
 
       expect(serviceMock.update).toHaveBeenCalledWith(
@@ -268,6 +274,7 @@ describe('TodosController', () => {
         scheduledAt: null,
         plannedDurationMinutes: null,
         isFixed: false,
+        timerEligible: true,
       });
 
       expect(serviceMock.update).toHaveBeenCalledWith(
@@ -312,6 +319,7 @@ describe('TodosController', () => {
         scheduledAt: '2026-09-20T10:00:00.000Z',
         plannedDurationMinutes: 30,
         isFixed: true,
+        timerEligible: true,
       });
 
       expect(serviceMock.update).toHaveBeenCalledWith(

@@ -5,17 +5,17 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Brackets, DataSource, EntityManager } from 'typeorm';
-import {
-  changeScheduleInstant,
-  DEFAULT_TIME_ZONE,
-  getCurrentDateInTimeZone,
-} from '../../common/date/date-only.utils';
+import { changeScheduleInstant } from '../../common/date/date-only.utils';
+import { dayOf, weekRange } from '../../common/date/local-day';
+import { Clock } from '../../common/clock';
+import { lockUser, UserUnitOfWork } from '../../common/user-unit-of-work';
+import { ownedOccurrences } from '../../habit-occurrences/owned-occurrences';
+import { effectiveDuration, releaseTimers } from '../../timers/timer-target';
 import {
   HabitOccurrenceCancellationReason,
   HabitOccurrenceEntity,
 } from '../../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../../habit-occurrences/enums/habit-occurrence-status.enum';
-import { HabitScheduleCalculator } from '../../habit-occurrences/scheduling/habit-schedule-calculator';
 import { ChangeHabitScheduleDto } from '../dto/change-habit-schedule.dto';
 import {
   HabitResponseDto,
@@ -36,13 +36,19 @@ import {
 
 @Injectable()
 export class HabitSchedulingService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly clock: Clock,
+    private readonly unitOfWork: UserUnitOfWork,
+  ) {}
 
+  /** Locks the owner first, then the habit (same order as timers and todos). */
   async lockHabit(
     userId: string,
     manager: EntityManager,
     habitId: number,
   ): Promise<HabitEntity> {
+    await lockUser(manager, userId);
     const habit = await manager.getRepository(HabitEntity).findOne({
       where: { id: habitId, userId },
       lock: { mode: 'pessimistic_write' },
@@ -88,10 +94,7 @@ export class HabitSchedulingService {
   ): ScheduleVersionResponse {
     return {
       id: version.id,
-      effectiveFrom: getCurrentDateInTimeZone(
-        DEFAULT_TIME_ZONE,
-        version.effectiveAt,
-      ),
+      effectiveFrom: dayOf(version.effectiveAt),
       effectiveAt: version.effectiveAt.toISOString(),
       endsAt: version.endsAt?.toISOString() ?? null,
       cancelledAt: version.cancelledAt?.toISOString() ?? null,
@@ -103,7 +106,7 @@ export class HabitSchedulingService {
   habitResponse(
     habit: HabitEntity,
     versions: HabitScheduleVersionEntity[],
-    at = new Date(),
+    at = this.clock.now(),
     pending?: HabitOccurrenceEntity,
   ): HabitResponseDto {
     const active = this.activeVersion(versions, at);
@@ -118,9 +121,7 @@ export class HabitSchedulingService {
       isActive: habit.isActive,
       plannedDurationMinutes: habit.plannedDurationMinutes,
       timerOccurrenceId: pending?.id ?? null,
-      timerDurationMinutes: pending
-        ? (pending.plannedDurationMinutes ?? habit.plannedDurationMinutes)
-        : null,
+      timerDurationMinutes: pending ? effectiveDuration(pending, habit) : null,
       currentSchedule: active ? this.versionResponse(active) : null,
       upcomingSchedule: upcoming ? this.versionResponse(upcoming) : null,
     };
@@ -133,12 +134,12 @@ export class HabitSchedulingService {
   ): Promise<HabitResponseDto> {
     const definition = normalizeSchedule(dto.schedule);
 
-    return this.dataSource.transaction(async (manager) => {
+    return this.unitOfWork.run(userId, async (manager) => {
       const habit = await this.lockHabit(userId, manager, habitId);
 
       // Erst nach dem Lock bestimmen: parallele Änderungen erhalten
       // ihre tatsächliche Reihenfolge.
-      const now = new Date();
+      const now = this.clock.now();
       const effectiveAt = changeScheduleInstant(dto.effectiveFrom, now);
 
       await this.reconcile(manager, habit, now);
@@ -198,10 +199,10 @@ export class HabitSchedulingService {
     habitId: number,
     at?: Date,
   ): Promise<void> {
-    await this.dataSource.transaction(async (manager) => {
+    await this.unitOfWork.run(userId, async (manager) => {
       const habit = await this.lockHabit(userId, manager, habitId);
 
-      await this.reconcile(manager, habit, at ?? new Date());
+      await this.reconcile(manager, habit, at ?? this.clock.now());
     });
   }
 
@@ -210,7 +211,7 @@ export class HabitSchedulingService {
     habit: HabitEntity,
     now: Date,
   ): Promise<void> {
-    const today = getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, now);
+    const today = dayOf(now);
     const versions = await this.getVersions(manager, habit.id);
 
     const usable = versions.filter((version) => version.cancelledAt === null);
@@ -260,6 +261,7 @@ export class HabitSchedulingService {
         if (expiry <= version.endsAt) {
           await this.resolve(
             manager,
+            habit,
             occurrence,
             HabitOccurrenceStatus.SKIPPED,
             today,
@@ -267,15 +269,17 @@ export class HabitSchedulingService {
         } else {
           await this.resolve(
             manager,
+            habit,
             occurrence,
             HabitOccurrenceStatus.CANCELLED,
-            getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, version.endsAt),
+            dayOf(version.endsAt),
             'schedule_changed',
           );
         }
       } else if (habit.isActive && expiry <= now) {
         await this.resolve(
           manager,
+          habit,
           occurrence,
           HabitOccurrenceStatus.SKIPPED,
           today,
@@ -332,10 +336,7 @@ export class HabitSchedulingService {
               resolvedDate = today;
             } else {
               status = HabitOccurrenceStatus.CANCELLED;
-              resolvedDate = getCurrentDateInTimeZone(
-                DEFAULT_TIME_ZONE,
-                version.endsAt,
-              );
+              resolvedDate = dayOf(version.endsAt);
               reason = 'schedule_changed';
             }
           } else if (expiry <= now) {
@@ -380,7 +381,7 @@ export class HabitSchedulingService {
       return;
     }
 
-    const week = HabitScheduleCalculator.getWeekRange(today);
+    const week = weekRange(today);
 
     const completedThisWeek = occurrences.filter(
       (item) =>
@@ -401,6 +402,7 @@ export class HabitSchedulingService {
       if (pending) {
         await this.resolve(
           manager,
+          habit,
           pending,
           HabitOccurrenceStatus.CANCELLED,
           today,
@@ -440,6 +442,7 @@ export class HabitSchedulingService {
 
   private async resolve(
     manager: EntityManager,
+    habit: HabitEntity,
     occurrence: HabitOccurrenceEntity,
     status: HabitOccurrenceStatus,
     resolvedDate: string,
@@ -450,6 +453,10 @@ export class HabitSchedulingService {
     occurrence.cancellationReason = reason;
 
     await manager.getRepository(HabitOccurrenceEntity).save(occurrence);
+    // A resolved occurrence is no timer target any more.
+    await releaseTimers(manager, habit.userId, {
+      occurrenceIds: [occurrence.id],
+    });
   }
 
   async changeStatus(
@@ -467,13 +474,8 @@ export class HabitSchedulingService {
       throw new BadRequestException('Invalid manual status');
     }
 
-    const initial = await this.dataSource
-      .getRepository(HabitOccurrenceEntity)
-      .createQueryBuilder('occurrence')
-      .innerJoin('occurrence.habit', 'habit')
-      .where('occurrence.id = :id', { id })
-      .andWhere('"habit"."userId" = :userId', { userId })
-      .andWhere('"habit"."deletedAt" IS NULL')
+    const initial = await ownedOccurrences(this.dataSource.manager, userId)
+      .andWhere('occurrence.id = :id', { id })
       .getOne();
 
     if (!initial) {
@@ -482,10 +484,10 @@ export class HabitSchedulingService {
       );
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    return this.unitOfWork.run(userId, async (manager) => {
       const habit = await this.lockHabit(userId, manager, initial.habitId);
-      const now = new Date();
-      const today = getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, now);
+      const now = this.clock.now();
+      const today = dayOf(now);
 
       await this.reconcile(manager, habit, now);
 
@@ -551,7 +553,10 @@ export class HabitSchedulingService {
         targetStatus === HabitOccurrenceStatus.COMPLETED ? now : null;
       occurrence.cancellationReason = null;
 
-      return repository.save(occurrence);
+      const saved = await repository.save(occurrence);
+      if (targetStatus !== HabitOccurrenceStatus.PENDING)
+        await releaseTimers(manager, userId, { occurrenceIds: [id] });
+      return saved;
     });
   }
 
@@ -573,26 +578,33 @@ export class HabitSchedulingService {
     });
   }
 
+  /** Reconciles every active habit of the user in one locked transaction, then reads today's occurrences. */
   async getToday(userId: string): Promise<HabitOccurrenceEntity[]> {
-    const habits = await this.dataSource.getRepository(HabitEntity).find({
+    return this.unitOfWork.run(userId, (manager) =>
+      this.todayIn(manager, userId),
+    );
+  }
+
+  private async todayIn(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<HabitOccurrenceEntity[]> {
+    const now = this.clock.now();
+    const habits = await manager.getRepository(HabitEntity).find({
       where: { isActive: true, userId },
       order: { id: 'ASC' },
+      lock: { mode: 'pessimistic_write' },
     });
 
     for (const habit of habits) {
-      await this.generateForHabit(userId, habit.id);
+      await this.reconcile(manager, habit, now);
     }
 
-    const today = getCurrentDateInTimeZone();
+    const today = dayOf(now);
 
-    return this.dataSource
-      .getRepository(HabitOccurrenceEntity)
-      .createQueryBuilder('occurrence')
-      .innerJoinAndSelect('occurrence.habit', 'habit')
+    return ownedOccurrences(manager, userId, { select: true })
       .innerJoinAndSelect('occurrence.scheduleVersion', 'version')
-      .where('"habit"."isActive" = true')
-      .andWhere('"habit"."userId" = :userId', { userId })
-      .andWhere('"habit"."deletedAt" IS NULL')
+      .andWhere('"habit"."isActive" = true')
       .andWhere(
         new Brackets((query) => {
           query

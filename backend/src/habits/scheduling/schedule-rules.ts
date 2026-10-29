@@ -1,10 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
+import { midnightInTimeZone } from '../../common/date/date-only.utils';
 import {
-  DEFAULT_TIME_ZONE,
-  getCurrentDateInTimeZone,
-  midnightInTimeZone,
-} from '../../common/date/date-only.utils';
-import { HabitScheduleCalculator } from '../../habit-occurrences/scheduling/habit-schedule-calculator';
+  addDays as addCalendarDays,
+  daysBetween,
+  dayOf,
+  weekdayOf,
+} from '../../common/date/local-day';
 import { ScheduleDto } from '../dto/schedule.dto';
 import { ScheduleRuleResponse } from '../dto/habit-response.dto';
 import { HabitScheduleVersionEntity } from '../entities/habit-schedule-version.entity';
@@ -136,7 +137,7 @@ export function buildVersion(
     cancelledAt: null,
     firstDueDate:
       definition.type === HabitScheduleType.INTERVAL
-        ? getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, effectiveAt)
+        ? dayOf(effectiveAt)
         : null,
   });
 
@@ -165,13 +166,7 @@ export function sameSchedule(
 
 function addDays(date: string, days: number): string {
   try {
-    const result = HabitScheduleCalculator.addDays(date, days);
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(result)) {
-      throw new Error('Unsupported date');
-    }
-
-    return result;
+    return addCalendarDays(date, days);
   } catch {
     throw new BadRequestException(
       'Schedule date is outside the supported calendar range',
@@ -202,12 +197,10 @@ export function nextScheduledDate(
   }
 
   let candidate =
-    afterDate === null
-      ? getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, version.effectiveAt)
-      : addDays(afterDate, 1);
+    afterDate === null ? dayOf(version.effectiveAt) : addDays(afterDate, 1);
 
   for (let attempt = 0; attempt < 7; attempt += 1) {
-    if (HabitScheduleCalculator.isFixedWeekday(candidate, version.weekdays)) {
+    if (version.weekdays.includes(weekdayOf(candidate))) {
       return candidate;
     }
 
@@ -215,6 +208,54 @@ export function nextScheduledDate(
   }
 
   throw new BadRequestException('Could not calculate scheduled date');
+}
+
+/**
+ * Whether `date` is a slot of the version, computed directly (no replay of
+ * generation history). Must agree with iterating nextScheduledDate; the
+ * spec cross-checks both. Weekly-target versions have no fixed slots.
+ */
+export function isScheduledOn(
+  version: HabitScheduleVersionEntity,
+  date: string,
+): boolean {
+  if (date < dayOf(version.effectiveAt)) return false;
+  if (version.type === HabitScheduleType.INTERVAL) {
+    if (
+      !version.firstDueDate ||
+      !version.intervalDays ||
+      date < version.firstDueDate
+    )
+      return false;
+    return daysBetween(version.firstDueDate, date) % version.intervalDays === 0;
+  }
+  return (
+    version.type === HabitScheduleType.FIXED_WEEKDAYS &&
+    (version.weekdays ?? []).includes(weekdayOf(date))
+  );
+}
+
+/** The latest slot of the version on or before `date`, or null. */
+export function latestSlotOnOrBefore(
+  version: HabitScheduleVersionEntity,
+  date: string,
+): string | null {
+  if (isScheduledOn(version, date)) return date;
+  if (
+    version.type === HabitScheduleType.INTERVAL &&
+    version.firstDueDate &&
+    version.intervalDays &&
+    date >= version.firstDueDate
+  ) {
+    const elapsed = daysBetween(version.firstDueDate, date);
+    const slot = addDays(date, -(elapsed % version.intervalDays));
+    return isScheduledOn(version, slot) ? slot : null;
+  }
+  for (let offset = 1; offset <= 6; offset++) {
+    const previous = addDays(date, -offset);
+    if (isScheduledOn(version, previous)) return previous;
+  }
+  return null;
 }
 
 export function expiresAt(

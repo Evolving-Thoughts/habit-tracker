@@ -15,6 +15,7 @@ export type DayPlannerTodoItem = {
   plannedDurationMinutes: number | null;
   isFixed: boolean;
   isOverdue: boolean;
+  timerEligible: boolean;
 };
 
 export type DayPlannerHabitItem = {
@@ -27,6 +28,7 @@ export type DayPlannerHabitItem = {
   scheduledDate: string;
   scheduleType: HabitScheduleType;
   isOverdue: boolean;
+  timerEligible: boolean;
 };
 
 export type DayPlannerItem = DayPlannerTodoItem | DayPlannerHabitItem;

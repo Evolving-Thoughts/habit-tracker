@@ -6,6 +6,8 @@ export type TodoResponseDtoProperties = {
   scheduledAt: string | null;
   plannedDurationMinutes: number | null;
   isFixed: boolean;
+  /** Whether a timer may be started for this todo (see timer-target). */
+  timerEligible: boolean;
 };
 
 export class TodoResponseDto {
@@ -16,6 +18,7 @@ export class TodoResponseDto {
   readonly scheduledAt: string | null;
   readonly plannedDurationMinutes: number | null;
   readonly isFixed: boolean;
+  readonly timerEligible: boolean;
 
   constructor(properties: TodoResponseDtoProperties) {
     this.id = properties.id;
@@ -25,5 +28,6 @@ export class TodoResponseDto {
     this.scheduledAt = properties.scheduledAt;
     this.plannedDurationMinutes = properties.plannedDurationMinutes;
     this.isFixed = properties.isFixed;
+    this.timerEligible = properties.timerEligible;
   }
 }

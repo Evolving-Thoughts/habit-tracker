@@ -4,13 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, LessThanOrEqual } from 'typeorm';
+import { DataSource, In, LessThanOrEqual } from 'typeorm';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
-import {
-  DEFAULT_TIME_ZONE,
-  getCurrentDateInTimeZone,
-  initialScheduleInstant,
-} from '../common/date/date-only.utils';
+import { initialScheduleInstant } from '../common/date/date-only.utils';
+import { dayOf } from '../common/date/local-day';
+import { Clock } from '../common/clock';
+import { UserUnitOfWork } from '../common/user-unit-of-work';
+import { releaseTimers } from '../timers/timer-target';
 import { CreateHabitDto } from './dto/create-habit.dto';
 import { UpdateHabitDto } from './dto/update-habit.dto';
 import { ChangeHabitScheduleDto } from './dto/change-habit-schedule.dto';
@@ -28,6 +28,8 @@ export class HabitsService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly scheduling: HabitSchedulingService,
+    private readonly clock: Clock,
+    private readonly unitOfWork: UserUnitOfWork,
   ) {}
 
   private validTitle(title: string): string {
@@ -47,14 +49,22 @@ export class HabitsService {
       order: { id: 'ASC' },
     });
 
+    // One query for all schedule versions instead of one per habit.
+    const versions = habits.length
+      ? await this.dataSource.getRepository(HabitScheduleVersionEntity).find({
+          where: { habitId: In(habits.map((habit) => habit.id)) },
+          order: { effectiveAt: 'ASC', id: 'ASC' },
+        })
+      : [];
+    const now = this.clock.now();
     const result: HabitResponseDto[] = [];
 
     for (const habit of habits) {
       result.push(
         this.scheduling.habitResponse(
           habit,
-          await this.scheduling.getVersions(this.dataSource.manager, habit.id),
-          new Date(),
+          versions.filter((version) => version.habitId === habit.id),
+          now,
           due.find(
             (item) =>
               item.habitId === habit.id &&
@@ -70,18 +80,16 @@ export class HabitsService {
   async findOne(userId: string, id: number): Promise<HabitResponseDto> {
     // Reconcile and read one owned Habit under the same Habit lock and reference time.
     // Opening its editor must not generate occurrences for every other Habit.
-    return this.dataSource.transaction(async (manager) => {
+    return this.unitOfWork.run(userId, async (manager) => {
       const habit = await this.scheduling.lockHabit(userId, manager, id);
-      const now = new Date();
+      const now = this.clock.now();
       await this.scheduling.reconcile(manager, habit, now);
 
       const pending = habit.isActive
         ? await manager.getRepository(HabitOccurrenceEntity).findOneBy({
             habitId: id,
             status: HabitOccurrenceStatus.PENDING,
-            scheduledDate: LessThanOrEqual(
-              getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, now),
-            ),
+            scheduledDate: LessThanOrEqual(dayOf(now)),
           })
         : null;
 
@@ -117,11 +125,11 @@ export class HabitsService {
     const title = this.validTitle(dto.title);
     const definition = normalizeSchedule(dto.schedule);
 
-    return this.dataSource.transaction(async (manager) => {
-      const now = new Date();
+    return this.unitOfWork.run(userId, async (manager) => {
+      const now = this.clock.now();
 
       const effectiveAt = initialScheduleInstant(
-        dto.startDate ?? getCurrentDateInTimeZone(),
+        dto.startDate ?? dayOf(now),
         now,
       );
 
@@ -157,7 +165,7 @@ export class HabitsService {
       throw new BadRequestException('At least one property must be provided');
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    return this.unitOfWork.run(userId, async (manager) => {
       const habit = await this.scheduling.lockHabit(userId, manager, id);
 
       if (dto.plannedDurationMinutes !== undefined)
@@ -171,8 +179,10 @@ export class HabitsService {
       }
 
       await manager.getRepository(HabitEntity).save(habit);
+      if (!habit.isActive)
+        await releaseTimers(manager, userId, { habitId: habit.id });
 
-      const now = new Date();
+      const now = this.clock.now();
 
       await this.scheduling.reconcile(manager, habit, now);
 
@@ -193,10 +203,11 @@ export class HabitsService {
   }
 
   async remove(userId: string, id: number): Promise<void> {
-    await this.dataSource.transaction(async (manager) => {
+    await this.unitOfWork.run(userId, async (manager) => {
       const habit = await this.scheduling.lockHabit(userId, manager, id);
 
       await manager.getRepository(HabitEntity).softRemove(habit);
+      await releaseTimers(manager, userId, { habitId: habit.id });
     });
   }
 }

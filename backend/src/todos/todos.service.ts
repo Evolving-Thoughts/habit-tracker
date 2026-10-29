@@ -8,12 +8,18 @@ import { DeepPartial, Repository } from 'typeorm';
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
 import { TodoEntity } from './entities/todo.entity';
+import { Clock } from '../common/clock';
+import { UserUnitOfWork } from '../common/user-unit-of-work';
+import { releaseTimers } from '../timers/timer-target';
+import { backlogTodos } from './todo-agenda';
 
 @Injectable()
 export class TodosService {
   constructor(
     @InjectRepository(TodoEntity)
     private readonly todoRepository: Repository<TodoEntity>,
+    private readonly clock: Clock,
+    private readonly unitOfWork: UserUnitOfWork,
   ) {}
 
   async findAll(userId: string): Promise<TodoEntity[]> {
@@ -21,6 +27,11 @@ export class TodosService {
       where: { userId },
       order: { id: 'ASC' },
     });
+  }
+
+  /** Open todos without a date (Todo-Dump). */
+  backlog(userId: string): Promise<TodoEntity[]> {
+    return backlogTodos(this.todoRepository.manager, userId);
   }
 
   async findOne(userId: string, id: number): Promise<TodoEntity> {
@@ -98,28 +109,42 @@ export class TodosService {
       changes.isFixed = updateTodoDto.isFixed;
     }
 
-    const todo = await this.findOne(userId, id);
-    Object.assign(todo, changes);
+    return this.unitOfWork.run(userId, async (manager) => {
+      const repository = manager.getRepository(TodoEntity);
+      const todo = await repository.findOneBy({ id, userId });
+      if (!todo)
+        throw new NotFoundException(`Todo with ID ${id} was not found`);
+      Object.assign(todo, changes);
 
-    if (updateTodoDto.completed === true) {
-      // Bei einem wiederholten PATCH mit completed=true
-      // bleibt der ursprüngliche Zeitpunkt erhalten.
-      todo.completedAt ??= new Date();
-    }
+      if (updateTodoDto.completed === true) {
+        // Bei einem wiederholten PATCH mit completed=true
+        // bleibt der ursprüngliche Zeitpunkt erhalten.
+        todo.completedAt ??= this.clock.now();
+      }
 
-    if (updateTodoDto.completed === false) {
-      todo.completedAt = null;
-    }
+      if (updateTodoDto.completed === false) {
+        todo.completedAt = null;
+      }
 
-    this.validateScheduling(todo.isFixed, todo.scheduledAt);
+      this.validateScheduling(todo.isFixed, todo.scheduledAt);
 
-    return this.todoRepository.save(todo);
+      const saved = await repository.save(todo);
+      // A completed todo is no timer target any more.
+      if (todo.completed)
+        await releaseTimers(manager, userId, { todoIds: [id] });
+      return saved;
+    });
   }
 
   async remove(userId: string, id: number): Promise<void> {
-    const todo = await this.findOne(userId, id);
-
-    await this.todoRepository.softRemove(todo);
+    await this.unitOfWork.run(userId, async (manager) => {
+      const repository = manager.getRepository(TodoEntity);
+      const todo = await repository.findOneBy({ id, userId });
+      if (!todo)
+        throw new NotFoundException(`Todo with ID ${id} was not found`);
+      await repository.softRemove(todo);
+      await releaseTimers(manager, userId, { todoIds: [id] });
+    });
   }
 
   private validateScheduling(isFixed: boolean, scheduledAt: Date | null): void {

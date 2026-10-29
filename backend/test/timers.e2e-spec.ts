@@ -6,7 +6,7 @@ import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
 import { authenticatedRequest, seedAuth, TEST_USER } from './auth-fixture';
-import { TimerClock } from '../src/timers/timer.clock';
+import { Clock } from '../src/common/clock';
 import { TimerEntity } from '../src/timers/timer.entity';
 import type { TimerResponse } from '../src/timers/timers.service';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
@@ -17,7 +17,7 @@ import {
   getCurrentDateInTimeZone,
   midnightInTimeZone,
 } from '../src/common/date/date-only.utils';
-import { HabitScheduleCalculator } from '../src/habit-occurrences/scheduling/habit-schedule-calculator';
+import { addDays, dayOf } from '../src/common/date/local-day';
 import type { HabitResponseDto } from '../src/habits/dto/habit-response.dto';
 import type { DayPlannerResponseDto } from '../src/day-planner/dto/day-planner-response.dto';
 import type { StartTimerDto } from '../src/timers/timer.dto';
@@ -26,7 +26,10 @@ describe('Synced timers and Dump completion (e2e)', () => {
   let db: DataSource;
   let server: Server;
   let now: Date;
-  const clock = { now: () => new Date(now) };
+  const clock = {
+    now: () => new Date(now),
+    today: () => dayOf(new Date(now)),
+  };
   const client = () => authenticatedRequest(server);
   const read = async () =>
     (await client().get('/timers/current').expect(200)).body as TimerResponse;
@@ -61,7 +64,7 @@ describe('Synced timers and Dump completion (e2e)', () => {
       .body as DayPlannerResponseDto;
   beforeAll(async () => {
     const module = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(TimerClock)
+      .overrideProvider(Clock)
       .useValue(clock)
       .compile();
     app = module.createNestApplication();
@@ -269,7 +272,7 @@ describe('Synced timers and Dump completion (e2e)', () => {
   });
   it('does not offer or start timers for future/paused/resolved Habit occurrences', async () => {
     const future = await habit({
-      startDate: HabitScheduleCalculator.addDays(getCurrentDateInTimeZone(), 2),
+      startDate: addDays(getCurrentDateInTimeZone(), 2),
     });
     expect(
       (
@@ -317,6 +320,23 @@ describe('Synced timers and Dump completion (e2e)', () => {
     await start({ kind: 'todo', targetId: next });
     await client().delete(`/todos/${next}`).expect(204);
     expect((await read()).timer).toBeNull();
+  });
+  it('stops the stored timer in the same request that ends its target', async () => {
+    // No later read may be needed: the row itself is stopped immediately.
+    const stored = async () =>
+      (await db.getRepository(TimerEntity).find())
+        .filter((t) => t.state !== 'stopped')
+        .map((t) => t.state);
+    const id = await todo();
+    await start({ kind: 'todo', targetId: id });
+    await client().patch(`/todos/${id}`).send({ completed: true }).expect(200);
+    expect(await stored()).toEqual([]);
+    const h = await habit();
+    const available = (await client().get(`/habits/${h.id}`).expect(200))
+      .body as HabitResponseDto;
+    await start({ kind: 'occurrence', targetId: available.timerOccurrenceId! });
+    await client().delete(`/habits/${h.id}`).expect(204);
+    expect(await stored()).toEqual([]);
   });
   it('stops when the linked Habit is paused or its occurrence is skipped', async () => {
     const h = await habit();
@@ -403,12 +423,11 @@ describe('Synced timers and Dump completion (e2e)', () => {
   );
   it('preserves Dump completion time after reload, repeat completion and metadata edits', async () => {
     const id = await todo();
-    const before = Date.now();
     await client().patch(`/todos/${id}`).send({ completed: true }).expect(200);
     const saved = await db.getRepository(TodoEntity).findOneByOrFail({ id });
     expect(saved.scheduledAt).toBeNull();
-    expect(saved.completedAt!.getTime()).toBeGreaterThanOrEqual(before);
-    expect(saved.completedAt!.getTime()).toBeLessThanOrEqual(Date.now());
+    // Completion uses the injected Clock, not the wall clock.
+    expect(saved.completedAt).toEqual(now);
     const item = (await planner()).items.find(
       (i) => i.type === 'todo' && i.todoId === id,
     );

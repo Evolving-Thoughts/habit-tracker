@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  TIMER_DURATION_MESSAGE,
+  TIMER_MAX_MINUTES,
+} from "../utils/timer-duration";
 import { computed, onMounted, ref } from "vue";
 import {
   changeHabitSchedule,
@@ -19,12 +23,14 @@ import type {
   UpdateHabitInput,
   Weekday,
 } from "../types/habit";
-import { formatHabitSchedule } from "../utils/habit";
+import { formatHabitSchedule, WEEKDAY_OPTIONS } from "../utils/habit";
 import type { CreateTodoInput } from "../types/todo";
+import { buildTodoInput } from "../utils/todo-input";
 import {
   formatDateForGermanDisplay,
   getCurrentDateInTimeZone,
   isValidIsoDate,
+  toLocalInput,
 } from "../utils/date";
 
 const props = defineProps<{
@@ -69,18 +75,6 @@ const intervalDays = ref<string | number>(2);
 const weeklyTarget = ref<string | number>(3);
 const selectedWeekdays = ref<Weekday[]>([]);
 
-const weekdayOptions: {
-  value: Weekday;
-  label: string;
-}[] = [
-  { value: "monday", label: "Montag" },
-  { value: "tuesday", label: "Dienstag" },
-  { value: "wednesday", label: "Mittwoch" },
-  { value: "thursday", label: "Donnerstag" },
-  { value: "friday", label: "Freitag" },
-  { value: "saturday", label: "Samstag" },
-  { value: "sunday", label: "Sonntag" },
-];
 
 const scheduleLabels: Record<HabitScheduleType, string> = {
   interval: "Intervall",
@@ -96,19 +90,6 @@ const isBusy = computed(() => {
   return isLoading.value || isSaving.value;
 });
 
-function toLocalInput(isoDateTime: string): string {
-  const date = new Date(isoDateTime);
-
-  const pad = (value: number) => String(value).padStart(2, "0");
-
-  return (
-    `${date.getFullYear()}-` +
-    `${pad(date.getMonth() + 1)}-` +
-    `${pad(date.getDate())}T` +
-    `${pad(date.getHours())}:` +
-    `${pad(date.getMinutes())}`
-  );
-}
 
 async function loadEntity(): Promise<void> {
   emit("busy", true);
@@ -179,43 +160,16 @@ function positiveInteger(
   return number;
 }
 
-function buildTodoInput(): CreateTodoInput {
-  let isoDate: string | null = null;
-
-  if (scheduledAt.value === originalLocalInput.value) {
-    isoDate = originalScheduledAt.value;
-  } else if (scheduledAt.value) {
-    const date = new Date(scheduledAt.value);
-
-    if (Number.isNaN(date.getTime())) {
-      throw new Error("Ungültiger Zeitpunkt.");
-    }
-
-    isoDate = date.toISOString();
-  }
-
-  if (isFixed.value && isoDate === null) {
-    throw new Error("Ein fester Termin benötigt einen Zeitpunkt.");
-  }
-
-  let minutes: number | null = null;
-
-  const empty =
-    typeof duration.value === "string" && duration.value.trim() === "";
-
-  if (!empty) {
-    minutes = positiveInteger(
-      duration.value,
-      "Die Dauer muss eine ganze Zahl ab 1 Minute sein.",
-    );
-  }
-
-  return {
-    title: validatedTitle(),
-    scheduledAt: isoDate,
-    plannedDurationMinutes: minutes,
-    isFixed: isFixed.value,
-  };
+function todoInput(): CreateTodoInput {
+  return buildTodoInput(
+    {
+      title: title.value,
+      scheduledAt: scheduledAt.value,
+      duration: duration.value,
+      isFixed: isFixed.value,
+    },
+    { localInput: originalLocalInput.value, iso: originalScheduledAt.value },
+  );
 }
 
 function fillSchedule(rule: HabitScheduleRule): void {
@@ -249,8 +203,8 @@ function buildHabitInput(): UpdateHabitInput {
   const minutes = String(duration.value).trim()
     ? positiveInteger(
         duration.value,
-        "Bitte wähle 1 bis 10080 ganze Minuten.",
-        10080,
+        TIMER_DURATION_MESSAGE,
+        TIMER_MAX_MINUTES,
       )
     : null;
   if (minutes !== (loadedHabit.value?.plannedDurationMinutes ?? null))
@@ -282,7 +236,7 @@ function buildScheduleChange(): ChangeHabitScheduleInput {
         throw new Error("Bitte wähle mindestens einen Wochentag.");
       schedule = {
         type: "fixed_weekdays",
-        weekdays: weekdayOptions
+        weekdays: WEEKDAY_OPTIONS
           .filter((option) => selectedWeekdays.value.includes(option.value))
           .map((option) => option.value),
         missedOccurrencePolicy: missedPolicy.value,
@@ -313,7 +267,7 @@ async function save(): Promise<void> {
 
   try {
     if (props.kind === "todo") {
-      await updateTodo(props.entityId, buildTodoInput());
+      await updateTodo(props.entityId, todoInput());
     } else {
       // Validate both requests before persisting either of them.
       const metadata = buildHabitInput();
@@ -418,7 +372,7 @@ onMounted(loadEntity);
           />
 
           <small>
-            Lokale Zeitzone deines Geräts. Ohne Zeitpunkt landet das Todo im
+            Deutsche Zeit (Europe/Berlin). Ohne Zeitpunkt landet das Todo im
             Dump.
           </small>
 
@@ -449,7 +403,7 @@ onMounted(loadEntity);
             name="duration"
             type="number"
             min="1"
-            max="10080"
+            :max="TIMER_MAX_MINUTES"
             step="1"
           /><small
             >Die Standarddauer gilt für Ausführungen ohne eigene Dauer. Eine
@@ -567,7 +521,7 @@ onMounted(loadEntity);
               <legend>Ausführungstage</legend>
 
               <label
-                v-for="option in weekdayOptions"
+                v-for="option in WEEKDAY_OPTIONS"
                 :key="option.value"
                 class="item-editor__weekday"
               >

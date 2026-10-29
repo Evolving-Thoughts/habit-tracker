@@ -4,6 +4,8 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TodoEntity } from './entities/todo.entity';
 import { TodosService } from './todos.service';
+import { Clock } from '../common/clock';
+import { UserUnitOfWork } from '../common/user-unit-of-work';
 
 type TodoRepositoryMock = jest.Mocked<
   Pick<
@@ -12,12 +14,16 @@ type TodoRepositoryMock = jest.Mocked<
   >
 >;
 
+const USER_ID = '11111111-1111-4111-8111-111111111111';
+
 describe('TodosService', () => {
   let service: TodosService;
   let repository: TodoRepositoryMock;
+  let released: jest.Mock;
 
   const todo: TodoEntity = {
     id: 1,
+    userId: USER_ID,
     title: 'Learn NestJS',
     completed: false,
     completedAt: null,
@@ -37,10 +43,37 @@ describe('TodosService', () => {
       save: jest.fn(),
       softRemove: jest.fn(),
     };
+    // Fake unit of work: same repository, records timer releases.
+    released = jest.fn();
+    const update = {
+      update: () => update,
+      set: () => update,
+      where: () => update,
+      andWhere: (_: unknown, params?: unknown) => {
+        if (params) released(params);
+        return update;
+      },
+      execute: () => {
+        released();
+        return Promise.resolve();
+      },
+    };
+    const manager = {
+      getRepository: () => repository,
+      createQueryBuilder: () => update,
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TodosService,
+        Clock,
+        {
+          provide: UserUnitOfWork,
+          useValue: {
+            run: (_userId: string, work: (m: unknown) => unknown) =>
+              work(manager),
+          },
+        },
         {
           provide: getRepositoryToken(TodoEntity),
           useValue: repository,
@@ -410,6 +443,38 @@ describe('TodosService', () => {
       ).rejects.toThrow(NotFoundException);
 
       expect(repository.softRemove).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('timer targets', () => {
+    it('releases timers when a todo is completed', async () => {
+      repository.findOneBy.mockResolvedValue({ ...todo });
+      repository.save.mockImplementation((value) =>
+        Promise.resolve(value as TodoEntity),
+      );
+
+      await service.update(USER_ID, 1, { completed: true });
+
+      expect(released).toHaveBeenCalled();
+    });
+
+    it('keeps timers of a todo that stays open', async () => {
+      repository.findOneBy.mockResolvedValue({ ...todo });
+      repository.save.mockImplementation((value) =>
+        Promise.resolve(value as TodoEntity),
+      );
+
+      await service.update(USER_ID, 1, { title: 'Neu' });
+
+      expect(released).not.toHaveBeenCalled();
+    });
+
+    it('releases timers when a todo is deleted', async () => {
+      repository.findOneBy.mockResolvedValue({ ...todo });
+
+      await service.remove(USER_ID, 1);
+
+      expect(released).toHaveBeenCalled();
     });
   });
 });

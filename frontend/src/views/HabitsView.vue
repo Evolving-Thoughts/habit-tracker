@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { getHabits } from "../api/day-planner.api";
 import { useListFocus } from "../composables/useListFocus";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
-import { notifyTargetChange } from "../composables/useTimer";
+import { notifyDataChanged } from "../composables/data-sync";
+import { useLoader } from "../composables/useLoader";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
@@ -14,14 +15,22 @@ import { formatHabitSchedule } from "../utils/habit";
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
 
-const habits = ref<HabitResponse[]>([]);
-const isLoading = ref(true);
-const hasLoaded = ref(false);
-const errorMessage = ref<string | null>(null);
 const successMessage = ref<string | null>(null);
 const editingId = ref<number | null>(null);
 const editorBusy = ref(false);
 const creationOpen = ref(false);
+const {
+  data: habits,
+  isLoading,
+  hasLoaded,
+  errorMessage,
+  reload: loadHabits,
+} = useLoader(getHabits, {
+  initial: [] as HabitResponse[],
+  fallbackError: "Die Habits konnten nicht geladen werden.",
+  refreshOnChange: () => editingId.value === null,
+});
+
 const isBusy = computed(() => isLoading.value || editorBusy.value);
 const groups = computed(() => [
   {
@@ -35,26 +44,6 @@ const groups = computed(() => [
     items: habits.value.filter((habit) => !habit.isActive),
   },
 ]);
-let loadGeneration = 0;
-async function loadHabits(showPageLoading = true): Promise<void> {
-  const generation = ++loadGeneration;
-  if (showPageLoading) isLoading.value = true;
-  errorMessage.value = null;
-  try {
-    const result = await getHabits();
-    if (generation !== loadGeneration) return;
-    habits.value = result;
-    hasLoaded.value = true;
-  } catch (error: unknown) {
-    if (generation !== loadGeneration) return;
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : "Die Habits konnten nicht geladen werden.";
-  } finally {
-    if (generation === loadGeneration) isLoading.value = false;
-  }
-}
 function openCreation(): void {
   if (isBusy.value || editingId.value !== null) return;
   successMessage.value = null;
@@ -72,7 +61,7 @@ function closeEditing(): void {
 }
 async function onEditorChanged(): Promise<void> {
   successMessage.value = "Habit-Liste aktualisiert.";
-  notifyTargetChange();
+  notifyDataChanged();
   await loadHabits(false);
   closeEditing();
 }
@@ -81,14 +70,6 @@ async function onCreated(): Promise<void> {
   await loadHabits(false);
   creationOpen.value = false;
 }
-function timerChanged(): void {
-  if (editingId.value === null) void loadHabits(false);
-}
-onMounted(loadHabits);
-onMounted(() => window.addEventListener("timer-data-changed", timerChanged));
-onUnmounted(() =>
-  window.removeEventListener("timer-data-changed", timerChanged),
-);
 </script>
 
 <template>
