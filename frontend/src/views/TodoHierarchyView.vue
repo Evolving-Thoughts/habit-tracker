@@ -21,7 +21,7 @@ import PlannerItemEditor from "../components/PlannerItemEditor.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
 import TodoDeletionSummary from "../components/TodoDeletionSummary.vue";
 import { useListFocus } from "../composables/useListFocus";
-import { notifyTargetChange } from "../composables/useTimer";
+import { notifyDataChanged } from "../composables/data-sync";
 const page = ref<HTMLElement | null>(null),
   listFocus = useListFocus(page);
 const todos = ref<HierarchyTodo[]>([]),
@@ -76,7 +76,7 @@ async function run(fn: () => Promise<unknown>, text: string) {
   success.value = "";
   try {
     await fn();
-    notifyTargetChange();
+    notifyDataChanged();
     await load();
     if (error.value) return;
     success.value = text;
@@ -122,7 +122,7 @@ async function created() {
   await load();
   action.value = null;
   selected.value = null;
-  notifyTargetChange();
+  notifyDataChanged();
   success.value = "Todo angelegt.";
 }
 async function changed() {
@@ -130,7 +130,7 @@ async function changed() {
   await load();
   action.value = null;
   selected.value = null;
-  notifyTargetChange();
+  notifyDataChanged();
   success.value = "Änderungen gespeichert.";
 }
 function move(todo: HierarchyTodo, target: number | null) {

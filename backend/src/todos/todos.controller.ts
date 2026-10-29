@@ -30,6 +30,13 @@ export class TodosController {
     return todos.map((todo) => TodoMapper.toResponseDto(todo));
   }
 
+  @Get('backlog')
+  async backlog(@CurrentUser() user: AuthUser): Promise<TodoResponseDto[]> {
+    const todos = await this.todosService.backlog(user.id);
+
+    return todos.map((todo) => TodoMapper.toResponseDto(todo));
+  }
+
   @Get('hierarchy')
   async hierarchy(@CurrentUser() user: AuthUser) {
     return this.todosService.hierarchy(user.id);

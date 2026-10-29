@@ -14,4 +14,6 @@ export type TodoResponse = {
   scheduledAt: string | null;
   plannedDurationMinutes: number | null;
   isFixed: boolean;
+  /** Server-side timer-target rule: may a timer run for this todo? */
+  timerEligible: boolean;
 };

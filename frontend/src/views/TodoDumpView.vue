@@ -3,29 +3,27 @@ import { getDeletionPreview } from "../api/todo-hierarchy.api";
 import type { DeletionPreview } from "../types/todo-hierarchy";
 import TodoDeletionSummary from "../components/TodoDeletionSummary.vue";
 
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, ref } from "vue";
 import {
   deleteTodo,
-  getTodos,
+  getBacklogTodos,
   updateTodo,
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { useListFocus } from "../composables/useListFocus";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
-import { notifyTargetChange } from "../composables/useTimer";
+import { notifyDataChanged } from "../composables/data-sync";
+import { useLoader } from "../composables/useLoader";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import ModalDialog from "../components/ModalDialog.vue";
 import type { CreateTodoInput, TodoResponse } from "../types/todo";
+import { buildTodoInput } from "../utils/todo-input";
 
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
 
-const todos = ref<TodoResponse[]>([]);
-const isLoading = ref(true);
 const isSaving = ref(false);
-
-const errorMessage = ref<string | null>(null);
 const successMessage = ref<string | null>(null);
 
 const selectedTodo = ref<TodoResponse | null>(null);
@@ -56,41 +54,24 @@ const editScheduledAt = ref("");
 const editDuration = ref<string | number>("");
 const editIsFixed = ref(false);
 
+const {
+  data: todos,
+  isLoading,
+  errorMessage,
+  reload: loadTodos,
+} = useLoader(getBacklogTodos, {
+  initial: [] as TodoResponse[],
+  fallbackError: "Die Todos konnten nicht geladen werden.",
+  refreshOnChange: () => !(isSaving.value || selectedTodo.value),
+});
+
 const isBusy = computed(() => {
   return isLoading.value || isSaving.value;
 });
 
-const openTodos = computed(() => {
-  return todos.value.filter((todo) => !todo.completed);
-});
-
 const groups = computed(() => [
-  { key: "open", title: "Offen", items: openTodos.value },
+  { key: "open", title: "Offen", items: todos.value },
 ]);
-
-let loadGeneration = 0;
-async function loadTodos(showPageLoading = true): Promise<void> {
-  const generation = ++loadGeneration;
-  if (showPageLoading) isLoading.value = true;
-  errorMessage.value = null;
-
-  try {
-    const allTodos = await getTodos();
-
-    if (generation !== loadGeneration) return;
-    todos.value = allTodos.filter(
-      (todo) => todo.scheduledAt === null && !todo.completed,
-    );
-  } catch (error: unknown) {
-    if (generation !== loadGeneration) return;
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : "Die Todos konnten nicht geladen werden.";
-  } finally {
-    if (generation === loadGeneration) isLoading.value = false;
-  }
-}
 
 async function toggleTodo(todo: TodoResponse): Promise<void> {
   if (isBusy.value) {
@@ -103,7 +84,7 @@ async function toggleTodo(todo: TodoResponse): Promise<void> {
 
   try {
     await updateTodoCompletion(todo.id, !todo.completed);
-    notifyTargetChange();
+    notifyDataChanged();
     successMessage.value =
       "Erledigt. Das Todo erscheint in Heute unter Abgeschlossen.";
 
@@ -151,55 +132,12 @@ function closeEditing(): void {
 }
 
 function buildUpdateInput(): CreateTodoInput {
-  const title = editTitle.value.trim();
-
-  if (!title) {
-    throw new Error("Bitte gib einen Titel ein.");
-  }
-
-  if (title.length > 200) {
-    throw new Error("Der Titel darf höchstens 200 Zeichen enthalten.");
-  }
-
-  let scheduledAt: string | null = null;
-
-  if (editScheduledAt.value) {
-    const date = new Date(editScheduledAt.value);
-
-    if (Number.isNaN(date.getTime())) {
-      throw new Error("Bitte gib einen gültigen Zeitpunkt ein.");
-    }
-
-    scheduledAt = date.toISOString();
-  }
-
-  if (editIsFixed.value && scheduledAt === null) {
-    throw new Error("Ein fester Termin benötigt einen Zeitpunkt.");
-  }
-
-  let plannedDurationMinutes: number | null = null;
-
-  const rawDuration = editDuration.value;
-
-  const isDurationEmpty =
-    typeof rawDuration === "string" && rawDuration.trim() === "";
-
-  if (!isDurationEmpty) {
-    const duration = Number(rawDuration);
-
-    if (!Number.isInteger(duration) || duration < 1) {
-      throw new Error("Die Dauer muss eine ganze Zahl ab 1 Minute sein.");
-    }
-
-    plannedDurationMinutes = duration;
-  }
-
-  return {
-    title,
-    scheduledAt,
-    plannedDurationMinutes,
+  return buildTodoInput({
+    title: editTitle.value,
+    scheduledAt: editScheduledAt.value,
+    duration: editDuration.value,
     isFixed: editIsFixed.value,
-  };
+  });
 }
 
 async function saveTodo(): Promise<void> {
@@ -217,7 +155,7 @@ async function saveTodo(): Promise<void> {
     isSaving.value = true;
 
     await updateTodo(todoId, input);
-    notifyTargetChange();
+    notifyDataChanged();
 
     successMessage.value =
       input.scheduledAt === null
@@ -249,7 +187,7 @@ async function removeSelectedTodo(): Promise<void> {
 
   try {
     await deleteTodo(todoId, deletionPreview.value?.confirmationToken);
-    notifyTargetChange();
+    notifyDataChanged();
 
     successMessage.value = "Todo gelöscht.";
 
@@ -279,14 +217,6 @@ async function onCreated(): Promise<void> {
   creationOpen.value = false;
 }
 
-function timerChanged(): void {
-  if (!(isSaving.value || selectedTodo.value)) void loadTodos(false);
-}
-onMounted(loadTodos);
-onMounted(() => window.addEventListener("timer-data-changed", timerChanged));
-onUnmounted(() =>
-  window.removeEventListener("timer-data-changed", timerChanged),
-);
 </script>
 
 <template>
@@ -357,7 +287,7 @@ onUnmounted(() =>
                   type="datetime-local"
                 />
 
-                <small> Lokale Zeitzone deines Geräts. </small>
+                <small> Uhrzeit in deutscher Zeit (Europe/Berlin). </small>
               </div>
 
               <div class="todo-editor__field">
@@ -514,7 +444,7 @@ onUnmounted(() =>
                   :target-id="todo.id"
                   :title="todo.title"
                   :duration="todo.plannedDurationMinutes"
-                  :eligible="!todo.completed"
+                  :eligible="todo.timerEligible"
                   :disabled="isBusy"
                   class="dump-item__play"
                 />

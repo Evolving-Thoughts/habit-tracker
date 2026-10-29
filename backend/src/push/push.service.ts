@@ -2,16 +2,16 @@ import {
   HttpException,
   BadRequestException,
   Injectable,
-  NotFoundException,
   UnauthorizedException,
   ServiceUnavailableException,
   ConflictException,
 } from '@nestjs/common';
 import { DataSource, EntityManager, MoreThan, LessThanOrEqual } from 'typeorm';
-import { SessionEntity, UserEntity } from '../auth/auth.entities';
+import { SessionEntity } from '../auth/auth.entities';
 import { tokenHash } from '../auth/auth.crypto';
 import { TimerEntity } from '../timers/timer.entity';
-import { TimerClock } from '../timers/timer.clock';
+import { Clock } from '../common/clock';
+import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { TimersService } from '../timers/timers.service';
 import { PushDeliveryEntity, PushSubscriptionEntity } from './push.entities';
 import { SubscribeDto } from './push.dto';
@@ -26,8 +26,9 @@ export class PushService {
   constructor(
     private readonly db: DataSource,
     private readonly timers: TimersService,
-    private readonly clock: TimerClock,
+    private readonly clock: Clock,
     private readonly transport: PushTransport,
+    private readonly unitOfWork: UserUnitOfWork,
   ) {}
   config() {
     return {
@@ -39,22 +40,11 @@ export class PushService {
     userId: string,
     operation: (manager: EntityManager) => Promise<T>,
   ): Promise<T> {
-    return this.db
-      .transaction(async (manager) => {
-        if (
-          !(await manager.findOne(UserEntity, {
-            where: { id: userId },
-            lock: { mode: 'pessimistic_write' },
-          }))
-        )
-          throw new NotFoundException();
-        return operation(manager);
-      })
-      .catch((error: unknown) => {
-        if (error instanceof HttpException) throw error;
-        // SQL errors can contain endpoint/key parameters: never expose/log the original error.
-        throw new ServiceUnavailableException('Push momentan nicht verfügbar.');
-      });
+    return this.unitOfWork.run(userId, operation).catch((error: unknown) => {
+      if (error instanceof HttpException) throw error;
+      // SQL errors can contain endpoint/key parameters: never expose/log the original error.
+      throw new ServiceUnavailableException('Push momentan nicht verfügbar.');
+    });
   }
   private async session(
     manager: EntityManager,

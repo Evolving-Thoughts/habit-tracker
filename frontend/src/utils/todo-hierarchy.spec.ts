@@ -6,6 +6,7 @@ const node = (id: number, parentId: number | null): HierarchyTodo => ({
   parentId,
   title: `Todo ${id}`,
   completed: false,
+  timerEligible: true,
   completedAt: null,
   scheduledAt: null,
   plannedDurationMinutes: null,

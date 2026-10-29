@@ -1,3 +1,4 @@
+import type { TodoResponseDto } from '../src/todos/dto/todo-response.dto';
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -85,6 +86,7 @@ describe('Todos API (e2e)', () => {
         scheduledAt: null,
         plannedDurationMinutes: null,
         isFixed: false,
+        timerEligible: true,
       });
 
       const persistedTodo = await todoRepository.findOneBy({
@@ -351,6 +353,31 @@ describe('Todos API (e2e)', () => {
 
       expect(body.scheduledAt).toBeNull();
       expect(body.isFixed).toBe(false);
+    });
+  });
+
+  describe('GET /todos/backlog', () => {
+    it('returns only open todos without a date (Todo-Dump)', async () => {
+      const create = async (body: object) =>
+        (
+          (await request(httpServer).post('/todos').send(body).expect(201))
+            .body as TodoResponseDto
+        ).id;
+      const open = await create({ title: 'Offen' });
+      await create({ title: 'Geplant', scheduledAt: '2026-10-02T08:00:00Z' });
+      const done = await create({ title: 'Erledigt' });
+      await request(httpServer)
+        .patch(`/todos/${done}`)
+        .send({ completed: true })
+        .expect(200);
+
+      const response = await request(httpServer)
+        .get('/todos/backlog')
+        .expect(200);
+
+      expect((response.body as TodoResponseDto[]).map((t) => t.id)).toEqual([
+        open,
+      ]);
     });
   });
 

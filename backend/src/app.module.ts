@@ -3,6 +3,8 @@ import { PushModule } from './push/push.module';
 import { TimersModule } from './timers/timers.module';
 import { AuthModule } from './auth/auth.module';
 import { Module } from '@nestjs/common';
+import { CommonModule } from './common/clock';
+import { databaseOptions } from './database/database.options';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
@@ -19,17 +21,12 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        type: 'postgres',
-        uuidExtension: 'pgcrypto',
-        host: config.getOrThrow<string>('DB_HOST'),
-        port: Number(config.getOrThrow<string>('DB_PORT')),
-        username: config.getOrThrow<string>('DB_USER'),
-        password: config.getOrThrow<string>('DB_PASSWORD'),
-        database: config.getOrThrow<string>('DB_NAME'),
+        ...databaseOptions((key) => config.get<string>(key)),
         autoLoadEntities: true,
         synchronize: config.get<string>('NODE_ENV') !== 'production',
       }),
     }),
+    CommonModule,
     AuthModule,
     TimersModule,
     PushModule,

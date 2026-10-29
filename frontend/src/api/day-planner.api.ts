@@ -20,6 +20,11 @@ export function getTodos(): Promise<TodoResponse[]> {
   return request<TodoResponse[]>("/todos");
 }
 
+/** Open todos without a date (Todo-Dump), filtered by the server's todo agenda. */
+export function getBacklogTodos(): Promise<TodoResponse[]> {
+  return request<TodoResponse[]>("/todos/backlog");
+}
+
 export function createTodo(input: CreateTodoInput): Promise<TodoResponse> {
   return request<TodoResponse>("/todos", {
     method: "POST",

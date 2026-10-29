@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import { createTodo } from "../api/day-planner.api";
 import type { CreateTodoInput } from "../types/todo";
+import { buildTodoInput } from "../utils/todo-input";
 
 const props = defineProps<{ embedded?: boolean; parentId?: number | null }>();
 
@@ -20,55 +21,12 @@ const errorMessage = ref<string | null>(null);
 const successMessage = ref<string | null>(null);
 
 function buildInput(): CreateTodoInput {
-  const trimmedTitle = title.value.trim();
-
-  if (!trimmedTitle) {
-    throw new Error("Bitte gib einen Titel ein.");
-  }
-
-  if (trimmedTitle.length > 200) {
-    throw new Error("Der Titel darf höchstens 200 Zeichen enthalten.");
-  }
-
-  let scheduledDateTime: string | null = null;
-
-  if (scheduledAt.value) {
-    const parsedDate = new Date(scheduledAt.value);
-
-    if (Number.isNaN(parsedDate.getTime())) {
-      throw new Error("Bitte gib einen gültigen Zeitpunkt ein.");
-    }
-
-    scheduledDateTime = parsedDate.toISOString();
-  }
-
-  if (isFixed.value && scheduledDateTime === null) {
-    throw new Error("Ein fester Termin benötigt einen Zeitpunkt.");
-  }
-
-  let plannedDurationMinutes: number | null = null;
-
-  const rawDuration = durationMinutes.value;
-
-  const isDurationEmpty =
-    typeof rawDuration === "string" && rawDuration.trim() === "";
-
-  if (!isDurationEmpty) {
-    const duration = Number(rawDuration);
-
-    if (!Number.isInteger(duration) || duration < 1) {
-      throw new Error("Die Dauer muss eine ganze Zahl ab 1 Minute sein.");
-    }
-
-    plannedDurationMinutes = duration;
-  }
-
-  return {
-    title: trimmedTitle,
-    scheduledAt: scheduledDateTime,
-    plannedDurationMinutes,
+  return buildTodoInput({
+    title: title.value,
+    scheduledAt: scheduledAt.value,
+    duration: durationMinutes.value,
     isFixed: isFixed.value,
-  };
+  });
 }
 
 function resetForm(): void {
@@ -150,7 +108,7 @@ async function submit(): Promise<void> {
               type="datetime-local"
             />
 
-            <small> Verwendet die lokale Zeitzone deines Geräts. </small>
+            <small> Uhrzeit in deutscher Zeit (Europe/Berlin). </small>
           </div>
 
           <div class="create-todo__field">

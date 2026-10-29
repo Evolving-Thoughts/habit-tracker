@@ -30,6 +30,7 @@ describe("CreateItemDialog", () => {
       scheduledAt: null,
       plannedDurationMinutes: null,
       isFixed: false,
+      timerEligible: true,
     });
   });
   it("opens Today with a choice and no creation form", async () => {

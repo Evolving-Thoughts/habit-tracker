@@ -1,5 +1,6 @@
 import type { HabitScheduleRule, Weekday } from "../types/habit";
-const weekdays: { value: Weekday; label: string }[] = [
+/** Monday-first weekday options for every schedule form and label. */
+export const WEEKDAY_OPTIONS: { value: Weekday; label: string }[] = [
   { value: "monday", label: "Montag" },
   { value: "tuesday", label: "Dienstag" },
   { value: "wednesday", label: "Mittwoch" },
@@ -17,7 +18,7 @@ export function formatHabitSchedule(rule: HabitScheduleRule): string {
     case "weekly_target":
       return `${rule.weeklyTarget} Mal pro Woche`;
     case "fixed_weekdays":
-      return weekdays
+      return WEEKDAY_OPTIONS
         .filter((day) => rule.weekdays.includes(day.value))
         .map((day) => day.label)
         .join(", ");

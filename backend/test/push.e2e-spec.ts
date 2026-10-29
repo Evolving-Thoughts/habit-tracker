@@ -1,3 +1,4 @@
+import { dayOf } from '../src/common/date/local-day';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import type { Server } from 'node:http';
@@ -15,7 +16,7 @@ import {
 } from '../src/auth/auth.entities';
 import { AuthService } from '../src/auth/auth.service';
 import type { HabitResponseDto } from '../src/habits/dto/habit-response.dto';
-import { TimerClock } from '../src/timers/timer.clock';
+import { Clock } from '../src/common/clock';
 import { PushTransport, type SendResult } from '../src/push/push.transport';
 import { PushService } from '../src/push/push.service';
 import {
@@ -30,7 +31,10 @@ describe('Session-scoped timer Push (e2e)', () => {
   let server: Server;
   let push: PushService;
   let now: Date;
-  const clock = { now: () => new Date(now) };
+  const clock = {
+    now: () => new Date(now),
+    today: () => dayOf(new Date(now)),
+  };
   const transport = {
     publicKey: 'public-test-key',
     send: jest.fn<Promise<SendResult>, [object, object, number]>(),
@@ -74,7 +78,7 @@ describe('Session-scoped timer Push (e2e)', () => {
   const deliveries = () => db.getRepository(PushDeliveryEntity).find();
   beforeAll(async () => {
     const module = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(TimerClock)
+      .overrideProvider(Clock)
       .useValue(clock)
       .overrideProvider(PushTransport)
       .useValue(transport)

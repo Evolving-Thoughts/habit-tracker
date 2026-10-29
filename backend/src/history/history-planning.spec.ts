@@ -3,7 +3,8 @@ import {
   plannedHabits,
   weeklyTargets,
 } from './history-planning';
-import { addHistoryDays, historyRange } from './history-range';
+import { addDays as addHistoryDays } from '../common/date/local-day';
+import { historyRange } from './history-range';
 import {
   buildVersion,
   normalizeSchedule,

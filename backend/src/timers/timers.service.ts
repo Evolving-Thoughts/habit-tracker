@@ -4,23 +4,28 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, EntityManager, In } from 'typeorm';
-import { UserEntity } from '../auth/auth.entities';
+import { EntityManager, In } from 'typeorm';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
-import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
-import {
-  getCurrentDateInTimeZone,
-  DEFAULT_TIME_ZONE,
-} from '../common/date/date-only.utils';
+import { dayOf } from '../common/date/local-day';
 import { TimerEntity } from './timer.entity';
 import { StartTimerDto } from './timer.dto';
 import {
-  TimerClock,
+  effectiveDuration,
+  isOccurrenceTimerEligible,
+  isTodoTimerEligible,
+  isValidTimerDuration,
+  TIMER_MAX_MINUTES,
+  TIMER_MIN_MINUTES,
+} from './timer-target';
+import { Clock } from '../common/clock';
+import { UserUnitOfWork } from '../common/user-unit-of-work';
+import { ownedOccurrences } from '../habit-occurrences/owned-occurrences';
+import {
   remainingAfterDurationChange,
   remainingMilliseconds,
-} from './timer.clock';
+} from './timer-math';
 export interface TimerResponse {
   serverNow: string;
   timer: null | {
@@ -38,23 +43,16 @@ export interface TimerResponse {
 @Injectable()
 export class TimersService {
   constructor(
-    private readonly db: DataSource,
     private readonly scheduling: HabitSchedulingService,
-    private readonly clock: TimerClock,
+    private readonly clock: Clock,
+    private readonly unitOfWork: UserUnitOfWork,
   ) {}
-  private async transaction<T>(
+  // Same per-user lock for every timer transition, across all devices/app processes.
+  private transaction<T>(
     userId: string,
     operation: (manager: EntityManager) => Promise<T>,
   ): Promise<T> {
-    return this.db.transaction(async (manager) => {
-      // Same per-user lock for every timer transition, across all devices/app processes.
-      const user = await manager.findOne(UserEntity, {
-        where: { id: userId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!user) throw new NotFoundException();
-      return operation(manager);
-    });
+    return this.unitOfWork.run(userId, operation);
   }
   private response(timer: TimerEntity | null, now: Date): TimerResponse {
     return {
@@ -91,17 +89,12 @@ export class TimersService {
         lock: { mode: 'pessimistic_write' },
       });
       if (!todo) throw new NotFoundException('Todo nicht gefunden.');
-      if (todo.completed)
+      if (!isTodoTimerEligible(todo))
         throw new ConflictException('Erledigte Todos zuerst wieder öffnen.');
       return todo;
     }
-    const first = await manager
-      .getRepository(HabitOccurrenceEntity)
-      .createQueryBuilder('o')
-      .innerJoin('o.habit', 'h')
-      .where('o.id = :id', { id })
-      .andWhere('h.userId = :userId', { userId })
-      .andWhere('h.deletedAt IS NULL')
+    const first = await ownedOccurrences(manager, userId)
+      .andWhere('occurrence.id = :id', { id })
       .getOne();
     if (!first) throw new NotFoundException('Habit-Ausführung nicht gefunden.');
     const habit = await this.scheduling.lockHabit(
@@ -113,12 +106,7 @@ export class TimersService {
     const occurrence = await manager.findOneByOrFail(HabitOccurrenceEntity, {
       id,
     });
-    if (
-      !habit.isActive ||
-      occurrence.status !== HabitOccurrenceStatus.PENDING ||
-      occurrence.scheduledDate >
-        getCurrentDateInTimeZone(DEFAULT_TIME_ZONE, now)
-    )
+    if (!isOccurrenceTimerEligible(occurrence, habit, dayOf(now)))
       throw new ConflictException('Keine offene fällige Habit-Ausführung.');
     occurrence.habit = habit;
     return occurrence;
@@ -231,13 +219,12 @@ export class TimersService {
       );
       const minutes =
         dto.durationMinutes ??
-        target.plannedDurationMinutes ??
         (target instanceof HabitOccurrenceEntity
-          ? target.habit.plannedDurationMinutes
-          : null);
-      if (!Number.isInteger(minutes) || minutes! < 1 || minutes! > 10080)
+          ? effectiveDuration(target, target.habit)
+          : target.plannedDurationMinutes);
+      if (!isValidTimerDuration(minutes))
         throw new BadRequestException(
-          'Eine Dauer zwischen 1 und 10080 Minuten ist erforderlich.',
+          `Eine Dauer zwischen ${TIMER_MIN_MINUTES} und ${TIMER_MAX_MINUTES} Minuten ist erforderlich.`,
         );
       if (active && (active.state === 'running' || active.state === 'paused')) {
         const same =
@@ -254,7 +241,7 @@ export class TimersService {
         active.endsAt = null;
         await manager.save(active);
       }
-      await this.persistDuration(manager, target, minutes!);
+      await this.persistDuration(manager, target, minutes);
       // Determine deadline only after acquiring locks and persisting the target duration.
       now = this.clock.now();
       const timer = await manager.save(
@@ -266,9 +253,9 @@ export class TimersService {
           title:
             target instanceof TodoEntity ? target.title : target.habit.title,
           state: 'running',
-          durationMinutes: minutes!,
-          remainingMilliseconds: minutes! * 60_000,
-          endsAt: new Date(now.getTime() + minutes! * 60_000),
+          durationMinutes: minutes,
+          remainingMilliseconds: minutes * 60_000,
+          endsAt: new Date(now.getTime() + minutes * 60_000),
           finishedAt: null,
         }),
       );

@@ -1,7 +1,7 @@
 import {
   remainingAfterDurationChange,
   remainingMilliseconds,
-} from './timer.clock';
+} from './timer-math';
 describe('Timer clock arithmetic', () => {
   it('uses the deadline, not a decrement counter', () => {
     const end = new Date('2026-10-03T10:01:00Z');

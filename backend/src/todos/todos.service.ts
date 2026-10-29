@@ -14,6 +14,7 @@ import { UpdateTodoDto } from './dto/update-todo.dto';
 import { TodoEntity } from './entities/todo.entity';
 import { TodoMapper } from './mappers/todo.mapper';
 import { hierarchyProgress, validateParent } from './todo-hierarchy';
+import { backlogTodos } from './todo-agenda';
 
 @Injectable()
 export class TodosService {
@@ -27,6 +28,10 @@ export class TodosService {
       where: { userId },
       order: { id: 'ASC' },
     });
+  }
+  /** Open todos without a date (Todo-Dump). */
+  backlog(userId: string): Promise<TodoEntity[]> {
+    return backlogTodos(this.todoRepository.manager, userId);
   }
   async findOne(userId: string, id: number): Promise<TodoEntity> {
     const todo = await this.todoRepository.findOneBy({ id, userId });

@@ -1,9 +1,14 @@
 <script setup lang="ts">
+import { notifyDataChanged, onTargetsChanged } from "../composables/data-sync";
+import {
+  isValidTimerDuration,
+  TIMER_DURATION_MESSAGE,
+  TIMER_MAX_MINUTES,
+} from "../utils/timer-duration";
 import { computed, onMounted, onUnmounted, provide, ref, watch } from "vue";
 import {
   createTimerController,
   timerKey,
-  notifyTargetChange,
 } from "../composables/useTimer";
 import {
   updateTodoCompletion,
@@ -54,8 +59,8 @@ function openDuration(): void {
 }
 async function saveDuration(): Promise<void> {
   const value = Number(minutes.value);
-  if (!Number.isInteger(value) || value < 1 || value > 10080) {
-    durationError.value = "Bitte wähle 1 bis 10080 ganze Minuten.";
+  if (!isValidTimerDuration(value)) {
+    durationError.value = TIMER_DURATION_MESSAGE;
     return;
   }
   if (await controller.duration(value, editingId.value)) editing.value = false;
@@ -75,7 +80,7 @@ async function complete(): Promise<void> {
     if (target.kind === "todo")
       await updateTodoCompletion(target.targetId, true);
     else await updateOccurrenceStatus(target.targetId, "completed");
-    notifyTargetChange();
+    notifyDataChanged();
     await controller.refresh();
   } catch (cause) {
     error.value =
@@ -89,13 +94,13 @@ let poller: ReturnType<typeof setInterval>;
 function refresh(): void {
   if (document.visibilityState !== "hidden") void controller.refresh();
 }
+onTargetsChanged(refresh);
 onMounted(() => {
   void controller.refresh();
   ticker = setInterval(controller.pulse, 250);
   poller = setInterval(refresh, 3000);
   window.addEventListener("focus", refresh);
   document.addEventListener("visibilitychange", refresh);
-  window.addEventListener("timer-target-changed", refresh);
 });
 onUnmounted(() => {
   controller.dispose();
@@ -103,7 +108,6 @@ onUnmounted(() => {
   clearInterval(poller);
   window.removeEventListener("focus", refresh);
   document.removeEventListener("visibilitychange", refresh);
-  window.removeEventListener("timer-target-changed", refresh);
 });
 </script>
 <template>
@@ -225,7 +229,7 @@ onUnmounted(() => {
         name="timerMinutes"
         type="number"
         min="1"
-        max="10080"
+        :max="TIMER_MAX_MINUTES"
         step="1"
         :disabled="busy"
       />
