@@ -25,7 +25,7 @@ const open = async (page: Page) => {
 };
 const row = (page: Page, id: number) => page.locator(`[data-todo-id="${id}"]`);
 
-test("Tree: add child, collapse, independent completion, reopen and persist", async ({
+test("Tree: add child, collapse, independent completion and reopen, persist", async ({
   page,
   request,
 }) => {
@@ -58,7 +58,9 @@ test("Tree: add child, collapse, independent completion, reopen and persist", as
   await row(page, child.id).getByRole("checkbox").check();
   await expect(row(page, root.id).getByRole("checkbox")).toBeChecked();
   await row(page, child.id).getByRole("checkbox").uncheck();
-  await expect(row(page, root.id).getByRole("checkbox")).not.toBeChecked();
+  // Reopening a child leaves the parent's own completion (and history) intact.
+  await expect(row(page, child.id).getByRole("checkbox")).not.toBeChecked();
+  await expect(row(page, root.id).getByRole("checkbox")).toBeChecked();
   await row(page, root.id)
     .getByRole("button", {
       name: "Lernprojekt abschließen einklappen",
