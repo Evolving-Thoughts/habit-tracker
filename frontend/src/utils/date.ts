@@ -98,6 +98,12 @@ export function fromLocalInput(value: string): string | null {
     if (shown === target) return new Date(candidate).toISOString();
     candidate -= shown - target;
   }
-  // Non-existent time in the spring DST gap: take the shifted instant.
-  return new Date(candidate).toISOString();
+  // Non-existent time in the spring DST gap (e.g. 02:30 on the last March
+  // Sunday): apply the offset from before the gap, which moves it forward
+  // (02:30 → 03:30), like Temporal's "compatible" disambiguation.
+  const before = target - 6 * 3_600_000;
+  const p = wallClockParts(new Date(before));
+  const offset =
+    Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) - before;
+  return new Date(target - offset).toISOString();
 }
