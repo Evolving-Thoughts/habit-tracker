@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { notifyDataChanged, onTargetsChanged } from "../composables/data-sync";
 import {
   isValidTimerDuration,
   TIMER_DURATION_MESSAGE,
@@ -8,7 +9,6 @@ import { computed, onMounted, onUnmounted, provide, ref, watch } from "vue";
 import {
   createTimerController,
   timerKey,
-  notifyTargetChange,
 } from "../composables/useTimer";
 import {
   updateTodoCompletion,
@@ -80,7 +80,7 @@ async function complete(): Promise<void> {
     if (target.kind === "todo")
       await updateTodoCompletion(target.targetId, true);
     else await updateOccurrenceStatus(target.targetId, "completed");
-    notifyTargetChange();
+    notifyDataChanged();
     await controller.refresh();
   } catch (cause) {
     error.value =
@@ -94,13 +94,13 @@ let poller: ReturnType<typeof setInterval>;
 function refresh(): void {
   if (document.visibilityState !== "hidden") void controller.refresh();
 }
+onTargetsChanged(refresh);
 onMounted(() => {
   void controller.refresh();
   ticker = setInterval(controller.pulse, 250);
   poller = setInterval(refresh, 3000);
   window.addEventListener("focus", refresh);
   document.addEventListener("visibilitychange", refresh);
-  window.addEventListener("timer-target-changed", refresh);
 });
 onUnmounted(() => {
   controller.dispose();
@@ -108,7 +108,6 @@ onUnmounted(() => {
   clearInterval(poller);
   window.removeEventListener("focus", refresh);
   document.removeEventListener("visibilitychange", refresh);
-  window.removeEventListener("timer-target-changed", refresh);
 });
 </script>
 <template>

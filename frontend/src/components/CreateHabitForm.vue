@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { WEEKDAY_OPTIONS } from "../utils/habit";
 import {
   TIMER_DURATION_MESSAGE,
   TIMER_MAX_MINUTES,
@@ -31,15 +32,6 @@ const missedPolicy = ref<MissedOccurrencePolicy>("carry_over");
 const isSubmitting = ref(false);
 const errorMessage = ref<string | null>(null);
 const today = getCurrentDateInTimeZone();
-const weekdayOptions: { value: Weekday; label: string }[] = [
-  { value: "monday", label: "Montag" },
-  { value: "tuesday", label: "Dienstag" },
-  { value: "wednesday", label: "Mittwoch" },
-  { value: "thursday", label: "Donnerstag" },
-  { value: "friday", label: "Freitag" },
-  { value: "saturday", label: "Samstag" },
-  { value: "sunday", label: "Sonntag" },
-];
 function integer(
   value: string | number,
   message: string,
@@ -79,7 +71,7 @@ function buildInput(): CreateHabitInput {
         throw new Error("Bitte wähle mindestens einen Wochentag.");
       schedule = {
         type: "fixed_weekdays",
-        weekdays: weekdayOptions
+        weekdays: WEEKDAY_OPTIONS
           .filter((option) => weekdays.value.includes(option.value))
           .map((option) => option.value),
         missedOccurrencePolicy: missedPolicy.value,
@@ -217,7 +209,7 @@ async function submit(): Promise<void> {
           class="create-habit__weekdays"
         >
           <legend>Ausführungstage</legend>
-          <label v-for="option in weekdayOptions" :key="option.value">
+          <label v-for="option in WEEKDAY_OPTIONS" :key="option.value">
             <input
               v-model="weekdays"
               type="checkbox"

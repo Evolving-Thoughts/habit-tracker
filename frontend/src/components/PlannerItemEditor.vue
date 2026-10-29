@@ -23,7 +23,7 @@ import type {
   UpdateHabitInput,
   Weekday,
 } from "../types/habit";
-import { formatHabitSchedule } from "../utils/habit";
+import { formatHabitSchedule, WEEKDAY_OPTIONS } from "../utils/habit";
 import type { CreateTodoInput } from "../types/todo";
 import { buildTodoInput } from "../utils/todo-input";
 import {
@@ -75,18 +75,6 @@ const intervalDays = ref<string | number>(2);
 const weeklyTarget = ref<string | number>(3);
 const selectedWeekdays = ref<Weekday[]>([]);
 
-const weekdayOptions: {
-  value: Weekday;
-  label: string;
-}[] = [
-  { value: "monday", label: "Montag" },
-  { value: "tuesday", label: "Dienstag" },
-  { value: "wednesday", label: "Mittwoch" },
-  { value: "thursday", label: "Donnerstag" },
-  { value: "friday", label: "Freitag" },
-  { value: "saturday", label: "Samstag" },
-  { value: "sunday", label: "Sonntag" },
-];
 
 const scheduleLabels: Record<HabitScheduleType, string> = {
   interval: "Intervall",
@@ -248,7 +236,7 @@ function buildScheduleChange(): ChangeHabitScheduleInput {
         throw new Error("Bitte wähle mindestens einen Wochentag.");
       schedule = {
         type: "fixed_weekdays",
-        weekdays: weekdayOptions
+        weekdays: WEEKDAY_OPTIONS
           .filter((option) => selectedWeekdays.value.includes(option.value))
           .map((option) => option.value),
         missedOccurrencePolicy: missedPolicy.value,
@@ -533,7 +521,7 @@ onMounted(loadEntity);
               <legend>Ausführungstage</legend>
 
               <label
-                v-for="option in weekdayOptions"
+                v-for="option in WEEKDAY_OPTIONS"
                 :key="option.value"
                 class="item-editor__weekday"
               >
