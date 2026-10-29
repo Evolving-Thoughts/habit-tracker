@@ -414,7 +414,11 @@ describe('Authentication and ownership (e2e)', () => {
     ])
       await b.get(path).expect(404);
     await b.patch(`/todos/${tid}`, { title: 'stolen' }).expect(404);
-    await b.delete(`/todos/${tid}`).expect(404);
+    // A well-formed token still must not reveal a foreign todo.
+    await b
+      .delete(`/todos/${tid}`)
+      .send({ confirmationToken: 'a'.repeat(64) })
+      .expect(404);
     await b.patch(`/habits/${hid}`, { isActive: false }).expect(404);
     await b.delete(`/habits/${hid}`).expect(404);
     await b

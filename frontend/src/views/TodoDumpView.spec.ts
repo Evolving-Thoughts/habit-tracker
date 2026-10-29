@@ -1,3 +1,4 @@
+import { getDeletionPreview } from "../api/todo-hierarchy.api";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -10,6 +11,7 @@ import {
 import type { TodoResponse } from "../types/todo";
 import TodoDumpView from "./TodoDumpView.vue";
 
+vi.mock("../api/todo-hierarchy.api", () => ({ getDeletionPreview: vi.fn() }));
 vi.mock("../api/day-planner.api", () => ({
   getBacklogTodos: vi.fn(),
   createTodo: vi.fn(),
@@ -28,6 +30,7 @@ const deleteTodoMock = vi.mocked(deleteTodo);
 function makeTodo(overrides: Partial<TodoResponse> = {}): TodoResponse {
   return {
     id: 1,
+    parentId: null,
     title: "NestJS lernen",
     completed: false,
     completedAt: null,
@@ -52,6 +55,13 @@ function mountView() {
 describe("TodoDumpView", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(getDeletionPreview).mockResolvedValue({
+      confirmationToken: "a".repeat(64),
+      todos: [
+        { id: 1, title: "NestJS lernen", parentId: null, completed: false },
+      ],
+      timers: [],
+    });
 
     backlogMock.mockResolvedValue([]);
     completionMock.mockResolvedValue(undefined);
@@ -384,7 +394,7 @@ describe("TodoDumpView", () => {
 
     await flushPromises();
 
-    expect(deleteTodoMock).toHaveBeenCalledWith(1);
+    expect(deleteTodoMock).toHaveBeenCalledWith(1, "a".repeat(64));
     expect(deleteTodoMock).toHaveBeenCalledTimes(1);
 
     expect(wrapper.find('[data-todo-id="1"]').exists()).toBe(false);
@@ -455,6 +465,13 @@ describe("TodoDumpView", () => {
 describe("TodoDumpView creation flow", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(getDeletionPreview).mockResolvedValue({
+      confirmationToken: "a".repeat(64),
+      todos: [
+        { id: 1, title: "NestJS lernen", parentId: null, completed: false },
+      ],
+      timers: [],
+    });
     backlogMock.mockResolvedValue([]);
     vi.mocked(createTodo).mockResolvedValue(makeTodo());
   });

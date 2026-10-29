@@ -318,7 +318,15 @@ describe('Synced timers and Dump completion (e2e)', () => {
       .expect(409);
     const next = await todo();
     await start({ kind: 'todo', targetId: next });
-    await client().delete(`/todos/${next}`).expect(204);
+    const snapshot = await client()
+      .get(`/todos/${next}/deletion-preview`)
+      .expect(200);
+    const token = (snapshot.body as { confirmationToken: string })
+      .confirmationToken;
+    await client()
+      .delete(`/todos/${next}`)
+      .send({ confirmationToken: token })
+      .expect(204);
     expect((await read()).timer).toBeNull();
   });
   it('stops the stored timer in the same request that ends its target', async () => {

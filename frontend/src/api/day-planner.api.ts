@@ -80,9 +80,14 @@ export function getTodo(todoId: number): Promise<TodoResponse> {
   return request<TodoResponse>(`/todos/${todoId}`);
 }
 
-export function deleteTodo(todoId: number): Promise<void> {
+/** Deletes a todo and its subtree; needs the token of its deletion preview. */
+export function deleteTodo(
+  todoId: number,
+  confirmationToken: string,
+): Promise<void> {
   return request<void>(`/todos/${todoId}`, {
     method: "DELETE",
+    body: JSON.stringify({ confirmationToken }),
   });
 }
 

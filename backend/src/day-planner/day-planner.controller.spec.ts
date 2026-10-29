@@ -55,6 +55,7 @@ describe('DayPlannerController', () => {
             plannedDurationMinutes: 60,
             isFixed: false,
             isOverdue: false,
+            timerEligible: true,
           },
           {
             type: 'habit',
@@ -64,7 +65,9 @@ describe('DayPlannerController', () => {
             status: HabitOccurrenceStatus.PENDING,
             scheduledDate: '2026-09-25',
             scheduleType: HabitScheduleType.INTERVAL,
+            plannedDurationMinutes: null,
             isOverdue: false,
+            timerEligible: true,
           },
         ],
       });

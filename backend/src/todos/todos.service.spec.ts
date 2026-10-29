@@ -1,480 +1,267 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import {
+  BadRequestException,
+  ConflictException,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Repository } from 'typeorm';
-import { TodoEntity } from './entities/todo.entity';
-import { TodosService } from './todos.service';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
+import * as timerTarget from '../timers/timer-target';
+import { TodoEntity } from './entities/todo.entity';
+import * as queries from './todo-hierarchy.queries';
+import { TodosService } from './todos.service';
 
-type TodoRepositoryMock = jest.Mocked<
-  Pick<
-    Repository<TodoEntity>,
-    'find' | 'findOneBy' | 'create' | 'save' | 'softRemove'
-  >
->;
+jest.mock('./todo-hierarchy.queries');
+jest.mock('../timers/timer-target', () => ({
+  ...jest.requireActual<typeof timerTarget>('../timers/timer-target'),
+  releaseTimers: jest.fn(),
+  timersOfTodos: jest.fn().mockResolvedValue([]),
+  discardTimersOfTodos: jest.fn(),
+}));
 
-const USER_ID = '11111111-1111-4111-8111-111111111111';
+const USER = '11111111-1111-4111-8111-111111111111';
+const NOW = new Date('2026-10-02T12:00:00Z');
+function todo(
+  id = 1,
+  parentId: number | null = null,
+  completed = false,
+): TodoEntity {
+  return Object.assign(new TodoEntity(), {
+    id,
+    userId: USER,
+    parentId,
+    title: 'Task',
+    completed,
+    completedAt: completed ? new Date('2026-01-01') : null,
+    scheduledAt: null,
+    isFixed: false,
+    plannedDurationMinutes: null,
+    createdAt: new Date('2026-01-01'),
+    updatedAt: new Date('2026-01-01'),
+    deletedAt: null,
+  });
+}
 
 describe('TodosService', () => {
   let service: TodosService;
-  let repository: TodoRepositoryMock;
-  let released: jest.Mock;
-
-  const todo: TodoEntity = {
-    id: 1,
-    userId: USER_ID,
-    title: 'Learn NestJS',
-    completed: false,
-    completedAt: null,
-    scheduledAt: null,
-    plannedDurationMinutes: null,
-    isFixed: false,
-    createdAt: new Date('2026-09-18T10:00:00.000Z'),
-    updatedAt: new Date('2026-09-18T10:00:00.000Z'),
-    deletedAt: null,
+  let rows: TodoEntity[];
+  const softDelete = jest.fn();
+  const repository = {
+    find: jest.fn(() => Promise.resolve(rows)),
+    findOneBy: jest.fn(({ id }: { id: number }) =>
+      Promise.resolve(rows.find((t) => t.id === id) ?? null),
+    ),
+    create: jest.fn((value: Partial<TodoEntity>) =>
+      Object.assign(new TodoEntity(), value, { id: 9 }),
+    ),
+    save: jest.fn((value: TodoEntity) => Promise.resolve(value)),
+    createQueryBuilder: () => {
+      const chain = {
+        softDelete: () => chain,
+        where: () => chain,
+        andWhere: (_: string, params: object) => {
+          softDelete(params);
+          return chain;
+        },
+        execute: () => Promise.resolve(),
+      };
+      return chain;
+    },
   };
+  const manager = { getRepository: () => repository };
+  const chain = jest.mocked(queries.ancestorChain);
+  const subtree = jest.mocked(queries.subtree);
 
-  beforeEach(async () => {
-    repository = {
-      find: jest.fn(),
-      findOneBy: jest.fn(),
-      create: jest.fn(),
-      save: jest.fn(),
-      softRemove: jest.fn(),
-    };
-    // Fake unit of work: same repository, records timer releases.
-    released = jest.fn();
-    const update = {
-      update: () => update,
-      set: () => update,
-      where: () => update,
-      andWhere: (_: unknown, params?: unknown) => {
-        if (params) released(params);
-        return update;
-      },
-      execute: () => {
-        released();
-        return Promise.resolve();
-      },
-    };
-    const manager = {
-      getRepository: () => repository,
-      createQueryBuilder: () => update,
-    };
-
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        TodosService,
-        Clock,
-        {
-          provide: UserUnitOfWork,
-          useValue: {
-            run: (_userId: string, work: (m: unknown) => unknown) =>
-              work(manager),
-          },
-        },
-        {
-          provide: getRepositoryToken(TodoEntity),
-          useValue: repository,
-        },
-      ],
-    }).compile();
-
-    service = module.get(TodosService);
-  });
-
-  afterEach(() => {
+  beforeEach(() => {
     jest.clearAllMocks();
-    jest.useRealTimers();
-  });
-
-  describe('findAll', () => {
-    it('returns all non-deleted todos', async () => {
-      repository.find.mockResolvedValue([todo]);
-
-      await expect(
-        service.findAll('11111111-1111-4111-8111-111111111111'),
-      ).resolves.toEqual([todo]);
-
-      expect(repository.find).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('findOne', () => {
-    it('returns the requested todo', async () => {
-      repository.findOneBy.mockResolvedValue(todo);
-
-      await expect(
-        service.findOne('11111111-1111-4111-8111-111111111111', 1),
-      ).resolves.toEqual(todo);
-
-      expect(repository.findOneBy).toHaveBeenCalledWith({
-        id: 1,
-        userId: '11111111-1111-4111-8111-111111111111',
-      });
-    });
-
-    it('throws NotFoundException when the todo does not exist', async () => {
-      repository.findOneBy.mockResolvedValue(null);
-
-      await expect(
-        service.findOne('11111111-1111-4111-8111-111111111111', 999),
-      ).rejects.toThrow(NotFoundException);
-
-      expect(repository.findOneBy).toHaveBeenCalledWith({
-        id: 999,
-        userId: '11111111-1111-4111-8111-111111111111',
-      });
-    });
+    rows = [todo()];
+    chain.mockImplementation((_m, _u, id) =>
+      Promise.resolve(
+        // Ancestor chain of `id` within `rows`.
+        (() => {
+          const result: TodoEntity[] = [];
+          let current: number | null = id;
+          while (current !== null) {
+            const node = rows.find((t) => t.id === current);
+            if (!node || result.includes(node)) break;
+            result.push(node);
+            current = node.parentId;
+          }
+          return result;
+        })(),
+      ),
+    );
+    service = new TodosService(
+      repository as unknown as Repository<TodoEntity>,
+      { now: () => NOW } as Clock,
+      {
+        run: (_userId: string, work: (m: unknown) => unknown) => work(manager),
+      } as unknown as UserUnitOfWork,
+    );
   });
 
   describe('create', () => {
-    it('creates and saves an unscheduled flexible todo', async () => {
-      const unsavedTodo = {
-        title: 'Learn NestJS',
+    it('creates a root todo', async () => {
+      const created = await service.create(USER, { title: 'Root' });
+      expect(created).toMatchObject({
+        userId: USER,
+        parentId: null,
         completed: false,
         completedAt: null,
-        scheduledAt: null,
-        plannedDurationMinutes: null,
-        isFixed: false,
-      } as TodoEntity;
-
-      repository.create.mockReturnValue(unsavedTodo);
-      repository.save.mockResolvedValue(todo);
-
-      await expect(
-        service.create('11111111-1111-4111-8111-111111111111', {
-          title: 'Learn NestJS',
-        }),
-      ).resolves.toEqual(todo);
-
-      expect(repository.create).toHaveBeenCalledWith({
-        userId: '11111111-1111-4111-8111-111111111111',
-        title: 'Learn NestJS',
-        completed: false,
-        completedAt: null,
-        scheduledAt: null,
-        plannedDurationMinutes: null,
-        isFixed: false,
       });
-
-      expect(repository.save).toHaveBeenCalledWith(unsavedTodo);
+      expect(chain).not.toHaveBeenCalled();
     });
-
-    it('creates and saves a scheduled fixed todo', async () => {
-      const scheduledAt = '2026-09-20T10:00:00.000Z';
-
-      const unsavedTodo = {
-        title: 'Doctor appointment',
-        completed: false,
-        completedAt: null,
-        scheduledAt: new Date(scheduledAt),
-        plannedDurationMinutes: 30,
-        isFixed: true,
-      } as TodoEntity;
-
-      const savedTodo: TodoEntity = {
-        ...unsavedTodo,
-        id: 2,
-        createdAt: new Date('2026-09-18T10:00:00.000Z'),
-        updatedAt: new Date('2026-09-18T10:00:00.000Z'),
-        deletedAt: null,
-      };
-
-      repository.create.mockReturnValue(unsavedTodo);
-      repository.save.mockResolvedValue(savedTodo);
-
+    it('creates a child below a live parent', async () => {
       await expect(
-        service.create('11111111-1111-4111-8111-111111111111', {
-          title: 'Doctor appointment',
-          scheduledAt,
-          plannedDurationMinutes: 30,
-          isFixed: true,
-        }),
-      ).resolves.toEqual(savedTodo);
-
-      expect(repository.create).toHaveBeenCalledWith({
-        userId: '11111111-1111-4111-8111-111111111111',
-        title: 'Doctor appointment',
-        completed: false,
-        completedAt: null,
-        scheduledAt: new Date(scheduledAt),
-        plannedDurationMinutes: 30,
-        isFixed: true,
-      });
-
-      expect(repository.save).toHaveBeenCalledWith(unsavedTodo);
+        service.create(USER, { title: 'Child', parentId: 1 }),
+      ).resolves.toMatchObject({ parentId: 1 });
     });
-
-    it('rejects a fixed todo without a scheduled date', async () => {
+    it('rejects an unavailable parent with 400', async () => {
       await expect(
-        service.create('11111111-1111-4111-8111-111111111111', {
-          title: 'Doctor appointment',
-          isFixed: true,
-        }),
+        service.create(USER, { title: 'Child', parentId: 99 }),
       ).rejects.toThrow(BadRequestException);
-
-      expect(repository.create).not.toHaveBeenCalled();
       expect(repository.save).not.toHaveBeenCalled();
+    });
+    it('rejects a fixed todo without a date', async () => {
+      await expect(
+        service.create(USER, { title: 'Fix', isFixed: true }),
+      ).rejects.toThrow(BadRequestException);
+    });
+    it('does not reopen a completed parent when a child is added', async () => {
+      rows = [todo(1, null, true)];
+      await service.create(USER, { title: 'Child', parentId: 1 });
+      expect(rows[0]).toMatchObject({ completed: true });
+      expect(repository.save).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('update', () => {
-    it('sets completedAt when completing a todo', async () => {
-      jest.useFakeTimers();
-
-      jest.setSystemTime(new Date('2026-09-21T10:30:00.000Z'));
-
-      const preloadedTodo: TodoEntity = {
-        ...todo,
-        completed: true,
-        completedAt: null,
-      };
-
-      const savedTodo: TodoEntity = {
-        ...preloadedTodo,
-        completedAt: new Date('2026-09-21T10:30:00.000Z'),
-      };
-
-      repository.findOneBy.mockResolvedValue(preloadedTodo);
-
-      repository.save.mockResolvedValue(savedTodo);
-
-      await expect(
-        service.update('11111111-1111-4111-8111-111111111111', todo.id, {
-          completed: true,
-        }),
-      ).resolves.toEqual(savedTodo);
-
-      expect(repository.findOneBy).toHaveBeenCalledWith({
-        id: 1,
-        userId: '11111111-1111-4111-8111-111111111111',
-      });
-
-      expect(repository.save).toHaveBeenCalledWith({
-        ...preloadedTodo,
-        completedAt: new Date('2026-09-21T10:30:00.000Z'),
-      });
-    });
-
-    it('preserves completedAt when completing an already completed todo', async () => {
-      jest.useFakeTimers();
-
-      jest.setSystemTime(new Date('2026-09-22T10:30:00.000Z'));
-
-      const originalCompletedAt = new Date('2026-09-21T10:30:00.000Z');
-
-      const completedTodo: TodoEntity = {
-        ...todo,
-        completed: true,
-        completedAt: originalCompletedAt,
-      };
-
-      repository.findOneBy.mockResolvedValue(completedTodo);
-
-      repository.save.mockResolvedValue(completedTodo);
-
-      await expect(
-        service.update('11111111-1111-4111-8111-111111111111', todo.id, {
-          completed: true,
-        }),
-      ).resolves.toEqual(completedTodo);
-
-      expect(repository.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          completed: true,
-          completedAt: originalCompletedAt,
-        }),
+    it('rejects an empty update', async () => {
+      await expect(service.update(USER, 1, {})).rejects.toThrow(
+        BadRequestException,
       );
     });
-
-    it('clears completedAt when reopening a todo', async () => {
-      const preloadedTodo: TodoEntity = {
-        ...todo,
-        completed: false,
-        completedAt: new Date('2026-09-21T10:30:00.000Z'),
-      };
-
-      const reopenedTodo: TodoEntity = {
-        ...preloadedTodo,
-        completedAt: null,
-      };
-
-      repository.findOneBy.mockResolvedValue(preloadedTodo);
-
-      repository.save.mockResolvedValue(reopenedTodo);
-
-      await expect(
-        service.update('11111111-1111-4111-8111-111111111111', todo.id, {
-          completed: false,
-        }),
-      ).resolves.toEqual(reopenedTodo);
-
-      expect(repository.findOneBy).toHaveBeenCalledWith({
-        id: 1,
-        userId: '11111111-1111-4111-8111-111111111111',
-      });
-
-      expect(repository.save).toHaveBeenCalledWith({
-        ...preloadedTodo,
-        completedAt: null,
-      });
+    it('returns 404 for a missing todo', async () => {
+      await expect(service.update(USER, 99, { title: 'x' })).rejects.toThrow(
+        NotFoundException,
+      );
     });
-
-    it('converts a scheduledAt string to a Date', async () => {
-      const scheduledAt = '2026-09-20T10:00:00.000Z';
-
-      const updatedTodo: TodoEntity = {
-        ...todo,
-        scheduledAt: new Date(scheduledAt),
-      };
-
-      repository.findOneBy.mockResolvedValue(updatedTodo);
-      repository.save.mockResolvedValue(updatedTodo);
-
-      await expect(
-        service.update('11111111-1111-4111-8111-111111111111', todo.id, {
-          scheduledAt,
-        }),
-      ).resolves.toEqual(updatedTodo);
-
-      expect(repository.findOneBy).toHaveBeenCalledWith({
-        id: 1,
-        userId: '11111111-1111-4111-8111-111111111111',
+    it('converts and clears scheduling values of a flexible todo', async () => {
+      const scheduled = await service.update(USER, 1, {
+        scheduledAt: '2026-10-02T08:00:00.000Z',
+        plannedDurationMinutes: 15,
       });
-
-      expect(repository.save).toHaveBeenCalledWith(updatedTodo);
-    });
-
-    it('allows clearing scheduling values from a flexible todo', async () => {
-      const updatedTodo: TodoEntity = {
-        ...todo,
+      expect(scheduled.scheduledAt).toEqual(new Date('2026-10-02T08:00:00Z'));
+      const cleared = await service.update(USER, 1, {
         scheduledAt: null,
         plannedDurationMinutes: null,
-        isFixed: false,
-      };
-
-      repository.findOneBy.mockResolvedValue(updatedTodo);
-      repository.save.mockResolvedValue(updatedTodo);
-
-      await expect(
-        service.update('11111111-1111-4111-8111-111111111111', todo.id, {
-          scheduledAt: null,
-          plannedDurationMinutes: null,
-        }),
-      ).resolves.toEqual(updatedTodo);
-
-      expect(repository.findOneBy).toHaveBeenCalledWith({
-        id: 1,
-        userId: '11111111-1111-4111-8111-111111111111',
       });
-
-      expect(repository.save).toHaveBeenCalledWith(updatedTodo);
-    });
-
-    it('rejects removing the date from a fixed todo', async () => {
-      const fixedTodoWithoutDate: TodoEntity = {
-        ...todo,
+      expect(cleared).toMatchObject({
         scheduledAt: null,
-        isFixed: true,
-      };
-
-      repository.findOneBy.mockResolvedValue(fixedTodoWithoutDate);
-
-      await expect(
-        service.update('11111111-1111-4111-8111-111111111111', todo.id, {
-          scheduledAt: null,
-        }),
-      ).rejects.toThrow(BadRequestException);
-
-      expect(repository.save).not.toHaveBeenCalled();
-    });
-
-    it('throws NotFoundException when the todo does not exist', async () => {
-      repository.findOneBy.mockResolvedValue(undefined);
-
-      await expect(
-        service.update('11111111-1111-4111-8111-111111111111', 999, {
-          completed: true,
-        }),
-      ).rejects.toThrow(NotFoundException);
-
-      expect(repository.findOneBy).toHaveBeenCalledWith({
-        id: 999,
-        userId: '11111111-1111-4111-8111-111111111111',
+        plannedDurationMinutes: null,
       });
-
+    });
+    it('rejects removing the date from a fixed todo', async () => {
+      rows = [
+        Object.assign(todo(), {
+          isFixed: true,
+          scheduledAt: new Date('2026-10-02T08:00:00Z'),
+        }),
+      ];
+      await expect(
+        service.update(USER, 1, { scheduledAt: null }),
+      ).rejects.toThrow(BadRequestException);
       expect(repository.save).not.toHaveBeenCalled();
     });
-
-    it('rejects an empty update', async () => {
-      await expect(
-        service.update('11111111-1111-4111-8111-111111111111', todo.id, {}),
-      ).rejects.toThrow(BadRequestException);
-
-      expect(repository.findOneBy).not.toHaveBeenCalled();
-      expect(repository.save).not.toHaveBeenCalled();
+    it('stamps completion with the clock and keeps it on repeat', async () => {
+      await service.update(USER, 1, { completed: true });
+      expect(rows[0].completedAt).toEqual(NOW);
+      rows[0].completedAt = new Date('2026-01-01');
+      await service.update(USER, 1, { completed: true });
+      expect(rows[0].completedAt).toEqual(new Date('2026-01-01'));
+    });
+    it('clears completedAt when reopening', async () => {
+      rows = [todo(1, null, true)];
+      await service.update(USER, 1, { completed: false });
+      expect(rows[0]).toMatchObject({ completed: false, completedAt: null });
+    });
+    it('releases timers when completing, not when editing', async () => {
+      await service.update(USER, 1, { title: 'Neu' });
+      expect(timerTarget.releaseTimers).not.toHaveBeenCalled();
+      await service.update(USER, 1, { completed: true });
+      expect(timerTarget.releaseTimers).toHaveBeenCalledWith(manager, USER, {
+        todoIds: [1],
+      });
+    });
+    it('keeps parent and child completion independent', async () => {
+      rows = [todo(1, null, true), todo(2, 1, true)];
+      await service.update(USER, 2, { completed: false });
+      expect(rows[0]).toMatchObject({ completed: true });
+      await service.update(USER, 1, { completed: false });
+      expect(rows[1]).toMatchObject({ completed: false });
+    });
+    it('moves a subtree and rejects moving below a descendant', async () => {
+      rows = [todo(1), todo(2, 1), todo(3, 2), todo(4)];
+      await expect(service.update(USER, 1, { parentId: 3 })).rejects.toThrow(
+        'below itself or a descendant',
+      );
+      await service.update(USER, 2, { parentId: 4 });
+      expect(rows[1].parentId).toBe(4);
+      await service.update(USER, 2, { parentId: null });
+      expect(rows[1].parentId).toBeNull();
     });
   });
 
-  describe('remove', () => {
-    it('soft-deletes an existing todo', async () => {
-      repository.findOneBy.mockResolvedValue(todo);
-      repository.softRemove.mockResolvedValue(todo);
-
-      await expect(
-        service.remove('11111111-1111-4111-8111-111111111111', todo.id),
-      ).resolves.toBeUndefined();
-
-      expect(repository.findOneBy).toHaveBeenCalledWith({
-        id: 1,
-        userId: '11111111-1111-4111-8111-111111111111',
-      });
-
-      expect(repository.softRemove).toHaveBeenCalledWith(todo);
+  describe('hierarchy', () => {
+    it('adds subtree progress to every todo', async () => {
+      rows = [todo(1), todo(2, 1, true)];
+      const result = await service.hierarchy(USER);
+      expect(result.map((r) => [r.id, r.progress.completed])).toEqual([
+        [1, 1],
+        [2, 1],
+      ]);
     });
-
-    it('does not call softRemove when the todo does not exist', async () => {
-      repository.findOneBy.mockResolvedValue(null);
-
-      await expect(
-        service.remove('11111111-1111-4111-8111-111111111111', 999),
-      ).rejects.toThrow(NotFoundException);
-
-      expect(repository.softRemove).not.toHaveBeenCalled();
+    it('reports a stored cycle as a server error', async () => {
+      rows = [todo(1, 2), todo(2, 1)];
+      await expect(service.hierarchy(USER)).rejects.toThrow(
+        InternalServerErrorException,
+      );
     });
   });
 
-  describe('timer targets', () => {
-    it('releases timers when a todo is completed', async () => {
-      repository.findOneBy.mockResolvedValue({ ...todo });
-      repository.save.mockImplementation((value) =>
-        Promise.resolve(value as TodoEntity),
-      );
-
-      await service.update(USER_ID, 1, { completed: true });
-
-      expect(released).toHaveBeenCalled();
+  describe('deletion', () => {
+    beforeEach(() => {
+      rows = [todo(1), todo(2, 1)];
+      subtree.mockResolvedValue(rows);
     });
-
-    it('keeps timers of a todo that stays open', async () => {
-      repository.findOneBy.mockResolvedValue({ ...todo });
-      repository.save.mockImplementation((value) =>
-        Promise.resolve(value as TodoEntity),
+    it('deletes the previewed subtree and its timers', async () => {
+      const { confirmationToken, todos } = await service.deletionPreview(
+        USER,
+        1,
       );
-
-      await service.update(USER_ID, 1, { title: 'Neu' });
-
-      expect(released).not.toHaveBeenCalled();
+      expect(todos.map((t) => t.id)).toEqual([1, 2]);
+      await service.remove(USER, 1, confirmationToken);
+      expect(timerTarget.discardTimersOfTodos).toHaveBeenCalledWith(
+        manager,
+        USER,
+        [1, 2],
+      );
+      expect(softDelete).toHaveBeenCalledWith({ ids: [1, 2] });
     });
-
-    it('releases timers when a todo is deleted', async () => {
-      repository.findOneBy.mockResolvedValue({ ...todo });
-
-      await service.remove(USER_ID, 1);
-
-      expect(released).toHaveBeenCalled();
+    it('rejects a token from an outdated preview', async () => {
+      const { confirmationToken } = await service.deletionPreview(USER, 1);
+      rows[1].updatedAt = new Date('2026-02-01');
+      await expect(service.remove(USER, 1, confirmationToken)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(softDelete).not.toHaveBeenCalled();
+    });
+    it('returns 404 for a missing todo', async () => {
+      subtree.mockResolvedValue([]);
+      await expect(service.deletionPreview(USER, 99)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

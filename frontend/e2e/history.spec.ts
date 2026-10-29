@@ -143,9 +143,14 @@ test("History: Monday-first weekly navigation, filters, expandable days and soft
       })
     ).status(),
   ).toBe(200);
+  const preview = (await (
+    await request.get(`${API_URL}/todos/${todo.id}/deletion-preview`)
+  ).json()) as { confirmationToken: string };
   expect(
     (
-      await request.delete(`${API_URL}/todos/${todo.id}`, { data: {} })
+      await request.delete(`${API_URL}/todos/${todo.id}`, {
+        data: { confirmationToken: preview.confirmationToken },
+      })
     ).status(),
   ).toBe(204);
   await page.goto("/");

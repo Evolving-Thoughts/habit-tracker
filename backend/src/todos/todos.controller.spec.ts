@@ -27,6 +27,7 @@ describe('TodosController', () => {
 
   const todo: TodoEntity = {
     id: 1,
+    parentId: null,
     userId: '11111111-1111-4111-8111-111111111111',
     title: 'Learn NestJS',
     completed: false,
@@ -77,6 +78,7 @@ describe('TodosController', () => {
       ).resolves.toEqual([
         {
           id: 1,
+          parentId: null,
           title: 'Learn NestJS',
           completed: false,
           completedAt: null,
@@ -105,6 +107,7 @@ describe('TodosController', () => {
         ),
       ).resolves.toEqual({
         id: 1,
+        parentId: null,
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
@@ -139,6 +142,7 @@ describe('TodosController', () => {
         ),
       ).resolves.toEqual({
         id: 1,
+        parentId: null,
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
@@ -167,6 +171,7 @@ describe('TodosController', () => {
       const scheduledTodo: TodoEntity = {
         ...todo,
         id: 2,
+        parentId: null,
         title: 'Doctor appointment',
         scheduledAt,
         plannedDurationMinutes: 30,
@@ -185,6 +190,7 @@ describe('TodosController', () => {
         ),
       ).resolves.toEqual({
         id: 2,
+        parentId: null,
         title: 'Doctor appointment',
         completed: false,
         completedAt: null,
@@ -228,6 +234,7 @@ describe('TodosController', () => {
         ),
       ).resolves.toEqual({
         id: 1,
+        parentId: null,
         title: 'Learn NestJS',
         completed: true,
         completedAt: '2026-09-21T10:30:00.000Z',
@@ -268,6 +275,7 @@ describe('TodosController', () => {
         ),
       ).resolves.toEqual({
         id: 1,
+        parentId: null,
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
@@ -313,6 +321,7 @@ describe('TodosController', () => {
         ),
       ).resolves.toEqual({
         id: 1,
+        parentId: null,
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
@@ -341,12 +350,14 @@ describe('TodosController', () => {
             email: 'test@example.test',
           },
           1,
+          { confirmationToken: 'a'.repeat(64) },
         ),
       ).resolves.toBeUndefined();
 
       expect(serviceMock.remove).toHaveBeenCalledWith(
         '11111111-1111-4111-8111-111111111111',
         1,
+        'a'.repeat(64),
       );
     });
   });

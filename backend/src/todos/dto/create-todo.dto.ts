@@ -10,6 +10,11 @@ import {
 } from 'class-validator';
 
 export class CreateTodoDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  readonly parentId?: number | null;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)
