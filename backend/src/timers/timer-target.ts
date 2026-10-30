@@ -1,5 +1,6 @@
 import { Brackets, EntityManager } from 'typeorm';
 import { occurrenceDueDate } from '../habit-occurrences/entities/habit-occurrence.entity';
+import { WorkLogEntity } from '../work-logs/work-log.entity';
 import { TimerEntity } from './timer.entity';
 
 /**
@@ -49,6 +50,29 @@ export function effectiveDuration(
   return occurrence.plannedDurationMinutes ?? habit.plannedDurationMinutes;
 }
 
+/** Logs the running stretch of a timer up to `end`, never past its deadline. */
+export async function closeWorkSegment(
+  manager: EntityManager,
+  timer: TimerEntity,
+  end: Date,
+): Promise<void> {
+  const startedAt = timer.segmentStartedAt;
+  timer.segmentStartedAt = null;
+  if (!startedAt) return;
+  const endedAt =
+    timer.endsAt && timer.endsAt < end ? new Date(timer.endsAt) : end;
+  if (endedAt <= startedAt) return;
+  await manager.insert(WorkLogEntity, {
+    userId: timer.userId,
+    todoId: timer.todoId,
+    occurrenceId: timer.occurrenceId,
+    title: timer.title,
+    startedAt,
+    endedAt,
+    source: 'timer',
+  });
+}
+
 /**
  * Stops every timer of these targets right away. Call it in the same locked
  * transaction that makes a target ineligible (completed, deleted, skipped,
@@ -63,10 +87,23 @@ export async function releaseTimers(
   const occurrenceIds = targets.occurrenceIds ?? [];
   const { habitId } = targets;
   if (!todoIds.length && !occurrenceIds.length && habitId === undefined) return;
+  // Work done so far stays on record, in the same statement order as the stop.
+  await manager.query(
+    `INSERT INTO "work_logs"
+       ("userId", "todoId", "occurrenceId", "title", "startedAt", "endedAt", "source")
+     SELECT "userId", "todoId", "occurrenceId", "title", "segmentStartedAt",
+            LEAST(clock_timestamp(), "endsAt"), 'timer'
+     FROM "timers"
+     WHERE "userId" = $1 AND "state" = 'running'
+       AND "segmentStartedAt" < LEAST(clock_timestamp(), "endsAt")
+       AND ("todoId" = ANY($2::int[]) OR "occurrenceId" = ANY($3::int[])
+         OR "occurrenceId" IN (SELECT "id" FROM "habit_occurrences" WHERE "habitId" = $4::int))`,
+    [userId, todoIds, occurrenceIds, habitId ?? null],
+  );
   await manager
     .createQueryBuilder()
     .update(TimerEntity)
-    .set({ state: 'stopped', endsAt: null })
+    .set({ state: 'stopped', endsAt: null, segmentStartedAt: null })
     .where('"userId" = :userId', { userId })
     .andWhere(`"state" <> 'stopped'`)
     .andWhere(
@@ -126,6 +163,7 @@ export async function discardTimersOfTodos(
   todoIds: number[],
 ): Promise<void> {
   if (!todoIds.length) return;
+  await releaseTimers(manager, userId, { todoIds });
   await manager
     .createQueryBuilder()
     .delete()

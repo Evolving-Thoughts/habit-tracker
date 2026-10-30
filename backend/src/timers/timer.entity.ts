@@ -61,6 +61,9 @@ export class TimerEntity {
   remainingMilliseconds!: number;
   @Column({ type: 'timestamptz', nullable: true })
   endsAt!: Date | null;
+  /** Start of the current running stretch; closed into a work log. */
+  @Column({ type: 'timestamptz', nullable: true })
+  segmentStartedAt!: Date | null;
   @Column({ type: 'timestamptz', nullable: true })
   finishedAt!: Date | null;
   @Column({ type: 'timestamptz', nullable: true })

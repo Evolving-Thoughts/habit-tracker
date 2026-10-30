@@ -1,5 +1,6 @@
 import { HistoryModule } from './history/history.module';
 import { ReflectionsModule } from './reflections/reflections.module';
+import { WorkLogsModule } from './work-logs/work-logs.module';
 import { PushModule } from './push/push.module';
 import { TimersModule } from './timers/timers.module';
 import { AuthModule } from './auth/auth.module';
@@ -38,6 +39,7 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
     DayPlannerModule,
     HistoryModule,
     ReflectionsModule,
+    WorkLogsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

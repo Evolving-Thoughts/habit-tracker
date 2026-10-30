@@ -12,6 +12,7 @@ import { dayOf } from '../common/date/local-day';
 import { TimerEntity } from './timer.entity';
 import { StartTimerDto } from './timer.dto';
 import {
+  closeWorkSegment,
   effectiveDuration,
   isOccurrenceTimerEligible,
   isTodoTimerEligible,
@@ -135,6 +136,7 @@ export class TimersService {
         error instanceof NotFoundException || error instanceof ConflictException
       ))
         throw error;
+      await closeWorkSegment(manager, timer, now);
       timer.state = 'stopped';
       timer.endsAt = null;
       return manager.save(timer);
@@ -143,6 +145,7 @@ export class TimersService {
       timer.state === 'running' &&
       remainingMilliseconds(timer.endsAt!, now) === 0
     ) {
+      await closeWorkSegment(manager, timer, now);
       timer.finishedAt = timer.endsAt;
       timer.state = 'finished';
       timer.endsAt = null;
@@ -237,6 +240,7 @@ export class TimersService {
             message: 'Ein anderer Timer ist bereits aktiv.',
             code: 'ACTIVE_TIMER_EXISTS',
           });
+        await closeWorkSegment(manager, active, now);
         active.state = 'stopped';
         active.endsAt = null;
         await manager.save(active);
@@ -256,6 +260,7 @@ export class TimersService {
           durationMinutes: minutes,
           remainingMilliseconds: minutes * 60_000,
           endsAt: new Date(now.getTime() + minutes * 60_000),
+          segmentStartedAt: now,
           finishedAt: null,
         }),
       );
@@ -273,6 +278,7 @@ export class TimersService {
       if (!timer) throw new NotFoundException('Timer nicht gefunden.');
       const now = this.clock.now();
       if (action === 'stop') {
+        await closeWorkSegment(manager, timer, now);
         timer.state = 'stopped';
         timer.endsAt = null;
         await manager.save(timer);
@@ -307,11 +313,13 @@ export class TimersService {
           timer.finishedAt = now;
         }
       } else if (action === 'pause' && timer.state === 'running') {
+        await closeWorkSegment(manager, timer, now);
         timer.remainingMilliseconds = remainingMilliseconds(timer.endsAt!, now);
         timer.endsAt = null;
         timer.state = 'paused';
       } else if (action === 'resume' && timer.state === 'paused') {
         timer.endsAt = new Date(now.getTime() + timer.remainingMilliseconds);
+        timer.segmentStartedAt = now;
         timer.state = 'running';
       }
       return this.response(await manager.save(timer), now);

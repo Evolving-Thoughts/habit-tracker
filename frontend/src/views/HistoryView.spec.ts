@@ -5,6 +5,9 @@ import { getCurrentDateInTimeZone } from "../utils/date";
 import type { HistoryItem, HistoryResponse } from "../types/history";
 import HistoryView from "./HistoryView.vue";
 vi.mock("../api/history.api", () => ({ getHistory: vi.fn() }));
+vi.mock("../api/work-logs.api", () => ({
+  getWorkDay: vi.fn().mockResolvedValue({ date: "", totalMinutes: 0, logs: [] }),
+}));
 vi.mock("../api/reflections.api", () => ({
   getReflection: vi.fn().mockResolvedValue({ date: "", text: "" }),
 }));

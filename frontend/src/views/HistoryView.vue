@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { getHistory } from "../api/history.api";
 import DayReflection from "../components/DayReflection.vue";
+import DayWorkLogs from "../components/DayWorkLogs.vue";
 import HistoryItem from "../components/HistoryItem.vue";
 import HistoryPlannedItems from "../components/HistoryPlannedItems.vue";
 import type {
@@ -36,6 +37,21 @@ const heading = computed(() => {
   return view.value === "day"
     ? dayLabel(result.value.startDate)
     : `${formatDateForGermanDisplay(result.value.startDate)} – ${formatDateForGermanDisplay(result.value.endDate)}`;
+});
+/** Entries of the shown day that can take a manual work log. */
+const workTargets = computed(() => {
+  const shown = result.value?.days[0];
+  if (!shown) return [];
+  const entries = [...shown.items, ...(shown.planned ?? [])];
+  const seen = new Set<string>();
+  return entries.flatMap((entry) => {
+    if (entry.id === null) return [];
+    const kind = entry.type === "todo" ? ("todo" as const) : ("occurrence" as const);
+    const key = `${kind}-${entry.id}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ kind, targetId: entry.id, title: entry.title }];
+  });
 });
 const hasItems = computed(
   () =>
@@ -163,6 +179,11 @@ onUnmounted(() => {
       <DayReflection
         v-if="view === 'day' && result.startDate <= result.today"
         :date="result.startDate"
+      />
+      <DayWorkLogs
+        v-if="view === 'day' && result.startDate <= result.today"
+        :date="result.startDate"
+        :targets="workTargets"
       />
       <p v-if="!hasItems" class="empty">
         Für diesen Zeitraum gibt es keine Einträge{{
