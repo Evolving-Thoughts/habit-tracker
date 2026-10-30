@@ -13,6 +13,7 @@ import CreateItemDialog from "../components/CreateItemDialog.vue";
 import PlannerItem from "../components/PlannerItem.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
 import MoveItemDialog from "../components/MoveItemDialog.vue";
+import ReplanDialog from "../components/ReplanDialog.vue";
 import type {
   DayPlannerHabitItem,
   DayPlannerItem,
@@ -34,6 +35,7 @@ const updatingKeys = ref<string[]>([]);
 const editingTarget = ref<EditingTarget | null>(null);
 const editorBusy = ref(false);
 const movingItem = ref<DayPlannerItem | null>(null);
+const replanOpen = ref(false);
 const creationOpen = ref(false);
 const creationMessage = ref<string | null>(null);
 
@@ -81,6 +83,7 @@ const {
     !editorBusy.value &&
     !editingTarget.value &&
     !movingItem.value &&
+    !replanOpen.value &&
     !creationOpen.value &&
     updatingKeys.value.length === 0,
 });
@@ -214,6 +217,17 @@ async function onMoved(): Promise<void> {
   closeMoving();
 }
 
+function closeReplan(): void {
+  replanOpen.value = false;
+  editorBusy.value = false;
+}
+
+async function onReplanned(): Promise<void> {
+  notifyDataChanged();
+  await loadToday(false);
+  closeReplan();
+}
+
 function openCreation(): void {
   if (
     isLoading.value ||
@@ -262,6 +276,14 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
 
       <div class="today-view__header-actions">
         <button
+          class="today-view__replan"
+          type="button"
+          :disabled="isLoading || editorBusy"
+          @click="replanOpen = true"
+        >
+          Neu planen
+        </button>
+        <button
           class="today-view__refresh"
           type="button"
           :disabled="isLoading || editorBusy"
@@ -291,6 +313,14 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
       @busy="editorBusy = $event"
       @changed="onEditorChanged"
       @close="closeEditing"
+    />
+
+    <ReplanDialog
+      v-if="replanOpen"
+      :return-focus="() => null"
+      @busy="editorBusy = $event"
+      @applied="onReplanned"
+      @close="closeReplan"
     />
 
     <MoveItemDialog
@@ -433,6 +463,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
   color: #677287;
 }
 
+.today-view__replan,
 .today-view__refresh {
   padding: 0.65rem 0.9rem;
   border: 1px solid #ccd2dc;
@@ -444,6 +475,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
   cursor: pointer;
 }
 
+.today-view__replan:disabled,
 .today-view__refresh:disabled {
   cursor: wait;
   opacity: 0.5;

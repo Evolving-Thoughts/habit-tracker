@@ -15,6 +15,8 @@ export class UserEntity {
   @Column({ length: 254, unique: true }) email!: string;
   @Column({ type: 'text', select: false }) passwordHash!: string;
   @Column({ type: 'timestamptz', nullable: true }) verifiedAt!: Date | null;
+  /** Minutes after midnight at which replanning moves work to tomorrow. */
+  @Column({ type: 'integer', default: 1320 }) dayEndMinutes!: number;
   @CreateDateColumn({ type: 'timestamptz' }) createdAt!: Date;
 }
 @Entity('auth_sessions')

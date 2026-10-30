@@ -102,6 +102,13 @@ export function atSameWallClock(instant: Date, date: string): Date {
   return wallClockMs(corrected) === target ? corrected : new Date(first);
 }
 
+/** The instant `minutes` after midnight on the wall clock of `date`. */
+export function atWallClockMinutes(date: string, minutes: number): Date {
+  // January has no DST change, so the offset from midnight is the wall clock.
+  const reference = startOfDay('2026-01-15').getTime() + minutes * 60_000;
+  return atSameWallClock(new Date(reference), date);
+}
+
 /** Exclusive end instant of `date` (start of the following day). */
 export function endOfDay(date: string): Date {
   assertDateOnly(date);
