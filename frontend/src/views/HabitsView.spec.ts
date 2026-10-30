@@ -14,6 +14,9 @@ import type {
   ScheduleVersionResponse,
 } from "../types/habit";
 import HabitsView from "./HabitsView.vue";
+vi.mock("../api/categories.api", () => ({
+  getCategories: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("../api/day-planner.api", () => ({
   getHabits: vi.fn(),
   getHabit: vi.fn(),

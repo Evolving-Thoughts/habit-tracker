@@ -127,6 +127,8 @@ export class HabitSchedulingService {
     return {
       id: habit.id,
       title: habit.title,
+      categoryId: habit.categoryId ?? null,
+      why: habit.why ?? null,
       isActive: habit.isActive,
       plannedDurationMinutes: habit.plannedDurationMinutes,
       timerOccurrenceId: pending?.id ?? null,

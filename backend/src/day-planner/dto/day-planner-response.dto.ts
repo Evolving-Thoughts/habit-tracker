@@ -7,6 +7,7 @@ export type DayPlannerTodoItemDto = {
   type: 'todo';
   todoId: number;
   title: string;
+  categoryName: string | null;
   status: DayPlannerTodoStatus;
   scheduledDate: string;
   scheduledAt: string | null;
@@ -23,6 +24,7 @@ export type DayPlannerHabitItemDto = {
   occurrenceId: number;
   habitId: number;
   title: string;
+  categoryName: string | null;
   status: HabitOccurrenceStatus;
   scheduledDate: string;
   /** Last day this pending occurrence can be moved to; null once resolved. */

@@ -4,6 +4,7 @@ import PushSettings from "./components/PushSettings.vue";
 import TimerProvider from "./components/TimerProvider.vue";
 import TodoHierarchyView from "./views/TodoHierarchyView.vue";
 import HistoryView from "./views/HistoryView.vue";
+import CategoriesView from "./views/CategoriesView.vue";
 import HabitsView from "./views/HabitsView.vue";
 import TodayView from "./views/TodayView.vue";
 import TodoDumpView from "./views/TodoDumpView.vue";
@@ -73,7 +74,7 @@ onUnmounted(() => {
   window.removeEventListener("hashchange", readLink);
 });
 const activeView = ref<
-  "today" | "todo-dump" | "habits" | "history" | "hierarchy"
+  "today" | "todo-dump" | "habits" | "categories" | "history" | "hierarchy"
 >("today");
 </script>
 
@@ -128,6 +129,13 @@ const activeView = ref<
       </button>
       <button
         type="button"
+        :aria-pressed="activeView === 'categories'"
+        @click="activeView = 'categories'"
+      >
+        Kategorien
+      </button>
+      <button
+        type="button"
         :aria-pressed="activeView === 'history'"
         @click="activeView = 'history'"
       >
@@ -142,6 +150,7 @@ const activeView = ref<
     <TodoDumpView v-else-if="activeView === 'todo-dump'" />
     <TodoHierarchyView v-else-if="activeView === 'hierarchy'" />
     <HabitsView v-else-if="activeView === 'habits'" />
+    <CategoriesView v-else-if="activeView === 'categories'" />
     <HistoryView v-else />
   </TimerProvider>
 </template>

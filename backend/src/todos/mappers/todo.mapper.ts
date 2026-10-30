@@ -7,6 +7,8 @@ export class TodoMapper {
     return new TodoResponseDto({
       id: todo.id,
       parentId: todo.parentId ?? null,
+      categoryId: todo.categoryId ?? null,
+      why: todo.why ?? null,
       title: todo.title,
       completed: todo.completed,
       completedAt: todo.completedAt?.toISOString() ?? null,

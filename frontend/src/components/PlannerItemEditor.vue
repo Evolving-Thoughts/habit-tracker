@@ -7,6 +7,8 @@ import {
   TIMER_MAX_MINUTES,
 } from "../utils/timer-duration";
 import { computed, onMounted, ref } from "vue";
+import { getCategories } from "../api/categories.api";
+import type { CategoryResponse } from "../types/category";
 import {
   changeHabitSchedule,
   deleteHabit,
@@ -78,6 +80,11 @@ async function requestDeletion(): Promise<void> {
 }
 
 const title = ref("");
+const categories = ref<CategoryResponse[]>([]);
+const categoryId = ref<number | null>(null);
+const why = ref("");
+const originalCategoryId = ref<number | null>(null);
+const originalWhy = ref("");
 
 // Todo-Felder
 const scheduledAt = ref("");
@@ -117,13 +124,35 @@ const isBusy = computed(() => {
 });
 
 
+function fillAssignment(entity: {
+  categoryId?: number | null;
+  why?: string | null;
+}): void {
+  categoryId.value = originalCategoryId.value = entity.categoryId ?? null;
+  why.value = originalWhy.value = entity.why ?? "";
+}
+
+/** Only what changed, so a plain edit never overwrites these fields. */
+function assignmentChanges(): { categoryId?: number | null; why?: string | null } {
+  const value = why.value.trim();
+  return {
+    ...(categoryId.value !== originalCategoryId.value
+      ? { categoryId: categoryId.value }
+      : {}),
+    ...(value !== originalWhy.value ? { why: value || null } : {}),
+  };
+}
+
 async function loadEntity(): Promise<void> {
   emit("busy", true);
 
   try {
+    categories.value = await getCategories();
+
     if (props.kind === "todo") {
       const todo = await getTodo(props.entityId);
 
+      fillAssignment(todo);
       title.value = todo.title;
       duration.value = todo.plannedDurationMinutes ?? "";
       isFixed.value = todo.isFixed;
@@ -138,6 +167,7 @@ async function loadEntity(): Promise<void> {
     } else {
       const habit = await getHabit(props.entityId);
 
+      fillAssignment(habit);
       title.value = habit.title;
       isActive.value = habit.isActive;
       loadedHabit.value = habit;
@@ -187,15 +217,18 @@ function positiveInteger(
 }
 
 function todoInput(): CreateTodoInput {
-  return buildTodoInput(
-    {
-      title: title.value,
-      scheduledAt: scheduledAt.value,
-      duration: duration.value,
-      isFixed: isFixed.value,
-    },
-    { localInput: originalLocalInput.value, iso: originalScheduledAt.value },
-  );
+  return {
+    ...buildTodoInput(
+      {
+        title: title.value,
+        scheduledAt: scheduledAt.value,
+        duration: duration.value,
+        isFixed: isFixed.value,
+      },
+      { localInput: originalLocalInput.value, iso: originalScheduledAt.value },
+    ),
+    ...assignmentChanges(),
+  };
 }
 
 function fillSchedule(rule: HabitScheduleRule): void {
@@ -221,7 +254,7 @@ function editUpcomingSchedule(): void {
 }
 
 function buildHabitInput(): UpdateHabitInput {
-  const input: UpdateHabitInput = {};
+  const input: UpdateHabitInput = assignmentChanges();
   const value = validatedTitle();
   if (value !== loadedHabit.value?.title) input.title = value;
   if (isActive.value !== loadedHabit.value?.isActive)
@@ -387,6 +420,31 @@ onMounted(loadEntity);
           name="title"
           maxlength="200"
           required
+        />
+
+        <label for="planner-edit-category">Kategorie · optional</label>
+        <select
+          id="planner-edit-category"
+          v-model="categoryId"
+          name="category"
+        >
+          <option :value="null">Keine</option>
+          <option
+            v-for="category in categories"
+            :key="category.id"
+            :value="category.id"
+          >
+            {{ category.name }}
+          </option>
+        </select>
+
+        <label for="planner-edit-why">Warum · optional</label>
+        <textarea
+          id="planner-edit-why"
+          v-model="why"
+          name="why"
+          maxlength="1000"
+          rows="2"
         />
 
         <template v-if="kind === 'todo'">

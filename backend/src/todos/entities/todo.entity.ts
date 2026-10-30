@@ -1,4 +1,5 @@
 import { UserEntity } from '../../auth/auth.entities';
+import { CategoryEntity } from '../../categories/category.entity';
 import {
   Column,
   Index,
@@ -31,6 +32,18 @@ export class TodoEntity {
   @ManyToOne(() => TodoEntity, { nullable: true, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'parentId', foreignKeyConstraintName: 'FK_todos_parent' })
   parent?: TodoEntity | null;
+
+  @Index()
+  @Column({ type: 'integer', nullable: true })
+  categoryId!: number | null;
+
+  @ManyToOne(() => CategoryEntity, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'categoryId' })
+  category?: CategoryEntity | null;
+
+  /** The personal reason for this entry. */
+  @Column({ type: 'varchar', length: 1000, nullable: true })
+  why!: string | null;
 
   @Column({
     type: 'varchar',

@@ -18,6 +18,9 @@ import type {
 import type { TodoResponse } from "../types/todo";
 import PlannerItemEditor from "./PlannerItemEditor.vue";
 
+vi.mock("../api/categories.api", () => ({
+  getCategories: vi.fn().mockResolvedValue([{ id: 7, name: "Sport" }]),
+}));
 vi.mock("../api/todo-hierarchy.api", () => ({ getDeletionPreview: vi.fn() }));
 vi.mock("../api/day-planner.api", () => ({
   getTodo: vi.fn(),

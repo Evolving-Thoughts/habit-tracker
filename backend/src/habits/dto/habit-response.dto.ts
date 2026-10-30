@@ -34,6 +34,8 @@ export type HabitResponseDto = {
   timerDurationMinutes: number | null;
   id: number;
   title: string;
+  categoryId: number | null;
+  why: string | null;
   isActive: boolean;
   currentSchedule: ScheduleVersionResponse | null;
   upcomingSchedule: ScheduleVersionResponse | null;

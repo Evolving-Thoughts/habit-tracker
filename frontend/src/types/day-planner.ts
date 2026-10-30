@@ -8,6 +8,7 @@ export type DayPlannerTodoItem = {
   type: "todo";
   todoId: number;
   title: string;
+  categoryName?: string | null;
   status: TodoStatus;
   scheduledDate: string;
   scheduledAt: string | null;
@@ -24,6 +25,7 @@ export type DayPlannerHabitItem = {
   plannedDurationMinutes: number | null;
   habitId: number;
   title: string;
+  categoryName?: string | null;
   status: HabitOccurrenceStatus;
   scheduledDate: string;
   moveUntil: string | null;

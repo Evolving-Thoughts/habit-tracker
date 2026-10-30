@@ -140,6 +140,8 @@ describe('Todos API (e2e)', () => {
       expect(body).toEqual({
         id: body.id,
         parentId: null,
+        categoryId: null,
+        why: null,
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,

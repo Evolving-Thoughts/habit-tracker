@@ -16,6 +16,16 @@ export class UpdateTodoDto {
   readonly parentId?: number | null;
 
   @IsOptional()
+  @IsInt()
+  @Min(1)
+  readonly categoryId?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  readonly why?: string | null;
+
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)

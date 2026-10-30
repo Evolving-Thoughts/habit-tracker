@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { CategoryEntity } from '../categories/category.entity';
 import { dayOf } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import {
@@ -37,14 +38,24 @@ export class DayPlannerService {
   async getToday(userId: string): Promise<DayPlannerResponseDto> {
     const today = this.clock.today();
 
-    const [todos, occurrences] = await Promise.all([
+    const [todos, occurrences, categories] = await Promise.all([
       this.findTodosForToday(userId, today),
       this.scheduling.getToday(userId),
+      this.db.getRepository(CategoryEntity).findBy({ userId }),
     ]);
+    const names = new Map(categories.map((item) => [item.id, item.name]));
+    const categoryName = (id: number | null): string | null =>
+      (id !== null && names.get(id)) || null;
 
     const items = [
-      ...todos.map((todo) => this.mapTodo(todo, today)),
-      ...occurrences.map((occurrence) => this.mapOccurrence(occurrence, today)),
+      ...todos.map((todo) => ({
+        ...this.mapTodo(todo, today),
+        categoryName: categoryName(todo.categoryId),
+      })),
+      ...occurrences.map((occurrence) => ({
+        ...this.mapOccurrence(occurrence, today),
+        categoryName: categoryName(occurrence.habit.categoryId),
+      })),
     ];
 
     items.sort((first, second) => {
@@ -91,7 +102,10 @@ export class DayPlannerService {
     return [...open, ...completed];
   }
 
-  private mapTodo(todo: TodoEntity, today: string): DayPlannerTodoItemDto {
+  private mapTodo(
+    todo: TodoEntity,
+    today: string,
+  ): Omit<DayPlannerTodoItemDto, 'categoryName'> {
     // Open todos follow the agenda; completed ones stay on their own day.
     const placement = todo.completed ? null : placeOpenTodo(todo, today);
     const displayInstant = todo.scheduledAt ?? todo.completedAt;
@@ -118,7 +132,7 @@ export class DayPlannerService {
   private mapOccurrence(
     occurrence: HabitOccurrenceEntity,
     today: string,
-  ): DayPlannerHabitItemDto {
+  ): Omit<DayPlannerHabitItemDto, 'categoryName'> {
     if (!occurrence.habit || !occurrence.scheduleVersion) {
       throw new Error('Missing occurrence relations');
     }

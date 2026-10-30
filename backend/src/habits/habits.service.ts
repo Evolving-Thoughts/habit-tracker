@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, In, LessThanOrEqual } from 'typeorm';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
+import { assertOwnedCategory, normalizeWhy } from '../categories/assignment';
 import { initialScheduleInstant } from '../common/date/date-only.utils';
 import { dayOf } from '../common/date/local-day';
 import { Clock } from '../common/clock';
@@ -134,9 +135,13 @@ export class HabitsService {
       );
 
       const repository = manager.getRepository(HabitEntity);
+      const categoryId = dto.categoryId ?? null;
+      await assertOwnedCategory(manager, userId, categoryId);
 
       const habit = await repository.save(
         repository.create({
+          categoryId,
+          why: normalizeWhy(dto.why),
           plannedDurationMinutes: dto.plannedDurationMinutes ?? null,
           userId,
           title,
@@ -160,7 +165,9 @@ export class HabitsService {
     if (
       dto.title === undefined &&
       dto.isActive === undefined &&
-      dto.plannedDurationMinutes === undefined
+      dto.plannedDurationMinutes === undefined &&
+      dto.categoryId === undefined &&
+      dto.why === undefined
     ) {
       throw new BadRequestException('At least one property must be provided');
     }
@@ -168,6 +175,11 @@ export class HabitsService {
     return this.unitOfWork.run(userId, async (manager) => {
       const habit = await this.scheduling.lockHabit(userId, manager, id);
 
+      if (dto.categoryId !== undefined) {
+        await assertOwnedCategory(manager, userId, dto.categoryId);
+        habit.categoryId = dto.categoryId;
+      }
+      if (dto.why !== undefined) habit.why = normalizeWhy(dto.why);
       if (dto.plannedDurationMinutes !== undefined)
         habit.plannedDurationMinutes = dto.plannedDurationMinutes;
       if (dto.title !== undefined) {

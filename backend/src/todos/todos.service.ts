@@ -8,6 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'node:crypto';
 import { EntityManager, Repository } from 'typeorm';
+import { assertOwnedCategory, normalizeWhy } from '../categories/assignment';
 import { Clock } from '../common/clock';
 import { assertDateOnly } from '../common/date/date-only.utils';
 import { atSameWallClock } from '../common/date/local-day';
@@ -87,10 +88,17 @@ export class TodosService {
     return this.unitOfWork.run(userId, async (manager) => {
       await this.assertCanPlace(manager, userId, null, parentId);
       const repository = manager.getRepository(TodoEntity);
+      const categoryId =
+        dto.categoryId !== undefined
+          ? dto.categoryId
+          : await this.parentCategory(manager, userId, parentId);
+      await assertOwnedCategory(manager, userId, categoryId);
       return repository.save(
         repository.create({
           userId,
           parentId,
+          categoryId,
+          why: normalizeWhy(dto.why),
           title: dto.title,
           completed: false,
           completedAt: null,
@@ -118,6 +126,11 @@ export class TodosService {
         await this.assertCanPlace(manager, userId, id, dto.parentId);
         todo.parentId = dto.parentId;
       }
+      if (dto.categoryId !== undefined) {
+        await assertOwnedCategory(manager, userId, dto.categoryId);
+        todo.categoryId = dto.categoryId;
+      }
+      if (dto.why !== undefined) todo.why = normalizeWhy(dto.why);
       if (dto.title !== undefined) todo.title = dto.title;
       if (dto.scheduledAt !== undefined)
         todo.scheduledAt =
@@ -252,6 +265,19 @@ export class TodosService {
       )
       .digest('hex');
     return { todos, timers, confirmationToken };
+  }
+
+  /** A new child starts in its parent's category; there is no live inheritance. */
+  private async parentCategory(
+    manager: EntityManager,
+    userId: string,
+    parentId: number | null,
+  ): Promise<number | null> {
+    if (parentId === null) return null;
+    const parent = await manager
+      .getRepository(TodoEntity)
+      .findOneBy({ id: parentId, userId });
+    return parent?.categoryId ?? null;
   }
 
   /** Validates a placement against the parent's live ancestor chain. */

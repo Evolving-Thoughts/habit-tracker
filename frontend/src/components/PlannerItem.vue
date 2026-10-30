@@ -111,6 +111,8 @@ function skip(): void {
       <div class="planner-item__metadata">
         <span>{{ typeLabel }}</span>
 
+        <span v-if="item.categoryName">{{ item.categoryName }}</span>
+
         <span>
           {{ formatDateForGermanDisplay(item.scheduledDate) }}
         </span>
