@@ -58,7 +58,9 @@ describe('Categories and why (e2e)', () => {
       .send({ name: 'Musik' })
       .expect(200);
     const list = await request(server).get('/categories').expect(200);
-    expect(list.body).toEqual([{ id: created.id, name: 'Musik' }]);
+    expect(list.body).toEqual([
+      { id: created.id, name: 'Musik', weeklyTarget: null },
+    ]);
   });
 
   it('stores category and why on todos and habits', async () => {
@@ -131,6 +133,29 @@ describe('Categories and why (e2e)', () => {
       .send({ title: 'Test', categoryId: foreign.id })
       .expect(400);
     expect(await db.getRepository(TodoEntity).count()).toBe(0);
+  });
+
+  it('reports the Perfect Week in the history week view', async () => {
+    const { id } = await category('Sport');
+    await request(server)
+      .patch(`/categories/${id}`)
+      .send({ weeklyTarget: 1 })
+      .expect(200);
+    const entry = await todo({ categoryId: id });
+    const week = async () =>
+      (await request(server).get('/history?view=week').expect(200)).body as {
+        perfectWeek: { perfect: boolean; categories: unknown[] };
+      };
+    expect((await week()).perfectWeek.perfect).toBe(false);
+
+    await request(server)
+      .patch(`/todos/${entry.id}`)
+      .send({ completed: true })
+      .expect(200);
+    expect((await week()).perfectWeek).toMatchObject({
+      perfect: true,
+      categories: [{ target: 1, completed: 1, reached: true }],
+    });
   });
 
   it('shows the category name in the day planner', async () => {

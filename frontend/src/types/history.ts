@@ -39,6 +39,16 @@ export type HistoryResponse = {
   startDate: string;
   endDate: string;
   weeklyTargets?: HistoryWeeklyTarget[];
+  perfectWeek?: {
+    perfect: boolean;
+    categories: {
+      id: number;
+      name: string;
+      target: number;
+      completed: number;
+      reached: boolean;
+    }[];
+  } | null;
   weekQuota?: { completed: number; total: number; percentage: number } | null;
   days: {
     date: string;

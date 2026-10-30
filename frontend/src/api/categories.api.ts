@@ -22,6 +22,16 @@ export function renameCategory(
   });
 }
 
+export function setCategoryTarget(
+  id: number,
+  weeklyTarget: number | null,
+): Promise<CategoryResponse> {
+  return request<CategoryResponse>(`/categories/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ weeklyTarget }),
+  });
+}
+
 export function deleteCategory(id: number): Promise<void> {
   return request<void>(`/categories/${id}`, { method: "DELETE" });
 }

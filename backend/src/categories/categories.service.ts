@@ -9,6 +9,7 @@ import { EntityManager, Repository } from 'typeorm';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { HabitEntity } from '../habits/entities/habit.entity';
 import { TodoEntity } from '../todos/entities/todo.entity';
+import { UpdateCategoryDto } from './category.dto';
 import { CategoryEntity } from './category.entity';
 
 @Injectable()
@@ -35,12 +36,20 @@ export class CategoriesService {
     });
   }
 
-  rename(userId: string, id: number, rawName: string): Promise<CategoryEntity> {
-    const name = this.validName(rawName);
+  update(
+    userId: string,
+    id: number,
+    dto: UpdateCategoryDto,
+  ): Promise<CategoryEntity> {
     return this.unitOfWork.run(userId, async (manager) => {
       const category = await this.owned(manager, userId, id);
-      await this.assertNameFree(manager, userId, name, id);
-      category.name = name;
+      if (dto.name !== undefined) {
+        const name = this.validName(dto.name);
+        await this.assertNameFree(manager, userId, name, id);
+        category.name = name;
+      }
+      if (dto.weeklyTarget !== undefined)
+        category.weeklyTarget = dto.weeklyTarget;
       return manager.getRepository(CategoryEntity).save(category);
     });
   }

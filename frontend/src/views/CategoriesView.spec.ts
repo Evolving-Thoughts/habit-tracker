@@ -5,6 +5,7 @@ import {
   deleteCategory,
   getCategories,
   renameCategory,
+  setCategoryTarget,
 } from "../api/categories.api";
 import CategoriesView from "./CategoriesView.vue";
 
@@ -12,6 +13,7 @@ vi.mock("../api/categories.api", () => ({
   getCategories: vi.fn(),
   createCategory: vi.fn(),
   renameCategory: vi.fn(),
+  setCategoryTarget: vi.fn(),
   deleteCategory: vi.fn(),
 }));
 enableAutoUnmount(afterEach);
@@ -56,6 +58,19 @@ describe("CategoriesView", () => {
     await button(wrapper, "Löschen").trigger("click");
     await flushPromises();
     expect(deleteCategory).toHaveBeenCalledWith(1);
+  });
+
+  it("saves and clears the weekly target", async () => {
+    const wrapper = await render();
+    const input = wrapper.find('input[aria-label="Wochensoll für Sport"]');
+    await input.setValue("3");
+    await input.trigger("change");
+    await flushPromises();
+    expect(setCategoryTarget).toHaveBeenCalledWith(1, 3);
+    await input.setValue("");
+    await input.trigger("change");
+    await flushPromises();
+    expect(setCategoryTarget).toHaveBeenCalledWith(1, null);
   });
 
   it("shows a server error", async () => {

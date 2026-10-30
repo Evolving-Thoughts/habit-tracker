@@ -189,6 +189,15 @@ onUnmounted(() => {
         Wochenquote Habits: {{ result.weekQuota.completed }} von
         {{ result.weekQuota.total }} ({{ result.weekQuota.percentage }} %)
       </p>
+      <section v-if="result.perfectWeek" class="perfect-week">
+        <h2>{{ result.perfectWeek.perfect ? "Perfect Week!" : "Perfect Week" }}</h2>
+        <ul>
+          <li v-for="item in result.perfectWeek.categories" :key="item.id">
+            {{ item.name }}: {{ item.completed }} von {{ item.target }}
+            {{ item.reached ? "✓" : "" }}
+          </li>
+        </ul>
+      </section>
       <p v-if="!hasItems" class="empty">
         Für diesen Zeitraum gibt es keine Einträge{{
           filter === "all" ? "" : " für diesen Filter"
@@ -475,6 +484,16 @@ summary span {
   }
 }
 .planning-note,
+.perfect-week h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.perfect-week ul {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}
+
 .week-quota {
   font-weight: 600;
 }

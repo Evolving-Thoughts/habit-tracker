@@ -5,6 +5,7 @@ import {
   deleteCategory,
   getCategories,
   renameCategory,
+  setCategoryTarget,
 } from "../api/categories.api";
 import { notifyDataChanged } from "../composables/data-sync";
 import { useLoader } from "../composables/useLoader";
@@ -62,6 +63,14 @@ async function saveName(id: number): Promise<void> {
   const name = editedName.value.trim();
   if (name && (await run(() => renameCategory(id, name))))
     editingId.value = null;
+}
+
+async function saveTarget(id: number, value: string): Promise<void> {
+  const target = Number(value);
+  if (!value) await run(() => setCategoryTarget(id, null));
+  else if (Number.isInteger(target) && target >= 1)
+    await run(() => setCategoryTarget(id, target));
+  else errorMessage.value = "Das Wochensoll muss eine ganze Zahl ab 1 sein.";
 }
 
 async function remove(id: number): Promise<void> {
@@ -126,6 +135,22 @@ async function remove(id: number): Promise<void> {
         </div>
         <div v-else class="categories-view__row">
           <span class="categories-view__grow">{{ category.name }}</span>
+          <label class="categories-view__target">
+            Wochensoll
+            <input
+              type="number"
+              min="1"
+              step="1"
+              :value="category.weeklyTarget ?? ''"
+              :aria-label="`Wochensoll für ${category.name}`"
+              @change="
+                saveTarget(
+                  category.id,
+                  ($event.target as HTMLInputElement).value,
+                )
+              "
+            />
+          </label>
           <button type="button" @click="startEditing(category)">
             Umbenennen
           </button>
@@ -165,6 +190,18 @@ async function remove(id: number): Promise<void> {
   gap: 0.25rem;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.categories-view__target {
+  display: grid;
+  gap: 0.25rem;
+  width: 6rem;
+  font-size: 0.8125rem;
+}
+
+.categories-view__target input {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .categories-view input {

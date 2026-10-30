@@ -19,6 +19,8 @@ import {
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { historyRange } from './history-range';
+import { CategoryEntity } from '../categories/category.entity';
+import { perfectWeek } from './perfect-week';
 import { weekQuota } from './week-quota';
 import {
   HistoryQueryDto,
@@ -116,6 +118,23 @@ export class HistoryService {
         now,
       );
       return {
+        ...(query.view === 'week' && filter === 'all'
+          ? {
+              perfectWeek: perfectWeek(
+                await manager
+                  .getRepository(CategoryEntity)
+                  .find({ where: { userId }, order: { name: 'ASC' } }),
+                [
+                  ...todos.map((todo) => todo.categoryId),
+                  ...occurrences
+                    .filter(
+                      (item) => item.status === HabitOccurrenceStatus.COMPLETED,
+                    )
+                    .map((item) => item.habit.categoryId),
+                ],
+              ),
+            }
+          : {}),
         weeklyTargets: planning.targets,
         ...(query.view === 'week' && filter !== 'todos'
           ? {

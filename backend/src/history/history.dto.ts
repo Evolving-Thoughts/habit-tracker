@@ -1,4 +1,5 @@
 import { IsIn, IsOptional, IsString } from 'class-validator';
+import type { PerfectWeek } from './perfect-week';
 import type { WeekQuota } from './week-quota';
 export class HistoryQueryDto {
   @IsOptional() @IsString() date?: string;
@@ -51,6 +52,8 @@ export type HistoryResponse = {
   weeklyTargets?: HistoryWeeklyTarget[];
   /** Week view only; null when nothing was planned that week. */
   weekQuota?: WeekQuota | null;
+  /** Week view without a filter; null when no category has a weekly target. */
+  perfectWeek?: PerfectWeek | null;
   days: {
     date: string;
     items: HistoryItem[];
