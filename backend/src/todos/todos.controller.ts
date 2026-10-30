@@ -18,6 +18,7 @@ import {
   HierarchyTodoResponse,
 } from './dto/todo-hierarchy-response.dto';
 import { CreateTodoDto } from './dto/create-todo.dto';
+import { RescheduleTodoDto } from './dto/reschedule-todo.dto';
 import { TodoResponseDto } from './dto/todo-response.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
 import { TodoMapper } from './mappers/todo.mapper';
@@ -81,6 +82,18 @@ export class TodosController {
     @Body() updateTodoDto: UpdateTodoDto,
   ): Promise<TodoResponseDto> {
     const todo = await this.todosService.update(user.id, id, updateTodoDto);
+
+    return TodoMapper.toResponseDto(todo);
+  }
+
+  @Post(':id/reschedule')
+  @HttpCode(HttpStatus.OK)
+  async reschedule(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RescheduleTodoDto,
+  ): Promise<TodoResponseDto> {
+    const todo = await this.todosService.reschedule(user.id, id, dto);
 
     return TodoMapper.toResponseDto(todo);
   }

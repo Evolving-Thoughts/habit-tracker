@@ -25,6 +25,8 @@ export type DayPlannerHabitItemDto = {
   title: string;
   status: HabitOccurrenceStatus;
   scheduledDate: string;
+  /** Last day this pending occurrence can be moved to; null once resolved. */
+  moveUntil: string | null;
   scheduleType: HabitScheduleType;
   isOverdue: boolean;
   timerEligible: boolean;

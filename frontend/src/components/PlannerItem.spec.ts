@@ -38,6 +38,7 @@ function makeHabit(
     title: "Joggen",
     status: "pending",
     scheduledDate: "2026-10-02",
+    moveUntil: null,
     scheduleType: "interval",
     isOverdue: false,
     timerEligible: true,

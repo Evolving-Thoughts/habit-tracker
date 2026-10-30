@@ -8,8 +8,12 @@ import {
   isTodoTimerEligible,
 } from '../timers/timer-target';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
-import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
+import {
+  HabitOccurrenceEntity,
+  occurrenceDueDate,
+} from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
+import { lastMovableDate } from '../habits/scheduling/schedule-rules';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import {
   completedTodos,
@@ -119,6 +123,9 @@ export class DayPlannerService {
       throw new Error('Missing occurrence relations');
     }
 
+    const pending = occurrence.status === HabitOccurrenceStatus.PENDING;
+    const dueDate = occurrenceDueDate(occurrence);
+
     return {
       type: 'habit',
       plannedDurationMinutes: effectiveDuration(occurrence, occurrence.habit),
@@ -126,11 +133,12 @@ export class DayPlannerService {
       habitId: occurrence.habitId,
       title: occurrence.habit.title,
       status: occurrence.status,
-      scheduledDate: occurrence.scheduledDate,
+      scheduledDate: pending ? dueDate : occurrence.scheduledDate,
+      moveUntil: pending
+        ? lastMovableDate(occurrence.scheduleVersion, occurrence.scheduledDate)
+        : null,
       scheduleType: occurrence.scheduleVersion.type,
-      isOverdue:
-        occurrence.status === HabitOccurrenceStatus.PENDING &&
-        occurrence.scheduledDate < today,
+      isOverdue: pending && dueDate < today,
       timerEligible: isOccurrenceTimerEligible(
         occurrence,
         occurrence.habit,

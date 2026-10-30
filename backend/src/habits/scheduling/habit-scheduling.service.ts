@@ -5,15 +5,23 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Brackets, DataSource, EntityManager } from 'typeorm';
-import { changeScheduleInstant } from '../../common/date/date-only.utils';
+import {
+  assertDateOnly,
+  changeScheduleInstant,
+} from '../../common/date/date-only.utils';
 import { dayOf, weekRange } from '../../common/date/local-day';
 import { Clock } from '../../common/clock';
 import { lockUser, UserUnitOfWork } from '../../common/user-unit-of-work';
 import { ownedOccurrences } from '../../habit-occurrences/owned-occurrences';
-import { effectiveDuration, releaseTimers } from '../../timers/timer-target';
+import {
+  effectiveDuration,
+  hasOpenTimer,
+  releaseTimers,
+} from '../../timers/timer-target';
 import {
   HabitOccurrenceCancellationReason,
   HabitOccurrenceEntity,
+  occurrenceDueDate,
 } from '../../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../../habit-occurrences/enums/habit-occurrence-status.enum';
 import { ChangeHabitScheduleDto } from '../dto/change-habit-schedule.dto';
@@ -27,6 +35,7 @@ import { HabitScheduleType } from '../enums/habit-schedule-type.enum';
 import {
   buildVersion,
   expiresAt,
+  lastMovableDate,
   nextScheduledDate,
   normalizeSchedule,
   ruleResponse,
@@ -511,7 +520,7 @@ export class HabitSchedulingService {
         !habit.isActive ||
         !active ||
         occurrence.scheduleVersionId !== active.id ||
-        occurrence.scheduledDate > today ||
+        occurrenceDueDate(occurrence) > today ||
         expiresAt(active, occurrence.scheduledDate) <= now
       ) {
         throw new ConflictException('This occurrence is no longer actionable');
@@ -557,6 +566,73 @@ export class HabitSchedulingService {
       if (targetStatus !== HabitOccurrenceStatus.PENDING)
         await releaseTimers(manager, userId, { occurrenceIds: [id] });
       return saved;
+    });
+  }
+
+  /**
+   * Moves a pending occurrence within its window. Only `movedToDate` changes:
+   * the slot and with it the fixed schedule grid stay as they are.
+   */
+  async reschedule(
+    userId: string,
+    id: number,
+    date: string,
+  ): Promise<HabitOccurrenceEntity> {
+    assertDateOnly(date);
+
+    const initial = await ownedOccurrences(this.dataSource.manager, userId)
+      .andWhere('occurrence.id = :id', { id })
+      .getOne();
+
+    if (!initial) {
+      throw new NotFoundException(
+        `Habit occurrence with ID ${id} was not found`,
+      );
+    }
+
+    return this.unitOfWork.run(userId, async (manager) => {
+      const habit = await this.lockHabit(userId, manager, initial.habitId);
+      const now = this.clock.now();
+      const today = dayOf(now);
+
+      await this.reconcile(manager, habit, now);
+
+      const repository = manager.getRepository(HabitOccurrenceEntity);
+      const occurrence = await repository.findOneByOrFail({ id });
+      const active = this.activeVersion(
+        await this.getVersions(manager, habit.id),
+        now,
+      );
+
+      if (
+        !habit.isActive ||
+        !active ||
+        occurrence.status !== HabitOccurrenceStatus.PENDING ||
+        occurrence.scheduleVersionId !== active.id
+      ) {
+        throw new ConflictException(
+          'Diese Ausführung kann nicht mehr verschoben werden.',
+        );
+      }
+
+      if (
+        date < today ||
+        date > lastMovableDate(active, occurrence.scheduledDate)
+      ) {
+        throw new ConflictException(
+          'Der Tag liegt außerhalb des Terminfensters.',
+        );
+      }
+
+      if (await hasOpenTimer(manager, userId, { occurrenceId: id })) {
+        throw new ConflictException(
+          'Beende zuerst den Timer, bevor du das Habit verschiebst.',
+        );
+      }
+
+      occurrence.movedToDate = date === occurrence.scheduledDate ? null : date;
+
+      return repository.save(occurrence);
     });
   }
 
@@ -610,7 +686,7 @@ export class HabitSchedulingService {
           query
             .where(
               `"occurrence"."status" = :pending
-               AND "occurrence"."scheduledDate" <= :today`,
+               AND COALESCE("occurrence"."movedToDate", "occurrence"."scheduledDate") <= :today`,
               {
                 pending: HabitOccurrenceStatus.PENDING,
                 today,

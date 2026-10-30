@@ -90,9 +90,9 @@ export function plannedHabits(
         id: stored?.id ?? null,
         habitId: habit.id,
         title: habit.title,
-        date: slot.date,
+        date: stored?.movedToDate ?? slot.date,
         scheduledDate: slot.scheduledDate,
-        isOverdue: slot.scheduledDate < today,
+        isOverdue: (stored?.movedToDate ?? slot.scheduledDate) < today,
         plannedDurationMinutes: stored
           ? effectiveDuration(stored, habit)
           : habit.plannedDurationMinutes,

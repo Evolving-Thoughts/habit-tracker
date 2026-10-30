@@ -64,6 +64,27 @@ export function updateTodoSchedule(
   return updateTodo(todoId, input);
 }
 
+export function rescheduleTodo(
+  todoId: number,
+  date: string,
+  confirmFixed: boolean,
+): Promise<TodoResponse> {
+  return request<TodoResponse>(`/todos/${todoId}/reschedule`, {
+    method: "POST",
+    body: JSON.stringify({ date, confirmFixed }),
+  });
+}
+
+export function rescheduleOccurrence(
+  occurrenceId: number,
+  date: string,
+): Promise<void> {
+  return request<void>(`/habit-occurrences/${occurrenceId}/reschedule`, {
+    method: "POST",
+    body: JSON.stringify({ date }),
+  });
+}
+
 export function updateOccurrenceStatus(
   occurrenceId: number,
   status: HabitOccurrenceStatus,

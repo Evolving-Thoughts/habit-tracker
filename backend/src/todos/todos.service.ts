@@ -9,14 +9,18 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'node:crypto';
 import { EntityManager, Repository } from 'typeorm';
 import { Clock } from '../common/clock';
+import { assertDateOnly } from '../common/date/date-only.utils';
+import { atSameWallClock } from '../common/date/local-day';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import {
   discardTimersOfTodos,
+  hasOpenTimer,
   releaseTimers,
   timersOfTodos,
 } from '../timers/timer-target';
 import { TimerEntity } from '../timers/timer.entity';
 import { CreateTodoDto } from './dto/create-todo.dto';
+import { RescheduleTodoDto } from './dto/reschedule-todo.dto';
 import {
   DeletionPreviewResponse,
   HierarchyTodoResponse,
@@ -133,6 +137,41 @@ export class TodosService {
       if (todo.completed)
         await releaseTimers(manager, userId, { todoIds: [id] });
       return saved;
+    });
+  }
+
+  /** Moves an open todo to another day; time and duration stay. */
+  async reschedule(
+    userId: string,
+    id: number,
+    dto: RescheduleTodoDto,
+  ): Promise<TodoEntity> {
+    assertDateOnly(dto.date);
+    return this.unitOfWork.run(userId, async (manager) => {
+      const repository = manager.getRepository(TodoEntity);
+      const todo = await repository.findOneBy({ id, userId });
+      if (!todo)
+        throw new NotFoundException(`Todo with ID ${id} was not found`);
+      if (todo.completed)
+        throw new ConflictException(
+          'Erledigte Todos können nicht verschoben werden.',
+        );
+      if (!todo.scheduledAt)
+        throw new BadRequestException('Das Todo hat noch keinen Termin.');
+      if (dto.date < this.clock.today())
+        throw new BadRequestException(
+          'Todos können nicht in die Vergangenheit verschoben werden.',
+        );
+      if (todo.isFixed && !dto.confirmFixed)
+        throw new ConflictException(
+          'Feste Termine müssen ausdrücklich bestätigt werden.',
+        );
+      if (await hasOpenTimer(manager, userId, { todoId: id }))
+        throw new ConflictException(
+          'Beende zuerst den Timer, bevor du das Todo verschiebst.',
+        );
+      todo.scheduledAt = atSameWallClock(todo.scheduledAt, dto.date);
+      return repository.save(todo);
     });
   }
 

@@ -1,4 +1,5 @@
 import { Brackets, EntityManager } from 'typeorm';
+import { occurrenceDueDate } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { TimerEntity } from './timer.entity';
 
 /**
@@ -25,14 +26,18 @@ export function isTodoTimerEligible(todo: { completed: boolean }): boolean {
 
 /** An occurrence can carry a timer while pending, due and its habit active. */
 export function isOccurrenceTimerEligible(
-  occurrence: { status: string; scheduledDate: string },
+  occurrence: {
+    status: string;
+    scheduledDate: string;
+    movedToDate?: string | null;
+  },
   habit: { isActive: boolean },
   today: string,
 ): boolean {
   return (
     habit.isActive &&
     occurrence.status === 'pending' &&
-    occurrence.scheduledDate <= today
+    occurrenceDueDate(occurrence) <= today
   );
 }
 
@@ -82,6 +87,20 @@ export async function releaseTimers(
       }),
     )
     .execute();
+}
+
+/** Whether a running or paused timer is attached to this target. */
+export function hasOpenTimer(
+  manager: EntityManager,
+  userId: string,
+  target: { todoId: number } | { occurrenceId: number },
+): Promise<boolean> {
+  return manager.getRepository(TimerEntity).exists({
+    where: [
+      { userId, state: 'running', ...target },
+      { userId, state: 'paused', ...target },
+    ],
+  });
 }
 
 /** Timers (any state) that belong to these todos, for previews of destructive changes. */

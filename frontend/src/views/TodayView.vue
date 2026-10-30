@@ -12,6 +12,7 @@ import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import PlannerItem from "../components/PlannerItem.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
+import MoveItemDialog from "../components/MoveItemDialog.vue";
 import type {
   DayPlannerHabitItem,
   DayPlannerItem,
@@ -32,6 +33,7 @@ const updatingKeys = ref<string[]>([]);
 
 const editingTarget = ref<EditingTarget | null>(null);
 const editorBusy = ref(false);
+const movingItem = ref<DayPlannerItem | null>(null);
 const creationOpen = ref(false);
 const creationMessage = ref<string | null>(null);
 
@@ -78,6 +80,7 @@ const {
   refreshOnChange: () =>
     !editorBusy.value &&
     !editingTarget.value &&
+    !movingItem.value &&
     !creationOpen.value &&
     updatingKeys.value.length === 0,
 });
@@ -191,6 +194,26 @@ async function onEditorChanged(): Promise<void> {
   closeEditing();
 }
 
+function openMoving(item: DayPlannerItem): void {
+  if (editorBusy.value || updatingKeys.value.length > 0) {
+    return;
+  }
+
+  listFocus.remember(getItemKey(item));
+  movingItem.value = item;
+}
+
+function closeMoving(): void {
+  movingItem.value = null;
+  editorBusy.value = false;
+}
+
+async function onMoved(): Promise<void> {
+  notifyDataChanged();
+  await loadToday(false);
+  closeMoving();
+}
+
 function openCreation(): void {
   if (
     isLoading.value ||
@@ -270,6 +293,16 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
       @close="closeEditing"
     />
 
+    <MoveItemDialog
+      v-if="movingItem && planner"
+      :item="movingItem"
+      :today="planner.date"
+      :return-focus="listFocus.returnFocus"
+      @busy="editorBusy = $event"
+      @moved="onMoved"
+      @close="closeMoving"
+    />
+
     <p v-if="errorMessage" class="today-view__error" role="alert">
       {{ errorMessage }}
     </p>
@@ -301,6 +334,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
             @toggle="toggleItem"
             @skip="skipHabit"
             @edit="openEditing"
+            @move="openMoving"
           />
         </div>
       </section>
@@ -321,6 +355,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
             @toggle="toggleItem"
             @skip="skipHabit"
             @edit="openEditing"
+            @move="openMoving"
           />
         </div>
       </section>
@@ -341,6 +376,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
             @toggle="toggleItem"
             @skip="skipHabit"
             @edit="openEditing"
+            @move="openMoving"
           />
         </div>
       </section>

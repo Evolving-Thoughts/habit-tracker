@@ -72,6 +72,36 @@ export function startOfDay(date: string): Date {
   return midnightInTimeZone(date);
 }
 
+function wallClockMs(instant: Date): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: DEFAULT_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(instant);
+  const part = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((item) => item.type === type)!.value);
+  return (
+    (part('hour') * 3600 + part('minute') * 60 + part('second')) * 1000 +
+    instant.getUTCMilliseconds()
+  );
+}
+
+/**
+ * The instant on `date` with the same app-zone wall clock as `instant`.
+ * A time inside the spring DST gap moves forward (02:30 → 03:30).
+ */
+export function atSameWallClock(instant: Date, date: string): Date {
+  const target = wallClockMs(instant);
+  const first = startOfDay(date).getTime() + target;
+  let drift = target - wallClockMs(new Date(first));
+  if (drift > DAY_MS / 2) drift -= DAY_MS;
+  if (drift < -DAY_MS / 2) drift += DAY_MS;
+  const corrected = new Date(first + drift);
+  return wallClockMs(corrected) === target ? corrected : new Date(first);
+}
+
 /** Exclusive end instant of `date` (start of the following day). */
 export function endOfDay(date: string): Date {
   assertDateOnly(date);

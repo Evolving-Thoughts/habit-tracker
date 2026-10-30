@@ -15,6 +15,14 @@ import { HabitOccurrenceStatus } from '../enums/habit-occurrence-status.enum';
 export type HabitOccurrenceCancellationReason =
   'schedule_changed' | 'already_completed_today' | 'weekly_target_reached';
 
+/** The day a pending occurrence is due: its moved day, else its slot. */
+export function occurrenceDueDate(occurrence: {
+  scheduledDate: string;
+  movedToDate?: string | null;
+}): string {
+  return occurrence.movedToDate ?? occurrence.scheduledDate;
+}
+
 @Entity({ name: 'habit_occurrences' })
 @Index(['scheduleVersionId', 'scheduledDate'], { unique: true })
 @Index('UQ_habit_occurrences_pending', ['habitId'], {
@@ -50,6 +58,10 @@ export class HabitOccurrenceEntity {
 
   @Column({ type: 'date' })
   scheduledDate!: string;
+
+  /** Manually chosen day; the schedule slot stays `scheduledDate`. */
+  @Column({ type: 'date', nullable: true })
+  movedToDate!: string | null;
 
   @Column({
     type: 'enum',

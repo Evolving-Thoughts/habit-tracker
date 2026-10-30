@@ -6,6 +6,7 @@ export type HabitOccurrenceResponseDto = {
   habitId: number;
   scheduleVersionId: number;
   scheduledDate: string;
+  movedToDate: string | null;
   status: HabitOccurrenceStatus;
   resolvedDate: string | null;
   cancellationReason: HabitOccurrenceCancellationReason | null;

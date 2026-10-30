@@ -11,6 +11,7 @@ import {
 import { Repository, DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
+import { addDays, dayOf } from '../src/common/date/local-day';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
 
 type TodoResponseBody = {
@@ -62,6 +63,65 @@ describe('Todos API (e2e)', () => {
 
   afterAll(async () => {
     await app.close();
+  });
+
+  describe('POST /todos/:id/reschedule', () => {
+    const tomorrow = addDays(dayOf(new Date()), 1);
+    const scheduled = async (isFixed = false): Promise<TodoResponseBody> =>
+      (
+        await request(httpServer)
+          .post('/todos')
+          .send({
+            title: 'Saugen',
+            scheduledAt: new Date(Date.now() + 3600000).toISOString(),
+            plannedDurationMinutes: 30,
+            isFixed,
+          })
+          .expect(201)
+      ).body as TodoResponseBody;
+    const move = (id: number, body: object) =>
+      request(httpServer).post(`/todos/${id}/reschedule`).send(body);
+
+    it('changes only the day', async () => {
+      const todo = await scheduled();
+      const response = await move(todo.id, { date: tomorrow }).expect(200);
+      const moved = response.body as TodoResponseBody;
+      const clock = (iso: string | null): string =>
+        new Intl.DateTimeFormat('de-DE', {
+          timeZone: 'Europe/Berlin',
+          timeStyle: 'short',
+        }).format(new Date(iso!));
+
+      expect(dayOf(new Date(moved.scheduledAt!))).toBe(tomorrow);
+      expect(clock(moved.scheduledAt)).toBe(clock(todo.scheduledAt));
+      expect(moved.plannedDurationMinutes).toBe(30);
+    });
+
+    it('moves a fixed todo only with confirmation', async () => {
+      const todo = await scheduled(true);
+      await move(todo.id, { date: tomorrow }).expect(409);
+      await move(todo.id, { date: tomorrow, confirmFixed: true }).expect(200);
+    });
+
+    it('refuses while a timer is open', async () => {
+      const todo = await scheduled();
+      await request(httpServer)
+        .post('/timers')
+        .send({ kind: 'todo', targetId: todo.id, durationMinutes: 10 })
+        .expect(201);
+      await move(todo.id, { date: tomorrow }).expect(409);
+    });
+
+    it('rejects past days, completed and unknown todos', async () => {
+      const todo = await scheduled();
+      await move(todo.id, { date: '2000-01-01' }).expect(400);
+      await move(424242, { date: tomorrow }).expect(404);
+      await request(httpServer)
+        .patch(`/todos/${todo.id}`)
+        .send({ completed: true })
+        .expect(200);
+      await move(todo.id, { date: tomorrow }).expect(409);
+    });
   });
 
   describe('POST /todos', () => {

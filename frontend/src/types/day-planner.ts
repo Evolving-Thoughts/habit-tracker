@@ -26,6 +26,7 @@ export type DayPlannerHabitItem = {
   title: string;
   status: HabitOccurrenceStatus;
   scheduledDate: string;
+  moveUntil: string | null;
   scheduleType: HabitScheduleType;
   isOverdue: boolean;
   timerEligible: boolean;
