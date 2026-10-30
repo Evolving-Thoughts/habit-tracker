@@ -35,6 +35,37 @@ describe('Calendar month view (e2e)', () => {
   );
   afterAll(() => app.close());
 
+  it('reports the habit quota in the week view only', async () => {
+    await request(server)
+      .post('/habits')
+      .send({
+        title: 'Laufen',
+        schedule: { type: 'interval', intervalDays: 1 },
+      })
+      .expect(201);
+    const due = await request(server)
+      .get('/habit-occurrences/today')
+      .expect(200);
+    const { id } = (due.body as { id: number }[])[0];
+    await request(server)
+      .patch(`/habit-occurrences/${id}/status`)
+      .send({ status: 'completed' })
+      .expect(200);
+
+    const week = await request(server)
+      .get(`/history?date=${today}&view=week`)
+      .expect(200);
+    expect((week.body as HistoryResponse).weekQuota).toEqual({
+      completed: 1,
+      total: 1,
+      percentage: 100,
+    });
+    const day = await request(server)
+      .get(`/history?date=${today}&view=day`)
+      .expect(200);
+    expect((day.body as HistoryResponse).weekQuota).toBeUndefined();
+  });
+
   it('covers exactly the calendar month', async () => {
     const result = await month('2026-02-15');
     expect(result.startDate).toBe('2026-02-01');

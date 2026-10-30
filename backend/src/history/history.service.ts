@@ -19,6 +19,7 @@ import {
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { historyRange } from './history-range';
+import { weekQuota } from './week-quota';
 import {
   HistoryQueryDto,
   HistoryResponse,
@@ -116,6 +117,24 @@ export class HistoryService {
       );
       return {
         weeklyTargets: planning.targets,
+        ...(query.view === 'week' && filter !== 'todos'
+          ? {
+              weekQuota: weekQuota(
+                await manager
+                  .getRepository(HabitOccurrenceEntity)
+                  .createQueryBuilder('occurrence')
+                  .withDeleted()
+                  .innerJoin('occurrence.habit', 'habit')
+                  .innerJoinAndSelect('occurrence.scheduleVersion', 'version')
+                  .where('"habit"."userId" = :userId', { userId })
+                  .andWhere(
+                    '"occurrence"."scheduledDate" BETWEEN :startDate AND :endDate',
+                    { startDate, endDate },
+                  )
+                  .getMany(),
+              ),
+            }
+          : {}),
         today,
         timeZone: DEFAULT_TIME_ZONE,
         startDate,

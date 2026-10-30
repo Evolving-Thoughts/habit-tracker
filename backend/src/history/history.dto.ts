@@ -1,4 +1,5 @@
 import { IsIn, IsOptional, IsString } from 'class-validator';
+import type { WeekQuota } from './week-quota';
 export class HistoryQueryDto {
   @IsOptional() @IsString() date?: string;
   @IsOptional() @IsIn(['day', 'week', 'month']) view?: 'day' | 'week' | 'month';
@@ -48,6 +49,8 @@ export type HistoryResponse = {
   startDate: string;
   endDate: string;
   weeklyTargets?: HistoryWeeklyTarget[];
+  /** Week view only; null when nothing was planned that week. */
+  weekQuota?: WeekQuota | null;
   days: {
     date: string;
     items: HistoryItem[];

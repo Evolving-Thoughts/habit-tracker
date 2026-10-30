@@ -39,6 +39,7 @@ export type HistoryResponse = {
   startDate: string;
   endDate: string;
   weeklyTargets?: HistoryWeeklyTarget[];
+  weekQuota?: { completed: number; total: number; percentage: number } | null;
   days: {
     date: string;
     items: HistoryItem[];

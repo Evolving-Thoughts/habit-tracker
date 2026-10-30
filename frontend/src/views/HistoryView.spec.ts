@@ -41,6 +41,25 @@ beforeEach(() => {
   vi.clearAllMocks();
   mock.mockResolvedValue(response());
 });
+describe("week quota", () => {
+  it("shows the share of completed habit occurrences", async () => {
+    const wrapper = mount(HistoryView);
+    await flushPromises();
+    expect(wrapper.find(".week-quota").exists()).toBe(false);
+    mock.mockResolvedValueOnce({
+      today: "2026-10-30",
+      timeZone: "Europe/Berlin",
+      startDate: "2026-10-26",
+      endDate: "2026-11-01",
+      days: [],
+      weekQuota: { completed: 7, total: 10, percentage: 70 },
+    });
+    await wrapper.findAll("button").find((b) => b.text() === "Woche")!.trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".week-quota").text()).toContain("7 von 10 (70 %)");
+  });
+});
+
 describe("HistoryView", () => {
   it("requests the current Berlin day", async () => {
     mount(HistoryView);

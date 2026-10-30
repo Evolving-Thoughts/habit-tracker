@@ -185,6 +185,10 @@ onUnmounted(() => {
         :date="result.startDate"
         :targets="workTargets"
       />
+      <p v-if="result.weekQuota" class="week-quota">
+        Wochenquote Habits: {{ result.weekQuota.completed }} von
+        {{ result.weekQuota.total }} ({{ result.weekQuota.percentage }} %)
+      </p>
       <p v-if="!hasItems" class="empty">
         Für diesen Zeitraum gibt es keine Einträge{{
           filter === "all" ? "" : " für diesen Filter"
@@ -471,6 +475,10 @@ summary span {
   }
 }
 .planning-note,
+.week-quota {
+  font-weight: 600;
+}
+
 .weekly-targets p {
   color: #61718c;
   font-size: 0.875rem;
