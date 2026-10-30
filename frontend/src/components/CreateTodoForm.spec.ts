@@ -96,6 +96,18 @@ describe("CreateTodoForm", () => {
     );
   });
 
+  it("sends a trimmed why", async () => {
+    createTodoMock.mockResolvedValue(response);
+    const wrapper = mount(CreateTodoForm);
+    await wrapper.get('input[name="title"]').setValue("Laufen");
+    await wrapper.get('textarea[name="why"]').setValue("  Fit bleiben ");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(createTodoMock).toHaveBeenCalledWith(
+      expect.objectContaining({ why: "Fit bleiben" }),
+    );
+  });
+
   it("rejects a blank title", async () => {
     const wrapper = mount(CreateTodoForm);
 

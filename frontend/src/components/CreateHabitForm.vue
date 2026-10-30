@@ -26,6 +26,7 @@ const title = ref("");
 const startDate = ref("");
 const duration = ref<string | number>("");
 const category = ref<CategoryChoice>("default");
+const why = ref("");
 const scheduleType = ref<HabitScheduleType>("interval");
 const intervalDays = ref<string | number>(1);
 const weeklyTarget = ref<string | number>(3);
@@ -103,6 +104,7 @@ function buildInput(): CreateHabitInput {
       : {}),
     ...(startDate.value ? { startDate: startDate.value } : {}),
     ...(category.value !== "default" ? { categoryId: category.value } : {}),
+    ...(why.value.trim() ? { why: why.value.trim() } : {}),
     schedule,
   };
 }
@@ -118,6 +120,7 @@ async function submit(): Promise<void> {
     startDate.value = "";
     duration.value = "";
     category.value = "default";
+    why.value = "";
     emit("created");
   } catch (error: unknown) {
     errorMessage.value =
@@ -155,6 +158,16 @@ async function submit(): Promise<void> {
         <div class="create-habit__field">
           <label for="habit-category">Kategorie · optional</label>
           <CategorySelect id="habit-category" v-model="category" />
+        </div>
+        <div class="create-habit__field">
+          <label for="habit-why">Warum · optional</label>
+          <textarea
+            id="habit-why"
+            v-model="why"
+            name="why"
+            maxlength="1000"
+            rows="2"
+          />
         </div>
         <div class="create-habit__field">
           <label for="habit-start-date">Startdatum · optional</label>
@@ -304,6 +317,7 @@ async function submit(): Promise<void> {
   font-size: 0.875rem;
   font-weight: 600;
 }
+.create-habit textarea,
 .create-habit input:not([type="checkbox"]),
 .create-habit select {
   width: 100%;

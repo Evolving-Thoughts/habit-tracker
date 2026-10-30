@@ -61,6 +61,7 @@ export type ChangeHabitScheduleInput = {
 
 export type CreateHabitInput = {
   categoryId?: number | null;
+  why?: string | null;
   plannedDurationMinutes?: number | null;
   title: string;
   startDate?: string;

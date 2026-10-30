@@ -17,6 +17,7 @@ const scheduledAt = ref("");
 const durationMinutes = ref<string | number>("");
 const isFixed = ref(false);
 const category = ref<CategoryChoice>("default");
+const why = ref("");
 
 const isSubmitting = ref(false);
 const errorMessage = ref<string | null>(null);
@@ -37,6 +38,7 @@ function resetForm(): void {
   durationMinutes.value = "";
   isFixed.value = false;
   category.value = "default";
+  why.value = "";
 }
 
 async function submit(): Promise<void> {
@@ -51,6 +53,7 @@ async function submit(): Promise<void> {
     const input = buildInput();
     if (props.parentId !== undefined) input.parentId = props.parentId;
     if (category.value !== "default") input.categoryId = category.value;
+    if (why.value.trim()) input.why = why.value.trim();
 
     isSubmitting.value = true;
     emit("busy", true);
@@ -108,6 +111,18 @@ async function submit(): Promise<void> {
             id="todo-category"
             v-model="category"
             :inherits-from-parent="parentId != null"
+          />
+        </div>
+
+        <div class="create-todo__field">
+          <label for="todo-why">Warum · optional</label>
+
+          <textarea
+            id="todo-why"
+            v-model="why"
+            name="why"
+            maxlength="1000"
+            rows="2"
           />
         </div>
 
@@ -205,6 +220,18 @@ async function submit(): Promise<void> {
   color: #39445a;
   font-size: 0.875rem;
   font-weight: 600;
+}
+
+.create-todo__field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 0.7rem;
+  border: 1px solid #bfc7d4;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  color: #182033;
+  font: inherit;
+  resize: vertical;
 }
 
 .create-todo__field input {

@@ -30,6 +30,15 @@ describe("CreateHabitForm", () => {
     vi.setSystemTime(new Date("2026-10-01T22:30:00Z"));
     vi.mocked(createHabit).mockResolvedValue(response);
   });
+  it("sends a trimmed why", async () => {
+    const wrapper = mount(CreateHabitForm);
+    await wrapper.get('input[name="title"]').setValue("Joggen");
+    await wrapper.get('textarea[name="why"]').setValue(" Ausdauer ");
+    await submit(wrapper);
+    expect(createHabit).toHaveBeenCalledWith(
+      expect.objectContaining({ why: "Ausdauer" }),
+    );
+  });
   it("creates a daily habit and leaves an omitted start date to the backend", async () => {
     const wrapper = mount(CreateHabitForm);
     expect(wrapper.text()).toContain("02.10.2026");
