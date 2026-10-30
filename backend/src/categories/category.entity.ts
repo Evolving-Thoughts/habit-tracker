@@ -27,6 +27,10 @@ export class CategoryEntity {
   @Column({ type: 'varchar', length: 60 })
   name!: string;
 
+  /** Wanted completions per week; a Perfect Week reaches all of them. */
+  @Column({ type: 'integer', nullable: true })
+  weeklyTarget!: number | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 

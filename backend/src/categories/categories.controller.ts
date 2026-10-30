@@ -13,13 +13,18 @@ import {
 import type { AuthUser } from '../auth/auth.dto';
 import { CurrentUser } from '../auth/auth.guard';
 import { CategoriesService } from './categories.service';
-import { CategoryInputDto, CategoryResponse } from './category.dto';
+import {
+  CategoryInputDto,
+  CategoryResponse,
+  UpdateCategoryDto,
+} from './category.dto';
 import { CategoryEntity } from './category.entity';
 
-const response = ({ id, name }: CategoryEntity): CategoryResponse => ({
+const response = ({
   id,
   name,
-});
+  weeklyTarget,
+}: CategoryEntity): CategoryResponse => ({ id, name, weeklyTarget });
 
 @Controller('categories')
 export class CategoriesController {
@@ -42,9 +47,9 @@ export class CategoriesController {
   async rename(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: CategoryInputDto,
+    @Body() dto: UpdateCategoryDto,
   ): Promise<CategoryResponse> {
-    return response(await this.categories.rename(user.id, id, dto.name));
+    return response(await this.categories.update(user.id, id, dto));
   }
 
   @Delete(':id')
