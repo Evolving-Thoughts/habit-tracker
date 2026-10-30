@@ -18,6 +18,13 @@ export type HierarchyTodo = TodoResponse & {
   progress: TodoProgress;
   habitGoal?: HabitGoalProgress | null;
 };
+export type BurnupPoint = {
+  date: string;
+  doneCount: number;
+  totalCount: number;
+  doneMinutes: number;
+  totalMinutes: number;
+};
 export type DeletionPreview = {
   confirmationToken: string;
   todos: {

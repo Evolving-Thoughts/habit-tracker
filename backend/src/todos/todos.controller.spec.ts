@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
 import { TodoEntity } from './entities/todo.entity';
+import { GoalSnapshotsService } from './goal-snapshots.service';
 import { TodosController } from './todos.controller';
 import { TodosService } from './todos.service';
 
@@ -58,6 +59,7 @@ describe('TodosController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TodosController],
       providers: [
+        { provide: GoalSnapshotsService, useValue: {} },
         {
           provide: TodosService,
           useValue: serviceMock,

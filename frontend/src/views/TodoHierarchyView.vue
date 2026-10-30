@@ -11,6 +11,7 @@ import {
 import ModalDialog from "../components/ModalDialog.vue";
 import CreateTodoForm from "../components/CreateTodoForm.vue";
 import PlannerItemEditor from "../components/PlannerItemEditor.vue";
+import GoalBurnup from "../components/GoalBurnup.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
 import TodoDeletionSummary from "../components/TodoDeletionSummary.vue";
 import { useListFocus } from "../composables/useListFocus";
@@ -28,6 +29,7 @@ const action = ref<"create" | "move" | "edit" | "delete" | null>(null),
   selected = ref<HierarchyTodo | null>(null);
 const formBusy = ref(false),
   parent = ref("");
+const burnupTodo = ref<HierarchyTodo | null>(null);
 const {
   preview,
   prepare: prepareDeletion,
@@ -46,7 +48,8 @@ const {
 } = useLoader(getTodoHierarchy, {
   initial: [] as HierarchyTodo[],
   fallbackError: "Aufgaben konnten nicht geladen werden.",
-  refreshOnChange: () => !busy.value && action.value === null,
+  refreshOnChange: () =>
+    !busy.value && action.value === null && burnupTodo.value === null,
 });
 const shownError = computed(() => error.value || loadError.value || "");
 const rows = computed(() => visibleHierarchy(todos.value, collapsed.value));
@@ -208,6 +211,14 @@ async function confirmDelete() {
       </button>
     </p>
     <p v-if="success" role="status">{{ success }}</p>
+    <ModalDialog
+      v-if="burnupTodo"
+      :title="`Burnup: ${burnupTodo.title}`"
+      focus-selector="button"
+      @close="burnupTodo = null"
+    >
+      <GoalBurnup :todo-id="burnupTodo.id" />
+    </ModalDialog>
     <p v-if="loading" role="status">Aufgaben werden geladen …</p>
     <p v-else-if="!todos.length && !shownError">
       Noch keine Todos. Lege dein erstes Todo an.
@@ -316,6 +327,14 @@ async function confirmDelete() {
               @click="open('create', todo)"
             >
               ＋ Kind</button
+            ><button
+              v-if="todo.parentId === null"
+              type="button"
+              :disabled="busy"
+              :aria-label="`Burnup von ${todo.title}`"
+              @click="burnupTodo = todo"
+            >
+              Burnup</button
             ><button
               type="button"
               :disabled="busy"

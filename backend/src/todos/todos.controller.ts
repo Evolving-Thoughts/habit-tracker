@@ -21,12 +21,16 @@ import { CreateTodoDto } from './dto/create-todo.dto';
 import { RescheduleTodoDto } from './dto/reschedule-todo.dto';
 import { TodoResponseDto } from './dto/todo-response.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
+import { BurnupPoint, GoalSnapshotsService } from './goal-snapshots.service';
 import { TodoMapper } from './mappers/todo.mapper';
 import { TodosService } from './todos.service';
 
 @Controller('todos')
 export class TodosController {
-  constructor(private readonly todosService: TodosService) {}
+  constructor(
+    private readonly todosService: TodosService,
+    private readonly goalSnapshots: GoalSnapshotsService,
+  ) {}
 
   @Get()
   async findAll(@CurrentUser() user: AuthUser): Promise<TodoResponseDto[]> {
@@ -45,6 +49,14 @@ export class TodosController {
   @Get('hierarchy')
   hierarchy(@CurrentUser() user: AuthUser): Promise<HierarchyTodoResponse[]> {
     return this.todosService.hierarchy(user.id);
+  }
+
+  @Get(':id/burnup')
+  burnup(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<BurnupPoint[]> {
+    return this.goalSnapshots.burnup(user.id, id);
   }
 
   @Get(':id/deletion-preview')
