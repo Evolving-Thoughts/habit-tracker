@@ -118,7 +118,7 @@ describe('History API (e2e)', () => {
     'date=0000-01-01',
     'date=9999-12-31',
     'date=9999-12-30&view=week',
-    'date=2026-10-07&view=month',
+    'date=2026-10-07&view=year',
     'filter=unknown',
     'date=2026-10-07&extra=1',
     'date=2026-10-07&date=2026-10-08',

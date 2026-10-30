@@ -20,6 +20,8 @@ export type HistoryPlannedItem = {
   scheduledDate: string;
   isOverdue: boolean;
   plannedDurationMinutes: number | null;
+  isFixed?: boolean;
+  moveUntil?: string | null;
 };
 export type HistoryWeeklyTarget = {
   key: string;

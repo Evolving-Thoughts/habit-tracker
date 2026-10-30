@@ -1,12 +1,21 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { rescheduleOccurrence, rescheduleTodo } from "../api/day-planner.api";
-import type { DayPlannerItem } from "../types/day-planner";
 import { addDays, formatDateForGermanDisplay, weekStart } from "../utils/date";
 import ModalDialog from "./ModalDialog.vue";
 
+/** What moving needs to know; planner and calendar items both provide it. */
+export type MoveTarget =
+  | { type: "todo"; todoId: number; title: string; isFixed: boolean }
+  | {
+      type: "habit";
+      occurrenceId: number;
+      title: string;
+      moveUntil: string | null;
+    };
+
 const props = defineProps<{
-  item: DayPlannerItem;
+  item: MoveTarget;
   today: string;
   returnFocus: () => HTMLElement | null;
 }>();

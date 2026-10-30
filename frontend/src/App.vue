@@ -4,6 +4,7 @@ import PushSettings from "./components/PushSettings.vue";
 import TimerProvider from "./components/TimerProvider.vue";
 import TodoHierarchyView from "./views/TodoHierarchyView.vue";
 import HistoryView from "./views/HistoryView.vue";
+import CalendarView from "./views/CalendarView.vue";
 import CategoriesView from "./views/CategoriesView.vue";
 import HabitsView from "./views/HabitsView.vue";
 import TodayView from "./views/TodayView.vue";
@@ -74,7 +75,13 @@ onUnmounted(() => {
   window.removeEventListener("hashchange", readLink);
 });
 const activeView = ref<
-  "today" | "todo-dump" | "habits" | "categories" | "history" | "hierarchy"
+  | "today"
+  | "todo-dump"
+  | "habits"
+  | "categories"
+  | "history"
+  | "calendar"
+  | "hierarchy"
 >("today");
 </script>
 
@@ -141,6 +148,13 @@ const activeView = ref<
       >
         Verlauf
       </button>
+      <button
+        type="button"
+        :aria-pressed="activeView === 'calendar'"
+        @click="activeView = 'calendar'"
+      >
+        Kalender
+      </button>
       <button type="button" @click="signOut">Abmelden</button>
       <PushSettings />
       <span class="account-email">{{ user.email }}</span>
@@ -151,6 +165,7 @@ const activeView = ref<
     <TodoHierarchyView v-else-if="activeView === 'hierarchy'" />
     <HabitsView v-else-if="activeView === 'habits'" />
     <CategoriesView v-else-if="activeView === 'categories'" />
+    <CalendarView v-else-if="activeView === 'calendar'" />
     <HistoryView v-else />
   </TimerProvider>
 </template>

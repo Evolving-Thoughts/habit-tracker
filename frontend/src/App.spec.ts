@@ -32,7 +32,7 @@ describe("App navigation", () => {
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
-    expect(wrapper.findAll("nav button")).toHaveLength(8);
+    expect(wrapper.findAll("nav button")).toHaveLength(9);
   });
   it("opens the habit overview and marks only that navigation button active", async () => {
     const wrapper = mountApp();
@@ -102,7 +102,7 @@ describe("App authentication boundary", () => {
     const wrapper = mountApp();
     await flushPromises();
     await wrapper.findAll("nav button")[3]!.trigger("click");
-    await wrapper.findAll("nav button")[6]!.trigger("click");
+    await wrapper.findAll("nav button")[7]!.trigger("click");
     await flushPromises();
     expect(logout).toHaveBeenCalled();
     expect(wrapper.find("[data-view]").exists()).toBe(false);

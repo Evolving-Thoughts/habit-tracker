@@ -158,6 +158,8 @@ export class HistoryService {
             scheduledDate,
             isOverdue,
             plannedDurationMinutes: todo.plannedDurationMinutes,
+            isFixed: todo.isFixed,
+            moveUntil: null,
           });
       }
     }

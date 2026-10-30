@@ -8,6 +8,7 @@ import { HabitOccurrenceStatus as Status } from '../habit-occurrences/enums/habi
 import {
   expiresAt,
   isScheduledOn,
+  lastMovableDate,
   latestSlotOnOrBefore,
   slotStartsAt,
 } from '../habits/scheduling/schedule-rules';
@@ -93,6 +94,10 @@ export function plannedHabits(
         date: stored?.movedToDate ?? slot.date,
         scheduledDate: slot.scheduledDate,
         isOverdue: (stored?.movedToDate ?? slot.scheduledDate) < today,
+        isFixed: false,
+        moveUntil: stored
+          ? lastMovableDate(slot.version, slot.scheduledDate)
+          : null,
         plannedDurationMinutes: stored
           ? effectiveDuration(stored, habit)
           : habit.plannedDurationMinutes,

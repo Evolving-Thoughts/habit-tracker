@@ -1,7 +1,7 @@
 import { IsIn, IsOptional, IsString } from 'class-validator';
 export class HistoryQueryDto {
   @IsOptional() @IsString() date?: string;
-  @IsOptional() @IsIn(['day', 'week']) view?: 'day' | 'week';
+  @IsOptional() @IsIn(['day', 'week', 'month']) view?: 'day' | 'week' | 'month';
   @IsOptional() @IsIn(['all', 'todos', 'habits']) filter?:
     'all' | 'todos' | 'habits';
 }
@@ -27,6 +27,10 @@ export type HistoryPlannedItem = {
   scheduledDate: string;
   isOverdue: boolean;
   plannedDurationMinutes: number | null;
+  /** Fixed todos only move after a confirmation. */
+  isFixed: boolean;
+  /** Last day a stored occurrence can be moved to; null for a forecast or todo. */
+  moveUntil: string | null;
 };
 export type HistoryWeeklyTarget = {
   key: string;
