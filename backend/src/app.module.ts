@@ -1,4 +1,5 @@
 import { HistoryModule } from './history/history.module';
+import { ReflectionsModule } from './reflections/reflections.module';
 import { PushModule } from './push/push.module';
 import { TimersModule } from './timers/timers.module';
 import { AuthModule } from './auth/auth.module';
@@ -36,6 +37,7 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
     HabitsModule,
     DayPlannerModule,
     HistoryModule,
+    ReflectionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

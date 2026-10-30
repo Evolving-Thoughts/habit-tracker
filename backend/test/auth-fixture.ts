@@ -33,6 +33,7 @@ export function authenticatedRequest(server: Server) {
     get: (p: string) => headers(client.get(p)),
     post: (p: string) => headers(client.post(p)),
     patch: (p: string) => headers(client.patch(p)),
+    put: (p: string) => headers(client.put(p)),
     delete: (p: string) => headers(client.delete(p)),
   };
 }

@@ -5,6 +5,9 @@ import { getCurrentDateInTimeZone } from "../utils/date";
 import type { HistoryItem, HistoryResponse } from "../types/history";
 import HistoryView from "./HistoryView.vue";
 vi.mock("../api/history.api", () => ({ getHistory: vi.fn() }));
+vi.mock("../api/reflections.api", () => ({
+  getReflection: vi.fn().mockResolvedValue({ date: "", text: "" }),
+}));
 enableAutoUnmount(afterEach);
 const mock = vi.mocked(getHistory);
 function item(overrides: Partial<HistoryItem> = {}): HistoryItem {

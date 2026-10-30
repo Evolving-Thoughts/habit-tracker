@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { getHistory } from "../api/history.api";
+import DayReflection from "../components/DayReflection.vue";
 import HistoryItem from "../components/HistoryItem.vue";
 import HistoryPlannedItems from "../components/HistoryPlannedItems.vue";
 import type {
@@ -159,6 +160,10 @@ onUnmounted(() => {
     </div>
     <template v-else-if="result">
       <h2 class="period-heading" tabindex="-1">{{ heading }}</h2>
+      <DayReflection
+        v-if="view === 'day' && result.startDate <= result.today"
+        :date="result.startDate"
+      />
       <p v-if="!hasItems" class="empty">
         Für diesen Zeitraum gibt es keine Einträge{{
           filter === "all" ? "" : " für diesen Filter"
