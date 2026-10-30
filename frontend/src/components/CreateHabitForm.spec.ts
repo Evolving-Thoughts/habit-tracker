@@ -4,6 +4,9 @@ import { createHabit } from "../api/day-planner.api";
 import type { HabitResponse } from "../types/habit";
 import CreateHabitForm from "./CreateHabitForm.vue";
 vi.mock("../api/day-planner.api", () => ({ createHabit: vi.fn() }));
+vi.mock("../api/categories.api", () => ({
+  getCategories: vi.fn().mockResolvedValue([{ id: 7, name: "Sport" }]),
+}));
 enableAutoUnmount(afterEach);
 afterEach(() => vi.useRealTimers());
 const response: HabitResponse = {

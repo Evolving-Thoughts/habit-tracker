@@ -6,6 +6,7 @@ import {
 } from "../utils/timer-duration";
 import { ref } from "vue";
 import { createHabit } from "../api/day-planner.api";
+import CategorySelect, { type CategoryChoice } from "./CategorySelect.vue";
 import type {
   CreateHabitInput,
   HabitScheduleRule,
@@ -24,6 +25,7 @@ const emit = defineEmits<{ created: []; busy: [value: boolean] }>();
 const title = ref("");
 const startDate = ref("");
 const duration = ref<string | number>("");
+const category = ref<CategoryChoice>("default");
 const scheduleType = ref<HabitScheduleType>("interval");
 const intervalDays = ref<string | number>(1);
 const weeklyTarget = ref<string | number>(3);
@@ -100,6 +102,7 @@ function buildInput(): CreateHabitInput {
         }
       : {}),
     ...(startDate.value ? { startDate: startDate.value } : {}),
+    ...(category.value !== "default" ? { categoryId: category.value } : {}),
     schedule,
   };
 }
@@ -114,6 +117,7 @@ async function submit(): Promise<void> {
     title.value = "";
     startDate.value = "";
     duration.value = "";
+    category.value = "default";
     emit("created");
   } catch (error: unknown) {
     errorMessage.value =
@@ -147,6 +151,10 @@ async function submit(): Promise<void> {
             required
             placeholder="Welche Gewohnheit möchtest du aufbauen?"
           />
+        </div>
+        <div class="create-habit__field">
+          <label for="habit-category">Kategorie · optional</label>
+          <CategorySelect id="habit-category" v-model="category" />
         </div>
         <div class="create-habit__field">
           <label for="habit-start-date">Startdatum · optional</label>

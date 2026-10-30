@@ -3,6 +3,7 @@ import { ref } from "vue";
 import { createTodo } from "../api/day-planner.api";
 import type { CreateTodoInput } from "../types/todo";
 import { buildTodoInput } from "../utils/todo-input";
+import CategorySelect, { type CategoryChoice } from "./CategorySelect.vue";
 
 const props = defineProps<{ embedded?: boolean; parentId?: number | null }>();
 
@@ -15,6 +16,7 @@ const title = ref("");
 const scheduledAt = ref("");
 const durationMinutes = ref<string | number>("");
 const isFixed = ref(false);
+const category = ref<CategoryChoice>("default");
 
 const isSubmitting = ref(false);
 const errorMessage = ref<string | null>(null);
@@ -34,6 +36,7 @@ function resetForm(): void {
   scheduledAt.value = "";
   durationMinutes.value = "";
   isFixed.value = false;
+  category.value = "default";
 }
 
 async function submit(): Promise<void> {
@@ -47,6 +50,7 @@ async function submit(): Promise<void> {
   try {
     const input = buildInput();
     if (props.parentId !== undefined) input.parentId = props.parentId;
+    if (category.value !== "default") input.categoryId = category.value;
 
     isSubmitting.value = true;
     emit("busy", true);
@@ -94,6 +98,16 @@ async function submit(): Promise<void> {
             maxlength="200"
             required
             placeholder="Was möchtest du erledigen?"
+          />
+        </div>
+
+        <div class="create-todo__field">
+          <label for="todo-category">Kategorie · optional</label>
+
+          <CategorySelect
+            id="todo-category"
+            v-model="category"
+            :inherits-from-parent="parentId != null"
           />
         </div>
 

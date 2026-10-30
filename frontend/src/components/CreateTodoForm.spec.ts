@@ -1,11 +1,15 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getCategories } from "../api/categories.api";
 import { createTodo } from "../api/day-planner.api";
 import type { TodoResponse } from "../types/todo";
 import CreateTodoForm from "./CreateTodoForm.vue";
 
 vi.mock("../api/day-planner.api", () => ({
   createTodo: vi.fn(),
+}));
+vi.mock("../api/categories.api", () => ({
+  getCategories: vi.fn(),
 }));
 
 enableAutoUnmount(afterEach);
@@ -76,6 +80,20 @@ describe("CreateTodoForm", () => {
       plannedDurationMinutes: 30,
       isFixed: true,
     });
+  });
+
+  it("sends a chosen category", async () => {
+    vi.mocked(getCategories).mockResolvedValue([{ id: 7, name: "Sport" }]);
+    createTodoMock.mockResolvedValue(response);
+    const wrapper = mount(CreateTodoForm);
+    await flushPromises();
+    await wrapper.get('input[name="title"]').setValue("Laufen");
+    await wrapper.get('select[name="category"]').setValue(7);
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(createTodoMock).toHaveBeenCalledWith(
+      expect.objectContaining({ categoryId: 7 }),
+    );
   });
 
   it("rejects a blank title", async () => {
