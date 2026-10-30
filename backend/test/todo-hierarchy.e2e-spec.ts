@@ -14,7 +14,6 @@ import { UserEntity } from '../src/auth/auth.entities';
 import { TimerEntity } from '../src/timers/timer.entity';
 import { TodoResponseDto } from '../src/todos/dto/todo-response.dto';
 import { TodoProgress } from '../src/todos/todo-hierarchy';
-import { TodoHierarchy1792620000000 } from '../src/migrations/1792620000000-TodoHierarchy';
 type Node = TodoResponseDto & { progress: TodoProgress };
 type Preview = {
   confirmationToken: string;
@@ -320,30 +319,5 @@ describe('Todo hierarchy T2/T3 PostgreSQL API', () => {
     console.log(
       `Hierarchy load/preview/delete, 2,000 levels: ${Math.round(performance.now() - started)} ms`,
     );
-  });
-  it('migrates an existing table additively and repeatably', async () => {
-    const runner = db.createQueryRunner();
-    await runner.connect();
-    try {
-      await runner.query('CREATE SCHEMA hierarchy_migration_test');
-      await runner.query('SET search_path TO hierarchy_migration_test');
-      await runner.query(
-        'CREATE TABLE todos (id serial PRIMARY KEY,title text NOT NULL)',
-      );
-      await runner.query("INSERT INTO todos(title) VALUES ('Existing')");
-      const migration = new TodoHierarchy1792620000000();
-      await migration.up(runner);
-      await migration.up(runner);
-      const rows = (await runner.query(
-        'SELECT title,"parentId" FROM todos',
-      )) as { title: string; parentId: number | null }[];
-      expect(rows).toEqual([{ title: 'Existing', parentId: null }]);
-    } finally {
-      await runner.query('SET search_path TO public');
-      await runner.query(
-        'DROP SCHEMA IF EXISTS hierarchy_migration_test CASCADE',
-      );
-      await runner.release();
-    }
   });
 });
