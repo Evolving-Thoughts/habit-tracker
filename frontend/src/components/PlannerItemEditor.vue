@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useTodoDeletion } from "../composables/useTodoDeletion";
 import TodoDeletionSummary from "./TodoDeletionSummary.vue";
+import TodoGoalFields from "./TodoGoalFields.vue";
 
 import {
   TIMER_DURATION_MESSAGE,
@@ -28,7 +29,11 @@ import type {
   Weekday,
 } from "../types/habit";
 import { formatHabitSchedule, WEEKDAY_OPTIONS } from "../utils/habit";
-import type { CreateTodoInput } from "../types/todo";
+import type {
+  CreateTodoInput,
+  TodoGoalInput,
+  TodoResponse,
+} from "../types/todo";
 import { buildTodoInput } from "../utils/todo-input";
 import {
   formatDateForGermanDisplay,
@@ -87,6 +92,11 @@ const originalCategoryId = ref<number | null>(null);
 const originalWhy = ref("");
 
 // Todo-Felder
+const periodStart = ref("");
+const periodEnd = ref("");
+const goalHabitId = ref<number | null>(null);
+const goalTarget = ref<string | number>("");
+const loadedTodo = ref<TodoResponse | null>(null);
 const scheduledAt = ref("");
 const duration = ref<string | number>("");
 const isFixed = ref(false);
@@ -153,6 +163,11 @@ async function loadEntity(): Promise<void> {
       const todo = await getTodo(props.entityId);
 
       fillAssignment(todo);
+      loadedTodo.value = todo;
+      periodStart.value = todo.periodStart ?? "";
+      periodEnd.value = todo.periodEnd ?? "";
+      goalHabitId.value = todo.goalHabitId ?? null;
+      goalTarget.value = todo.goalTarget ?? "";
       title.value = todo.title;
       duration.value = todo.plannedDurationMinutes ?? "";
       isFixed.value = todo.isFixed;
@@ -216,6 +231,30 @@ function positiveInteger(
   return number;
 }
 
+/** Only what changed, so a plain edit leaves period and goal alone. */
+function goalChanges(): TodoGoalInput {
+  const todo = loadedTodo.value;
+  const target =
+    goalHabitId.value === null
+      ? null
+      : positiveInteger(
+          goalTarget.value,
+          "Die Sollmenge muss eine ganze Zahl ab 1 sein.",
+        );
+  const next: TodoGoalInput = {
+    periodStart: periodStart.value || null,
+    periodEnd: periodEnd.value || null,
+    goalHabitId: goalHabitId.value,
+    goalTarget: target,
+  };
+  const keys = Object.keys(next) as (keyof TodoGoalInput)[];
+  return Object.fromEntries(
+    keys
+      .filter((key) => next[key] !== (todo?.[key] ?? null))
+      .map((key) => [key, next[key]]),
+  );
+}
+
 function todoInput(): CreateTodoInput {
   return {
     ...buildTodoInput(
@@ -228,6 +267,7 @@ function todoInput(): CreateTodoInput {
       { localInput: originalLocalInput.value, iso: originalScheduledAt.value },
     ),
     ...assignmentChanges(),
+    ...goalChanges(),
   };
 }
 
@@ -460,6 +500,13 @@ onMounted(loadEntity);
             Deutsche Zeit (Europe/Berlin). Ohne Zeitpunkt landet das Todo im
             Dump.
           </small>
+
+          <TodoGoalFields
+            v-model:period-start="periodStart"
+            v-model:period-end="periodEnd"
+            v-model:habit-id="goalHabitId"
+            v-model:target="goalTarget"
+          />
 
           <label for="planner-edit-duration">
             Dauer in Minuten · optional

@@ -7,7 +7,17 @@ export type TodoProgress = {
   knownDurationMinutes: number;
   todoCount: number;
 };
-export type HierarchyTodo = TodoResponse & { progress: TodoProgress };
+export type HabitGoalProgress = {
+  habitId: number;
+  habitTitle: string;
+  target: number;
+  completed: number;
+  reached: boolean;
+};
+export type HierarchyTodo = TodoResponse & {
+  progress: TodoProgress;
+  habitGoal?: HabitGoalProgress | null;
+};
 export type DeletionPreview = {
   confirmationToken: string;
   todos: {

@@ -29,6 +29,7 @@ import {
 import { UpdateTodoDto } from './dto/update-todo.dto';
 import { TodoEntity } from './entities/todo.entity';
 import { TodoMapper } from './mappers/todo.mapper';
+import { assertGoalAvailable, assertGoalShape, habitGoals } from './habit-goal';
 import { backlogTodos } from './todo-agenda';
 import {
   CorruptHierarchyError,
@@ -74,9 +75,11 @@ export class TodosService {
   async hierarchy(userId: string): Promise<HierarchyTodoResponse[]> {
     const todos = await this.findAll(userId);
     const progress = this.tree(todos).progress();
+    const goals = await habitGoals(this.todoRepository.manager, todos);
     return todos.map((todo) => ({
       ...TodoMapper.toResponseDto(todo),
       progress: progress.get(todo.id)!,
+      habitGoal: goals.get(todo.id) ?? null,
     }));
   }
 
@@ -131,6 +134,17 @@ export class TodosService {
         todo.categoryId = dto.categoryId;
       }
       if (dto.why !== undefined) todo.why = normalizeWhy(dto.why);
+      if (dto.periodStart !== undefined) todo.periodStart = dto.periodStart;
+      if (dto.periodEnd !== undefined) todo.periodEnd = dto.periodEnd;
+      if (dto.goalHabitId !== undefined) todo.goalHabitId = dto.goalHabitId;
+      if (dto.goalTarget !== undefined) todo.goalTarget = dto.goalTarget;
+      assertGoalShape({
+        periodStart: todo.periodStart ?? null,
+        periodEnd: todo.periodEnd ?? null,
+        goalHabitId: todo.goalHabitId ?? null,
+        goalTarget: todo.goalTarget ?? null,
+      });
+      await assertGoalAvailable(manager, userId, todo);
       if (dto.title !== undefined) todo.title = dto.title;
       if (dto.scheduledAt !== undefined)
         todo.scheduledAt =

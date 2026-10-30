@@ -41,6 +41,20 @@ export class TodoEntity {
   @JoinColumn({ name: 'categoryId' })
   category?: CategoryEntity | null;
 
+  /** Optional time horizon, such as a month or a quarter. */
+  @Column({ type: 'date', nullable: true })
+  periodStart!: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  periodEnd!: string | null;
+
+  /** A habit whose completions in the period count towards `goalTarget`. */
+  @Column({ type: 'integer', nullable: true })
+  goalHabitId!: number | null;
+
+  @Column({ type: 'integer', nullable: true })
+  goalTarget!: number | null;
+
   /** The personal reason for this entry. */
   @Column({ type: 'varchar', length: 1000, nullable: true })
   why!: string | null;

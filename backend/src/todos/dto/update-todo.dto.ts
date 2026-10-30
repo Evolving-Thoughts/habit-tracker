@@ -16,6 +16,24 @@ export class UpdateTodoDto {
   readonly parentId?: number | null;
 
   @IsOptional()
+  @IsDateString({ strict: true })
+  readonly periodStart?: string | null;
+
+  @IsOptional()
+  @IsDateString({ strict: true })
+  readonly periodEnd?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  readonly goalHabitId?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  readonly goalTarget?: number | null;
+
+  @IsOptional()
   @IsInt()
   @Min(1)
   readonly categoryId?: number | null;

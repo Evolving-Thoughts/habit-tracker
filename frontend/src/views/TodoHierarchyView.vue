@@ -17,6 +17,7 @@ import { useListFocus } from "../composables/useListFocus";
 import { notifyDataChanged } from "../composables/data-sync";
 import { useLoader } from "../composables/useLoader";
 import { useTodoDeletion } from "../composables/useTodoDeletion";
+import { formatDateForGermanDisplay } from "../utils/date";
 const page = ref<HTMLElement | null>(null),
   listFocus = useListFocus(page);
 const collapsed = ref(new Set<number>());
@@ -276,6 +277,15 @@ async function confirmDelete() {
                 }}{{ todo.isFixed ? " · fix" : "" }}</span
               >
             </p>
+            <p v-if="todo.periodStart && todo.periodEnd" class="period">
+              {{ formatDateForGermanDisplay(todo.periodStart) }} –
+              {{ formatDateForGermanDisplay(todo.periodEnd) }}
+              <template v-if="todo.habitGoal">
+                · {{ todo.habitGoal.habitTitle }}:
+                {{ todo.habitGoal.completed }}/{{ todo.habitGoal.target }}
+                {{ todo.habitGoal.reached ? "· Ziel erreicht" : "" }}
+              </template>
+            </p>
             <progress
               max="100"
               :value="todo.progress.percentage"
@@ -519,6 +529,11 @@ async function confirmDelete() {
   margin: 4px 0;
   overflow-wrap: anywhere;
 }
+.content .period {
+  margin: 0.25rem 0;
+  font-size: 0.8125rem;
+}
+
 .content progress {
   display: block;
   width: min(200px, 100%);
