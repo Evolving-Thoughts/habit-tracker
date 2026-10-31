@@ -62,6 +62,16 @@ describe('replanDay', () => {
     expect(change.tomorrowMinutes).toBe(0);
   });
 
+  it('plans around busy times that are not todos', () => {
+    const [change] = replanDay([todo(1, at(9), 60)], at(8), at(22), [
+      { start: at(9, 30), end: at(10, 30) },
+    ]);
+    expect(change.pieces).toEqual([
+      { start: at(9), minutes: 30 },
+      { start: at(10, 30), minutes: 30 },
+    ]);
+  });
+
   it('starts late work from now', () => {
     const [change] = plan([todo(1, at(8), 30)], at(9));
     expect(change.pieces).toEqual([{ start: at(9), minutes: 30 }]);

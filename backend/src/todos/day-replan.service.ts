@@ -9,10 +9,15 @@ import {
   atWallClockMinutes,
 } from '../common/date/local-day';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
-import { timersOfTodos } from '../timers/timer-target';
+import {
+  HabitOccurrenceEntity,
+  occurrenceDueDate,
+} from '../habit-occurrences/entities/habit-occurrence.entity';
+import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
+import { effectiveDuration, timersOfTodos } from '../timers/timer-target';
 import { ReplanChangeResponse, ReplanPreviewResponse } from './dto/replan.dto';
 import { TodoEntity } from './entities/todo.entity';
-import { replanDay } from './day-replan';
+import { ReplanBlock, replanDay } from './day-replan';
 import { openScheduledTodos } from './todo-agenda';
 
 const iso = (ms: number): string => new Date(ms).toISOString();
@@ -80,6 +85,30 @@ export class DayReplanService {
     );
   }
 
+  /** Open habit runs of the day that have a fixed time and a duration. */
+  private async habitBlocks(
+    manager: EntityManager,
+    userId: string,
+    today: string,
+  ): Promise<ReplanBlock[]> {
+    const occurrences = await manager.find(HabitOccurrenceEntity, {
+      where: {
+        status: HabitOccurrenceStatus.PENDING,
+        habit: { userId, isActive: true },
+      },
+      relations: { habit: true },
+    });
+    return occurrences.flatMap((occurrence) => {
+      const { timeOfDay } = occurrence.habit;
+      const minutes = effectiveDuration(occurrence, occurrence.habit);
+      if (!timeOfDay || !minutes || occurrenceDueDate(occurrence) !== today)
+        return [];
+      const [hours, mins] = timeOfDay.split(':').map(Number);
+      const start = atWallClockMinutes(today, hours * 60 + mins).getTime();
+      return [{ start, end: start + minutes * 60_000 }];
+    });
+  }
+
   private async proposal(
     manager: EntityManager,
     userId: string,
@@ -115,6 +144,7 @@ export class DayReplanService {
       })),
       now.getTime(),
       atWallClockMinutes(today, dayEndMinutes).getTime(),
+      await this.habitBlocks(manager, userId, today),
     );
     const tomorrow = addDays(today, 1);
     const changes: ReplanChangeResponse[] = planned.map((change) => ({

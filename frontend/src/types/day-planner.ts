@@ -23,6 +23,7 @@ export type DayPlannerHabitItem = {
   type: "habit";
   occurrenceId: number;
   plannedDurationMinutes: number | null;
+  timeOfDay?: string | null;
   habitId: number;
   title: string;
   categoryName?: string | null;

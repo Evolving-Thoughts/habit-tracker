@@ -99,6 +99,7 @@ const goalTarget = ref<string | number>("");
 const loadedTodo = ref<TodoResponse | null>(null);
 const scheduledAt = ref("");
 const duration = ref<string | number>("");
+const timeOfDay = ref("");
 const isFixed = ref(false);
 
 const originalScheduledAt = ref<string | null>(null);
@@ -187,6 +188,7 @@ async function loadEntity(): Promise<void> {
       isActive.value = habit.isActive;
       loadedHabit.value = habit;
       duration.value = habit.plannedDurationMinutes ?? "";
+      timeOfDay.value = habit.timeOfDay ?? "";
       const version = habit.currentSchedule ?? habit.upcomingSchedule;
       if (version) fillSchedule(version.schedule);
     }
@@ -308,6 +310,8 @@ function buildHabitInput(): UpdateHabitInput {
     : null;
   if (minutes !== (loadedHabit.value?.plannedDurationMinutes ?? null))
     input.plannedDurationMinutes = minutes;
+  const time = timeOfDay.value || null;
+  if (time !== (loadedHabit.value?.timeOfDay ?? null)) input.timeOfDay = time;
   return input;
 }
 
@@ -527,6 +531,13 @@ onMounted(loadEntity);
         </template>
 
         <template v-else>
+          <label for="habit-edit-time">Uhrzeit · optional</label
+          ><input
+            id="habit-edit-time"
+            v-model="timeOfDay"
+            name="timeOfDay"
+            type="time"
+          />
           <label for="habit-edit-duration"
             >Standarddauer in Minuten · optional</label
           ><input

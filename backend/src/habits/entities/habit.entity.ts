@@ -25,6 +25,10 @@ export class HabitEntity {
   @Column({ type: 'integer', nullable: true })
   plannedDurationMinutes!: number | null;
 
+  /** Fixed start as HH:mm in local time; null when only the day is planned. */
+  @Column({ type: 'varchar', length: 5, nullable: true })
+  timeOfDay!: string | null;
+
   @PrimaryGeneratedColumn()
   id!: number;
 

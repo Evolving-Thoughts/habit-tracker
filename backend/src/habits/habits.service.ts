@@ -143,6 +143,7 @@ export class HabitsService {
           categoryId,
           why: normalizeWhy(dto.why),
           plannedDurationMinutes: dto.plannedDurationMinutes ?? null,
+          timeOfDay: dto.timeOfDay ?? null,
           userId,
           title,
           isActive: true,
@@ -166,6 +167,7 @@ export class HabitsService {
       dto.title === undefined &&
       dto.isActive === undefined &&
       dto.plannedDurationMinutes === undefined &&
+      dto.timeOfDay === undefined &&
       dto.categoryId === undefined &&
       dto.why === undefined
     ) {
@@ -182,6 +184,7 @@ export class HabitsService {
       if (dto.why !== undefined) habit.why = normalizeWhy(dto.why);
       if (dto.plannedDurationMinutes !== undefined)
         habit.plannedDurationMinutes = dto.plannedDurationMinutes;
+      if (dto.timeOfDay !== undefined) habit.timeOfDay = dto.timeOfDay;
       if (dto.title !== undefined) {
         habit.title = this.validTitle(dto.title);
       }

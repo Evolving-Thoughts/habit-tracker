@@ -143,6 +143,7 @@ export class DayPlannerService {
     return {
       type: 'habit',
       plannedDurationMinutes: effectiveDuration(occurrence, occurrence.habit),
+      timeOfDay: occurrence.habit.timeOfDay ?? null,
       occurrenceId: occurrence.id,
       habitId: occurrence.habitId,
       title: occurrence.habit.title,

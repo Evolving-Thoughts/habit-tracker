@@ -127,6 +127,10 @@ function skip(): void {
           {{ formatTimeForGermanDisplay(item.scheduledAt) }}
         </span>
 
+        <span v-if="item.type === 'habit' && item.timeOfDay">
+          {{ item.timeOfDay }}
+        </span>
+
         <span v-if="item.plannedDurationMinutes != null">
           {{ item.plannedDurationMinutes }} Min.
         </span>

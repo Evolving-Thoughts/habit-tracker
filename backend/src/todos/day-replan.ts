@@ -23,28 +23,32 @@ export type ReplanChange = {
   tomorrowMinutes: number;
 };
 
-type Block = { start: number; end: number };
+export type ReplanBlock = { start: number; end: number };
 
 /**
  * Plans a day without touching fixed todos: a flexible todo that collides is
  * split when at least ten minutes fit before the fixed one, otherwise it moves
  * behind it; later flexible todos follow as a chain. Work that would end after
  * `dayEnd` is left for tomorrow. Todos without a duration have no length and
- * stay where they are. Pure, so the same input gives the same proposal.
+ * stay where they are. `busy` adds times that are taken by something other
+ * than a todo. Pure, so the same input gives the same proposal.
  */
 export function replanDay(
   todos: ReplanTodo[],
   now: number,
   dayEnd: number,
+  busy: ReplanBlock[] = [],
 ): ReplanChange[] {
   const anchored = (todo: ReplanTodo): boolean => todo.isFixed || todo.locked;
-  const blocks: Block[] = todos
-    .filter((todo) => anchored(todo) && todo.minutes !== null)
-    .map((todo) => ({
-      start: todo.start,
-      end: todo.start + todo.minutes! * MINUTE_MS,
-    }))
-    .sort((a, b) => a.start - b.start);
+  const blocks: ReplanBlock[] = [
+    ...busy,
+    ...todos
+      .filter((todo) => anchored(todo) && todo.minutes !== null)
+      .map((todo) => ({
+        start: todo.start,
+        end: todo.start + todo.minutes! * MINUTE_MS,
+      })),
+  ].sort((a, b) => a.start - b.start);
   const flexible = todos
     .filter((todo) => !anchored(todo) && todo.minutes !== null)
     .sort((a, b) => a.start - b.start || a.id - b.id);

@@ -25,6 +25,7 @@ const emit = defineEmits<{ created: []; busy: [value: boolean] }>();
 const title = ref("");
 const startDate = ref("");
 const duration = ref<string | number>("");
+const timeOfDay = ref("");
 const category = ref<CategoryChoice>("default");
 const why = ref("");
 const scheduleType = ref<HabitScheduleType>("interval");
@@ -102,6 +103,7 @@ function buildInput(): CreateHabitInput {
           ),
         }
       : {}),
+    ...(timeOfDay.value ? { timeOfDay: timeOfDay.value } : {}),
     ...(startDate.value ? { startDate: startDate.value } : {}),
     ...(category.value !== "default" ? { categoryId: category.value } : {}),
     ...(why.value.trim() ? { why: why.value.trim() } : {}),
@@ -119,6 +121,7 @@ async function submit(): Promise<void> {
     title.value = "";
     startDate.value = "";
     duration.value = "";
+    timeOfDay.value = "";
     category.value = "default";
     why.value = "";
     emit("created");
@@ -185,6 +188,17 @@ async function submit(): Promise<void> {
               >Gewählt: {{ formatDateForGermanDisplay(startDate) }}.</template
             >
           </small>
+        </div>
+        <div class="create-habit__field">
+          <label for="habit-time">Uhrzeit · optional</label
+          ><input
+            id="habit-time"
+            v-model="timeOfDay"
+            name="timeOfDay"
+            type="time"
+          /><small
+            >Mit Uhrzeit und Dauer plant „Neu planen“ um das Habit herum.</small
+          >
         </div>
         <div class="create-habit__field">
           <label for="habit-duration">Standarddauer in Minuten · optional</label

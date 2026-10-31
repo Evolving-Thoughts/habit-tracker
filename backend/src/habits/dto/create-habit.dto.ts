@@ -21,6 +21,12 @@ export class CreateHabitDto {
   @Min(1)
   @Max(10080)
   readonly plannedDurationMinutes?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  readonly timeOfDay?: string | null;
+
   @IsOptional()
   @IsInt()
   @Min(1)

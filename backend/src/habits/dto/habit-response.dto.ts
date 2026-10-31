@@ -30,6 +30,7 @@ export type ScheduleVersionResponse = {
 
 export type HabitResponseDto = {
   plannedDurationMinutes: number | null;
+  timeOfDay: string | null;
   timerOccurrenceId: number | null;
   timerDurationMinutes: number | null;
   id: number;

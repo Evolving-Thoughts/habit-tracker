@@ -53,7 +53,7 @@ describe('Day replanning (e2e)', () => {
     db = app.get(DataSource);
   });
   beforeEach(async () => {
-    await db.query('TRUNCATE timers, todos CASCADE');
+    await db.query('TRUNCATE timers, todos, habits CASCADE');
     await db
       .createQueryBuilder()
       .update(UserEntity)
@@ -61,6 +61,31 @@ describe('Day replanning (e2e)', () => {
       .execute();
   });
   afterAll(() => app.close());
+
+  it('plans around a habit with a fixed time', async () => {
+    await request(server)
+      .post('/habits')
+      .send({
+        title: 'Laufen',
+        plannedDurationMinutes: 60,
+        timeOfDay: '09:00',
+        schedule: {
+          type: 'interval',
+          intervalDays: 1,
+          missedOccurrencePolicy: 'carry_over',
+        },
+      })
+      .expect(201);
+    await request(server).get('/day-planner/today').expect(200);
+    await todo('2026-10-30T07:30:00.000Z', 60);
+
+    const { changes } = await preview();
+    expect(changes).toHaveLength(1);
+    expect(changes[0].pieces).toEqual([
+      { start: '2026-10-30T07:30:00.000Z', minutes: 30 },
+      { start: '2026-10-30T09:00:00.000Z', minutes: 30 },
+    ]);
+  });
 
   it('previews without writing, then splits and keeps the fixed todo', async () => {
     const flexible = await todo('2026-10-30T07:30:00.000Z', 90);

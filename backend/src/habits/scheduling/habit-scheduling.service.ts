@@ -131,6 +131,7 @@ export class HabitSchedulingService {
       why: habit.why ?? null,
       isActive: habit.isActive,
       plannedDurationMinutes: habit.plannedDurationMinutes,
+      timeOfDay: habit.timeOfDay ?? null,
       timerOccurrenceId: pending?.id ?? null,
       timerDurationMinutes: pending ? effectiveDuration(pending, habit) : null,
       currentSchedule: active ? this.versionResponse(active) : null,

@@ -21,6 +21,7 @@ export type DayPlannerTodoItemDto = {
 export type DayPlannerHabitItemDto = {
   type: 'habit';
   plannedDurationMinutes: number | null;
+  timeOfDay: string | null;
   occurrenceId: number;
   habitId: number;
   title: string;
