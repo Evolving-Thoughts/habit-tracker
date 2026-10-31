@@ -125,13 +125,16 @@ onMounted(() => run(() => Promise.resolve()));
       </template>
     </div>
   </section>
+  <p v-else-if="error" role="alert">{{ error }}</p>
+  <p v-else-if="status">
+    Google Kalender ist für diese App nicht eingerichtet.
+  </p>
 </template>
 
 <style scoped>
 .calendar-connection {
   display: grid;
   gap: 0.5rem;
-  margin-bottom: 1rem;
   padding: 0.75rem 1rem;
   border: 1px solid #ccd2dc;
   border-radius: 0.625rem;

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { getHistory } from "../api/history.api";
-import CalendarConnection from "../components/CalendarConnection.vue";
 import MoveItemDialog, { type MoveTarget } from "../components/MoveItemDialog.vue";
 import { onDataChanged, notifyDataChanged } from "../composables/data-sync";
 import type { HistoryPlannedItem, HistoryResponse } from "../types/history";
@@ -116,7 +115,6 @@ onUnmounted(() => {
 
 <template>
   <main class="calendar-view">
-    <CalendarConnection />
     <header class="calendar-view__header">
       <h1>{{ heading }}</h1>
       <div class="calendar-view__nav">

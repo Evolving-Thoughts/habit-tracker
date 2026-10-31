@@ -23,6 +23,9 @@ function mountApp() {
           template: '<main data-view="hierarchy">Tree</main>',
         },
         HabitsView: { template: '<main data-view="habits">Habits</main>' },
+        SettingsView: {
+          template: '<main data-view="settings">Settings</main>',
+        },
       },
     },
   });
@@ -32,7 +35,7 @@ describe("App navigation", () => {
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
-    expect(wrapper.findAll("nav button")).toHaveLength(9);
+    expect(wrapper.findAll("nav button")).toHaveLength(10);
   });
   it("opens the habit overview and marks only that navigation button active", async () => {
     const wrapper = mountApp();
@@ -46,6 +49,23 @@ describe("App navigation", () => {
         .slice(0, 4)
         .map((button) => button.attributes("aria-pressed")),
     ).toEqual(["false", "false", "false", "true"]);
+  });
+  it("opens the settings from the navigation", async () => {
+    const wrapper = mountApp();
+    await flushPromises();
+    const button = wrapper
+      .findAll("nav button")
+      .find((candidate) => candidate.text() === "Einstellungen")!;
+    await button.trigger("click");
+    expect(wrapper.find('[data-view="settings"]').exists()).toBe(true);
+    expect(button.attributes("aria-pressed")).toBe("true");
+  });
+  it("returns from Google into the settings and cleans the address", async () => {
+    history.replaceState(null, "", "/?calendar=connected");
+    const wrapper = mountApp();
+    await flushPromises();
+    expect(wrapper.find('[data-view="settings"]').exists()).toBe(true);
+    expect(window.location.search).toBe("");
   });
   it("can move from Habits to Todo-Dump and back to Today", async () => {
     const wrapper = mountApp();
@@ -102,7 +122,7 @@ describe("App authentication boundary", () => {
     const wrapper = mountApp();
     await flushPromises();
     await wrapper.findAll("nav button")[3]!.trigger("click");
-    await wrapper.findAll("nav button")[7]!.trigger("click");
+    await wrapper.findAll("nav button")[8]!.trigger("click");
     await flushPromises();
     expect(logout).toHaveBeenCalled();
     expect(wrapper.find("[data-view]").exists()).toBe(false);

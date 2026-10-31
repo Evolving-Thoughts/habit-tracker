@@ -29,7 +29,7 @@ describe("CalendarConnection", () => {
     vi.clearAllMocks();
   });
 
-  it("stays hidden until Google is set up", async () => {
+  it("says so while Google is not set up", async () => {
     vi.mocked(getCalendarStatus).mockResolvedValue({
       ...status,
       configured: false,
@@ -37,6 +37,7 @@ describe("CalendarConnection", () => {
     const wrapper = mount(CalendarConnection);
     await flushPromises();
     expect(wrapper.find("section").exists()).toBe(false);
+    expect(wrapper.text()).toContain("nicht eingerichtet");
   });
 
   it("offers connecting, also after access was withdrawn", async () => {

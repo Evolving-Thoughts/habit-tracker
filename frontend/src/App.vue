@@ -7,6 +7,7 @@ import HistoryView from "./views/HistoryView.vue";
 import CalendarView from "./views/CalendarView.vue";
 import CategoriesView from "./views/CategoriesView.vue";
 import HabitsView from "./views/HabitsView.vue";
+import SettingsView from "./views/SettingsView.vue";
 import TodayView from "./views/TodayView.vue";
 import TodoDumpView from "./views/TodoDumpView.vue";
 
@@ -74,6 +75,13 @@ onUnmounted(() => {
   window.removeEventListener("auth-expired", expire);
   window.removeEventListener("hashchange", readLink);
 });
+function readCalendarReturn(): boolean {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("calendar")) return false;
+  url.searchParams.delete("calendar");
+  history.replaceState(null, "", url.pathname + url.search + url.hash);
+  return true;
+}
 const activeView = ref<
   | "today"
   | "todo-dump"
@@ -82,7 +90,8 @@ const activeView = ref<
   | "history"
   | "calendar"
   | "hierarchy"
->("today");
+  | "settings"
+>(readCalendarReturn() ? "settings" : "today");
 </script>
 
 <template>
@@ -155,6 +164,13 @@ const activeView = ref<
       >
         Kalender
       </button>
+      <button
+        type="button"
+        :aria-pressed="activeView === 'settings'"
+        @click="activeView = 'settings'"
+      >
+        Einstellungen
+      </button>
       <button type="button" @click="signOut">Abmelden</button>
       <PushSettings />
       <span class="account-email">{{ user.email }}</span>
@@ -166,6 +182,7 @@ const activeView = ref<
     <HabitsView v-else-if="activeView === 'habits'" />
     <CategoriesView v-else-if="activeView === 'categories'" />
     <CalendarView v-else-if="activeView === 'calendar'" />
+    <SettingsView v-else-if="activeView === 'settings'" />
     <HistoryView v-else />
   </TimerProvider>
 </template>
