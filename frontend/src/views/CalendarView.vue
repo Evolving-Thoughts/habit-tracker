@@ -7,6 +7,7 @@ import { onDataChanged, notifyDataChanged } from "../composables/data-sync";
 import type { HistoryPlannedItem, HistoryResponse } from "../types/history";
 import {
   formatDateForGermanDisplay,
+  formatTimeForGermanDisplay,
   getCurrentDateInTimeZone,
   weekStart,
 } from "../utils/date";
@@ -42,7 +43,10 @@ function shiftMonth(direction: number): void {
   const [year, value] = month.value.split("-").map(Number);
   const next = new Date(Date.UTC(year, value - 1 + direction, 1));
   month.value = next.toISOString().slice(0, 7);
-  selected.value = `${month.value}-01`;
+  const today = getCurrentDateInTimeZone();
+  selected.value = today.startsWith(month.value)
+    ? today
+    : `${month.value}-01`;
 }
 
 function showCurrentMonth(): void {
@@ -158,18 +162,27 @@ onUnmounted(() => {
             'calendar-day--selected': day.date === selected,
           }"
           :aria-pressed="day.date === selected"
-          :aria-label="`${formatDateForGermanDisplay(day.date)}, ${day.items.length + (day.planned?.length ?? 0)} Einträge`"
+          :aria-label="`${formatDateForGermanDisplay(day.date)}, ${day.items.length + (day.planned?.length ?? 0) + (day.external?.length ?? 0)} Einträge`"
           @click="selected = day.date"
         >
           <span>{{ Number(day.date.slice(8)) }}</span>
           <small v-if="day.items.length">✓ {{ day.items.length }}</small>
           <small v-if="day.planned?.length">○ {{ day.planned.length }}</small>
+          <small v-if="day.external?.length">
+            ◆ {{ day.external.length }}
+          </small>
         </button>
       </div>
 
       <section v-if="selectedDay" class="calendar-entries">
         <h2>{{ formatDateForGermanDisplay(selectedDay.date) }}</h2>
-        <p v-if="!selectedDay.items.length && !selectedDay.planned?.length">
+        <p
+          v-if="
+            !selectedDay.items.length &&
+            !selectedDay.planned?.length &&
+            !selectedDay.external?.length
+          "
+        >
           Keine Einträge.
         </p>
         <ul>
@@ -192,6 +205,11 @@ onUnmounted(() => {
             >
               Verschieben
             </button>
+          </li>
+          <li v-for="event in selectedDay.external" :key="`external-${event.id}`">
+            <span class="calendar-entries__title">{{ event.title }}</span>
+            <small>{{ formatTimeForGermanDisplay(event.start) }}</small>
+            <small>Google Kalender</small>
           </li>
         </ul>
       </section>

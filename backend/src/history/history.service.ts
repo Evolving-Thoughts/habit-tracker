@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { Between, DataSource, EntityManager } from 'typeorm';
+import { ExternalEventEntity } from '../calendar/calendar.entities';
 import { HabitEntity } from '../habits/entities/habit.entity';
 import { HabitScheduleVersionEntity } from '../habits/entities/habit-schedule-version.entity';
 import {
@@ -9,7 +10,12 @@ import {
   weeklyTargets,
 } from './history-planning';
 import { DEFAULT_TIME_ZONE } from '../common/date/date-only.utils';
-import { dayOf, weekRange } from '../common/date/local-day';
+import {
+  dayOf,
+  endOfDay,
+  startOfDay,
+  weekRange,
+} from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import { effectiveDuration } from '../timers/timer-target';
 import {
@@ -118,6 +124,16 @@ export class HistoryService {
         today,
         now,
       );
+      const external =
+        query.view === 'month'
+          ? await manager.find(ExternalEventEntity, {
+              where: {
+                userId,
+                start: Between(startOfDay(startDate), endOfDay(endDate)),
+              },
+              order: { start: 'ASC' },
+            })
+          : null;
       return {
         ...(query.view === 'week' && filter === 'all'
           ? {
@@ -163,6 +179,18 @@ export class HistoryService {
           date,
           items: items.filter((item) => item.date === date),
           planned: planning.items.filter((item) => item.date === date),
+          ...(external
+            ? {
+                external: external
+                  .filter((event) => dayOf(event.start) === date)
+                  .map(({ id, title, start, end }) => ({
+                    id,
+                    title,
+                    start: start.toISOString(),
+                    end: end.toISOString(),
+                  })),
+              }
+            : {}),
         })),
       };
     });

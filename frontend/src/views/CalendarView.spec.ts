@@ -96,6 +96,42 @@ describe("CalendarView", () => {
     expect(wrapper.text()).toContain("Morgen");
   });
 
+  it("shows main calendar events read-only on their day", async () => {
+    vi.mocked(getHistory).mockResolvedValue({
+      ...response,
+      days: response.days.map((day) =>
+        day.date === "2026-10-30"
+          ? {
+              ...day,
+              external: [
+                {
+                  id: 5,
+                  title: "Besprechung",
+                  start: "2026-10-30T08:00:00.000Z",
+                  end: "2026-10-30T09:00:00.000Z",
+                },
+              ],
+            }
+          : day,
+      ),
+    });
+    const wrapper = await render();
+    expect(wrapper.find(".calendar-day--selected").text()).toContain("◆ 1");
+    const entries = wrapper.find(".calendar-entries").text();
+    expect(entries).toContain("Besprechung");
+    expect(entries).toContain("Google Kalender");
+    expect(entries).toContain("09:00");
+  });
+
+  it("selects today when going back to the current month", async () => {
+    const wrapper = await render();
+    await wrapper.get('button[aria-label="Nächster Monat"]').trigger("click");
+    await flushPromises();
+    await wrapper.get('button[aria-label="Voriger Monat"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".calendar-day--selected").text()).toContain("30");
+  });
+
   it("changes the month", async () => {
     const wrapper = await render();
     await wrapper.find('[aria-label="Nächster Monat"]').trigger("click");

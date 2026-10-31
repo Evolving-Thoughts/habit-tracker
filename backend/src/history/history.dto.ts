@@ -44,6 +44,13 @@ export type HistoryWeeklyTarget = {
   fromDate: string;
   untilDate: string;
 };
+export type HistoryExternalEvent = {
+  id: number;
+  title: string;
+  start: string;
+  end: string;
+};
+
 export type HistoryResponse = {
   today: string;
   timeZone: string;
@@ -58,5 +65,7 @@ export type HistoryResponse = {
     date: string;
     items: HistoryItem[];
     planned?: HistoryPlannedItem[];
+    /** Month view: read-only events of the main Google calendar. */
+    external?: HistoryExternalEvent[];
   }[];
 };

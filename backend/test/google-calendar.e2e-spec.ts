@@ -335,6 +335,16 @@ describe('Google calendar sync (e2e)', () => {
       { start: '2026-10-30T09:00:00.000Z', minutes: 30 },
     ]);
     expect(google.writes).not.toContain('primary');
+
+    const month = await request(server)
+      .get('/history?date=2026-10-30&view=month')
+      .expect(200);
+    const { days } = month.body as {
+      days: { date: string; external?: { title: string }[] }[];
+    };
+    expect(
+      days.find((day) => day.date === '2026-10-30')?.external,
+    ).toHaveLength(2);
   });
 
   it('reports withdrawn access and offers reconnecting', async () => {

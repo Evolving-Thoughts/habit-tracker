@@ -33,6 +33,8 @@ import {
 } from './google-calendar.client';
 
 const HORIZON_DAYS = 60;
+/** The month view also shows the recent past of the main calendar. */
+const MAIN_CALENDAR_PAST_DAYS = 31;
 const DEFAULT_MINUTES = 30;
 const MINUTE_MS = 60_000;
 const MARKER = 'habitTracker';
@@ -107,7 +109,12 @@ export class CalendarSyncService {
       const to = endOfDay(addDays(today, HORIZON_DAYS));
       const [own, main] = await Promise.all([
         this.client.listEvents(token, connection.calendarId, from, to),
-        this.client.listEvents(token, 'primary', from, to),
+        this.client.listEvents(
+          token,
+          'primary',
+          startOfDay(addDays(today, -MAIN_CALENDAR_PAST_DAYS)),
+          to,
+        ),
       ]);
       const operations = await this.unitOfWork.run(userId, async (manager) => {
         await this.applyIncoming(manager, userId, own, today);

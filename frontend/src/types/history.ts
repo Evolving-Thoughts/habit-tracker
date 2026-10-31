@@ -54,6 +54,7 @@ export type HistoryResponse = {
     date: string;
     items: HistoryItem[];
     planned?: HistoryPlannedItem[];
+    external?: { id: number; title: string; start: string; end: string }[];
   }[];
 };
 export type HistoryFilter = "all" | "todos" | "habits";
