@@ -12,6 +12,7 @@ import {
   GoogleCalendarClient,
   GoogleEvent,
   GoogleEventInput,
+  GoogleForbiddenError,
 } from '../src/calendar/google-calendar.client';
 import { Clock } from '../src/common/clock';
 import { dayOf } from '../src/common/date/local-day';
@@ -27,6 +28,7 @@ class FakeGoogle {
   calendars = new Map<string, GoogleEvent[]>();
   writes: string[] = [];
   revoked = false;
+  withoutList = false;
   private tick = 0;
   private counter = 0;
 
@@ -56,6 +58,15 @@ class FakeGoogle {
   };
   revoke = () => Promise.resolve();
   createCalendar = () => Promise.resolve(OWN);
+  listCalendars = () =>
+    this.withoutList
+      ? Promise.reject(new GoogleForbiddenError())
+      : Promise.resolve([
+          { id: OWN, summary: 'Habit Tracker', selected: true },
+          { id: 'primary', summary: 'Ich', primary: true, selected: true },
+          { id: 'shared', summary: 'Gemeinsam', selected: true },
+          { id: 'hidden', summary: 'Ausgeblendet' },
+        ]);
   listEvents = (_token: string, calendarId: string) =>
     Promise.resolve(this.events(calendarId).map((event) => ({ ...event })));
   insertEvent = (
@@ -137,11 +148,12 @@ describe('Google calendar sync (e2e)', () => {
   });
   beforeEach(async () => {
     await db.query(
-      'TRUNCATE calendar_links, calendar_connections, calendar_oauth_states, external_events, timers, todos, habits CASCADE',
+      'TRUNCATE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, timers, todos, habits CASCADE',
     );
     google.calendars.clear();
     google.writes = [];
     google.revoked = false;
+    google.withoutList = false;
   });
   afterAll(() => app.close());
 
@@ -345,6 +357,76 @@ describe('Google calendar sync (e2e)', () => {
     expect(
       days.find((day) => day.date === '2026-10-30')?.external,
     ).toHaveLength(2);
+  });
+
+  it('reads all shown calendars and blocks planning per setting', async () => {
+    await connect();
+    google.add('shared', {
+      summary: 'Familie',
+      ...timed('2026-10-30T08:00:00.000Z', '2026-10-30T09:00:00.000Z'),
+    });
+    google.add('hidden', {
+      summary: 'Unsichtbar',
+      ...timed('2026-10-30T12:00:00.000Z', '2026-10-30T13:00:00.000Z'),
+    });
+    await request(server)
+      .post('/todos')
+      .send({
+        title: 'Flexibel',
+        scheduledAt: '2026-10-30T07:30:00.000Z',
+        plannedDurationMinutes: 60,
+      })
+      .expect(201);
+    await sync();
+
+    const planner = await request(server).get('/day-planner/today').expect(200);
+    expect(
+      (planner.body as { externalEvents: { title: string }[] }).externalEvents,
+    ).toEqual([expect.objectContaining({ title: 'Familie' })]);
+    const status = await request(server).get('/calendar/google').expect(200);
+    expect((status.body as { calendars: unknown[] }).calendars).toEqual([
+      { id: 'primary', title: 'Ich', primary: true, blocksPlanning: true },
+      {
+        id: 'shared',
+        title: 'Gemeinsam',
+        primary: false,
+        blocksPlanning: false,
+      },
+    ]);
+    const changes = async (): Promise<unknown[]> =>
+      (
+        (await request(server).get('/todos/replan').expect(200)).body as {
+          changes: unknown[];
+        }
+      ).changes;
+    expect(await changes()).toEqual([]);
+
+    await request(server)
+      .patch('/calendar/google/calendars')
+      .send({ calendarId: 'shared', blocksPlanning: true })
+      .expect(204);
+    expect(await changes()).toHaveLength(1);
+
+    // The choice survives the next sync.
+    await sync();
+    expect(await changes()).toHaveLength(1);
+  });
+
+  it('keeps reading the main calendar with an older token', async () => {
+    await connect();
+    google.withoutList = true;
+    google.add('primary', {
+      summary: 'Besprechung',
+      ...timed('2026-10-30T08:00:00.000Z', '2026-10-30T09:00:00.000Z'),
+    });
+    await sync();
+
+    const status = await request(server).get('/calendar/google').expect(200);
+    expect(status.body).toMatchObject({ connected: true, needsConsent: true });
+    const planner = await request(server).get('/day-planner/today').expect(200);
+    expect(
+      (planner.body as { externalEvents: unknown[] }).externalEvents,
+    ).toHaveLength(1);
   });
 
   it('reports withdrawn access and offers reconnecting', async () => {

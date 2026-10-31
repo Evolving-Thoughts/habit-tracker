@@ -1,4 +1,8 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { randomToken, tokenHash } from '../auth/auth.crypto';
 import { Clock } from '../common/clock';
@@ -8,6 +12,7 @@ import {
   CalendarConnectionEntity,
   CalendarLinkEntity,
   CalendarOAuthStateEntity,
+  ExternalCalendarEntity,
   ExternalEventEntity,
 } from './calendar.entities';
 import { GoogleCalendarClient } from './google-calendar.client';
@@ -16,12 +21,21 @@ import { CalendarSyncService } from './calendar-sync.service';
 const STATE_MINUTES = 10;
 const CALENDAR_NAME = 'Habit Tracker';
 
+export type ReadCalendar = {
+  id: string;
+  title: string;
+  primary: boolean;
+  blocksPlanning: boolean;
+};
+
 export type CalendarStatus = {
   configured: boolean;
   connected: boolean;
   revoked: boolean;
   lastSyncedAt: string | null;
   lastError: string | null;
+  needsConsent: boolean;
+  calendars: ReadCalendar[];
 };
 
 @Injectable()
@@ -44,7 +58,32 @@ export class CalendarService {
       revoked: connection?.revoked ?? false,
       lastSyncedAt: connection?.lastSyncedAt?.toISOString() ?? null,
       lastError: connection?.lastError ?? null,
+      needsConsent: connection?.needsConsent ?? false,
+      calendars: connection
+        ? (
+            await this.db.getRepository(ExternalCalendarEntity).find({
+              where: { userId },
+              order: { primary: 'DESC', title: 'ASC' },
+            })
+          ).map(({ calendarId, title, primary, blocksPlanning }) => ({
+            id: calendarId,
+            title,
+            primary,
+            blocksPlanning,
+          }))
+        : [],
     };
+  }
+
+  async setBlocksPlanning(
+    userId: string,
+    calendarId: string,
+    blocksPlanning: boolean,
+  ): Promise<void> {
+    const { affected } = await this.db
+      .getRepository(ExternalCalendarEntity)
+      .update({ userId, calendarId }, { blocksPlanning });
+    if (!affected) throw new NotFoundException();
   }
 
   async connectUrl(userId: string): Promise<string> {
@@ -85,6 +124,7 @@ export class CalendarService {
       refreshToken: encryptToken(refreshToken),
       revoked: false,
       lastError: null,
+      needsConsent: false,
     });
     await this.sync.syncUser(userId);
   }
@@ -97,6 +137,7 @@ export class CalendarService {
       });
       await manager.delete(CalendarLinkEntity, { userId });
       await manager.delete(ExternalEventEntity, { userId });
+      await manager.delete(ExternalCalendarEntity, { userId });
       await manager.delete(CalendarConnectionEntity, { userId });
       return found;
     });

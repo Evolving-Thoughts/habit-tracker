@@ -5,6 +5,7 @@ import {
   CalendarConnectionEntity,
   CalendarLinkEntity,
   CalendarOAuthStateEntity,
+  ExternalCalendarEntity,
   ExternalEventEntity,
 } from './calendar.entities';
 import { CalendarService } from './calendar.service';
@@ -18,6 +19,7 @@ import { GoogleCalendarClient } from './google-calendar.client';
       CalendarConnectionEntity,
       CalendarLinkEntity,
       CalendarOAuthStateEntity,
+      ExternalCalendarEntity,
       ExternalEventEntity,
     ]),
   ],

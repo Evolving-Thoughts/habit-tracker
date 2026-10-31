@@ -8,6 +8,7 @@ const API_URL = 'https://www.googleapis.com/calendar/v3';
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar.app.created',
   'https://www.googleapis.com/auth/calendar.events.readonly',
+  'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
 ];
 
 export type GoogleEventTime = {
@@ -27,6 +28,13 @@ export type GoogleEvent = {
   extendedProperties?: { private?: Record<string, string> };
 };
 
+export type GoogleCalendar = {
+  id: string;
+  summary?: string;
+  primary?: boolean;
+  selected?: boolean;
+};
+
 export type GoogleEventInput = {
   summary: string;
   start: GoogleEventTime;
@@ -36,6 +44,8 @@ export type GoogleEventInput = {
 
 /** Google refuses the stored token: access was withdrawn or it expired. */
 export class GoogleAccessRevokedError extends Error {}
+/** The stored token does not include the needed permission. */
+export class GoogleForbiddenError extends Error {}
 /** The event is gone in Google. */
 export class GoogleEventMissingError extends Error {}
 
@@ -98,6 +108,24 @@ export class GoogleCalendarClient {
       body: JSON.stringify({ summary }),
     });
     return id;
+  }
+
+  async listCalendars(accessToken: string): Promise<GoogleCalendar[]> {
+    const calendars: GoogleCalendar[] = [];
+    let pageToken: string | undefined;
+    do {
+      const query = new URLSearchParams({
+        maxResults: '250',
+        ...(pageToken ? { pageToken } : {}),
+      });
+      const page = await this.api<{
+        items?: GoogleCalendar[];
+        nextPageToken?: string;
+      }>(accessToken, `/users/me/calendarList?${query.toString()}`);
+      calendars.push(...(page.items ?? []));
+      pageToken = page.nextPageToken;
+    } while (pageToken);
+    return calendars;
   }
 
   /** Single instances, so a series arrives as separate events. */
@@ -199,6 +227,7 @@ export class GoogleCalendarClient {
       },
     });
     if (response.status === 401) throw new GoogleAccessRevokedError();
+    if (response.status === 403) throw new GoogleForbiddenError();
     if (response.status === 404 || response.status === 410)
       throw new GoogleEventMissingError();
     if (!response.ok) throw new Error(`Google API ${response.status}`);

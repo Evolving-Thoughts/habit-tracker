@@ -1,8 +1,10 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
   HttpCode,
+  Patch,
   Post,
   Query,
   Res,
@@ -10,6 +12,7 @@ import {
 import type { Response } from 'express';
 import type { AuthUser } from '../auth/auth.dto';
 import { CurrentUser, Public } from '../auth/auth.guard';
+import { CalendarSettingDto } from './calendar.dto';
 import { CalendarStatus, CalendarService } from './calendar.service';
 import { CalendarSyncService } from './calendar-sync.service';
 
@@ -53,6 +56,19 @@ export class CalendarController {
   @HttpCode(204)
   syncNow(@CurrentUser() user: AuthUser): Promise<void> {
     return this.sync.syncUser(user.id);
+  }
+
+  @Patch('calendars')
+  @HttpCode(204)
+  setting(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CalendarSettingDto,
+  ): Promise<void> {
+    return this.calendar.setBlocksPlanning(
+      user.id,
+      dto.calendarId,
+      dto.blocksPlanning,
+    );
   }
 
   @Delete()

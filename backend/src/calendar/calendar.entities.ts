@@ -35,6 +35,34 @@ export class CalendarConnectionEntity {
 
   @Column({ type: 'varchar', length: 200, nullable: true })
   lastError!: string | null;
+
+  /** The token lacks a newer permission; only the main calendar is read. */
+  @Column({ type: 'boolean', default: false })
+  needsConsent!: boolean;
+}
+
+/** A Google calendar the app only reads, with the user's setting for it. */
+@Entity('external_calendars')
+export class ExternalCalendarEntity {
+  @PrimaryColumn({ type: 'uuid' })
+  userId!: string;
+
+  @ManyToOne(() => UserEntity, { onDelete: 'CASCADE', nullable: false })
+  @JoinColumn({ name: 'userId' })
+  user!: UserEntity;
+
+  @PrimaryColumn({ type: 'varchar', length: 300 })
+  calendarId!: string;
+
+  @Column({ type: 'varchar', length: 300 })
+  title!: string;
+
+  @Column({ type: 'boolean', default: false })
+  primary!: boolean;
+
+  /** Whether its busy events count as obstacles when replanning. */
+  @Column({ type: 'boolean', default: false })
+  blocksPlanning!: boolean;
 }
 
 @Entity('calendar_oauth_states')
@@ -89,7 +117,7 @@ export class CalendarLinkEntity {
   suppressed!: boolean;
 }
 
-/** Copy of the main calendar's upcoming events, replaced on every sync. */
+/** Copy of the read calendars' events, replaced on every sync. */
 @Entity('external_events')
 @Index(['userId', 'start'])
 export class ExternalEventEntity {
@@ -102,6 +130,9 @@ export class ExternalEventEntity {
   @ManyToOne(() => UserEntity, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'userId' })
   user!: UserEntity;
+
+  @Column({ type: 'varchar', length: 300, default: '' })
+  calendarId!: string;
 
   @Column({ type: 'varchar', length: 500 })
   title!: string;

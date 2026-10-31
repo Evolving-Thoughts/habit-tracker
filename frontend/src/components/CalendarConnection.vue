@@ -3,6 +3,7 @@ import { onMounted, ref } from "vue";
 import {
   disconnectCalendar,
   getCalendarStatus,
+  setCalendarBlocksPlanning,
   startCalendarConnection,
   syncCalendar,
   type CalendarStatus,
@@ -40,6 +41,10 @@ async function syncNow(): Promise<void> {
   });
 }
 
+async function setBlocks(id: string, value: boolean): Promise<void> {
+  await run(() => setCalendarBlocksPlanning(id, value));
+}
+
 async function disconnect(): Promise<void> {
   const confirmed = window.confirm(
     "Verbindung trennen? Termine bleiben in Google, Todos bleiben in der App.",
@@ -70,6 +75,29 @@ onMounted(() => run(() => Promise.resolve()));
       {{ status.lastError }}
     </p>
     <p v-if="error" role="alert">{{ error }}</p>
+    <p v-if="status.connected && status.needsConsent">
+      Für weitere Kalender braucht die App eine neue Berechtigung.
+    </p>
+    <fieldset
+      v-if="status.connected && status.calendars?.length"
+      class="calendar-connection__calendars"
+    >
+      <legend>Hindernis bei „Neu planen“</legend>
+      <label v-for="calendar in status.calendars" :key="calendar.id">
+        <input
+          type="checkbox"
+          :checked="calendar.blocksPlanning"
+          :disabled="busy"
+          @change="
+            setBlocks(
+              calendar.id,
+              ($event.target as HTMLInputElement).checked,
+            )
+          "
+        />
+        {{ calendar.title }}
+      </label>
+    </fieldset>
     <div class="calendar-connection__actions">
       <button
         v-if="!status.connected"
@@ -80,6 +108,14 @@ onMounted(() => run(() => Promise.resolve()));
         Verbinden
       </button>
       <template v-else>
+        <button
+          v-if="status.needsConsent"
+          type="button"
+          :disabled="busy"
+          @click="connect"
+        >
+          Berechtigungen erneuern
+        </button>
         <button type="button" :disabled="busy" @click="syncNow">
           Jetzt abgleichen
         </button>
@@ -104,6 +140,15 @@ onMounted(() => run(() => Promise.resolve()));
 
 .calendar-connection p {
   margin: 0;
+}
+
+.calendar-connection__calendars {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ccd2dc;
+  border-radius: 0.5rem;
 }
 
 .calendar-connection__actions {

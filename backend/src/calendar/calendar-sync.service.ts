@@ -22,19 +22,22 @@ import { decryptToken } from './calendar.crypto';
 import {
   CalendarConnectionEntity,
   CalendarLinkEntity,
+  ExternalCalendarEntity,
   ExternalEventEntity,
 } from './calendar.entities';
 import {
   GoogleAccessRevokedError,
+  GoogleCalendar,
   GoogleCalendarClient,
   GoogleEvent,
   GoogleEventInput,
   GoogleEventMissingError,
+  GoogleForbiddenError,
 } from './google-calendar.client';
 
 const HORIZON_DAYS = 60;
-/** The month view also shows the recent past of the main calendar. */
-const MAIN_CALENDAR_PAST_DAYS = 31;
+/** The month view also shows the recent past of the read calendars. */
+const READ_PAST_DAYS = 31;
 const DEFAULT_MINUTES = 30;
 const MINUTE_MS = 60_000;
 const MARKER = 'habitTracker';
@@ -107,18 +110,31 @@ export class CalendarSyncService {
       const today = this.clock.today();
       const from = startOfDay(today);
       const to = endOfDay(addDays(today, HORIZON_DAYS));
-      const [own, main] = await Promise.all([
-        this.client.listEvents(token, connection.calendarId, from, to),
-        this.client.listEvents(
-          token,
-          'primary',
-          startOfDay(addDays(today, -MAIN_CALENDAR_PAST_DAYS)),
-          to,
-        ),
-      ]);
+      const own = await this.client.listEvents(
+        token,
+        connection.calendarId,
+        from,
+        to,
+      );
+      const { calendars, needsConsent } = await this.readCalendars(
+        token,
+        connection.calendarId,
+      );
+      const readFrom = startOfDay(addDays(today, -READ_PAST_DAYS));
+      const read = await Promise.all(
+        calendars.map(async (calendar) => ({
+          calendar,
+          events: await this.client.listEvents(
+            token,
+            calendar.id,
+            readFrom,
+            to,
+          ),
+        })),
+      );
       const operations = await this.unitOfWork.run(userId, async (manager) => {
         await this.applyIncoming(manager, userId, own, today);
-        await this.replaceExternal(manager, userId, main);
+        await this.replaceExternal(manager, userId, read, needsConsent);
         return this.outgoing(manager, userId, today);
       });
       for (const operation of operations)
@@ -126,6 +142,7 @@ export class CalendarSyncService {
       await repository.update(userId, {
         lastSyncedAt: this.clock.now(),
         lastError: null,
+        needsConsent,
       });
     } catch (error) {
       const revoked = error instanceof GoogleAccessRevokedError;
@@ -136,6 +153,32 @@ export class CalendarSyncService {
           ? 'Google hat den Zugriff beendet. Bitte neu verbinden.'
           : 'Der letzte Abgleich ist fehlgeschlagen.',
       });
+    }
+  }
+
+  /**
+   * The calendars shown in Google, without the app's own. A token from before
+   * the calendar list permission still reads the main calendar.
+   */
+  private async readCalendars(
+    token: string,
+    ownCalendarId: string,
+  ): Promise<{ calendars: GoogleCalendar[]; needsConsent: boolean }> {
+    try {
+      const calendars = await this.client.listCalendars(token);
+      return {
+        calendars: calendars.filter(
+          ({ id, selected, primary }) =>
+            id !== ownCalendarId && (selected || primary),
+        ),
+        needsConsent: false,
+      };
+    } catch (error) {
+      if (!(error instanceof GoogleForbiddenError)) throw error;
+      return {
+        calendars: [{ id: 'primary', summary: 'Hauptkalender', primary: true }],
+        needsConsent: true,
+      };
     }
   }
 
@@ -271,27 +314,46 @@ export class CalendarSyncService {
     await manager.getRepository(CalendarLinkEntity).save(link);
   }
 
+  /** New calendars block planning only if they are the main calendar. */
   private async replaceExternal(
     manager: EntityManager,
     userId: string,
-    events: GoogleEvent[],
+    read: { calendar: GoogleCalendar; events: GoogleEvent[] }[],
+    keepCalendars: boolean,
   ): Promise<void> {
+    const calendars = manager.getRepository(ExternalCalendarEntity);
+    const known = await calendars.findBy({ userId });
+    if (!keepCalendars) {
+      const current = new Set(read.map(({ calendar }) => calendar.id));
+      await calendars.remove(known.filter((c) => !current.has(c.calendarId)));
+    }
     const repository = manager.getRepository(ExternalEventEntity);
     await repository.delete({ userId });
-    const rows = events.flatMap((event) => {
-      const times = eventTimes(event);
-      if (event.status === 'cancelled' || !times) return [];
-      return [
-        repository.create({
-          userId,
-          title: (event.summary?.trim() || 'Termin').slice(0, 500),
-          start: times.start,
-          end: times.end,
-          busy: event.transparency !== 'transparent',
-        }),
-      ];
-    });
-    await repository.save(rows);
+    for (const { calendar, events } of read) {
+      const stored = known.find((item) => item.calendarId === calendar.id);
+      await calendars.save({
+        userId,
+        calendarId: calendar.id,
+        title: (calendar.summary?.trim() || 'Kalender').slice(0, 300),
+        primary: calendar.primary ?? false,
+        blocksPlanning: stored?.blocksPlanning ?? calendar.primary ?? false,
+      });
+      const rows = events.flatMap((event) => {
+        const times = eventTimes(event);
+        if (event.status === 'cancelled' || !times) return [];
+        return [
+          repository.create({
+            userId,
+            calendarId: calendar.id,
+            title: (event.summary?.trim() || 'Termin').slice(0, 500),
+            start: times.start,
+            end: times.end,
+            busy: event.transparency !== 'transparent',
+          }),
+        ];
+      });
+      await repository.save(rows);
+    }
   }
 
   private async outgoing(

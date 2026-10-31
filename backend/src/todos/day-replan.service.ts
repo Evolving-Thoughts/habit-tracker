@@ -1,8 +1,11 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { Between, EntityManager } from 'typeorm';
+import { Between, EntityManager, In } from 'typeorm';
 import { UserEntity } from '../auth/auth.entities';
-import { ExternalEventEntity } from '../calendar/calendar.entities';
+import {
+  ExternalCalendarEntity,
+  ExternalEventEntity,
+} from '../calendar/calendar.entities';
 import { Clock } from '../common/clock';
 import {
   addDays,
@@ -112,15 +115,20 @@ export class DayReplanService {
     });
   }
 
-  /** Busy events of the main calendar; they are never moved. */
+  /** Busy events of calendars set to block planning; never moved. */
   private async calendarBlocks(
     manager: EntityManager,
     userId: string,
     today: string,
   ): Promise<ReplanBlock[]> {
+    const calendars = await manager.findBy(ExternalCalendarEntity, {
+      userId,
+      blocksPlanning: true,
+    });
     const events = await manager.findBy(ExternalEventEntity, {
       userId,
       busy: true,
+      calendarId: In(calendars.map(({ calendarId }) => calendarId)),
       start: Between(startOfDay(today), endOfDay(today)),
     });
     return events.map(({ start, end }) => ({

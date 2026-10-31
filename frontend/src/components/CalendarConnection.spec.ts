@@ -4,12 +4,14 @@ import CalendarConnection from "./CalendarConnection.vue";
 import {
   disconnectCalendar,
   getCalendarStatus,
+  setCalendarBlocksPlanning,
   syncCalendar,
 } from "../api/calendar.api";
 
 vi.mock("../api/calendar.api", () => ({
   disconnectCalendar: vi.fn(),
   getCalendarStatus: vi.fn(),
+  setCalendarBlocksPlanning: vi.fn(),
   startCalendarConnection: vi.fn(),
   syncCalendar: vi.fn(),
 }));
@@ -46,6 +48,32 @@ describe("CalendarConnection", () => {
     await flushPromises();
     expect(wrapper.text()).toContain("neu verbinden");
     expect(wrapper.find("button").text()).toBe("Verbinden");
+  });
+
+  it("saves per calendar whether it blocks planning", async () => {
+    vi.mocked(getCalendarStatus).mockResolvedValue({
+      ...status,
+      connected: true,
+      calendars: [
+        { id: "shared", title: "Gemeinsam", primary: false, blocksPlanning: false },
+      ],
+    });
+    const wrapper = mount(CalendarConnection);
+    await flushPromises();
+    await wrapper.get('input[type="checkbox"]').setValue(true);
+    await flushPromises();
+    expect(setCalendarBlocksPlanning).toHaveBeenCalledWith("shared", true);
+  });
+
+  it("offers renewing permissions for an older connection", async () => {
+    vi.mocked(getCalendarStatus).mockResolvedValue({
+      ...status,
+      connected: true,
+      needsConsent: true,
+    });
+    const wrapper = mount(CalendarConnection);
+    await flushPromises();
+    expect(wrapper.text()).toContain("Berechtigungen erneuern");
   });
 
   it("syncs on demand and disconnects after confirming", async () => {
