@@ -19,7 +19,8 @@ import type {
   DayPlannerItem,
   DayPlannerResponse,
 } from "../types/day-planner";
-import { formatDateForGermanDisplay } from "../utils/date";
+import {
+  formatTimeForGermanDisplay, formatDateForGermanDisplay } from "../utils/date";
 
 type EditingTarget = {
   kind: "todo" | "habit";
@@ -315,6 +316,20 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
       @close="closeEditing"
     />
 
+    <section
+      v-if="planner?.externalEvents?.length"
+      class="today-view__external"
+      aria-label="Termine aus Google Kalender"
+    >
+      <h2>Termine aus Google Kalender</h2>
+      <ul>
+        <li v-for="event in planner.externalEvents" :key="event.id">
+          {{ formatTimeForGermanDisplay(event.start) }} ·
+          {{ event.title }}
+        </li>
+      </ul>
+    </section>
+
     <ReplanDialog
       v-if="replanOpen"
       :return-focus="() => null"
@@ -461,6 +476,22 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
 .today-view__date {
   margin: 0.5rem 0 0;
   color: #677287;
+}
+
+.today-view__external {
+  margin-bottom: 1.5rem;
+  color: #677287;
+  font-size: 0.875rem;
+}
+
+.today-view__external h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.today-view__external ul {
+  margin: 0;
+  padding-left: 1.25rem;
 }
 
 .today-view__replan,

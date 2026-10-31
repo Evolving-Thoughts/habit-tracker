@@ -45,7 +45,7 @@ describe('History API (e2e)', () => {
     if (db.options.database !== 'habit_tracker_test')
       throw new Error('Refusing non-test DB');
     await db.query(
-      'TRUNCATE push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, auth_sessions, auth_tokens, users RESTART IDENTITY CASCADE',
+      'TRUNCATE calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, auth_sessions, auth_tokens, users RESTART IDENTITY CASCADE',
     );
     await seedAuth(app);
     await db.getRepository(UserEntity).save({

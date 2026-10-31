@@ -1140,6 +1140,7 @@ describe('Habit domain and day planner (e2e)', () => {
       expect(await planner()).toEqual({
         date: date(),
         items: [],
+        externalEvents: [],
       });
     });
   });

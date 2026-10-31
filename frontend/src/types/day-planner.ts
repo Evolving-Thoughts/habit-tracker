@@ -40,4 +40,10 @@ export type DayPlannerItem = DayPlannerTodoItem | DayPlannerHabitItem;
 export type DayPlannerResponse = {
   date: string;
   items: DayPlannerItem[];
+  externalEvents?: {
+    id: number;
+    title: string;
+    start: string;
+    end: string;
+  }[];
 };

@@ -1,12 +1,15 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { EntityManager } from 'typeorm';
+import { Between, EntityManager } from 'typeorm';
 import { UserEntity } from '../auth/auth.entities';
+import { ExternalEventEntity } from '../calendar/calendar.entities';
 import { Clock } from '../common/clock';
 import {
   addDays,
   atSameWallClock,
   atWallClockMinutes,
+  endOfDay,
+  startOfDay,
 } from '../common/date/local-day';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import {
@@ -109,6 +112,23 @@ export class DayReplanService {
     });
   }
 
+  /** Busy events of the main calendar; they are never moved. */
+  private async calendarBlocks(
+    manager: EntityManager,
+    userId: string,
+    today: string,
+  ): Promise<ReplanBlock[]> {
+    const events = await manager.findBy(ExternalEventEntity, {
+      userId,
+      busy: true,
+      start: Between(startOfDay(today), endOfDay(today)),
+    });
+    return events.map(({ start, end }) => ({
+      start: start.getTime(),
+      end: end.getTime(),
+    }));
+  }
+
   private async proposal(
     manager: EntityManager,
     userId: string,
@@ -144,7 +164,10 @@ export class DayReplanService {
       })),
       now.getTime(),
       atWallClockMinutes(today, dayEndMinutes).getTime(),
-      await this.habitBlocks(manager, userId, today),
+      [
+        ...(await this.habitBlocks(manager, userId, today)),
+        ...(await this.calendarBlocks(manager, userId, today)),
+      ],
     );
     const tomorrow = addDays(today, 1);
     const changes: ReplanChangeResponse[] = planned.map((change) => ({

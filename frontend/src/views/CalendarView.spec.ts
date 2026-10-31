@@ -56,6 +56,10 @@ async function render() {
   return wrapper;
 }
 
+vi.mock("../api/calendar.api", () => ({
+  getCalendarStatus: vi.fn().mockResolvedValue({ configured: false }),
+}));
+
 describe("CalendarView", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
