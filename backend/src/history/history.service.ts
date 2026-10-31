@@ -4,6 +4,7 @@ import { HabitEntity } from '../habits/entities/habit.entity';
 import { HabitScheduleVersionEntity } from '../habits/entities/habit-schedule-version.entity';
 import {
   forecastSlots,
+  movedSlots,
   plannedHabits,
   weeklyTargets,
 } from './history-planning';
@@ -231,10 +232,17 @@ export class HistoryService {
         ids: habits.map((habit) => habit.id),
       })
       .andWhere(
-        '("occurrence"."scheduledDate" BETWEEN :earliest AND :end OR "occurrence"."resolvedDate" BETWEEN :weekStart AND :weekEnd)',
-        { earliest, end: dates[dates.length - 1], weekStart, weekEnd },
+        '("occurrence"."scheduledDate" BETWEEN :earliest AND :end OR "occurrence"."movedToDate" BETWEEN :first AND :end OR "occurrence"."resolvedDate" BETWEEN :weekStart AND :weekEnd)',
+        {
+          earliest,
+          first: dates[0],
+          end: dates[dates.length - 1],
+          weekStart,
+          weekEnd,
+        },
       )
       .getMany();
+    slots.push(...movedSlots(versions, occurrences, slots, dates));
     items.push(...plannedHabits(habits, slots, occurrences, today));
     items.sort(
       (a, b) =>

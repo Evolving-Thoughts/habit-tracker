@@ -52,6 +52,30 @@ export function forecastSlots(
   }
   return result;
 }
+/** Slots of runs moved into `dates` from a slot outside of them. */
+export function movedSlots(
+  versions: HabitScheduleVersionEntity[],
+  occurrences: HabitOccurrenceEntity[],
+  slots: ForecastSlot[],
+  dates: string[],
+): ForecastSlot[] {
+  const known = new Set(
+    slots.map((slot) => `${slot.version.id}:${slot.scheduledDate}`),
+  );
+  return occurrences.flatMap((occurrence) => {
+    const { movedToDate, scheduledDate, scheduleVersionId } = occurrence;
+    const version = versions.find((item) => item.id === scheduleVersionId);
+    if (
+      !version ||
+      movedToDate === null ||
+      occurrence.status !== Status.PENDING ||
+      !dates.includes(movedToDate) ||
+      known.has(`${scheduleVersionId}:${scheduledDate}`)
+    )
+      return [];
+    return [{ version, date: movedToDate, scheduledDate }];
+  });
+}
 export function plannedHabits(
   habits: HabitEntity[],
   slots: ForecastSlot[],

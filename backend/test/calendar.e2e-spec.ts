@@ -137,5 +137,12 @@ describe('Calendar month view (e2e)', () => {
     const result = await month(target);
     const day = result.days.find((item) => item.date === target);
     expect(day?.planned?.some((item) => item.id === id)).toBe(true);
+
+    // The target day shows it although its slot lies outside that range.
+    const single = await request(server)
+      .get(`/history?date=${target}&view=day`)
+      .expect(200);
+    const planned = (single.body as HistoryResponse).days[0].planned;
+    expect(planned?.some((item) => item.id === id)).toBe(true);
   });
 });
