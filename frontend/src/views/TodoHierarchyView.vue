@@ -15,15 +15,15 @@ import GoalBurnup from "../components/GoalBurnup.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
 import TodoDeletionSummary from "../components/TodoDeletionSummary.vue";
 import { useListFocus } from "../composables/useListFocus";
-import { notifyDataChanged } from "../composables/data-sync";
 import { useLoader } from "../composables/useLoader";
+import { useWrites } from "../composables/useWrites";
 import { useTodoDeletion } from "../composables/useTodoDeletion";
 import { formatDateForGermanDisplay } from "../utils/date";
 const page = ref<HTMLElement | null>(null),
   listFocus = useListFocus(page);
 const collapsed = ref(new Set<number>());
 const saving = ref(false),
-  error = ref(""),
+  error = ref<string | null>(""),
   success = ref("");
 const action = ref<"create" | "move" | "edit" | "delete" | null>(null),
   selected = ref<HierarchyTodo | null>(null);
@@ -38,7 +38,9 @@ const {
 } = useTodoDeletion();
 const dragged = ref<number | null>(null),
   dropTarget = ref<number | null | undefined>(undefined);
-const busy = computed(() => saving.value || formBusy.value);
+const busy = computed(
+  () => saving.value || formBusy.value || writing.value,
+);
 // Refreshes after timer and other views' changes, unless a dialog is open.
 const {
   data: todos,
@@ -51,6 +53,7 @@ const {
   refreshOnChange: () =>
     !busy.value && action.value === null && burnupTodo.value === null,
 });
+const { write, applied, busy: writing } = useWrites(load, error);
 const shownError = computed(() => error.value || loadError.value || "");
 const rows = computed(() => visibleHierarchy(todos.value, collapsed.value));
 const children = computed(() => hierarchyChildren(todos.value));
@@ -78,29 +81,21 @@ async function run(
   if (busy.value) return;
   const activeLabel = document.activeElement?.getAttribute("aria-label");
   const hadDialog = action.value !== null;
-  saving.value = true;
-  error.value = "";
   success.value = "";
-  try {
-    await fn();
-    if (notify) notifyDataChanged();
-    await load();
-    if (loadError.value) return;
+  const done = await write(fn, {
+    fallbackError: "Änderung fehlgeschlagen.",
+    ...(notify ? {} : { notify: null }),
+  });
+  if (done && !loadError.value) {
     success.value = text;
     action.value = null;
     selected.value = null;
-  } catch (e) {
-    error.value = message(e);
-  } finally {
-    saving.value = false;
-    await nextTick();
-    if (!hadDialog && activeLabel)
-      page.value
-        ?.querySelectorAll<HTMLElement>("[aria-label]")
-        .forEach((el) => {
-          if (el.getAttribute("aria-label") === activeLabel) el.focus();
-        });
   }
+  await nextTick();
+  if (!hadDialog && activeLabel)
+    page.value?.querySelectorAll<HTMLElement>("[aria-label]").forEach((el) => {
+      if (el.getAttribute("aria-label") === activeLabel) el.focus();
+    });
 }
 function toggleCollapse(id: number) {
   const next = new Set(collapsed.value);
@@ -125,18 +120,16 @@ async function created() {
     next.delete(selected.value.id);
     collapsed.value = next;
   }
-  await load();
+  await applied();
   action.value = null;
   selected.value = null;
-  notifyDataChanged();
   success.value = "Todo angelegt.";
 }
 async function changed() {
   formBusy.value = false;
-  await load();
+  await applied();
   action.value = null;
   selected.value = null;
-  notifyDataChanged();
   success.value = "Änderungen gespeichert.";
 }
 function move(todo: HierarchyTodo, target: number | null) {

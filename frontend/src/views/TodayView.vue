@@ -6,8 +6,8 @@ import {
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { useListFocus } from "../composables/useListFocus";
-import { notifyDataChanged } from "../composables/data-sync";
 import { useLoader } from "../composables/useLoader";
+import { useWrites } from "../composables/useWrites";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import PlannerItem from "../components/PlannerItem.vue";
@@ -30,8 +30,6 @@ type EditingTarget = {
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
 
-
-const updatingKeys = ref<string[]>([]);
 
 const editingTarget = ref<EditingTarget | null>(null);
 const editorBusy = ref(false);
@@ -86,8 +84,9 @@ const {
     !movingItem.value &&
     !replanOpen.value &&
     !creationOpen.value &&
-    updatingKeys.value.length === 0,
+    !writes.busy.value,
 });
+const writes = useWrites(loadToday, errorMessage);
 
 function getItemKey(item: DayPlannerItem): string {
   return item.type === "todo"
@@ -96,23 +95,7 @@ function getItemKey(item: DayPlannerItem): string {
 }
 
 function isUpdating(item: DayPlannerItem): boolean {
-  return editorBusy.value || updatingKeys.value.includes(getItemKey(item));
-}
-
-function startUpdating(item: DayPlannerItem): void {
-  const key = getItemKey(item);
-
-  if (!updatingKeys.value.includes(key)) {
-    updatingKeys.value.push(key);
-  }
-}
-
-function stopUpdating(item: DayPlannerItem): void {
-  const key = getItemKey(item);
-
-  updatingKeys.value = updatingKeys.value.filter(
-    (existingKey) => existingKey !== key,
-  );
+  return editorBusy.value || writes.isWriting(getItemKey(item));
 }
 
 
@@ -121,29 +104,19 @@ async function toggleItem(item: DayPlannerItem): Promise<void> {
     return;
   }
 
-  startUpdating(item);
-  errorMessage.value = null;
-
-  try {
-    if (item.type === "todo") {
-      await updateTodoCompletion(item.todoId, item.status !== "completed");
-    } else {
-      await updateOccurrenceStatus(
-        item.occurrenceId,
-        item.status === "pending" ? "completed" : "pending",
-      );
-    }
-
-    notifyDataChanged();
-    await loadToday(false);
-  } catch (error: unknown) {
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : "Der Eintrag konnte nicht aktualisiert werden.";
-  } finally {
-    stopUpdating(item);
-  }
+  await writes.write(
+    () =>
+      item.type === "todo"
+        ? updateTodoCompletion(item.todoId, item.status !== "completed")
+        : updateOccurrenceStatus(
+            item.occurrenceId,
+            item.status === "pending" ? "completed" : "pending",
+          ),
+    {
+      key: getItemKey(item),
+      fallbackError: "Der Eintrag konnte nicht aktualisiert werden.",
+    },
+  );
 }
 
 async function skipHabit(item: DayPlannerHabitItem): Promise<void> {
@@ -151,26 +124,17 @@ async function skipHabit(item: DayPlannerHabitItem): Promise<void> {
     return;
   }
 
-  startUpdating(item);
-  errorMessage.value = null;
-
-  try {
-    await updateOccurrenceStatus(item.occurrenceId, "skipped");
-
-    notifyDataChanged();
-    await loadToday(false);
-  } catch (error: unknown) {
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : "Das Habit konnte nicht übersprungen werden.";
-  } finally {
-    stopUpdating(item);
-  }
+  await writes.write(
+    () => updateOccurrenceStatus(item.occurrenceId, "skipped"),
+    {
+      key: getItemKey(item),
+      fallbackError: "Das Habit konnte nicht übersprungen werden.",
+    },
+  );
 }
 
 function openEditing(item: DayPlannerItem): void {
-  if (editorBusy.value || updatingKeys.value.length > 0) {
+  if (editorBusy.value || writes.busy.value) {
     return;
   }
 
@@ -193,13 +157,12 @@ function closeEditing(): void {
 }
 
 async function onEditorChanged(): Promise<void> {
-  notifyDataChanged();
-  await loadToday(false);
+  await writes.applied();
   closeEditing();
 }
 
 function openMoving(item: DayPlannerItem): void {
-  if (editorBusy.value || updatingKeys.value.length > 0) {
+  if (editorBusy.value || writes.busy.value) {
     return;
   }
 
@@ -213,8 +176,7 @@ function closeMoving(): void {
 }
 
 async function onMoved(): Promise<void> {
-  notifyDataChanged();
-  await loadToday(false);
+  await writes.applied();
   closeMoving();
 }
 
@@ -224,8 +186,7 @@ function closeReplan(): void {
 }
 
 async function onReplanned(): Promise<void> {
-  notifyDataChanged();
-  await loadToday(false);
+  await writes.applied();
   closeReplan();
 }
 
@@ -233,7 +194,7 @@ function openCreation(): void {
   if (
     isLoading.value ||
     editorBusy.value ||
-    updatingKeys.value.length ||
+    writes.busy.value ||
     editingTarget.value
   )
     return;
@@ -245,8 +206,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
     kind === "todo"
       ? "Todo erstellt. Ohne Zeitpunkt findest du es im Todo-Dump."
       : "Habit erstellt. Es erscheint ab seinem Startdatum an fälligen Tagen.";
-  notifyDataChanged();
-  await loadToday(false);
+  await writes.applied();
   creationOpen.value = false;
 }
 
@@ -259,7 +219,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
       :disabled="
         isLoading ||
         editorBusy ||
-        updatingKeys.length > 0 ||
+        writes.busy.value ||
         editingTarget !== null
       "
       @click="openCreation"

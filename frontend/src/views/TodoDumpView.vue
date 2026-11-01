@@ -9,8 +9,8 @@ import {
 } from "../api/day-planner.api";
 import { useListFocus } from "../composables/useListFocus";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
-import { notifyDataChanged } from "../composables/data-sync";
 import { useLoader } from "../composables/useLoader";
+import { useWrites } from "../composables/useWrites";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import ModalDialog from "../components/ModalDialog.vue";
@@ -20,7 +20,6 @@ import { buildTodoInput } from "../utils/todo-input";
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
 
-const isSaving = ref(false);
 const successMessage = ref<string | null>(null);
 
 const selectedTodo = ref<TodoResponse | null>(null);
@@ -34,7 +33,6 @@ const confirmDeletion = computed(() => deletionPreview.value !== null);
 async function requestDeletion(): Promise<void> {
   if (isBusy.value) return;
   errorMessage.value = null;
-  isSaving.value = true;
   try {
     await prepareDeletion(selectedTodo.value!.id);
   } catch (error) {
@@ -42,8 +40,6 @@ async function requestDeletion(): Promise<void> {
       error instanceof Error
         ? error.message
         : "Löschvorschau konnte nicht geladen werden.";
-  } finally {
-    isSaving.value = false;
   }
 }
 
@@ -62,8 +58,10 @@ const {
 } = useLoader(getBacklogTodos, {
   initial: [] as TodoResponse[],
   fallbackError: "Die Todos konnten nicht geladen werden.",
-  refreshOnChange: () => !(isSaving.value || selectedTodo.value),
+  refreshOnChange: () =>
+    !(isSaving.value || selectedTodo.value || creationOpen.value),
 });
+const { write, applied, busy: isSaving } = useWrites(loadTodos, errorMessage);
 
 const isBusy = computed(() => {
   return isLoading.value || isSaving.value;
@@ -78,25 +76,14 @@ async function toggleTodo(todo: TodoResponse): Promise<void> {
     return;
   }
 
-  isSaving.value = true;
-  errorMessage.value = null;
   successMessage.value = null;
-
-  try {
-    await updateTodoCompletion(todo.id, !todo.completed);
-    notifyDataChanged();
+  if (
+    await write(() => updateTodoCompletion(todo.id, !todo.completed), {
+      fallbackError: "Das Todo konnte nicht aktualisiert werden.",
+    })
+  )
     successMessage.value =
       "Erledigt. Das Todo erscheint in Heute unter Abgeschlossen.";
-
-    await loadTodos();
-  } catch (error: unknown) {
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : "Das Todo konnte nicht aktualisiert werden.";
-  } finally {
-    isSaving.value = false;
-  }
 }
 
 function openEditing(todo: TodoResponse): void {
@@ -148,29 +135,27 @@ async function saveTodo(): Promise<void> {
   errorMessage.value = null;
   successMessage.value = null;
 
+  let input: CreateTodoInput;
   try {
-    const input = buildUpdateInput();
-    const todoId = selectedTodo.value.id;
-
-    isSaving.value = true;
-
-    await updateTodo(todoId, input);
-    notifyDataChanged();
-
-    successMessage.value =
-      input.scheduledAt === null
-        ? "Änderungen gespeichert."
-        : "Änderungen gespeichert. Das Todo ist jetzt eingeplant und nicht mehr im Todo-Dump.";
-
-    await loadTodos(false);
-    closeEditing();
+    input = buildUpdateInput();
   } catch (error: unknown) {
     errorMessage.value =
       error instanceof Error
         ? error.message
         : "Die Änderungen konnten nicht gespeichert werden.";
-  } finally {
-    isSaving.value = false;
+    return;
+  }
+  const todoId = selectedTodo.value.id;
+  if (
+    await write(() => updateTodo(todoId, input), {
+      fallbackError: "Die Änderungen konnten nicht gespeichert werden.",
+    })
+  ) {
+    successMessage.value =
+      input.scheduledAt === null
+        ? "Änderungen gespeichert."
+        : "Änderungen gespeichert. Das Todo ist jetzt eingeplant und nicht mehr im Todo-Dump.";
+    closeEditing();
   }
 }
 
@@ -179,24 +164,15 @@ async function removeSelectedTodo(): Promise<void> {
     return;
   }
 
-  isSaving.value = true;
-  errorMessage.value = null;
   successMessage.value = null;
-
-  try {
-    await confirmPreviewedDeletion();
-
+  if (
+    await write(confirmPreviewedDeletion, {
+      fallbackError: "Das Todo konnte nicht gelöscht werden.",
+      notify: null,
+    })
+  ) {
     successMessage.value = "Todo gelöscht.";
-
-    await loadTodos(false);
     closeEditing();
-  } catch (error: unknown) {
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : "Das Todo konnte nicht gelöscht werden.";
-  } finally {
-    isSaving.value = false;
   }
 }
 
@@ -208,7 +184,7 @@ function openCreation(): void {
 async function onCreated(): Promise<void> {
   successMessage.value =
     "Todo erstellt. Ohne Zeitpunkt erscheint es hier im Todo-Dump.";
-  await loadTodos(false);
+  await applied();
   creationOpen.value = false;
 }
 

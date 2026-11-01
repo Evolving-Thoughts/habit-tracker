@@ -11,6 +11,7 @@ import {
 } from "../api/work-logs.api";
 import { notifyViewsChanged } from "../composables/data-sync";
 import { useLoader } from "../composables/useLoader";
+import { useWrites } from "../composables/useWrites";
 import {
   formatTimeForGermanDisplay,
   fromLocalInput,
@@ -19,8 +20,7 @@ import {
 
 const props = defineProps<{ date: string; targets: WorkTarget[] }>();
 
-const saving = ref(false);
-const saveError = ref("");
+const saveError = ref<string | null>(null);
 const {
   data: day,
   errorMessage: loadError,
@@ -32,6 +32,7 @@ const {
   resetOnLoad: true,
   refreshOnChange: () => !saving.value,
 });
+const { write, busy: saving } = useWrites(reload, saveError);
 const error = computed(() => saveError.value || loadError.value);
 const targetKey = ref("");
 const from = ref("");
@@ -51,25 +52,11 @@ function times(start: string, end: string) {
   return { startedAt, endedAt };
 }
 
-async function run(action: () => Promise<unknown>): Promise<boolean> {
-  if (saving.value) return false;
-  saving.value = true;
-  saveError.value = "";
-  try {
-    await action();
-    await reload(false);
-    notifyViewsChanged();
-    return true;
-  } catch (cause) {
-    saveError.value =
-      cause instanceof Error
-        ? cause.message
-        : "Die Arbeitszeit konnte nicht gespeichert werden.";
-    return false;
-  } finally {
-    saving.value = false;
-  }
-}
+const run = (action: () => Promise<unknown>): Promise<boolean> =>
+  write(action, {
+    fallbackError: "Die Arbeitszeit konnte nicht gespeichert werden.",
+    notify: notifyViewsChanged,
+  });
 
 async function add(): Promise<void> {
   const target = props.targets.find((item) => keyOf(item) === targetKey.value);
@@ -98,7 +85,7 @@ watch(
   () => props.date,
   () => {
     editingId.value = null;
-    saveError.value = "";
+    saveError.value = null;
   },
 );
 </script>

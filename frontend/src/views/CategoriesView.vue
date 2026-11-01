@@ -7,15 +7,14 @@ import {
   renameCategory,
   setCategoryTarget,
 } from "../api/categories.api";
-import { notifyDataChanged } from "../composables/data-sync";
 import { useLoader } from "../composables/useLoader";
+import { useWrites } from "../composables/useWrites";
 import type { CategoryResponse } from "../types/category";
 
 const newName = ref("");
 const editingId = ref<number | null>(null);
 const editedName = ref("");
 const deletingId = ref<number | null>(null);
-const isSaving = ref(false);
 
 const {
   data: categories,
@@ -27,26 +26,12 @@ const {
   fallbackError: "Die Kategorien konnten nicht geladen werden.",
   refreshOnChange: () => !isSaving.value && editingId.value === null,
 });
+const { write, busy: isSaving } = useWrites(reload, errorMessage);
 
-async function run(action: () => Promise<unknown>): Promise<boolean> {
-  if (isSaving.value) return false;
-  isSaving.value = true;
-  errorMessage.value = null;
-  try {
-    await action();
-    notifyDataChanged();
-    await reload(false);
-    return true;
-  } catch (error: unknown) {
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : "Die Änderung konnte nicht gespeichert werden.";
-    return false;
-  } finally {
-    isSaving.value = false;
-  }
-}
+const run = (action: () => Promise<unknown>): Promise<boolean> =>
+  write(action, {
+    fallbackError: "Die Änderung konnte nicht gespeichert werden.",
+  });
 
 async function add(): Promise<void> {
   const name = newName.value.trim();
