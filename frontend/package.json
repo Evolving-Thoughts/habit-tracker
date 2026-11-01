@@ -15,12 +15,16 @@
     "typecheck:e2e": "tsc -p tsconfig.e2e.json",
     "serve:tunnel": "node scripts/tunnel-server.mjs",
     "test:tunnel": "node --test scripts/tunnel-server.test.mjs",
-    "test:push-worker": "node --test scripts/push-worker.test.mjs"
+    "test:push-worker": "node --test scripts/push-worker.test.mjs",
+    "dev:lan": "vite --mode lan --host 0.0.0.0 --port 5174"
   },
   "dependencies": {
     "vue": "^3.5.42"
   },
   "devDependencies": {
+    "@capacitor/android": "^7.6.10",
+    "@capacitor/cli": "^7.6.10",
+    "@capacitor/core": "^7.6.10",
     "@playwright/test": "1.63.0",
     "@types/node": "^24.13.3",
     "@vitejs/plugin-vue": "^6.0.8",
