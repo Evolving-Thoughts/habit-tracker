@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { Between, DataSource } from 'typeorm';
-import { ExternalEventEntity } from '../calendar/calendar.entities';
+import { DataSource } from 'typeorm';
+import { eventsOfDays } from '../calendar/day-events';
 import { CategoryEntity } from '../categories/category.entity';
-import { dayOf, endOfDay, startOfDay } from '../common/date/local-day';
+import { dayOf } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import {
   effectiveDuration,
@@ -85,15 +85,11 @@ export class DayPlannerService {
       return firstTime.localeCompare(secondTime);
     });
 
-    const externalEvents = await this.db
-      .getRepository(ExternalEventEntity)
-      .find({
-        where: {
-          userId,
-          start: Between(startOfDay(today), endOfDay(today)),
-        },
-        order: { start: 'ASC' },
-      });
+    const externalEvents = await eventsOfDays(
+      this.db.manager,
+      { userId },
+      today,
+    );
     return new DayPlannerResponseDto({
       date: today,
       items,

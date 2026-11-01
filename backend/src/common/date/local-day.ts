@@ -109,6 +109,12 @@ export function atWallClockMinutes(date: string, minutes: number): Date {
   return atSameWallClock(new Date(reference), date);
 }
 
+/** The instant of an `HH:MM` time of day on `date`. */
+export function atTimeOfDay(date: string, timeOfDay: string): Date {
+  const [hours, minutes] = timeOfDay.split(':').map(Number);
+  return atWallClockMinutes(date, hours * 60 + minutes);
+}
+
 /** Exclusive end instant of `date` (start of the following day). */
 export function endOfDay(date: string): Date {
   assertDateOnly(date);

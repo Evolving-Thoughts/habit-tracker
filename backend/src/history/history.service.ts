@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Between, DataSource, EntityManager } from 'typeorm';
-import { ExternalEventEntity } from '../calendar/calendar.entities';
+import { DataSource, EntityManager } from 'typeorm';
 import { HabitEntity } from '../habits/entities/habit.entity';
 import { HabitScheduleVersionEntity } from '../habits/entities/habit-schedule-version.entity';
 import {
@@ -10,12 +9,7 @@ import {
   weeklyTargets,
 } from './history-planning';
 import { DEFAULT_TIME_ZONE } from '../common/date/date-only.utils';
-import {
-  dayOf,
-  endOfDay,
-  startOfDay,
-  weekRange,
-} from '../common/date/local-day';
+import { dayOf, weekRange } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import { effectiveDuration } from '../timers/timer-target';
 import {
@@ -26,6 +20,7 @@ import {
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { historyRange } from './history-range';
+import { eventsOfDays } from '../calendar/day-events';
 import { CategoryEntity } from '../categories/category.entity';
 import { perfectWeek } from './perfect-week';
 import { weekQuota } from './week-quota';
@@ -126,13 +121,7 @@ export class HistoryService {
       );
       const external =
         query.view === 'month'
-          ? await manager.find(ExternalEventEntity, {
-              where: {
-                userId,
-                start: Between(startOfDay(startDate), endOfDay(endDate)),
-              },
-              order: { start: 'ASC' },
-            })
+          ? await eventsOfDays(manager, { userId }, startDate, endDate)
           : null;
       return {
         ...(query.view === 'week' && filter === 'all'

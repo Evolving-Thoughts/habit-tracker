@@ -4,7 +4,7 @@ import { Clock } from '../common/clock';
 import { DEFAULT_TIME_ZONE } from '../common/date/date-only.utils';
 import {
   addDays,
-  atWallClockMinutes,
+  atTimeOfDay,
   dayOf,
   endOfDay,
   startOfDay,
@@ -482,11 +482,10 @@ export class CalendarSyncService {
   }
 
   private runChange(run: HabitOccurrenceEntity): Change {
-    const [hours, minutes] = run.habit.timeOfDay!.split(':').map(Number);
     return {
       input: eventInput(
         run.habit.title,
-        atWallClockMinutes(occurrenceDueDate(run), hours * 60 + minutes),
+        atTimeOfDay(occurrenceDueDate(run), run.habit.timeOfDay!),
         effectiveDuration(run, run.habit) ?? DEFAULT_MINUTES,
       ),
       localUpdatedAt: newest(run.updatedAt, run.habit.updatedAt),

@@ -412,6 +412,26 @@ describe('Google calendar sync (e2e)', () => {
     ).toHaveLength(2);
   });
 
+  it('counts events by the time they occupy, not by their start', async () => {
+    await connect();
+    google.add('primary', {
+      summary: 'Nacht',
+      ...timed('2026-10-29T22:00:00.000Z', '2026-10-30T00:30:00.000Z'),
+    });
+    google.add('primary', {
+      summary: 'Morgen',
+      ...timed('2026-10-30T23:00:00.000Z', '2026-10-30T23:30:00.000Z'),
+    });
+    await sync();
+
+    const planner = await request(server).get('/day-planner/today').expect(200);
+    expect(
+      (
+        planner.body as { externalEvents: { title: string }[] }
+      ).externalEvents.map(({ title }) => title),
+    ).toEqual(['Nacht']);
+  });
+
   it('reads all shown calendars and blocks planning per setting', async () => {
     await connect();
     google.add('shared', {

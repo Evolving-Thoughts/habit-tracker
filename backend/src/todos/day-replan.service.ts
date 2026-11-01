@@ -1,18 +1,15 @@
+import { eventsOfDays } from '../calendar/day-events';
 import { ConflictException, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { Between, EntityManager, In } from 'typeorm';
+import { EntityManager, In } from 'typeorm';
 import { UserEntity } from '../auth/auth.entities';
-import {
-  ExternalCalendarEntity,
-  ExternalEventEntity,
-} from '../calendar/calendar.entities';
+import { ExternalCalendarEntity } from '../calendar/calendar.entities';
 import { Clock } from '../common/clock';
 import {
   addDays,
   atSameWallClock,
+  atTimeOfDay,
   atWallClockMinutes,
-  endOfDay,
-  startOfDay,
 } from '../common/date/local-day';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import {
@@ -119,8 +116,7 @@ export class DayReplanService {
       const minutes = effectiveDuration(occurrence, occurrence.habit);
       if (!timeOfDay || !minutes || occurrenceDueDate(occurrence) !== today)
         return [];
-      const [hours, mins] = timeOfDay.split(':').map(Number);
-      const start = atWallClockMinutes(today, hours * 60 + mins).getTime();
+      const start = atTimeOfDay(today, timeOfDay).getTime();
       return [{ start, end: start + minutes * 60_000 }];
     });
   }
@@ -135,12 +131,15 @@ export class DayReplanService {
       userId,
       blocksPlanning: true,
     });
-    const events = await manager.findBy(ExternalEventEntity, {
-      userId,
-      busy: true,
-      calendarId: In(calendars.map(({ calendarId }) => calendarId)),
-      start: Between(startOfDay(today), endOfDay(today)),
-    });
+    const events = await eventsOfDays(
+      manager,
+      {
+        userId,
+        busy: true,
+        calendarId: In(calendars.map(({ calendarId }) => calendarId)),
+      },
+      today,
+    );
     return events.map(({ start, end }) => ({
       start: start.getTime(),
       end: end.getTime(),
