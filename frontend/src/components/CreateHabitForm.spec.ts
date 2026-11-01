@@ -1,3 +1,4 @@
+import { HABIT_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHabit } from "../api/day-planner.api";
@@ -10,6 +11,7 @@ vi.mock("../api/categories.api", () => ({
 enableAutoUnmount(afterEach);
 afterEach(() => vi.useRealTimers());
 const response: HabitResponse = {
+    ...HABIT_FIELDS,
   id: 10,
   title: "Joggen",
   isActive: true,

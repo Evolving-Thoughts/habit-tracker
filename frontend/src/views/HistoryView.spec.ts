@@ -1,3 +1,4 @@
+import { PLANNED_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getHistory } from "../api/history.api";
@@ -265,6 +266,7 @@ describe("HistoryView", () => {
     const data = response();
     data.days[0]!.planned = [
       {
+    ...PLANNED_FIELDS,
         key: "todo:2",
         type: "todo",
         id: 2,
@@ -276,6 +278,7 @@ describe("HistoryView", () => {
         plannedDurationMinutes: 15,
       },
       {
+    ...PLANNED_FIELDS,
         key: "habit:3:2026-10-07",
         type: "habit",
         id: null,

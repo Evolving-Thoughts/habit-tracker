@@ -1,3 +1,4 @@
+import { TODO_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getCategories } from "../api/categories.api";
@@ -17,6 +18,7 @@ enableAutoUnmount(afterEach);
 const createTodoMock = vi.mocked(createTodo);
 
 const response: TodoResponse = {
+    ...TODO_FIELDS,
   id: 1,
   parentId: null,
   title: "NestJS lernen",

@@ -1,3 +1,4 @@
+import { HABIT_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -51,6 +52,7 @@ function version(
 }
 function habit(overrides: Partial<HabitResponse> = {}): HabitResponse {
   return {
+    ...HABIT_FIELDS,
     id: 10,
     title: "Joggen",
     isActive: true,

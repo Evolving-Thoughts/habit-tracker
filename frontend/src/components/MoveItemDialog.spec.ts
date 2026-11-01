@@ -1,3 +1,4 @@
+import { PLANNER_HABIT_FIELDS, PLANNER_TODO_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { rescheduleOccurrence, rescheduleTodo } from "../api/day-planner.api";
@@ -14,6 +15,7 @@ vi.mock("../api/day-planner.api", () => ({
 enableAutoUnmount(afterEach);
 
 const todo: DayPlannerTodoItem = {
+    ...PLANNER_TODO_FIELDS,
   type: "todo",
   todoId: 1,
   title: "Saugen",
@@ -27,6 +29,7 @@ const todo: DayPlannerTodoItem = {
   timerEligible: true,
 };
 const habit: DayPlannerHabitItem = {
+    ...PLANNER_HABIT_FIELDS,
   type: "habit",
   occurrenceId: 2,
   plannedDurationMinutes: null,

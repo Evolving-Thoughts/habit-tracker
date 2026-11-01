@@ -19,6 +19,8 @@ const planned = {
   scheduledDate: "2026-10-30",
   isOverdue: false,
   plannedDurationMinutes: null,
+  isFixed: false,
+  moveUntil: null,
 };
 const response: HistoryResponse = {
   today: "2026-10-30",

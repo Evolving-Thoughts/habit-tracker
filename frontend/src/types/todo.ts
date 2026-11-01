@@ -1,4 +1,4 @@
-export type CreateTodoInput = TodoGoalInput & {
+export type CreateTodoInput = {
   parentId?: number | null;
   categoryId?: number | null;
   why?: string | null;
@@ -15,12 +15,14 @@ export type TodoGoalInput = {
   goalTarget?: number | null;
 };
 
-export type TodoResponse = TodoGoalInput & {
+export type UpdateTodoInput = Partial<CreateTodoInput> & TodoGoalInput;
+
+export type TodoResponse = Required<TodoGoalInput> & {
   id: number;
   /** Parent in the todo hierarchy; null for a root. */
   parentId: number | null;
-  categoryId?: number | null;
-  why?: string | null;
+  categoryId: number | null;
+  why: string | null;
   title: string;
   completed: boolean;
   completedAt: string | null;

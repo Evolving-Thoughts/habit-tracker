@@ -36,11 +36,11 @@ export type ScheduleVersionResponse = {
 export type HabitResponse = {
   id: number;
   title: string;
-  categoryId?: number | null;
-  why?: string | null;
+  categoryId: number | null;
+  why: string | null;
   isActive: boolean;
   plannedDurationMinutes: number | null;
-  timeOfDay?: string | null;
+  timeOfDay: string | null;
   timerOccurrenceId: number | null;
   timerDurationMinutes: number | null;
   currentSchedule: ScheduleVersionResponse | null;

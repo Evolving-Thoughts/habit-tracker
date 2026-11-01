@@ -1,24 +1,9 @@
 import { request } from "./http";
 
-export type WorkLog = {
-  id: number;
-  title: string;
-  startedAt: string;
-  endedAt: string;
-  minutes: number;
-  source: "timer" | "manual";
-};
-export type WorkDay = {
-  date: string;
-  totalMinutes: number;
-  logs: WorkLog[];
-};
-export type WorkLogTimes = { startedAt: string; endedAt: string };
-export type WorkTarget = {
-  kind: "todo" | "occurrence";
-  targetId: number;
-  title: string;
-};
+import type { WorkLog, WorkDay, WorkLogTimes, WorkTarget } from "../types/work-log";
+
+export type { WorkLog, WorkDay, WorkLogTimes, WorkTarget };
+
 
 export function getWorkDay(date: string): Promise<WorkDay> {
   return request<WorkDay>(`/work-logs?${new URLSearchParams({ date })}`);

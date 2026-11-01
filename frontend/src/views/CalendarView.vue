@@ -69,7 +69,7 @@ function moveTarget(item: HistoryPlannedItem): MoveTarget | null {
       type: "todo",
       todoId: item.id,
       title: item.title,
-      isFixed: item.isFixed ?? false,
+      isFixed: item.isFixed,
     };
   if (!item.moveUntil || item.moveUntil <= item.date) return null;
   return {

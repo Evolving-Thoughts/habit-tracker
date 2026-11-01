@@ -1,18 +1,9 @@
 import { request } from "./http";
 
-export type ReplanPiece = { start: string; minutes: number };
-export type ReplanChange = {
-  todoId: number;
-  title: string;
-  from: string;
-  pieces: ReplanPiece[];
-  tomorrow: ReplanPiece | null;
-};
-export type ReplanPreview = {
-  confirmationToken: string;
-  dayEnd: string;
-  changes: ReplanChange[];
-};
+import type { ReplanPiece, ReplanChange, ReplanPreview } from "../types/replan";
+
+export type { ReplanPiece, ReplanChange, ReplanPreview };
+
 
 export function getReplan(): Promise<ReplanPreview> {
   return request<ReplanPreview>("/todos/replan");

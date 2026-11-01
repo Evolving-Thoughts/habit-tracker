@@ -28,9 +28,9 @@ import type {
 } from "../types/habit";
 import { formatHabitSchedule, WEEKDAY_OPTIONS } from "../utils/habit";
 import type {
-  CreateTodoInput,
   TodoGoalInput,
   TodoResponse,
+  UpdateTodoInput,
 } from "../types/todo";
 import { buildTodoInput } from "../utils/todo-input";
 import {
@@ -237,7 +237,7 @@ function goalChanges(): TodoGoalInput {
   );
 }
 
-function todoInput(): CreateTodoInput {
+function todoInput(): UpdateTodoInput {
   return {
     ...buildTodoInput(
       {

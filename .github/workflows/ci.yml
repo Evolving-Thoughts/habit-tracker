@@ -43,6 +43,7 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - run: npm run check:contract
       - run: node --test test/browser-e2e/environment.test.cjs
       - run: npm test -- --runInBand
       - run: npm run build

@@ -1,7 +1,9 @@
+import { TODO_FIELDS } from "../types/fixtures";
 import { describe, it, expect } from "vitest";
 import { visibleHierarchy, descendantIds } from "./todo-hierarchy";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
 const node = (id: number, parentId: number | null): HierarchyTodo => ({
+    ...TODO_FIELDS,
   id,
   parentId,
   title: `Todo ${id}`,

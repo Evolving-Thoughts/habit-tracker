@@ -1,3 +1,4 @@
+import { HABIT_FIELDS, TODO_FIELDS } from "../types/fixtures";
 import { getDeletionPreview } from "../api/todo-hierarchy.api";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -35,6 +36,7 @@ enableAutoUnmount(afterEach);
 afterEach(() => vi.useRealTimers());
 
 const todo: TodoResponse = {
+    ...TODO_FIELDS,
   id: 1,
   parentId: null,
   title: "NestJS lernen",
@@ -66,6 +68,7 @@ function version(
 }
 function makeHabit(overrides: Partial<HabitResponse> = {}): HabitResponse {
   return {
+    ...HABIT_FIELDS,
     id: 10,
     title: "Joggen",
     isActive: true,

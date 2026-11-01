@@ -8,7 +8,11 @@ import type {
   HabitResponse,
   UpdateHabitInput,
 } from "../types/habit";
-import type { CreateTodoInput, TodoResponse } from "../types/todo";
+import type {
+  CreateTodoInput,
+  TodoResponse,
+  UpdateTodoInput,
+} from "../types/todo";
 
 import { request } from "./http";
 
@@ -34,7 +38,7 @@ export function createTodo(input: CreateTodoInput): Promise<TodoResponse> {
 
 export function updateTodo(
   todoId: number,
-  input: Partial<CreateTodoInput>,
+  input: UpdateTodoInput,
 ): Promise<TodoResponse> {
   return request<TodoResponse>(`/todos/${todoId}`, {
     method: "PATCH",
