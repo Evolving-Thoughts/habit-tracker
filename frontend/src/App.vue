@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import TimerProvider from "./components/TimerProvider.vue";
 import TodoHierarchyView from "./views/TodoHierarchyView.vue";
 import HistoryView from "./views/HistoryView.vue";
@@ -81,16 +81,21 @@ function readCalendarReturn(): boolean {
   history.replaceState(null, "", url.pathname + url.search + url.hash);
   return true;
 }
-const activeView = ref<
-  | "today"
-  | "todo-dump"
-  | "habits"
-  | "categories"
-  | "history"
-  | "calendar"
-  | "hierarchy"
-  | "settings"
->(readCalendarReturn() ? "settings" : "today");
+const VIEWS = [
+  { key: "today", label: "Heute", view: TodayView },
+  { key: "todo-dump", label: "Todo-Dump", view: TodoDumpView },
+  { key: "hierarchy", label: "Aufgabenbaum", view: TodoHierarchyView },
+  { key: "habits", label: "Habits", view: HabitsView },
+  { key: "categories", label: "Kategorien", view: CategoriesView },
+  { key: "history", label: "Verlauf", view: HistoryView },
+  { key: "calendar", label: "Kalender", view: CalendarView },
+] as const;
+const activeView = ref<(typeof VIEWS)[number]["key"] | "settings">(
+  readCalendarReturn() ? "settings" : "today",
+);
+const shownView = computed(
+  () => VIEWS.find(({ key }) => key === activeView.value)?.view,
+);
 </script>
 
 <template>
@@ -114,54 +119,13 @@ const activeView = ref<
   <TimerProvider v-else :key="user.id">
     <nav class="app-navigation" aria-label="Ansichten">
       <button
+        v-for="{ key, label } in VIEWS"
+        :key="key"
         type="button"
-        :aria-pressed="activeView === 'today'"
-        @click="activeView = 'today'"
+        :aria-pressed="activeView === key"
+        @click="activeView = key"
       >
-        Heute
-      </button>
-
-      <button
-        type="button"
-        :aria-pressed="activeView === 'todo-dump'"
-        @click="activeView = 'todo-dump'"
-      >
-        Todo-Dump
-      </button>
-      <button
-        type="button"
-        :aria-pressed="activeView === 'hierarchy'"
-        @click="activeView = 'hierarchy'"
-      >
-        Aufgabenbaum
-      </button>
-      <button
-        type="button"
-        :aria-pressed="activeView === 'habits'"
-        @click="activeView = 'habits'"
-      >
-        Habits
-      </button>
-      <button
-        type="button"
-        :aria-pressed="activeView === 'categories'"
-        @click="activeView = 'categories'"
-      >
-        Kategorien
-      </button>
-      <button
-        type="button"
-        :aria-pressed="activeView === 'history'"
-        @click="activeView = 'history'"
-      >
-        Verlauf
-      </button>
-      <button
-        type="button"
-        :aria-pressed="activeView === 'calendar'"
-        @click="activeView = 'calendar'"
-      >
-        Kalender
+        {{ label }}
       </button>
       <button
         type="button"
@@ -174,18 +138,12 @@ const activeView = ref<
       </button>
     </nav>
 
-    <TodayView v-if="activeView === 'today'" />
-    <TodoDumpView v-else-if="activeView === 'todo-dump'" />
-    <TodoHierarchyView v-else-if="activeView === 'hierarchy'" />
-    <HabitsView v-else-if="activeView === 'habits'" />
-    <CategoriesView v-else-if="activeView === 'categories'" />
-    <CalendarView v-else-if="activeView === 'calendar'" />
     <SettingsView
-      v-else-if="activeView === 'settings'"
+      v-if="activeView === 'settings'"
       :email="user.email"
       @sign-out="signOut"
     />
-    <HistoryView v-else />
+    <component :is="shownView" v-else />
   </TimerProvider>
 </template>
 
