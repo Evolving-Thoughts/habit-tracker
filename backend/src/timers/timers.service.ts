@@ -17,6 +17,7 @@ import {
   isOccurrenceTimerEligible,
   isTodoTimerEligible,
   isValidTimerDuration,
+  stopTimer,
   TIMER_MAX_MINUTES,
   TIMER_MIN_MINUTES,
 } from './timer-target';
@@ -136,10 +137,12 @@ export class TimersService {
         error instanceof NotFoundException || error instanceof ConflictException
       ))
         throw error;
-      await closeWorkSegment(manager, timer, now);
-      timer.state = 'stopped';
-      timer.endsAt = null;
-      return manager.save(timer);
+      // Reconciling the target may have released this timer in the meantime.
+      return stopTimer(
+        manager,
+        await manager.findOneByOrFail(TimerEntity, { id: timer.id }),
+        now,
+      );
     }
     if (
       timer.state === 'running' &&
@@ -240,10 +243,7 @@ export class TimersService {
             message: 'Ein anderer Timer ist bereits aktiv.',
             code: 'ACTIVE_TIMER_EXISTS',
           });
-        await closeWorkSegment(manager, active, now);
-        active.state = 'stopped';
-        active.endsAt = null;
-        await manager.save(active);
+        await stopTimer(manager, active, now);
       }
       await this.persistDuration(manager, target, minutes);
       // Determine deadline only after acquiring locks and persisting the target duration.
@@ -278,10 +278,7 @@ export class TimersService {
       if (!timer) throw new NotFoundException('Timer nicht gefunden.');
       const now = this.clock.now();
       if (action === 'stop') {
-        await closeWorkSegment(manager, timer, now);
-        timer.state = 'stopped';
-        timer.endsAt = null;
-        await manager.save(timer);
+        await stopTimer(manager, timer, now);
         const latest = await this.findCurrent(manager, userId);
         return this.response(
           await this.reconcile(manager, userId, latest, now),

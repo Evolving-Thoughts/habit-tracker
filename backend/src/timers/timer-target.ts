@@ -73,6 +73,18 @@ export async function closeWorkSegment(
   });
 }
 
+/** Ends a timer for good: its work stays on record, its row stops counting. */
+export async function stopTimer(
+  manager: EntityManager,
+  timer: TimerEntity,
+  at: Date,
+): Promise<TimerEntity> {
+  await closeWorkSegment(manager, timer, at);
+  timer.state = 'stopped';
+  timer.endsAt = null;
+  return manager.save(TimerEntity, timer);
+}
+
 /**
  * Stops every timer of these targets right away. Call it in the same locked
  * transaction that makes a target ineligible (completed, deleted, skipped,
@@ -82,48 +94,36 @@ export async function releaseTimers(
   manager: EntityManager,
   userId: string,
   targets: { todoIds?: number[]; occurrenceIds?: number[]; habitId?: number },
+  at: Date,
 ): Promise<void> {
   const todoIds = targets.todoIds ?? [];
   const occurrenceIds = targets.occurrenceIds ?? [];
   const { habitId } = targets;
   if (!todoIds.length && !occurrenceIds.length && habitId === undefined) return;
-  // Work done so far stays on record, in the same statement order as the stop.
-  await manager.query(
-    `INSERT INTO "work_logs"
-       ("userId", "todoId", "occurrenceId", "title", "startedAt", "endedAt", "source")
-     SELECT "userId", "todoId", "occurrenceId", "title", "segmentStartedAt",
-            LEAST(clock_timestamp(), "endsAt"), 'timer'
-     FROM "timers"
-     WHERE "userId" = $1 AND "state" = 'running'
-       AND "segmentStartedAt" < LEAST(clock_timestamp(), "endsAt")
-       AND ("todoId" = ANY($2::int[]) OR "occurrenceId" = ANY($3::int[])
-         OR "occurrenceId" IN (SELECT "id" FROM "habit_occurrences" WHERE "habitId" = $4::int))`,
-    [userId, todoIds, occurrenceIds, habitId ?? null],
-  );
-  await manager
-    .createQueryBuilder()
-    .update(TimerEntity)
-    .set({ state: 'stopped', endsAt: null, segmentStartedAt: null })
-    .where('"userId" = :userId', { userId })
-    .andWhere(`"state" <> 'stopped'`)
+  const timers = await manager
+    .getRepository(TimerEntity)
+    .createQueryBuilder('timer')
+    .where('"timer"."userId" = :userId', { userId })
+    .andWhere(`"timer"."state" <> 'stopped'`)
     .andWhere(
       new Brackets((query) => {
         // Array parameters keep one bind value regardless of list length.
         if (todoIds.length)
-          query.orWhere('"todoId" = ANY(:todoIds)', { todoIds });
+          query.orWhere('"timer"."todoId" = ANY(:todoIds)', { todoIds });
         if (occurrenceIds.length)
-          query.orWhere('"occurrenceId" = ANY(:occurrenceIds)', {
+          query.orWhere('"timer"."occurrenceId" = ANY(:occurrenceIds)', {
             occurrenceIds,
           });
         // Every occurrence of a paused or deleted habit.
         if (habitId !== undefined)
           query.orWhere(
-            '"occurrenceId" IN (SELECT "id" FROM "habit_occurrences" WHERE "habitId" = :habitId)',
+            '"timer"."occurrenceId" IN (SELECT "id" FROM "habit_occurrences" WHERE "habitId" = :habitId)',
             { habitId },
           );
       }),
     )
-    .execute();
+    .getMany();
+  for (const timer of timers) await stopTimer(manager, timer, at);
 }
 
 /** Whether a running or paused timer is attached to this target. */
@@ -161,9 +161,10 @@ export async function discardTimersOfTodos(
   manager: EntityManager,
   userId: string,
   todoIds: number[],
+  at: Date,
 ): Promise<void> {
   if (!todoIds.length) return;
-  await releaseTimers(manager, userId, { todoIds });
+  await releaseTimers(manager, userId, { todoIds }, at);
   await manager
     .createQueryBuilder()
     .delete()

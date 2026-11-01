@@ -277,6 +277,7 @@ export class HabitSchedulingService {
             occurrence,
             HabitOccurrenceStatus.SKIPPED,
             today,
+            now,
           );
         } else {
           await this.resolve(
@@ -285,6 +286,7 @@ export class HabitSchedulingService {
             occurrence,
             HabitOccurrenceStatus.CANCELLED,
             dayOf(version.endsAt),
+            now,
             'schedule_changed',
           );
         }
@@ -295,6 +297,7 @@ export class HabitSchedulingService {
           occurrence,
           HabitOccurrenceStatus.SKIPPED,
           today,
+          now,
         );
       }
     }
@@ -418,6 +421,7 @@ export class HabitSchedulingService {
           pending,
           HabitOccurrenceStatus.CANCELLED,
           today,
+          now,
           'weekly_target_reached',
         );
       }
@@ -458,6 +462,7 @@ export class HabitSchedulingService {
     occurrence: HabitOccurrenceEntity,
     status: HabitOccurrenceStatus,
     resolvedDate: string,
+    now: Date,
     reason: HabitOccurrenceCancellationReason | null = null,
   ): Promise<void> {
     occurrence.status = status;
@@ -466,9 +471,12 @@ export class HabitSchedulingService {
 
     await manager.getRepository(HabitOccurrenceEntity).save(occurrence);
     // A resolved occurrence is no timer target any more.
-    await releaseTimers(manager, habit.userId, {
-      occurrenceIds: [occurrence.id],
-    });
+    await releaseTimers(
+      manager,
+      habit.userId,
+      { occurrenceIds: [occurrence.id] },
+      now,
+    );
   }
 
   async changeStatus(
@@ -567,7 +575,7 @@ export class HabitSchedulingService {
 
       const saved = await repository.save(occurrence);
       if (targetStatus !== HabitOccurrenceStatus.PENDING)
-        await releaseTimers(manager, userId, { occurrenceIds: [id] });
+        await releaseTimers(manager, userId, { occurrenceIds: [id] }, now);
       return saved;
     });
   }

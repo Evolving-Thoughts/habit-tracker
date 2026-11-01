@@ -162,7 +162,12 @@ export class TodosService {
       const saved = await repository.save(todo);
       // A completed todo is no timer target any more.
       if (todo.completed)
-        await releaseTimers(manager, userId, { todoIds: [id] });
+        await releaseTimers(
+          manager,
+          userId,
+          { todoIds: [id] },
+          this.clock.now(),
+        );
       return saved;
     });
   }
@@ -243,7 +248,7 @@ export class TodosService {
           'Deletion preview changed. Review the preview again.',
         );
       const ids = snapshot.todos.map((t) => t.id);
-      await discardTimersOfTodos(manager, userId, ids);
+      await discardTimersOfTodos(manager, userId, ids, this.clock.now());
       await manager
         .getRepository(TodoEntity)
         .createQueryBuilder()

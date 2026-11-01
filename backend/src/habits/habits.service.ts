@@ -194,10 +194,9 @@ export class HabitsService {
       }
 
       await manager.getRepository(HabitEntity).save(habit);
-      if (!habit.isActive)
-        await releaseTimers(manager, userId, { habitId: habit.id });
-
       const now = this.clock.now();
+      if (!habit.isActive)
+        await releaseTimers(manager, userId, { habitId: habit.id }, now);
 
       await this.scheduling.reconcile(manager, habit, now);
 
@@ -222,7 +221,12 @@ export class HabitsService {
       const habit = await this.scheduling.lockHabit(userId, manager, id);
 
       await manager.getRepository(HabitEntity).softRemove(habit);
-      await releaseTimers(manager, userId, { habitId: habit.id });
+      await releaseTimers(
+        manager,
+        userId,
+        { habitId: habit.id },
+        this.clock.now(),
+      );
     });
   }
 }
