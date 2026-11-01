@@ -18,7 +18,8 @@ type Preview = {
 
 describe('Day replanning (e2e)', () => {
   let app: INestApplication, server: Server, db: DataSource;
-  const now = new Date('2026-10-30T06:00:00.000Z');
+  const start = new Date('2026-10-30T06:00:00.000Z');
+  let now = start;
   const todo = async (
     scheduledAt: string,
     plannedDurationMinutes: number,
@@ -53,6 +54,7 @@ describe('Day replanning (e2e)', () => {
     db = app.get(DataSource);
   });
   beforeEach(async () => {
+    now = start;
     await db.query('TRUNCATE timers, todos, habits CASCADE');
     await db
       .createQueryBuilder()
@@ -121,6 +123,29 @@ describe('Day replanning (e2e)', () => {
       scheduledAt: new Date('2026-10-30T09:00:00.000Z'),
     });
     expect((await preview()).changes).toEqual([]);
+  });
+
+  it('applies a preview although the clock moved on', async () => {
+    now = new Date('2026-10-30T06:00:20.500Z');
+    const id = await todo('2026-10-30T05:00:00.000Z', 30);
+    const proposal = await preview();
+    now = new Date('2026-10-30T06:03:01.000Z');
+    await request(server)
+      .post('/todos/replan')
+      .send({ confirmationToken: proposal.confirmationToken })
+      .expect(204);
+    const moved = await db.getRepository(TodoEntity).findOneByOrFail({ id });
+    expect(moved.scheduledAt).toEqual(new Date('2026-10-30T06:01:00.000Z'));
+  });
+
+  it('refuses a preview after fifteen minutes', async () => {
+    await todo('2026-10-30T05:00:00.000Z', 30);
+    const proposal = await preview();
+    now = new Date('2026-10-30T06:16:00.000Z');
+    await request(server)
+      .post('/todos/replan')
+      .send({ confirmationToken: proposal.confirmationToken })
+      .expect(409);
   });
 
   it('refuses a stale preview and changes nothing', async () => {

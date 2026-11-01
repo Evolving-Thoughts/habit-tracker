@@ -26,6 +26,8 @@ import { TodoEntity } from './entities/todo.entity';
 import { ReplanBlock, replanDay } from './day-replan';
 import { openScheduledTodos } from './todo-agenda';
 
+const MINUTE_MS = 60_000;
+const PREVIEW_VALID_MS = 15 * MINUTE_MS;
 const iso = (ms: number): string => new Date(ms).toISOString();
 const clock = (minutes: number): string =>
   `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
@@ -38,16 +40,24 @@ export class DayReplanService {
   ) {}
 
   preview(userId: string): Promise<ReplanPreviewResponse> {
+    const plannedAt =
+      Math.ceil(this.clock.now().getTime() / MINUTE_MS) * MINUTE_MS;
     return this.unitOfWork.run(userId, (manager) =>
-      this.proposal(manager, userId),
+      this.proposal(manager, userId, plannedAt),
     );
   }
 
   /** Applies exactly the previewed proposal, or nothing. */
   apply(userId: string, confirmationToken: string): Promise<void> {
+    // The token names its planning time, so the preview can be recomputed.
+    const plannedAt = Number(confirmationToken.split('.')[0]);
+    const age = this.clock.now().getTime() - plannedAt;
     return this.unitOfWork.run(userId, async (manager) => {
-      const proposal = await this.proposal(manager, userId);
-      if (proposal.confirmationToken !== confirmationToken)
+      const proposal = await this.proposal(manager, userId, plannedAt);
+      if (
+        Math.abs(age) > PREVIEW_VALID_MS ||
+        proposal.confirmationToken !== confirmationToken
+      )
         throw new ConflictException(
           'Der Tag hat sich geändert. Prüfe die Vorschau erneut.',
         );
@@ -140,8 +150,8 @@ export class DayReplanService {
   private async proposal(
     manager: EntityManager,
     userId: string,
+    plannedAt: number,
   ): Promise<ReplanPreviewResponse> {
-    const now = this.clock.now();
     const today = this.clock.today();
     const { dayEndMinutes } = await manager.findOneByOrFail(UserEntity, {
       id: userId,
@@ -170,7 +180,7 @@ export class DayReplanService {
         isFixed: todo.isFixed,
         locked: locked.has(todo.id),
       })),
-      now.getTime(),
+      plannedAt,
       atWallClockMinutes(today, dayEndMinutes).getTime(),
       [
         ...(await this.habitBlocks(manager, userId, today)),
@@ -197,9 +207,9 @@ export class DayReplanService {
         : null,
     }));
     return {
-      confirmationToken: createHash('sha256')
-        .update(JSON.stringify({ userId, changes }))
-        .digest('hex'),
+      confirmationToken: `${plannedAt}.${createHash('sha256')
+        .update(JSON.stringify({ userId, plannedAt, changes }))
+        .digest('hex')}`,
       dayEnd: clock(dayEndMinutes),
       changes,
     };

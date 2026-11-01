@@ -1,8 +1,8 @@
-import { IsString, Length, Matches } from 'class-validator';
+import { IsString, Matches } from 'class-validator';
 
 export class ApplyReplanDto {
   @IsString()
-  @Length(64, 64)
+  @Matches(/^\d{1,16}\.[a-f0-9]{64}$/)
   readonly confirmationToken!: string;
 }
 
