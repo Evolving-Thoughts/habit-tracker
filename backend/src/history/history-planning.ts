@@ -12,6 +12,10 @@ import {
   latestSlotOnOrBefore,
   slotStartsAt,
 } from '../habits/scheduling/schedule-rules';
+import {
+  completedBetween,
+  isCompletedOn,
+} from '../habits/scheduling/occurrence-lifecycle';
 import { HistoryPlannedItem, HistoryWeeklyTarget } from './history.dto';
 import { effectiveDuration } from '../timers/timer-target';
 
@@ -91,10 +95,7 @@ export function plannedHabits(
   );
   const completedToday = new Set(
     occurrences
-      .filter(
-        (item) =>
-          item.status === Status.COMPLETED && item.resolvedDate === today,
-      )
+      .filter((item) => isCompletedOn(item, today))
       .map((item) => item.habitId),
   );
   return slots.flatMap((slot) => {
@@ -165,16 +166,11 @@ export function weeklyTargets(
             )),
     );
     if (!activeDates.length) continue;
-    // The scheduler counts all completions of this habit in the calendar week,
-    // including completions under a previous rule, not just this version.
-    const completed = occurrences.filter(
-      (item) =>
-        item.habitId === habit.id &&
-        item.status === Status.COMPLETED &&
-        item.resolvedDate !== null &&
-        item.resolvedDate >= countRange.startDate &&
-        item.resolvedDate <= countRange.endDate,
-    ).length;
+    const completed = completedBetween(
+      occurrences.filter((item) => item.habitId === habit.id),
+      countRange.startDate,
+      countRange.endDate,
+    );
     result.push({
       key: `weekly:${version.id}`,
       habitId: habit.id,

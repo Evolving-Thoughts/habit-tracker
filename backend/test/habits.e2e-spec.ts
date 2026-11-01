@@ -29,7 +29,7 @@ import { HabitSchedulingService } from '../src/habits/scheduling/habit-schedulin
 import { HabitOccurrenceResponseDto } from '../src/habit-occurrences/dto/habit-occurrence-response.dto';
 import { HabitOccurrenceEntity } from '../src/habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../src/habit-occurrences/enums/habit-occurrence-status.enum';
-import { addDays, weekRange } from '../src/common/date/local-day';
+import { addDays, dayOf, weekRange } from '../src/common/date/local-day';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
 
 describe('Habit domain and day planner (e2e)', () => {
@@ -366,6 +366,24 @@ describe('Habit domain and day planner (e2e)', () => {
           },
         })
         .expect(400);
+    });
+
+    it('offers no timer run for a habit moved to a later day', async () => {
+      const habit = await create({
+        schedule: interval(7),
+      });
+      const { timerOccurrenceId } = (
+        await request(server).get(`/habits/${habit.id}`).expect(200)
+      ).body as HabitResponseDto;
+      await request(server)
+        .post(`/habit-occurrences/${timerOccurrenceId}/reschedule`)
+        .send({ date: addDays(dayOf(new Date()), 1) })
+        .expect(200);
+
+      const moved = await request(server)
+        .get(`/habits/${habit.id}`)
+        .expect(200);
+      expect((moved.body as HabitResponseDto).timerOccurrenceId).toBeNull();
     });
 
     it('reads and lists habits', async () => {

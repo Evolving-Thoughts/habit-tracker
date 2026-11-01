@@ -9,7 +9,7 @@ import {
   assertDateOnly,
   changeScheduleInstant,
 } from '../../common/date/date-only.utils';
-import { dayOf, weekRange } from '../../common/date/local-day';
+import { dayOf } from '../../common/date/local-day';
 import { Clock } from '../../common/clock';
 import { lockUser, UserUnitOfWork } from '../../common/user-unit-of-work';
 import { ownedOccurrences } from '../../habit-occurrences/owned-occurrences';
@@ -19,7 +19,6 @@ import {
   releaseTimers,
 } from '../../timers/timer-target';
 import {
-  HabitOccurrenceCancellationReason,
   HabitOccurrenceEntity,
   occurrenceDueDate,
 } from '../../habit-occurrences/entities/habit-occurrence.entity';
@@ -31,17 +30,19 @@ import {
 } from '../dto/habit-response.dto';
 import { HabitEntity } from '../entities/habit.entity';
 import { HabitScheduleVersionEntity } from '../entities/habit-schedule-version.entity';
-import { HabitScheduleType } from '../enums/habit-schedule-type.enum';
 import {
   buildVersion,
   expiresAt,
   isInMoveWindow,
-  nextScheduledDate,
   normalizeSchedule,
   ruleResponse,
   sameSchedule,
-  slotStartsAt,
 } from './schedule-rules';
+import {
+  activeVersion,
+  isCompletedOn,
+  lifecycleChanges,
+} from './occurrence-lifecycle';
 
 @Injectable()
 export class HabitSchedulingService {
@@ -80,24 +81,6 @@ export class HabitSchedulingService {
     });
   }
 
-  private activeVersion(
-    versions: HabitScheduleVersionEntity[],
-    at: Date,
-  ): HabitScheduleVersionEntity | undefined {
-    const matching = versions.filter(
-      (version) =>
-        version.cancelledAt === null &&
-        version.effectiveAt <= at &&
-        (version.endsAt === null || at < version.endsAt),
-    );
-
-    if (matching.length > 1) {
-      throw new ConflictException('Overlapping schedule versions');
-    }
-
-    return matching[0];
-  }
-
   versionResponse(
     version: HabitScheduleVersionEntity,
   ): ScheduleVersionResponse {
@@ -118,7 +101,7 @@ export class HabitSchedulingService {
     at = this.clock.now(),
     pending?: HabitOccurrenceEntity,
   ): HabitResponseDto {
-    const active = this.activeVersion(versions, at);
+    const active = activeVersion(versions, at);
 
     const upcoming = versions.find(
       (version) => version.cancelledAt === null && version.effectiveAt > at,
@@ -157,7 +140,7 @@ export class HabitSchedulingService {
       await this.reconcile(manager, habit, now);
 
       const versions = await this.getVersions(manager, habitId);
-      const active = this.activeVersion(versions, now);
+      const active = activeVersion(versions, now);
 
       const upcoming = versions.filter(
         (version) => version.cancelledAt === null && version.effectiveAt > now,
@@ -223,260 +206,32 @@ export class HabitSchedulingService {
     habit: HabitEntity,
     now: Date,
   ): Promise<void> {
-    const today = dayOf(now);
-    const versions = await this.getVersions(manager, habit.id);
-
-    const usable = versions.filter((version) => version.cancelledAt === null);
-
-    for (let index = 1; index < usable.length; index += 1) {
-      const previous = usable[index - 1];
-      const current = usable[index];
-
-      if (
-        previous &&
-        current &&
-        (previous.endsAt === null || previous.endsAt > current.effectiveAt)
-      ) {
-        throw new ConflictException('Overlapping schedule versions');
-      }
-    }
-
     const repository = manager.getRepository(HabitOccurrenceEntity);
-
     const occurrences = await repository.find({
       where: { habitId: habit.id },
       order: { scheduledDate: 'ASC', id: 'ASC' },
     });
-
-    const versionById = new Map(
-      versions.map((version) => [version.id, version]),
-    );
-
-    for (const occurrence of occurrences) {
-      const version = versionById.get(occurrence.scheduleVersionId);
-
-      if (!version) {
-        throw new ConflictException(
-          `Occurrence ${occurrence.id} has an invalid version`,
-        );
-      }
-
-      if (occurrence.status !== HabitOccurrenceStatus.PENDING) {
-        continue;
-      }
-
-      const expiry = expiresAt(version, occurrence.scheduledDate);
-
-      const closed = version.endsAt !== null && version.endsAt <= now;
-
-      if (closed && version.endsAt !== null) {
-        if (expiry <= version.endsAt) {
-          await this.resolve(
-            manager,
-            habit,
-            occurrence,
-            HabitOccurrenceStatus.SKIPPED,
-            today,
-            now,
-          );
-        } else {
-          await this.resolve(
-            manager,
-            habit,
-            occurrence,
-            HabitOccurrenceStatus.CANCELLED,
-            dayOf(version.endsAt),
-            now,
-            'schedule_changed',
-          );
-        }
-      } else if (habit.isActive && expiry <= now) {
-        await this.resolve(
-          manager,
-          habit,
-          occurrence,
-          HabitOccurrenceStatus.SKIPPED,
-          today,
-          now,
-        );
-      }
-    }
-
-    if (!habit.isActive) {
-      return;
-    }
-
-    for (const version of usable) {
-      if (
-        version.effectiveAt > now ||
-        version.type === HabitScheduleType.WEEKLY_TARGET
-      ) {
-        continue;
-      }
-
-      const closed = version.endsAt !== null && version.endsAt <= now;
-
-      let candidate = nextScheduledDate(version, null);
-      let examined = 0;
-
-      while (
-        candidate <= today &&
-        (version.endsAt === null ||
-          slotStartsAt(version, candidate) < version.endsAt)
-      ) {
-        examined += 1;
-
-        if (examined > 10000) {
-          throw new ConflictException(
-            'Too many historical slots for one generation run',
-          );
-        }
-
-        const existing = occurrences.find(
-          (item) =>
-            item.scheduleVersionId === version.id &&
-            item.scheduledDate === candidate,
-        );
-
-        if (!existing) {
-          const expiry = expiresAt(version, candidate);
-
-          let status: HabitOccurrenceStatus;
-          let resolvedDate: string | null;
-          let reason: HabitOccurrenceCancellationReason | null = null;
-
-          if (closed && version.endsAt !== null) {
-            if (expiry <= version.endsAt) {
-              status = HabitOccurrenceStatus.SKIPPED;
-              resolvedDate = today;
-            } else {
-              status = HabitOccurrenceStatus.CANCELLED;
-              resolvedDate = dayOf(version.endsAt);
-              reason = 'schedule_changed';
-            }
-          } else if (expiry <= now) {
-            status = HabitOccurrenceStatus.SKIPPED;
-            resolvedDate = today;
-          } else if (
-            occurrences.some(
-              (item) =>
-                item.status === HabitOccurrenceStatus.COMPLETED &&
-                item.resolvedDate === today,
-            )
-          ) {
-            status = HabitOccurrenceStatus.CANCELLED;
-            resolvedDate = today;
-            reason = 'already_completed_today';
-          } else {
-            status = HabitOccurrenceStatus.PENDING;
-            resolvedDate = null;
-          }
-
-          const saved = await repository.save(
-            repository.create({
-              habitId: habit.id,
-              scheduleVersionId: version.id,
-              scheduledDate: candidate,
-              status,
-              resolvedDate,
-              cancellationReason: reason,
-            }),
-          );
-
-          occurrences.push(saved);
-        }
-
-        candidate = nextScheduledDate(version, candidate);
-      }
-    }
-
-    const active = this.activeVersion(versions, now);
-
-    if (!active || active.type !== HabitScheduleType.WEEKLY_TARGET) {
-      return;
-    }
-
-    const week = weekRange(today);
-
-    const completedThisWeek = occurrences.filter(
-      (item) =>
-        item.status === HabitOccurrenceStatus.COMPLETED &&
-        item.resolvedDate !== null &&
-        week.startDate <= item.resolvedDate &&
-        item.resolvedDate <= today,
-    ).length;
-
-    const pending = occurrences.find(
-      (item) => item.status === HabitOccurrenceStatus.PENDING,
-    );
-
-    if (
-      active.weeklyTarget !== null &&
-      completedThisWeek >= active.weeklyTarget
-    ) {
-      if (pending) {
-        await this.resolve(
-          manager,
-          habit,
-          pending,
-          HabitOccurrenceStatus.CANCELLED,
-          today,
-          now,
-          'weekly_target_reached',
-        );
-      }
-
-      return;
-    }
-
-    const completedToday = occurrences.some(
-      (item) =>
-        item.status === HabitOccurrenceStatus.COMPLETED &&
-        item.resolvedDate === today,
-    );
-
-    const existingToday = occurrences.some(
-      (item) =>
-        item.scheduleVersionId === active.id && item.scheduledDate === today,
-    );
-
-    if (pending || completedToday || existingToday) {
-      return;
-    }
-
-    await repository.save(
-      repository.create({
-        habitId: habit.id,
-        scheduleVersionId: active.id,
-        scheduledDate: today,
-        status: HabitOccurrenceStatus.PENDING,
-        resolvedDate: null,
-        cancellationReason: null,
-      }),
-    );
-  }
-
-  private async resolve(
-    manager: EntityManager,
-    habit: HabitEntity,
-    occurrence: HabitOccurrenceEntity,
-    status: HabitOccurrenceStatus,
-    resolvedDate: string,
-    now: Date,
-    reason: HabitOccurrenceCancellationReason | null = null,
-  ): Promise<void> {
-    occurrence.status = status;
-    occurrence.resolvedDate = resolvedDate;
-    occurrence.cancellationReason = reason;
-
-    await manager.getRepository(HabitOccurrenceEntity).save(occurrence);
-    // A resolved occurrence is no timer target any more.
-    await releaseTimers(
-      manager,
-      habit.userId,
-      { occurrenceIds: [occurrence.id] },
+    const { resolve, create } = lifecycleChanges(
+      habit,
+      await this.getVersions(manager, habit.id),
+      occurrences,
       now,
     );
+
+    for (const { occurrence, resolution } of resolve) {
+      await repository.save(Object.assign(occurrence, resolution));
+      // A resolved occurrence is no timer target any more.
+      await releaseTimers(
+        manager,
+        habit.userId,
+        { occurrenceIds: [occurrence.id] },
+        now,
+      );
+    }
+    for (const occurrence of create)
+      await repository.save(
+        repository.create({ habitId: habit.id, ...occurrence }),
+      );
   }
 
   async changeStatus(
@@ -522,7 +277,7 @@ export class HabitSchedulingService {
         throw new ConflictException('Cancelled occurrences cannot be changed');
       }
 
-      const active = this.activeVersion(
+      const active = activeVersion(
         await this.getVersions(manager, habit.id),
         now,
       );
@@ -556,8 +311,7 @@ export class HabitSchedulingService {
             (item) =>
               item.id !== occurrence.id &&
               (item.status === HabitOccurrenceStatus.PENDING ||
-                (item.status === HabitOccurrenceStatus.COMPLETED &&
-                  item.resolvedDate === today)),
+                isCompletedOn(item, today)),
           )
         ) {
           throw new ConflictException(
@@ -610,7 +364,7 @@ export class HabitSchedulingService {
 
       const repository = manager.getRepository(HabitOccurrenceEntity);
       const occurrence = await repository.findOneByOrFail({ id });
-      const active = this.activeVersion(
+      const active = activeVersion(
         await this.getVersions(manager, habit.id),
         now,
       );

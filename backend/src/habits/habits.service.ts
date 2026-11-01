@@ -4,14 +4,17 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, In, LessThanOrEqual } from 'typeorm';
+import { DataSource, In } from 'typeorm';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { assertOwnedCategory, normalizeWhy } from '../categories/assignment';
 import { initialScheduleInstant } from '../common/date/date-only.utils';
 import { dayOf } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
-import { releaseTimers } from '../timers/timer-target';
+import {
+  isOccurrenceTimerEligible,
+  releaseTimers,
+} from '../timers/timer-target';
 import { CreateHabitDto } from './dto/create-habit.dto';
 import { UpdateHabitDto } from './dto/update-habit.dto';
 import { ChangeHabitScheduleDto } from './dto/change-habit-schedule.dto';
@@ -86,19 +89,17 @@ export class HabitsService {
       const now = this.clock.now();
       await this.scheduling.reconcile(manager, habit, now);
 
-      const pending = habit.isActive
-        ? await manager.getRepository(HabitOccurrenceEntity).findOneBy({
-            habitId: id,
-            status: HabitOccurrenceStatus.PENDING,
-            scheduledDate: LessThanOrEqual(dayOf(now)),
-          })
-        : null;
+      const pending = (
+        await manager
+          .getRepository(HabitOccurrenceEntity)
+          .findBy({ habitId: id, status: HabitOccurrenceStatus.PENDING })
+      ).find((item) => isOccurrenceTimerEligible(item, habit, dayOf(now)));
 
       return this.scheduling.habitResponse(
         habit,
         await this.scheduling.getVersions(manager, id),
         now,
-        pending ?? undefined,
+        pending,
       );
     });
   }
