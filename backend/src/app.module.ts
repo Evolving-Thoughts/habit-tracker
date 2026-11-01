@@ -27,7 +27,7 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
       useFactory: (config: ConfigService) => ({
         ...databaseOptions((key) => config.get<string>(key)),
         autoLoadEntities: true,
-        synchronize: config.get<string>('NODE_ENV') !== 'production',
+        migrationsRun: true,
       }),
     }),
     CommonModule,

@@ -1,4 +1,5 @@
 import type { DataSourceOptions } from 'typeorm';
+import { Baseline1793522450873 } from './migrations/1793522450873-Baseline';
 
 type PostgresOptions = Extract<DataSourceOptions, { type: 'postgres' }>;
 
@@ -19,5 +20,6 @@ export function databaseOptions(
     username: required('DB_USER'),
     password: required('DB_PASSWORD'),
     database: required('DB_NAME'),
+    migrations: [Baseline1793522450873],
   };
 }
