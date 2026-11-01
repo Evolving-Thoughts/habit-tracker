@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import { getHistory } from "../api/history.api";
 import MoveItemDialog, { type MoveTarget } from "../components/MoveItemDialog.vue";
-import { onDataChanged, notifyDataChanged } from "../composables/data-sync";
+import { notifyDataChanged } from "../composables/data-sync";
+import { useLoader } from "../composables/useLoader";
 import type { HistoryPlannedItem, HistoryResponse } from "../types/history";
 import {
   formatDateForGermanDisplay,
@@ -15,12 +16,20 @@ const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
 const month = ref(getCurrentDateInTimeZone().slice(0, 7));
 const selected = ref(getCurrentDateInTimeZone());
-const result = ref<HistoryResponse | null>(null);
-const loading = ref(true);
-const error = ref("");
 const moving = ref<MoveTarget | null>(null);
-let generation = 0;
-let abort: AbortController | undefined;
+const {
+  data: result,
+  isLoading: loading,
+  errorMessage: error,
+} = useLoader<HistoryResponse | null>(
+  (signal) => getHistory(`${month.value}-01`, "month", "all", signal),
+  {
+    initial: null,
+    fallbackError: "Der Kalender konnte nicht geladen werden.",
+    params: [month],
+    refreshOnChange: () => !moving.value,
+  },
+);
 
 const heading = computed(() =>
   new Intl.DateTimeFormat("de-DE", {
@@ -53,31 +62,6 @@ function showCurrentMonth(): void {
   month.value = selected.value.slice(0, 7);
 }
 
-async function load(showLoading = true): Promise<void> {
-  const current = ++generation;
-  abort?.abort();
-  abort = new AbortController();
-  error.value = "";
-  if (showLoading) loading.value = true;
-  try {
-    const response = await getHistory(
-      `${month.value}-01`,
-      "month",
-      "all",
-      abort.signal,
-    );
-    if (current === generation) result.value = response;
-  } catch (cause) {
-    if (current === generation)
-      error.value =
-        cause instanceof Error
-          ? cause.message
-          : "Der Kalender konnte nicht geladen werden.";
-  } finally {
-    if (current === generation) loading.value = false;
-  }
-}
-
 function moveTarget(item: HistoryPlannedItem): MoveTarget | null {
   if (item.id === null) return null;
   if (item.type === "todo")
@@ -96,21 +80,10 @@ function moveTarget(item: HistoryPlannedItem): MoveTarget | null {
   };
 }
 
-async function onMoved(): Promise<void> {
+function onMoved(): void {
   moving.value = null;
   notifyDataChanged();
-  await load(false);
 }
-
-watch(month, () => void load());
-onMounted(() => void load());
-onDataChanged(() => {
-  if (!moving.value) void load(false);
-});
-onUnmounted(() => {
-  generation += 1;
-  abort?.abort();
-});
 </script>
 
 <template>

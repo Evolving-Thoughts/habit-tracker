@@ -1,6 +1,7 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getHistory } from "../api/history.api";
+import { notifyViewsChanged } from "../composables/data-sync";
 import { getCurrentDateInTimeZone } from "../utils/date";
 import type { HistoryItem, HistoryResponse } from "../types/history";
 import HistoryView from "./HistoryView.vue";
@@ -40,6 +41,17 @@ function response(items: HistoryItem[] = []): HistoryResponse {
 beforeEach(() => {
   vi.clearAllMocks();
   mock.mockResolvedValue(response());
+});
+describe("refreshing", () => {
+  it("reloads in the background when data changes elsewhere", async () => {
+    const wrapper = mount(HistoryView);
+    await flushPromises();
+    mock.mockResolvedValueOnce(response([item({ title: "Vom Timer" })]));
+    notifyViewsChanged();
+    expect(wrapper.find("[role=status]").exists()).toBe(false);
+    await flushPromises();
+    expect(wrapper.text()).toContain("Vom Timer");
+  });
 });
 describe("week quota", () => {
   it("shows the share of completed habit occurrences", async () => {

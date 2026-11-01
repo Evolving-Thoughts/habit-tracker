@@ -1,54 +1,41 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { getReflection, saveReflection } from "../api/reflections.api";
+import { useLoader } from "../composables/useLoader";
 
 const props = defineProps<{ date: string }>();
 
 const text = ref("");
 const savedText = ref("");
-const loading = ref(true);
 const saving = ref(false);
 const saved = ref(false);
-const error = ref("");
-let abort: AbortController | undefined;
+const saveError = ref("");
+const {
+  data: stored,
+  isLoading: loading,
+  errorMessage: loadError,
+} = useLoader((signal) => getReflection(props.date, signal), {
+  initial: null as { text: string } | null,
+  fallbackError: "Die Reflexion konnte nicht geladen werden.",
+  params: [() => props.date],
+});
+const error = computed(() => saveError.value || loadError.value);
 
 const changed = computed(() => text.value.trim() !== savedText.value);
-
-async function load(): Promise<void> {
-  abort?.abort();
-  const current = new AbortController();
-  abort = current;
-  loading.value = true;
-  saved.value = false;
-  error.value = "";
-  try {
-    const reflection = await getReflection(props.date, current.signal);
-    if (current !== abort) return;
-    text.value = savedText.value = reflection.text;
-  } catch (cause) {
-    if (current !== abort) return;
-    error.value =
-      cause instanceof Error
-        ? cause.message
-        : "Die Reflexion konnte nicht geladen werden.";
-  } finally {
-    if (current === abort) loading.value = false;
-  }
-}
 
 async function save(): Promise<void> {
   if (saving.value || !changed.value) return;
   const date = props.date;
   saving.value = true;
   saved.value = false;
-  error.value = "";
+  saveError.value = "";
   try {
     const reflection = await saveReflection(date, text.value);
     if (date !== props.date) return;
     text.value = savedText.value = reflection.text;
     saved.value = true;
   } catch (cause) {
-    error.value =
+    saveError.value =
       cause instanceof Error
         ? cause.message
         : "Die Reflexion konnte nicht gespeichert werden.";
@@ -57,8 +44,16 @@ async function save(): Promise<void> {
   }
 }
 
-watch(() => props.date, () => void load(), { immediate: true });
-onUnmounted(() => abort?.abort());
+watch(
+  () => props.date,
+  () => {
+    saved.value = false;
+    saveError.value = "";
+  },
+);
+watch(stored, (reflection) => {
+  if (reflection) text.value = savedText.value = reflection.text;
+});
 </script>
 
 <template>

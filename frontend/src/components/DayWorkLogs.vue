@@ -10,6 +10,7 @@ import {
   type WorkTarget,
 } from "../api/work-logs.api";
 import { notifyViewsChanged } from "../composables/data-sync";
+import { useLoader } from "../composables/useLoader";
 import {
   formatTimeForGermanDisplay,
   fromLocalInput,
@@ -18,35 +19,30 @@ import {
 
 const props = defineProps<{ date: string; targets: WorkTarget[] }>();
 
-const day = ref<WorkDay | null>(null);
-const error = ref("");
 const saving = ref(false);
+const saveError = ref("");
+const {
+  data: day,
+  errorMessage: loadError,
+  reload,
+} = useLoader<WorkDay | null>(() => getWorkDay(props.date), {
+  initial: null,
+  fallbackError: "Die Arbeitszeit konnte nicht geladen werden.",
+  params: [() => props.date],
+  resetOnLoad: true,
+  refreshOnChange: () => !saving.value,
+});
+const error = computed(() => saveError.value || loadError.value);
 const targetKey = ref("");
 const from = ref("");
 const to = ref("");
 const editingId = ref<number | null>(null);
 const editFrom = ref("");
 const editTo = ref("");
-let generation = 0;
 
 const canAdd = computed(() => targetKey.value && from.value && to.value);
 const keyOf = (target: WorkTarget): string =>
   `${target.kind}-${target.targetId}`;
-
-async function load(): Promise<void> {
-  const current = ++generation;
-  error.value = "";
-  try {
-    const result = await getWorkDay(props.date);
-    if (current === generation) day.value = result;
-  } catch (cause) {
-    if (current === generation)
-      error.value =
-        cause instanceof Error
-          ? cause.message
-          : "Die Arbeitszeit konnte nicht geladen werden.";
-  }
-}
 
 function times(start: string, end: string) {
   const startedAt = fromLocalInput(`${props.date}T${start}`);
@@ -58,14 +54,14 @@ function times(start: string, end: string) {
 async function run(action: () => Promise<unknown>): Promise<boolean> {
   if (saving.value) return false;
   saving.value = true;
-  error.value = "";
+  saveError.value = "";
   try {
     await action();
-    await load();
+    await reload(false);
     notifyViewsChanged();
     return true;
   } catch (cause) {
-    error.value =
+    saveError.value =
       cause instanceof Error
         ? cause.message
         : "Die Arbeitszeit konnte nicht gespeichert werden.";
@@ -101,11 +97,9 @@ async function saveEdit(id: number): Promise<void> {
 watch(
   () => props.date,
   () => {
-    day.value = null;
     editingId.value = null;
-    void load();
+    saveError.value = "";
   },
-  { immediate: true },
 );
 </script>
 

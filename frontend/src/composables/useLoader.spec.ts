@@ -63,4 +63,31 @@ describe("useLoader", () => {
     await flushPromises();
     expect(load).toHaveBeenCalledTimes(2);
   });
+
+  it("loads again when a parameter changes and aborts the older request", async () => {
+    const day = ref("a");
+    const signals: AbortSignal[] = [];
+    let api!: ReturnType<typeof useLoader<string>>;
+    const wrapper = mount(
+      defineComponent({
+        setup() {
+          api = useLoader(
+            (signal) => {
+              signals.push(signal);
+              return Promise.resolve(day.value);
+            },
+            { initial: "", fallbackError: "kaputt", params: [day] },
+          );
+          return () => h("p", api.data.value);
+        },
+      }),
+    );
+    await flushPromises();
+    day.value = "b";
+    await flushPromises();
+    expect(wrapper.text()).toBe("b");
+    expect(signals[0].aborted).toBe(true);
+    wrapper.unmount();
+    expect(signals[1].aborted).toBe(true);
+  });
 });

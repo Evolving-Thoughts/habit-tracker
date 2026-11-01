@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import { getHistory } from "../api/history.api";
 import DayReflection from "../components/DayReflection.vue";
 import DayWorkLogs from "../components/DayWorkLogs.vue";
 import HistoryItem from "../components/HistoryItem.vue";
 import HistoryPlannedItems from "../components/HistoryPlannedItems.vue";
+import { useLoader } from "../composables/useLoader";
 import type {
   HistoryResponse,
   HistoryFilter,
@@ -23,11 +24,25 @@ import {
 const date = ref(getCurrentDateInTimeZone());
 const view = ref<HistoryViewMode>("day");
 const filter = ref<HistoryFilter>("all");
-const result = ref<HistoryResponse | null>(null);
-const loading = ref(true);
-const error = ref("");
-let generation = 0;
-let abort: AbortController | undefined;
+const {
+  data: result,
+  isLoading: loading,
+  errorMessage: error,
+  reload: load,
+} = useLoader<HistoryResponse | null>(
+  (signal) => {
+    if (!supportedHistoryDate(date.value, view.value))
+      throw new Error("Bitte wähle ein gültiges Datum zwischen 1000 und 9999.");
+    return getHistory(date.value, view.value, filter.value, signal);
+  },
+  {
+    initial: null,
+    fallbackError: "Der Verlauf konnte nicht geladen werden.",
+    params: [date, view, filter],
+    resetOnLoad: true,
+    refreshOnChange: () => true,
+  },
+);
 const groups = [
   { status: "completed" as const, label: "Erledigt" },
   { status: "skipped" as const, label: "Übersprungen" },
@@ -78,42 +93,6 @@ function openDay(value: string): void {
 function today(): void {
   date.value = getCurrentDateInTimeZone();
 }
-async function load(): Promise<void> {
-  const requestGeneration = ++generation;
-  abort?.abort();
-  abort = new AbortController();
-  error.value = "";
-  result.value = null;
-  if (!supportedHistoryDate(date.value, view.value)) {
-    error.value = "Bitte wähle ein gültiges Datum zwischen 1000 und 9999.";
-    loading.value = false;
-    return;
-  }
-  loading.value = true;
-  try {
-    const response = await getHistory(
-      date.value,
-      view.value,
-      filter.value,
-      abort.signal,
-    );
-    if (generation === requestGeneration) result.value = response;
-  } catch (cause) {
-    if (generation === requestGeneration)
-      error.value =
-        cause instanceof Error
-          ? cause.message
-          : "Der Verlauf konnte nicht geladen werden.";
-  } finally {
-    if (generation === requestGeneration) loading.value = false;
-  }
-}
-watch([date, view, filter], () => void load());
-onMounted(() => void load());
-onUnmounted(() => {
-  generation += 1;
-  abort?.abort();
-});
 </script>
 <template>
   <main class="history-view">
@@ -167,12 +146,12 @@ onUnmounted(() => {
       >
         ›
       </button>
-      <button class="refresh" @click="load">Aktualisieren</button>
+      <button class="refresh" @click="load()">Aktualisieren</button>
     </div>
     <p v-if="loading" role="status">Verlauf wird geladen …</p>
     <div v-else-if="error" class="error" role="alert">
       <p>{{ error }}</p>
-      <button @click="load">Erneut versuchen</button>
+      <button @click="load()">Erneut versuchen</button>
     </div>
     <template v-else-if="result">
       <h2 class="period-heading" tabindex="-1">{{ heading }}</h2>
