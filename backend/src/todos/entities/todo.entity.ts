@@ -1,6 +1,7 @@
 import { UserEntity } from '../../auth/auth.entities';
 import { CategoryEntity } from '../../categories/category.entity';
 import {
+  Check,
   Column,
   Index,
   JoinColumn,
@@ -13,6 +14,10 @@ import {
 } from 'typeorm';
 
 @Entity({ name: 'todos' })
+@Check(
+  'CHK_todos_fixed_needs_date',
+  '"isFixed" = false OR "scheduledAt" IS NOT NULL',
+)
 export class TodoEntity {
   @Index()
   @Column({ type: 'uuid' })

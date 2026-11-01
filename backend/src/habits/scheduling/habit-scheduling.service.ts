@@ -35,7 +35,7 @@ import { HabitScheduleType } from '../enums/habit-schedule-type.enum';
 import {
   buildVersion,
   expiresAt,
-  lastMovableDate,
+  isInMoveWindow,
   nextScheduledDate,
   normalizeSchedule,
   ruleResponse,
@@ -626,10 +626,7 @@ export class HabitSchedulingService {
         );
       }
 
-      if (
-        date < today ||
-        date > lastMovableDate(active, occurrence.scheduledDate)
-      ) {
+      if (!isInMoveWindow(active, occurrence.scheduledDate, date, today)) {
         throw new ConflictException(
           'Der Tag liegt außerhalb des Terminfensters.',
         );

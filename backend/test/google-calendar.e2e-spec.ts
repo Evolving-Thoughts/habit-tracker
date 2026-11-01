@@ -17,6 +17,7 @@ import {
 import { Clock } from '../src/common/clock';
 import { dayOf } from '../src/common/date/local-day';
 import { configureApp } from '../src/configure-app';
+import { HabitOccurrenceEntity } from '../src/habit-occurrences/entities/habit-occurrence.entity';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
 import { authenticatedRequest as request, seedAuth } from './auth-fixture';
 
@@ -293,6 +294,58 @@ describe('Google calendar sync (e2e)', () => {
     const stored = await db.getRepository(TodoEntity).findOneByOrFail({ id });
     expect(stored.scheduledAt).toBeNull();
     expect(await db.getRepository(CalendarLinkEntity).count()).toBe(0);
+  });
+
+  it('leaves a deleted fixed event as a todo that can still be completed', async () => {
+    await connect();
+    google.add(OWN, {
+      summary: 'Zahnarzt',
+      ...timed('2026-10-30T12:00:00.000Z', '2026-10-30T12:45:00.000Z'),
+    });
+    await sync();
+    const [{ id }] = await todos();
+    google.events(OWN)[0].status = 'cancelled';
+    await sync();
+
+    await request(server)
+      .patch(`/todos/${id}`)
+      .send({ completed: true })
+      .expect(200);
+  });
+
+  it('keeps a run in place while its timer is open', async () => {
+    await connect();
+    await request(server)
+      .post('/habits')
+      .send({
+        title: 'Laufen',
+        timeOfDay: '09:00',
+        plannedDurationMinutes: 20,
+        schedule: {
+          type: 'interval',
+          intervalDays: 7,
+          missedOccurrencePolicy: 'carry_over',
+        },
+      })
+      .expect(201);
+    await request(server).get('/day-planner/today').expect(200);
+    await sync();
+    const [occurrence] = await db.getRepository(HabitOccurrenceEntity).find();
+    await request(server)
+      .post('/timers')
+      .send({ kind: 'occurrence', targetId: occurrence.id })
+      .expect(201);
+
+    Object.assign(google.events(OWN)[0], {
+      ...timed('2026-10-31T08:00:00.000Z', '2026-10-31T08:20:00.000Z'),
+      updated: google.stamp(),
+    });
+    await sync();
+
+    const stored = await db
+      .getRepository(HabitOccurrenceEntity)
+      .findOneByOrFail({ id: occurrence.id });
+    expect(stored.movedToDate).toBeNull();
   });
 
   it('deletes the event when the todo is deleted in the app', async () => {

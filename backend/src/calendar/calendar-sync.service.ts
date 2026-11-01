@@ -15,8 +15,8 @@ import {
   occurrenceDueDate,
 } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
-import { lastMovableDate } from '../habits/scheduling/schedule-rules';
-import { effectiveDuration } from '../timers/timer-target';
+import { isInMoveWindow } from '../habits/scheduling/schedule-rules';
+import { effectiveDuration, hasOpenTimer } from '../timers/timer-target';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { decryptToken } from './calendar.crypto';
 import {
@@ -252,7 +252,10 @@ export class CalendarSyncService {
     }
     await manager
       .getRepository(TodoEntity)
-      .update({ id: link.todoId, userId: link.userId }, { scheduledAt: null });
+      .update(
+        { id: link.todoId, userId: link.userId },
+        { scheduledAt: null, isFixed: false },
+      );
     await links.remove(link);
   }
 
@@ -303,9 +306,10 @@ export class CalendarSyncService {
       const day = dayOf(times.start);
       const { scheduledDate, scheduleVersion } = occurrence;
       if (
-        day >= today &&
-        day >= scheduledDate &&
-        day <= lastMovableDate(scheduleVersion, scheduledDate)
+        isInMoveWindow(scheduleVersion, scheduledDate, day, today) &&
+        !(await hasOpenTimer(manager, link.userId, {
+          occurrenceId: occurrence.id,
+        }))
       ) {
         occurrence.movedToDate = day === scheduledDate ? null : day;
         await repository.save(occurrence);
