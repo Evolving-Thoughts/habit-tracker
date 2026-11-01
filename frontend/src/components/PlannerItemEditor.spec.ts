@@ -268,7 +268,7 @@ describe("PlannerItemEditor", () => {
     await save(wrapper);
     expect(changeHabitSchedule).toHaveBeenCalledWith(10, {
       effectiveFrom: "2026-10-02",
-      schedule: interval,
+      schedule: { ...interval, intervalDays: 1 },
     });
   });
 

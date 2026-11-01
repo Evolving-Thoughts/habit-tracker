@@ -7,13 +7,12 @@ import {
 import { ref } from "vue";
 import { createHabit } from "../api/day-planner.api";
 import CategorySelect, { type CategoryChoice } from "./CategorySelect.vue";
-import type {
-  CreateHabitInput,
-  HabitScheduleRule,
-  MissedOccurrencePolicy,
-  Weekday,
-} from "../types/habit";
-import type { HabitScheduleType } from "../types/day-planner";
+import type { CreateHabitInput } from "../types/habit";
+import {
+  emptyScheduleDraft,
+  positiveInteger,
+  scheduleRuleOf,
+} from "../utils/habit-schedule";
 import {
   formatDateForGermanDisplay,
   getCurrentDateInTimeZone,
@@ -28,29 +27,10 @@ const duration = ref<string | number>("");
 const timeOfDay = ref("");
 const category = ref<CategoryChoice>("default");
 const why = ref("");
-const scheduleType = ref<HabitScheduleType>("interval");
-const intervalDays = ref<string | number>(1);
-const weeklyTarget = ref<string | number>(3);
-const weekdays = ref<Weekday[]>([]);
-const missedPolicy = ref<MissedOccurrencePolicy>("carry_over");
+const schedule = ref(emptyScheduleDraft());
 const isSubmitting = ref(false);
 const errorMessage = ref<string | null>(null);
 const today = getCurrentDateInTimeZone();
-function integer(
-  value: string | number,
-  message: string,
-  maximum?: number,
-): number {
-  const number = Number(value);
-  if (
-    !Number.isInteger(number) ||
-    number < 1 ||
-    (maximum !== undefined && number > maximum)
-  ) {
-    throw new Error(message);
-  }
-  return number;
-}
 function buildInput(): CreateHabitInput {
   const trimmedTitle = title.value.trim();
   if (!trimmedTitle) throw new Error("Bitte gib einen Titel ein.");
@@ -58,45 +38,11 @@ function buildInput(): CreateHabitInput {
     throw new Error("Der Titel darf höchstens 200 Zeichen enthalten.");
   if (startDate.value && !isValidIsoDate(startDate.value))
     throw new Error("Bitte gib ein gültiges Startdatum ein.");
-  let schedule: HabitScheduleRule;
-  switch (scheduleType.value) {
-    case "interval":
-      schedule = {
-        type: "interval",
-        intervalDays: integer(
-          intervalDays.value,
-          "Das Intervall muss eine ganze Zahl ab 1 Tag sein.",
-        ),
-        missedOccurrencePolicy: missedPolicy.value,
-      };
-      break;
-    case "fixed_weekdays":
-      if (!weekdays.value.length)
-        throw new Error("Bitte wähle mindestens einen Wochentag.");
-      schedule = {
-        type: "fixed_weekdays",
-        weekdays: WEEKDAY_OPTIONS
-          .filter((option) => weekdays.value.includes(option.value))
-          .map((option) => option.value),
-        missedOccurrencePolicy: missedPolicy.value,
-      };
-      break;
-    case "weekly_target":
-      schedule = {
-        type: "weekly_target",
-        weeklyTarget: integer(
-          weeklyTarget.value,
-          "Das Wochenziel muss zwischen 1 und 7 liegen.",
-          7,
-        ),
-      };
-      break;
-  }
   return {
     title: trimmedTitle,
     ...(String(duration.value).trim()
       ? {
-          plannedDurationMinutes: integer(
+          plannedDurationMinutes: positiveInteger(
             duration.value,
             TIMER_DURATION_MESSAGE,
             TIMER_MAX_MINUTES,
@@ -107,7 +53,7 @@ function buildInput(): CreateHabitInput {
     ...(startDate.value ? { startDate: startDate.value } : {}),
     ...(category.value !== "default" ? { categoryId: category.value } : {}),
     ...(why.value.trim() ? { why: why.value.trim() } : {}),
-    schedule,
+    schedule: scheduleRuleOf(schedule.value),
   };
 }
 async function submit(): Promise<void> {
@@ -219,7 +165,7 @@ async function submit(): Promise<void> {
           <label for="habit-schedule-type">Habit-Art</label>
           <select
             id="habit-schedule-type"
-            v-model="scheduleType"
+            v-model="schedule.type"
             name="scheduleType"
           >
             <option value="interval">Intervall</option>
@@ -227,11 +173,11 @@ async function submit(): Promise<void> {
             <option value="weekly_target">Häufigkeit pro Woche</option>
           </select>
         </div>
-        <div v-if="scheduleType === 'interval'" class="create-habit__field">
+        <div v-if="schedule.type === 'interval'" class="create-habit__field">
           <label for="habit-interval-days">Alle wie viele Tage?</label>
           <input
             id="habit-interval-days"
-            v-model="intervalDays"
+            v-model="schedule.intervalDays"
             name="intervalDays"
             type="number"
             min="1"
@@ -240,13 +186,13 @@ async function submit(): Promise<void> {
           <small>1 = täglich, 2 = alle zwei Tage.</small>
         </div>
         <fieldset
-          v-else-if="scheduleType === 'fixed_weekdays'"
+          v-else-if="schedule.type === 'fixed_weekdays'"
           class="create-habit__weekdays"
         >
           <legend>Ausführungstage</legend>
           <label v-for="option in WEEKDAY_OPTIONS" :key="option.value">
             <input
-              v-model="weekdays"
+              v-model="schedule.weekdays"
               type="checkbox"
               name="weekdays"
               :value="option.value"
@@ -258,7 +204,7 @@ async function submit(): Promise<void> {
           <label for="habit-weekly-target">Wie oft pro Woche?</label>
           <input
             id="habit-weekly-target"
-            v-model="weeklyTarget"
+            v-model="schedule.weeklyTarget"
             name="weeklyTarget"
             type="number"
             min="1"
@@ -268,7 +214,7 @@ async function submit(): Promise<void> {
           <small>Ohne feste Wochentage. Die Woche beginnt am Montag.</small>
         </div>
         <div
-          v-if="scheduleType !== 'weekly_target'"
+          v-if="schedule.type !== 'weekly_target'"
           class="create-habit__field"
         >
           <label for="habit-missed-policy"
@@ -276,7 +222,7 @@ async function submit(): Promise<void> {
           >
           <select
             id="habit-missed-policy"
-            v-model="missedPolicy"
+            v-model="schedule.missedPolicy"
             name="missedPolicy"
           >
             <option value="carry_over">Übertragen</option>
