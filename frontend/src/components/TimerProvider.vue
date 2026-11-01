@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDevicePushRestore } from "../push/restore";
 import { notifyDataChanged, onTargetsChanged } from "../composables/data-sync";
 import {
   isValidTimerDuration,
@@ -16,6 +17,7 @@ import {
 } from "../api/day-planner.api";
 import TimerIconButton from "./TimerIconButton.vue";
 import ModalDialog from "./ModalDialog.vue";
+useDevicePushRestore();
 const controller = createTimerController();
 provide(timerKey, controller);
 const { timer, remaining, error, busy, switching } = controller;

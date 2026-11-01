@@ -38,6 +38,10 @@ test("register, verify through SMTP email, login, reload, logout", async ({
   await expect(page.getByRole("navigation")).toBeVisible();
   await page.reload();
   await expect(page.getByRole("navigation")).toBeVisible();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
   await page.getByRole("button", { name: "Abmelden", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Willkommen zurück" }),

@@ -41,8 +41,6 @@ afterEach(() => vi.unstubAllGlobals());
 async function open() {
   const wrapper = mount(PushSettings);
   await flushPromises();
-  await wrapper.get("button").trigger("click");
-  await flushPromises();
   return wrapper;
 }
 describe("Push settings", () => {

@@ -115,7 +115,14 @@ export async function disablePush(): Promise<void> {
     await subscription?.unsubscribe();
   }
 }
-export async function restorePush(config: PushConfig): Promise<void> {
+let restoring: Promise<void> | null = null;
+export function restorePush(config: PushConfig): Promise<void> {
+  restoring ??= rebind(config).finally(() => {
+    restoring = null;
+  });
+  return restoring;
+}
+async function rebind(config: PushConfig): Promise<void> {
   const pref = await readPreference();
   if (!pref.enabled) {
     if (pref.subscriptionId) await disablePush();

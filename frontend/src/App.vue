@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
-import PushSettings from "./components/PushSettings.vue";
 import TimerProvider from "./components/TimerProvider.vue";
 import TodoHierarchyView from "./views/TodoHierarchyView.vue";
 import HistoryView from "./views/HistoryView.vue";
@@ -166,14 +165,13 @@ const activeView = ref<
       </button>
       <button
         type="button"
+        class="app-navigation__settings"
+        aria-label="Einstellungen"
         :aria-pressed="activeView === 'settings'"
         @click="activeView = 'settings'"
       >
-        Einstellungen
+        ⋮
       </button>
-      <button type="button" @click="signOut">Abmelden</button>
-      <PushSettings />
-      <span class="account-email">{{ user.email }}</span>
     </nav>
 
     <TodayView v-if="activeView === 'today'" />
@@ -182,18 +180,16 @@ const activeView = ref<
     <HabitsView v-else-if="activeView === 'habits'" />
     <CategoriesView v-else-if="activeView === 'categories'" />
     <CalendarView v-else-if="activeView === 'calendar'" />
-    <SettingsView v-else-if="activeView === 'settings'" />
+    <SettingsView
+      v-else-if="activeView === 'settings'"
+      :email="user.email"
+      @sign-out="signOut"
+    />
     <HistoryView v-else />
   </TimerProvider>
 </template>
 
 <style scoped>
-.account-email {
-  align-self: center;
-  font-size: 0.875rem;
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
 .app-navigation {
   display: flex;
   flex-wrap: wrap;
@@ -214,10 +210,27 @@ const activeView = ref<
   cursor: pointer;
 }
 
+.app-navigation .app-navigation__settings {
+  position: absolute;
+  top: 1rem;
+  right: 0.75rem;
+  width: 2.75rem;
+  padding: 0;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
 .app-navigation button[aria-pressed="true"] {
   border-color: #2457c5;
   background: #2457c5;
   color: #ffffff;
+}
+
+@media (max-width: 56rem) {
+  .app-navigation {
+    box-sizing: border-box;
+    padding-right: 3.5rem;
+  }
 }
 
 @media (max-width: 32rem) {
