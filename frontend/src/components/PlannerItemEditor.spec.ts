@@ -1,3 +1,4 @@
+import { HABIT_FIELDS, TODO_FIELDS } from "../types/fixtures";
 import { getDeletionPreview } from "../api/todo-hierarchy.api";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +19,9 @@ import type {
 import type { TodoResponse } from "../types/todo";
 import PlannerItemEditor from "./PlannerItemEditor.vue";
 
+vi.mock("../api/categories.api", () => ({
+  getCategories: vi.fn().mockResolvedValue([{ id: 7, name: "Sport" }]),
+}));
 vi.mock("../api/todo-hierarchy.api", () => ({ getDeletionPreview: vi.fn() }));
 vi.mock("../api/day-planner.api", () => ({
   getTodo: vi.fn(),
@@ -32,6 +36,7 @@ enableAutoUnmount(afterEach);
 afterEach(() => vi.useRealTimers());
 
 const todo: TodoResponse = {
+    ...TODO_FIELDS,
   id: 1,
   parentId: null,
   title: "NestJS lernen",
@@ -63,6 +68,7 @@ function version(
 }
 function makeHabit(overrides: Partial<HabitResponse> = {}): HabitResponse {
   return {
+    ...HABIT_FIELDS,
     id: 10,
     title: "Joggen",
     isActive: true,
@@ -265,7 +271,7 @@ describe("PlannerItemEditor", () => {
     await save(wrapper);
     expect(changeHabitSchedule).toHaveBeenCalledWith(10, {
       effectiveFrom: "2026-10-02",
-      schedule: interval,
+      schedule: { ...interval, intervalDays: 1 },
     });
   });
 

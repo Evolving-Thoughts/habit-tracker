@@ -8,6 +8,7 @@ import { configureApp } from '../src/configure-app';
 import { authenticatedRequest, seedAuth, TEST_USER } from './auth-fixture';
 import { Clock } from '../src/common/clock';
 import { TimerEntity } from '../src/timers/timer.entity';
+import { WorkLogEntity } from '../src/work-logs/work-log.entity';
 import type { TimerResponse } from '../src/timers/timers.service';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
 import { HabitEntity } from '../src/habits/entities/habit.entity';
@@ -77,7 +78,7 @@ describe('Synced timers and Dump completion (e2e)', () => {
   });
   async function clear() {
     await db.query(
-      'TRUNCATE TABLE push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, auth_tokens, auth_sessions, auth_rate_limits, users RESTART IDENTITY',
+      'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, categories, reflections, work_logs, goal_snapshots, auth_tokens, auth_sessions, auth_rate_limits, users RESTART IDENTITY',
     );
   }
   beforeEach(async () => {
@@ -141,6 +142,24 @@ describe('Synced timers and Dump completion (e2e)', () => {
     expect(
       (await start({ kind: 'todo', targetId: next })).timer?.targetId,
     ).toBe(next);
+  });
+  it('logs the work once when a timer runs into an expired occurrence', async () => {
+    await habit();
+    const occurrence = (await planner()).items.find(
+      (item) => item.type === 'habit',
+    );
+    const started = now;
+    await start({
+      kind: 'occurrence',
+      targetId: occurrence!.occurrenceId,
+      durationMinutes: 4320,
+    });
+    now = new Date(now.getTime() + 36 * 3_600_000);
+    expect((await read()).timer).toBeNull();
+    const logs = await db.getRepository(WorkLogEntity).find();
+    expect(logs).toHaveLength(1);
+    expect(logs[0].startedAt).toEqual(started);
+    expect(logs[0].endedAt).toEqual(now);
   });
   it('allows only one timer across simultaneous devices, including paused timers', async () => {
     const a = await todo(),

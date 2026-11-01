@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
-import ModalDialog from "./ModalDialog.vue";
 import {
   disablePush,
   enablePush,
@@ -10,7 +9,6 @@ import {
   type PushConfig,
 } from "../push/device";
 import { readPreference } from "../push/preferences";
-const open = ref(false);
 const busy = ref(false);
 const enabled = ref(false);
 const available = ref(false);
@@ -73,14 +71,7 @@ onUnmounted(() => {
 });
 </script>
 <template>
-  <button type="button" @click="open = true">Benachrichtigungen</button>
-  <ModalDialog
-    v-if="open"
-    title="Timer-Benachrichtigungen"
-    :busy="busy"
-    focus-selector='[data-test="push-toggle"]'
-    @close="open = false"
-  >
+  <div class="push-settings">
     <p>Diese Einstellung gilt nur für dieses Gerät und diesen Browser.</p>
     <p>
       Alle angemeldeten Geräte mit aktiviertem Push erhalten die neutrale
@@ -131,9 +122,12 @@ onUnmounted(() => {
       Die Zustellung kann durch Android oder das Netzwerk verzögert werden. Für
       den Tunnel-Test müssen PC und Backend laufen.
     </p>
-  </ModalDialog>
+  </div>
 </template>
 <style scoped>
+.push-settings {
+  font-size: 0.875rem;
+}
 p {
   margin: 0 0 1rem;
   color: #526481;

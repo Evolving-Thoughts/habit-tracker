@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { eventsOfDays } from '../calendar/day-events';
+import { CategoryEntity } from '../categories/category.entity';
 import { dayOf } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import {
@@ -8,8 +10,12 @@ import {
   isTodoTimerEligible,
 } from '../timers/timer-target';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
-import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
+import {
+  HabitOccurrenceEntity,
+  occurrenceDueDate,
+} from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
+import { lastMovableDate } from '../habits/scheduling/schedule-rules';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import {
   completedTodos,
@@ -33,14 +39,24 @@ export class DayPlannerService {
   async getToday(userId: string): Promise<DayPlannerResponseDto> {
     const today = this.clock.today();
 
-    const [todos, occurrences] = await Promise.all([
+    const [todos, occurrences, categories] = await Promise.all([
       this.findTodosForToday(userId, today),
       this.scheduling.getToday(userId),
+      this.db.getRepository(CategoryEntity).findBy({ userId }),
     ]);
+    const names = new Map(categories.map((item) => [item.id, item.name]));
+    const categoryName = (id: number | null): string | null =>
+      (id !== null && names.get(id)) || null;
 
     const items = [
-      ...todos.map((todo) => this.mapTodo(todo, today)),
-      ...occurrences.map((occurrence) => this.mapOccurrence(occurrence, today)),
+      ...todos.map((todo) => ({
+        ...this.mapTodo(todo, today),
+        categoryName: categoryName(todo.categoryId),
+      })),
+      ...occurrences.map((occurrence) => ({
+        ...this.mapOccurrence(occurrence, today),
+        categoryName: categoryName(occurrence.habit.categoryId),
+      })),
     ];
 
     items.sort((first, second) => {
@@ -69,7 +85,21 @@ export class DayPlannerService {
       return firstTime.localeCompare(secondTime);
     });
 
-    return new DayPlannerResponseDto({ date: today, items });
+    const externalEvents = await eventsOfDays(
+      this.db.manager,
+      { userId },
+      today,
+    );
+    return new DayPlannerResponseDto({
+      date: today,
+      items,
+      externalEvents: externalEvents.map(({ id, title, start, end }) => ({
+        id,
+        title,
+        start: start.toISOString(),
+        end: end.toISOString(),
+      })),
+    });
   }
 
   private async findTodosForToday(
@@ -87,7 +117,10 @@ export class DayPlannerService {
     return [...open, ...completed];
   }
 
-  private mapTodo(todo: TodoEntity, today: string): DayPlannerTodoItemDto {
+  private mapTodo(
+    todo: TodoEntity,
+    today: string,
+  ): Omit<DayPlannerTodoItemDto, 'categoryName'> {
     // Open todos follow the agenda; completed ones stay on their own day.
     const placement = todo.completed ? null : placeOpenTodo(todo, today);
     const displayInstant = todo.scheduledAt ?? todo.completedAt;
@@ -114,23 +147,28 @@ export class DayPlannerService {
   private mapOccurrence(
     occurrence: HabitOccurrenceEntity,
     today: string,
-  ): DayPlannerHabitItemDto {
+  ): Omit<DayPlannerHabitItemDto, 'categoryName'> {
     if (!occurrence.habit || !occurrence.scheduleVersion) {
       throw new Error('Missing occurrence relations');
     }
 
+    const pending = occurrence.status === HabitOccurrenceStatus.PENDING;
+    const dueDate = occurrenceDueDate(occurrence);
+
     return {
       type: 'habit',
       plannedDurationMinutes: effectiveDuration(occurrence, occurrence.habit),
+      timeOfDay: occurrence.habit.timeOfDay ?? null,
       occurrenceId: occurrence.id,
       habitId: occurrence.habitId,
       title: occurrence.habit.title,
       status: occurrence.status,
-      scheduledDate: occurrence.scheduledDate,
+      scheduledDate: pending ? dueDate : occurrence.scheduledDate,
+      moveUntil: pending
+        ? lastMovableDate(occurrence.scheduleVersion, occurrence.scheduledDate)
+        : null,
       scheduleType: occurrence.scheduleVersion.type,
-      isOverdue:
-        occurrence.status === HabitOccurrenceStatus.PENDING &&
-        occurrence.scheduledDate < today,
+      isOverdue: pending && dueDate < today,
       timerEligible: isOccurrenceTimerEligible(
         occurrence,
         occurrence.habit,

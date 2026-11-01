@@ -1,3 +1,4 @@
+import { PLANNER_HABIT_FIELDS, PLANNER_TODO_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import type {
@@ -12,6 +13,7 @@ function makeTodo(
   overrides: Partial<DayPlannerTodoItem> = {},
 ): DayPlannerTodoItem {
   return {
+    ...PLANNER_TODO_FIELDS,
     type: "todo",
     todoId: 1,
     title: "NestJS lernen",
@@ -31,6 +33,7 @@ function makeHabit(
   overrides: Partial<DayPlannerHabitItem> = {},
 ): DayPlannerHabitItem {
   return {
+    ...PLANNER_HABIT_FIELDS,
     type: "habit",
     plannedDurationMinutes: null,
     occurrenceId: 20,
@@ -38,6 +41,7 @@ function makeHabit(
     title: "Joggen",
     status: "pending",
     scheduledDate: "2026-10-02",
+    moveUntil: null,
     scheduleType: "interval",
     isOverdue: false,
     timerEligible: true,

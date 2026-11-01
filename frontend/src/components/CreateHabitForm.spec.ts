@@ -1,12 +1,17 @@
+import { HABIT_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHabit } from "../api/day-planner.api";
 import type { HabitResponse } from "../types/habit";
 import CreateHabitForm from "./CreateHabitForm.vue";
 vi.mock("../api/day-planner.api", () => ({ createHabit: vi.fn() }));
+vi.mock("../api/categories.api", () => ({
+  getCategories: vi.fn().mockResolvedValue([{ id: 7, name: "Sport" }]),
+}));
 enableAutoUnmount(afterEach);
 afterEach(() => vi.useRealTimers());
 const response: HabitResponse = {
+    ...HABIT_FIELDS,
   id: 10,
   title: "Joggen",
   isActive: true,
@@ -26,6 +31,15 @@ describe("CreateHabitForm", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-01T22:30:00Z"));
     vi.mocked(createHabit).mockResolvedValue(response);
+  });
+  it("sends a trimmed why", async () => {
+    const wrapper = mount(CreateHabitForm);
+    await wrapper.get('input[name="title"]').setValue("Joggen");
+    await wrapper.get('textarea[name="why"]').setValue(" Ausdauer ");
+    await submit(wrapper);
+    expect(createHabit).toHaveBeenCalledWith(
+      expect.objectContaining({ why: "Ausdauer" }),
+    );
   });
   it("creates a daily habit and leaves an omitted start date to the backend", async () => {
     const wrapper = mount(CreateHabitForm);

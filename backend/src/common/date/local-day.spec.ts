@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { Weekday } from '../../habits/enums/weekday.enum';
 import {
   addDays,
+  atSameWallClock,
   daysBetween,
   dayOf,
   endOfDay,
@@ -9,6 +10,24 @@ import {
   weekRange,
   weekdayOf,
 } from './local-day';
+
+describe('atSameWallClock', () => {
+  const berlin = (instant: Date): string =>
+    new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'Europe/Berlin',
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(instant);
+
+  it.each([
+    ['2026-10-30T09:15:00.000Z', '2026-11-02', '2026-11-02 10:15'],
+    ['2026-03-27T22:30:00.000Z', '2026-03-29', '2026-03-29 23:30'],
+    ['2026-10-23T08:00:00.000Z', '2026-10-25', '2026-10-25 10:00'],
+    ['2026-03-27T01:30:00.000Z', '2026-03-29', '2026-03-29 03:30'],
+  ])('keeps the Berlin time of %s on %s', (from, date, expected) => {
+    expect(berlin(atSameWallClock(new Date(from), date))).toBe(expected);
+  });
+});
 
 describe('local day', () => {
   it.each([

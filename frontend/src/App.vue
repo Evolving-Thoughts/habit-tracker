@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
-import PushSettings from "./components/PushSettings.vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import TimerProvider from "./components/TimerProvider.vue";
 import TodoHierarchyView from "./views/TodoHierarchyView.vue";
 import HistoryView from "./views/HistoryView.vue";
+import CalendarView from "./views/CalendarView.vue";
+import CategoriesView from "./views/CategoriesView.vue";
 import HabitsView from "./views/HabitsView.vue";
+import SettingsView from "./views/SettingsView.vue";
 import TodayView from "./views/TodayView.vue";
 import TodoDumpView from "./views/TodoDumpView.vue";
 
@@ -72,9 +74,28 @@ onUnmounted(() => {
   window.removeEventListener("auth-expired", expire);
   window.removeEventListener("hashchange", readLink);
 });
-const activeView = ref<
-  "today" | "todo-dump" | "habits" | "history" | "hierarchy"
->("today");
+function readCalendarReturn(): boolean {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("calendar")) return false;
+  url.searchParams.delete("calendar");
+  history.replaceState(null, "", url.pathname + url.search + url.hash);
+  return true;
+}
+const VIEWS = [
+  { key: "today", label: "Heute", view: TodayView },
+  { key: "todo-dump", label: "Todo-Dump", view: TodoDumpView },
+  { key: "hierarchy", label: "Aufgabenbaum", view: TodoHierarchyView },
+  { key: "habits", label: "Habits", view: HabitsView },
+  { key: "categories", label: "Kategorien", view: CategoriesView },
+  { key: "history", label: "Verlauf", view: HistoryView },
+  { key: "calendar", label: "Kalender", view: CalendarView },
+] as const;
+const activeView = ref<(typeof VIEWS)[number]["key"] | "settings">(
+  readCalendarReturn() ? "settings" : "today",
+);
+const shownView = computed(
+  () => VIEWS.find(({ key }) => key === activeView.value)?.view,
+);
 </script>
 
 <template>
@@ -98,61 +119,35 @@ const activeView = ref<
   <TimerProvider v-else :key="user.id">
     <nav class="app-navigation" aria-label="Ansichten">
       <button
+        v-for="{ key, label } in VIEWS"
+        :key="key"
         type="button"
-        :aria-pressed="activeView === 'today'"
-        @click="activeView = 'today'"
+        :aria-pressed="activeView === key"
+        @click="activeView = key"
       >
-        Heute
-      </button>
-
-      <button
-        type="button"
-        :aria-pressed="activeView === 'todo-dump'"
-        @click="activeView = 'todo-dump'"
-      >
-        Todo-Dump
+        {{ label }}
       </button>
       <button
         type="button"
-        :aria-pressed="activeView === 'hierarchy'"
-        @click="activeView = 'hierarchy'"
+        class="app-navigation__settings"
+        aria-label="Einstellungen"
+        :aria-pressed="activeView === 'settings'"
+        @click="activeView = 'settings'"
       >
-        Aufgabenbaum
+        ⋮
       </button>
-      <button
-        type="button"
-        :aria-pressed="activeView === 'habits'"
-        @click="activeView = 'habits'"
-      >
-        Habits
-      </button>
-      <button
-        type="button"
-        :aria-pressed="activeView === 'history'"
-        @click="activeView = 'history'"
-      >
-        Verlauf
-      </button>
-      <button type="button" @click="signOut">Abmelden</button>
-      <PushSettings />
-      <span class="account-email">{{ user.email }}</span>
     </nav>
 
-    <TodayView v-if="activeView === 'today'" />
-    <TodoDumpView v-else-if="activeView === 'todo-dump'" />
-    <TodoHierarchyView v-else-if="activeView === 'hierarchy'" />
-    <HabitsView v-else-if="activeView === 'habits'" />
-    <HistoryView v-else />
+    <SettingsView
+      v-if="activeView === 'settings'"
+      :email="user.email"
+      @sign-out="signOut"
+    />
+    <component :is="shownView" v-else />
   </TimerProvider>
 </template>
 
 <style scoped>
-.account-email {
-  align-self: center;
-  font-size: 0.875rem;
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
 .app-navigation {
   display: flex;
   flex-wrap: wrap;
@@ -173,10 +168,27 @@ const activeView = ref<
   cursor: pointer;
 }
 
+.app-navigation .app-navigation__settings {
+  position: absolute;
+  top: 1rem;
+  right: 0.75rem;
+  width: 2.75rem;
+  padding: 0;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
 .app-navigation button[aria-pressed="true"] {
   border-color: #2457c5;
   background: #2457c5;
   color: #ffffff;
+}
+
+@media (max-width: 56rem) {
+  .app-navigation {
+    box-sizing: border-box;
+    padding-right: 3.5rem;
+  }
 }
 
 @media (max-width: 32rem) {

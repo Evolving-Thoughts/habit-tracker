@@ -3,6 +3,7 @@ import { ref } from "vue";
 import { createTodo } from "../api/day-planner.api";
 import type { CreateTodoInput } from "../types/todo";
 import { buildTodoInput } from "../utils/todo-input";
+import CategorySelect, { type CategoryChoice } from "./CategorySelect.vue";
 
 const props = defineProps<{ embedded?: boolean; parentId?: number | null }>();
 
@@ -15,6 +16,8 @@ const title = ref("");
 const scheduledAt = ref("");
 const durationMinutes = ref<string | number>("");
 const isFixed = ref(false);
+const category = ref<CategoryChoice>("default");
+const why = ref("");
 
 const isSubmitting = ref(false);
 const errorMessage = ref<string | null>(null);
@@ -34,6 +37,8 @@ function resetForm(): void {
   scheduledAt.value = "";
   durationMinutes.value = "";
   isFixed.value = false;
+  category.value = "default";
+  why.value = "";
 }
 
 async function submit(): Promise<void> {
@@ -47,6 +52,8 @@ async function submit(): Promise<void> {
   try {
     const input = buildInput();
     if (props.parentId !== undefined) input.parentId = props.parentId;
+    if (category.value !== "default") input.categoryId = category.value;
+    if (why.value.trim()) input.why = why.value.trim();
 
     isSubmitting.value = true;
     emit("busy", true);
@@ -94,6 +101,28 @@ async function submit(): Promise<void> {
             maxlength="200"
             required
             placeholder="Was möchtest du erledigen?"
+          />
+        </div>
+
+        <div class="create-todo__field">
+          <label for="todo-category">Kategorie · optional</label>
+
+          <CategorySelect
+            id="todo-category"
+            v-model="category"
+            :inherits-from-parent="parentId != null"
+          />
+        </div>
+
+        <div class="create-todo__field">
+          <label for="todo-why">Warum · optional</label>
+
+          <textarea
+            id="todo-why"
+            v-model="why"
+            name="why"
+            maxlength="1000"
+            rows="2"
           />
         </div>
 
@@ -191,6 +220,18 @@ async function submit(): Promise<void> {
   color: #39445a;
   font-size: 0.875rem;
   font-weight: 600;
+}
+
+.create-todo__field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 0.7rem;
+  border: 1px solid #bfc7d4;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  color: #182033;
+  font: inherit;
+  resize: vertical;
 }
 
 .create-todo__field input {

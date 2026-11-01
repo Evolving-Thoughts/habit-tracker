@@ -11,21 +11,57 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
 } from '@nestjs/common';
+import { DayReplanService } from './day-replan.service';
 import { DeleteTodoDto } from './dto/delete-todo.dto';
+import {
+  ApplyReplanDto,
+  PlanningSettingsDto,
+  ReplanPreviewResponse,
+} from './dto/replan.dto';
 import {
   DeletionPreviewResponse,
   HierarchyTodoResponse,
 } from './dto/todo-hierarchy-response.dto';
 import { CreateTodoDto } from './dto/create-todo.dto';
+import { RescheduleTodoDto } from './dto/reschedule-todo.dto';
 import { TodoResponseDto } from './dto/todo-response.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
+import { BurnupPoint, GoalSnapshotsService } from './goal-snapshots.service';
 import { TodoMapper } from './mappers/todo.mapper';
 import { TodosService } from './todos.service';
 
 @Controller('todos')
 export class TodosController {
-  constructor(private readonly todosService: TodosService) {}
+  constructor(
+    private readonly todosService: TodosService,
+    private readonly goalSnapshots: GoalSnapshotsService,
+    private readonly replan: DayReplanService,
+  ) {}
+
+  @Get('replan')
+  replanPreview(@CurrentUser() user: AuthUser): Promise<ReplanPreviewResponse> {
+    return this.replan.preview(user.id);
+  }
+
+  @Post('replan')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  applyReplan(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ApplyReplanDto,
+  ): Promise<void> {
+    return this.replan.apply(user.id, dto.confirmationToken);
+  }
+
+  @Put('replan/day-end')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  setDayEnd(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: PlanningSettingsDto,
+  ): Promise<void> {
+    return this.replan.dayEnd(user.id, dto.dayEnd);
+  }
 
   @Get()
   async findAll(@CurrentUser() user: AuthUser): Promise<TodoResponseDto[]> {
@@ -44,6 +80,14 @@ export class TodosController {
   @Get('hierarchy')
   hierarchy(@CurrentUser() user: AuthUser): Promise<HierarchyTodoResponse[]> {
     return this.todosService.hierarchy(user.id);
+  }
+
+  @Get(':id/burnup')
+  burnup(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<BurnupPoint[]> {
+    return this.goalSnapshots.burnup(user.id, id);
   }
 
   @Get(':id/deletion-preview')
@@ -81,6 +125,18 @@ export class TodosController {
     @Body() updateTodoDto: UpdateTodoDto,
   ): Promise<TodoResponseDto> {
     const todo = await this.todosService.update(user.id, id, updateTodoDto);
+
+    return TodoMapper.toResponseDto(todo);
+  }
+
+  @Post(':id/reschedule')
+  @HttpCode(HttpStatus.OK)
+  async reschedule(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RescheduleTodoDto,
+  ): Promise<TodoResponseDto> {
+    const todo = await this.todosService.reschedule(user.id, id, dto);
 
     return TodoMapper.toResponseDto(todo);
   }

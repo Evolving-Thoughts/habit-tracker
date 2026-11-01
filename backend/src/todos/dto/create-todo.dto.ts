@@ -15,6 +15,16 @@ export class CreateTodoDto {
   @Min(1)
   readonly parentId?: number | null;
 
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  readonly categoryId?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  readonly why?: string | null;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)

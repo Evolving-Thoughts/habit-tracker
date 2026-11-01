@@ -8,7 +8,11 @@ import type {
   HabitResponse,
   UpdateHabitInput,
 } from "../types/habit";
-import type { CreateTodoInput, TodoResponse } from "../types/todo";
+import type {
+  CreateTodoInput,
+  TodoResponse,
+  UpdateTodoInput,
+} from "../types/todo";
 
 import { request } from "./http";
 
@@ -34,7 +38,7 @@ export function createTodo(input: CreateTodoInput): Promise<TodoResponse> {
 
 export function updateTodo(
   todoId: number,
-  input: Partial<CreateTodoInput>,
+  input: UpdateTodoInput,
 ): Promise<TodoResponse> {
   return request<TodoResponse>(`/todos/${todoId}`, {
     method: "PATCH",
@@ -62,6 +66,27 @@ export function updateTodoSchedule(
   },
 ): Promise<TodoResponse> {
   return updateTodo(todoId, input);
+}
+
+export function rescheduleTodo(
+  todoId: number,
+  date: string,
+  confirmFixed: boolean,
+): Promise<TodoResponse> {
+  return request<TodoResponse>(`/todos/${todoId}/reschedule`, {
+    method: "POST",
+    body: JSON.stringify({ date, confirmFixed }),
+  });
+}
+
+export function rescheduleOccurrence(
+  occurrenceId: number,
+  date: string,
+): Promise<void> {
+  return request<void>(`/habit-occurrences/${occurrenceId}/reschedule`, {
+    method: "POST",
+    body: JSON.stringify({ date }),
+  });
 }
 
 export function updateOccurrenceStatus(

@@ -210,6 +210,10 @@ test("History: error retry and logout do not retain private results", async ({
     .getByRole("button", { name: "Erneut versuchen", exact: true })
     .click();
   await expect(page.locator(".empty")).toBeVisible();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
   await page.getByRole("button", { name: "Abmelden", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Willkommen zurück" }),

@@ -1,4 +1,6 @@
 import { Brackets, EntityManager } from 'typeorm';
+import { occurrenceDueDate } from '../habit-occurrences/entities/habit-occurrence.entity';
+import { WorkLogEntity } from '../work-logs/work-log.entity';
 import { TimerEntity } from './timer.entity';
 
 /**
@@ -25,14 +27,18 @@ export function isTodoTimerEligible(todo: { completed: boolean }): boolean {
 
 /** An occurrence can carry a timer while pending, due and its habit active. */
 export function isOccurrenceTimerEligible(
-  occurrence: { status: string; scheduledDate: string },
+  occurrence: {
+    status: string;
+    scheduledDate: string;
+    movedToDate?: string | null;
+  },
   habit: { isActive: boolean },
   today: string,
 ): boolean {
   return (
     habit.isActive &&
     occurrence.status === 'pending' &&
-    occurrence.scheduledDate <= today
+    occurrenceDueDate(occurrence) <= today
   );
 }
 
@@ -44,6 +50,41 @@ export function effectiveDuration(
   return occurrence.plannedDurationMinutes ?? habit.plannedDurationMinutes;
 }
 
+/** Logs the running stretch of a timer up to `end`, never past its deadline. */
+export async function closeWorkSegment(
+  manager: EntityManager,
+  timer: TimerEntity,
+  end: Date,
+): Promise<void> {
+  const startedAt = timer.segmentStartedAt;
+  timer.segmentStartedAt = null;
+  if (!startedAt) return;
+  const endedAt =
+    timer.endsAt && timer.endsAt < end ? new Date(timer.endsAt) : end;
+  if (endedAt <= startedAt) return;
+  await manager.insert(WorkLogEntity, {
+    userId: timer.userId,
+    todoId: timer.todoId,
+    occurrenceId: timer.occurrenceId,
+    title: timer.title,
+    startedAt,
+    endedAt,
+    source: 'timer',
+  });
+}
+
+/** Ends a timer for good: its work stays on record, its row stops counting. */
+export async function stopTimer(
+  manager: EntityManager,
+  timer: TimerEntity,
+  at: Date,
+): Promise<TimerEntity> {
+  await closeWorkSegment(manager, timer, at);
+  timer.state = 'stopped';
+  timer.endsAt = null;
+  return manager.save(TimerEntity, timer);
+}
+
 /**
  * Stops every timer of these targets right away. Call it in the same locked
  * transaction that makes a target ineligible (completed, deleted, skipped,
@@ -53,35 +94,50 @@ export async function releaseTimers(
   manager: EntityManager,
   userId: string,
   targets: { todoIds?: number[]; occurrenceIds?: number[]; habitId?: number },
+  at: Date,
 ): Promise<void> {
   const todoIds = targets.todoIds ?? [];
   const occurrenceIds = targets.occurrenceIds ?? [];
   const { habitId } = targets;
   if (!todoIds.length && !occurrenceIds.length && habitId === undefined) return;
-  await manager
-    .createQueryBuilder()
-    .update(TimerEntity)
-    .set({ state: 'stopped', endsAt: null })
-    .where('"userId" = :userId', { userId })
-    .andWhere(`"state" <> 'stopped'`)
+  const timers = await manager
+    .getRepository(TimerEntity)
+    .createQueryBuilder('timer')
+    .where('"timer"."userId" = :userId', { userId })
+    .andWhere(`"timer"."state" <> 'stopped'`)
     .andWhere(
       new Brackets((query) => {
         // Array parameters keep one bind value regardless of list length.
         if (todoIds.length)
-          query.orWhere('"todoId" = ANY(:todoIds)', { todoIds });
+          query.orWhere('"timer"."todoId" = ANY(:todoIds)', { todoIds });
         if (occurrenceIds.length)
-          query.orWhere('"occurrenceId" = ANY(:occurrenceIds)', {
+          query.orWhere('"timer"."occurrenceId" = ANY(:occurrenceIds)', {
             occurrenceIds,
           });
         // Every occurrence of a paused or deleted habit.
         if (habitId !== undefined)
           query.orWhere(
-            '"occurrenceId" IN (SELECT "id" FROM "habit_occurrences" WHERE "habitId" = :habitId)',
+            '"timer"."occurrenceId" IN (SELECT "id" FROM "habit_occurrences" WHERE "habitId" = :habitId)',
             { habitId },
           );
       }),
     )
-    .execute();
+    .getMany();
+  for (const timer of timers) await stopTimer(manager, timer, at);
+}
+
+/** Whether a running or paused timer is attached to this target. */
+export function hasOpenTimer(
+  manager: EntityManager,
+  userId: string,
+  target: { todoId: number } | { occurrenceId: number },
+): Promise<boolean> {
+  return manager.getRepository(TimerEntity).exists({
+    where: [
+      { userId, state: 'running', ...target },
+      { userId, state: 'paused', ...target },
+    ],
+  });
 }
 
 /** Timers (any state) that belong to these todos, for previews of destructive changes. */
@@ -105,8 +161,10 @@ export async function discardTimersOfTodos(
   manager: EntityManager,
   userId: string,
   todoIds: number[],
+  at: Date,
 ): Promise<void> {
   if (!todoIds.length) return;
+  await releaseTimers(manager, userId, { todoIds }, at);
   await manager
     .createQueryBuilder()
     .delete()

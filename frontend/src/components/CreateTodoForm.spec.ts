@@ -1,5 +1,7 @@
+import { TODO_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getCategories } from "../api/categories.api";
 import { createTodo } from "../api/day-planner.api";
 import type { TodoResponse } from "../types/todo";
 import CreateTodoForm from "./CreateTodoForm.vue";
@@ -7,12 +9,16 @@ import CreateTodoForm from "./CreateTodoForm.vue";
 vi.mock("../api/day-planner.api", () => ({
   createTodo: vi.fn(),
 }));
+vi.mock("../api/categories.api", () => ({
+  getCategories: vi.fn(),
+}));
 
 enableAutoUnmount(afterEach);
 
 const createTodoMock = vi.mocked(createTodo);
 
 const response: TodoResponse = {
+    ...TODO_FIELDS,
   id: 1,
   parentId: null,
   title: "NestJS lernen",
@@ -76,6 +82,32 @@ describe("CreateTodoForm", () => {
       plannedDurationMinutes: 30,
       isFixed: true,
     });
+  });
+
+  it("sends a chosen category", async () => {
+    vi.mocked(getCategories).mockResolvedValue([{ id: 7, name: "Sport" }]);
+    createTodoMock.mockResolvedValue(response);
+    const wrapper = mount(CreateTodoForm);
+    await flushPromises();
+    await wrapper.get('input[name="title"]').setValue("Laufen");
+    await wrapper.get('select[name="category"]').setValue(7);
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(createTodoMock).toHaveBeenCalledWith(
+      expect.objectContaining({ categoryId: 7 }),
+    );
+  });
+
+  it("sends a trimmed why", async () => {
+    createTodoMock.mockResolvedValue(response);
+    const wrapper = mount(CreateTodoForm);
+    await wrapper.get('input[name="title"]').setValue("Laufen");
+    await wrapper.get('textarea[name="why"]').setValue("  Fit bleiben ");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(createTodoMock).toHaveBeenCalledWith(
+      expect.objectContaining({ why: "Fit bleiben" }),
+    );
   });
 
   it("rejects a blank title", async () => {

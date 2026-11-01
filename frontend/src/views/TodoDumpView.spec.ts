@@ -1,3 +1,4 @@
+import { TODO_FIELDS } from "../types/fixtures";
 import { getDeletionPreview } from "../api/todo-hierarchy.api";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,6 +30,7 @@ const deleteTodoMock = vi.mocked(deleteTodo);
 
 function makeTodo(overrides: Partial<TodoResponse> = {}): TodoResponse {
   return {
+    ...TODO_FIELDS,
     id: 1,
     parentId: null,
     title: "NestJS lernen",

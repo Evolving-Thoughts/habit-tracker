@@ -4,6 +4,7 @@ import { HabitEntity } from '../habits/entities/habit.entity';
 import { HabitScheduleVersionEntity } from '../habits/entities/habit-schedule-version.entity';
 import {
   forecastSlots,
+  movedSlots,
   plannedHabits,
   weeklyTargets,
 } from './history-planning';
@@ -19,6 +20,10 @@ import {
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { historyRange } from './history-range';
+import { eventsOfDays } from '../calendar/day-events';
+import { CategoryEntity } from '../categories/category.entity';
+import { perfectWeek } from './perfect-week';
+import { weekQuota } from './week-quota';
 import {
   HistoryQueryDto,
   HistoryResponse,
@@ -114,8 +119,47 @@ export class HistoryService {
         today,
         now,
       );
+      const external =
+        query.view === 'month'
+          ? await eventsOfDays(manager, { userId }, startDate, endDate)
+          : null;
       return {
+        ...(query.view === 'week' && filter === 'all'
+          ? {
+              perfectWeek: perfectWeek(
+                await manager
+                  .getRepository(CategoryEntity)
+                  .find({ where: { userId }, order: { name: 'ASC' } }),
+                [
+                  ...todos.map((todo) => todo.categoryId),
+                  ...occurrences
+                    .filter(
+                      (item) => item.status === HabitOccurrenceStatus.COMPLETED,
+                    )
+                    .map((item) => item.habit.categoryId),
+                ],
+              ),
+            }
+          : {}),
         weeklyTargets: planning.targets,
+        ...(query.view === 'week' && filter !== 'todos'
+          ? {
+              weekQuota: weekQuota(
+                await manager
+                  .getRepository(HabitOccurrenceEntity)
+                  .createQueryBuilder('occurrence')
+                  .withDeleted()
+                  .innerJoin('occurrence.habit', 'habit')
+                  .innerJoinAndSelect('occurrence.scheduleVersion', 'version')
+                  .where('"habit"."userId" = :userId', { userId })
+                  .andWhere(
+                    '"occurrence"."scheduledDate" BETWEEN :startDate AND :endDate',
+                    { startDate, endDate },
+                  )
+                  .getMany(),
+              ),
+            }
+          : {}),
         today,
         timeZone: DEFAULT_TIME_ZONE,
         startDate,
@@ -124,6 +168,18 @@ export class HistoryService {
           date,
           items: items.filter((item) => item.date === date),
           planned: planning.items.filter((item) => item.date === date),
+          ...(external
+            ? {
+                external: external
+                  .filter((event) => dayOf(event.start) === date)
+                  .map(({ id, title, start, end }) => ({
+                    id,
+                    title,
+                    start: start.toISOString(),
+                    end: end.toISOString(),
+                  })),
+              }
+            : {}),
         })),
       };
     });
@@ -158,6 +214,8 @@ export class HistoryService {
             scheduledDate,
             isOverdue,
             plannedDurationMinutes: todo.plannedDurationMinutes,
+            isFixed: todo.isFixed,
+            moveUntil: null,
           });
       }
     }
@@ -191,10 +249,17 @@ export class HistoryService {
         ids: habits.map((habit) => habit.id),
       })
       .andWhere(
-        '("occurrence"."scheduledDate" BETWEEN :earliest AND :end OR "occurrence"."resolvedDate" BETWEEN :weekStart AND :weekEnd)',
-        { earliest, end: dates[dates.length - 1], weekStart, weekEnd },
+        '("occurrence"."scheduledDate" BETWEEN :earliest AND :end OR "occurrence"."movedToDate" BETWEEN :first AND :end OR "occurrence"."resolvedDate" BETWEEN :weekStart AND :weekEnd)',
+        {
+          earliest,
+          first: dates[0],
+          end: dates[dates.length - 1],
+          weekStart,
+          weekEnd,
+        },
       )
       .getMany();
+    slots.push(...movedSlots(versions, occurrences, slots, dates));
     items.push(...plannedHabits(habits, slots, occurrences, today));
     items.sort(
       (a, b) =>

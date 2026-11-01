@@ -190,9 +190,12 @@ describe('TodosService', () => {
       await service.update(USER, 1, { title: 'Neu' });
       expect(timerTarget.releaseTimers).not.toHaveBeenCalled();
       await service.update(USER, 1, { completed: true });
-      expect(timerTarget.releaseTimers).toHaveBeenCalledWith(manager, USER, {
-        todoIds: [1],
-      });
+      expect(timerTarget.releaseTimers).toHaveBeenCalledWith(
+        manager,
+        USER,
+        { todoIds: [1] },
+        NOW,
+      );
     });
     it('keeps parent and child completion independent', async () => {
       rows = [todo(1, null, true), todo(2, 1, true)];
@@ -246,6 +249,7 @@ describe('TodosService', () => {
         manager,
         USER,
         [1, 2],
+        NOW,
       );
       expect(softDelete).toHaveBeenCalledWith({ ids: [1, 2] });
     });

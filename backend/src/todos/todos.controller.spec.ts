@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
 import { TodoEntity } from './entities/todo.entity';
+import { DayReplanService } from './day-replan.service';
+import { GoalSnapshotsService } from './goal-snapshots.service';
 import { TodosController } from './todos.controller';
 import { TodosService } from './todos.service';
 
@@ -28,6 +30,12 @@ describe('TodosController', () => {
   const todo: TodoEntity = {
     id: 1,
     parentId: null,
+    categoryId: null,
+    periodStart: null,
+    periodEnd: null,
+    goalHabitId: null,
+    goalTarget: null,
+    why: null,
     userId: '11111111-1111-4111-8111-111111111111',
     title: 'Learn NestJS',
     completed: false,
@@ -52,6 +60,8 @@ describe('TodosController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TodosController],
       providers: [
+        { provide: GoalSnapshotsService, useValue: {} },
+        { provide: DayReplanService, useValue: {} },
         {
           provide: TodosService,
           useValue: serviceMock,
@@ -79,6 +89,12 @@ describe('TodosController', () => {
         {
           id: 1,
           parentId: null,
+          categoryId: null,
+          periodStart: null,
+          periodEnd: null,
+          goalHabitId: null,
+          goalTarget: null,
+          why: null,
           title: 'Learn NestJS',
           completed: false,
           completedAt: null,
@@ -108,6 +124,12 @@ describe('TodosController', () => {
       ).resolves.toEqual({
         id: 1,
         parentId: null,
+        categoryId: null,
+        periodStart: null,
+        periodEnd: null,
+        goalHabitId: null,
+        goalTarget: null,
+        why: null,
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
@@ -143,6 +165,12 @@ describe('TodosController', () => {
       ).resolves.toEqual({
         id: 1,
         parentId: null,
+        categoryId: null,
+        periodStart: null,
+        periodEnd: null,
+        goalHabitId: null,
+        goalTarget: null,
+        why: null,
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
@@ -172,6 +200,12 @@ describe('TodosController', () => {
         ...todo,
         id: 2,
         parentId: null,
+        categoryId: null,
+        periodStart: null,
+        periodEnd: null,
+        goalHabitId: null,
+        goalTarget: null,
+        why: null,
         title: 'Doctor appointment',
         scheduledAt,
         plannedDurationMinutes: 30,
@@ -191,6 +225,12 @@ describe('TodosController', () => {
       ).resolves.toEqual({
         id: 2,
         parentId: null,
+        categoryId: null,
+        periodStart: null,
+        periodEnd: null,
+        goalHabitId: null,
+        goalTarget: null,
+        why: null,
         title: 'Doctor appointment',
         completed: false,
         completedAt: null,
@@ -235,6 +275,12 @@ describe('TodosController', () => {
       ).resolves.toEqual({
         id: 1,
         parentId: null,
+        categoryId: null,
+        periodStart: null,
+        periodEnd: null,
+        goalHabitId: null,
+        goalTarget: null,
+        why: null,
         title: 'Learn NestJS',
         completed: true,
         completedAt: '2026-09-21T10:30:00.000Z',
@@ -276,6 +322,12 @@ describe('TodosController', () => {
       ).resolves.toEqual({
         id: 1,
         parentId: null,
+        categoryId: null,
+        periodStart: null,
+        periodEnd: null,
+        goalHabitId: null,
+        goalTarget: null,
+        why: null,
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
@@ -322,6 +374,12 @@ describe('TodosController', () => {
       ).resolves.toEqual({
         id: 1,
         parentId: null,
+        categoryId: null,
+        periodStart: null,
+        periodEnd: null,
+        goalHabitId: null,
+        goalTarget: null,
+        why: null,
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,

@@ -6,7 +6,7 @@ import type {
 } from "../types/history";
 export function getHistory(
   date: string,
-  view: HistoryViewMode,
+  view: HistoryViewMode | "month",
   filter: HistoryFilter,
   signal?: AbortSignal,
 ): Promise<HistoryResponse> {

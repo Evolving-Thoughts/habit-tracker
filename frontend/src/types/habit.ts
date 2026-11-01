@@ -36,8 +36,11 @@ export type ScheduleVersionResponse = {
 export type HabitResponse = {
   id: number;
   title: string;
+  categoryId: number | null;
+  why: string | null;
   isActive: boolean;
   plannedDurationMinutes: number | null;
+  timeOfDay: string | null;
   timerOccurrenceId: number | null;
   timerDurationMinutes: number | null;
   currentSchedule: ScheduleVersionResponse | null;
@@ -45,7 +48,10 @@ export type HabitResponse = {
 };
 
 export type UpdateHabitInput = {
+  categoryId?: number | null;
+  why?: string | null;
   plannedDurationMinutes?: number | null;
+  timeOfDay?: string | null;
   title?: string;
   isActive?: boolean;
 };
@@ -56,7 +62,10 @@ export type ChangeHabitScheduleInput = {
 };
 
 export type CreateHabitInput = {
+  categoryId?: number | null;
+  why?: string | null;
   plannedDurationMinutes?: number | null;
+  timeOfDay?: string;
   title: string;
   startDate?: string;
   schedule: HabitScheduleRule;

@@ -20,6 +20,8 @@ export type HistoryPlannedItem = {
   scheduledDate: string;
   isOverdue: boolean;
   plannedDurationMinutes: number | null;
+  isFixed: boolean;
+  moveUntil: string | null;
 };
 export type HistoryWeeklyTarget = {
   key: string;
@@ -37,10 +39,22 @@ export type HistoryResponse = {
   startDate: string;
   endDate: string;
   weeklyTargets?: HistoryWeeklyTarget[];
+  perfectWeek?: {
+    perfect: boolean;
+    categories: {
+      id: number;
+      name: string;
+      target: number;
+      completed: number;
+      reached: boolean;
+    }[];
+  } | null;
+  weekQuota?: { completed: number; total: number; percentage: number } | null;
   days: {
     date: string;
     items: HistoryItem[];
     planned?: HistoryPlannedItem[];
+    external?: { id: number; title: string; start: string; end: string }[];
   }[];
 };
 export type HistoryFilter = "all" | "todos" | "habits";

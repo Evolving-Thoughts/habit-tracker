@@ -1,7 +1,11 @@
 import { HistoryModule } from './history/history.module';
+import { ReflectionsModule } from './reflections/reflections.module';
+import { WorkLogsModule } from './work-logs/work-logs.module';
 import { PushModule } from './push/push.module';
 import { TimersModule } from './timers/timers.module';
 import { AuthModule } from './auth/auth.module';
+import { CalendarModule } from './calendar/calendar.module';
+import { CategoriesModule } from './categories/categories.module';
 import { Module } from '@nestjs/common';
 import { CommonModule } from './common/clock';
 import { databaseOptions } from './database/database.options';
@@ -23,17 +27,21 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
       useFactory: (config: ConfigService) => ({
         ...databaseOptions((key) => config.get<string>(key)),
         autoLoadEntities: true,
-        synchronize: config.get<string>('NODE_ENV') !== 'production',
+        migrationsRun: true,
       }),
     }),
     CommonModule,
     AuthModule,
+    CategoriesModule,
     TimersModule,
     PushModule,
     TodosModule,
     HabitsModule,
     DayPlannerModule,
     HistoryModule,
+    ReflectionsModule,
+    WorkLogsModule,
+    CalendarModule,
   ],
   controllers: [AppController],
   providers: [AppService],

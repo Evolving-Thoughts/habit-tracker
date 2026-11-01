@@ -4,13 +4,17 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, In, LessThanOrEqual } from 'typeorm';
+import { DataSource, In } from 'typeorm';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
+import { assertOwnedCategory, normalizeWhy } from '../categories/assignment';
 import { initialScheduleInstant } from '../common/date/date-only.utils';
 import { dayOf } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
-import { releaseTimers } from '../timers/timer-target';
+import {
+  isOccurrenceTimerEligible,
+  releaseTimers,
+} from '../timers/timer-target';
 import { CreateHabitDto } from './dto/create-habit.dto';
 import { UpdateHabitDto } from './dto/update-habit.dto';
 import { ChangeHabitScheduleDto } from './dto/change-habit-schedule.dto';
@@ -85,19 +89,17 @@ export class HabitsService {
       const now = this.clock.now();
       await this.scheduling.reconcile(manager, habit, now);
 
-      const pending = habit.isActive
-        ? await manager.getRepository(HabitOccurrenceEntity).findOneBy({
-            habitId: id,
-            status: HabitOccurrenceStatus.PENDING,
-            scheduledDate: LessThanOrEqual(dayOf(now)),
-          })
-        : null;
+      const pending = (
+        await manager
+          .getRepository(HabitOccurrenceEntity)
+          .findBy({ habitId: id, status: HabitOccurrenceStatus.PENDING })
+      ).find((item) => isOccurrenceTimerEligible(item, habit, dayOf(now)));
 
       return this.scheduling.habitResponse(
         habit,
         await this.scheduling.getVersions(manager, id),
         now,
-        pending ?? undefined,
+        pending,
       );
     });
   }
@@ -134,10 +136,15 @@ export class HabitsService {
       );
 
       const repository = manager.getRepository(HabitEntity);
+      const categoryId = dto.categoryId ?? null;
+      await assertOwnedCategory(manager, userId, categoryId);
 
       const habit = await repository.save(
         repository.create({
+          categoryId,
+          why: normalizeWhy(dto.why),
           plannedDurationMinutes: dto.plannedDurationMinutes ?? null,
+          timeOfDay: dto.timeOfDay ?? null,
           userId,
           title,
           isActive: true,
@@ -160,7 +167,10 @@ export class HabitsService {
     if (
       dto.title === undefined &&
       dto.isActive === undefined &&
-      dto.plannedDurationMinutes === undefined
+      dto.plannedDurationMinutes === undefined &&
+      dto.timeOfDay === undefined &&
+      dto.categoryId === undefined &&
+      dto.why === undefined
     ) {
       throw new BadRequestException('At least one property must be provided');
     }
@@ -168,8 +178,14 @@ export class HabitsService {
     return this.unitOfWork.run(userId, async (manager) => {
       const habit = await this.scheduling.lockHabit(userId, manager, id);
 
+      if (dto.categoryId !== undefined) {
+        await assertOwnedCategory(manager, userId, dto.categoryId);
+        habit.categoryId = dto.categoryId;
+      }
+      if (dto.why !== undefined) habit.why = normalizeWhy(dto.why);
       if (dto.plannedDurationMinutes !== undefined)
         habit.plannedDurationMinutes = dto.plannedDurationMinutes;
+      if (dto.timeOfDay !== undefined) habit.timeOfDay = dto.timeOfDay;
       if (dto.title !== undefined) {
         habit.title = this.validTitle(dto.title);
       }
@@ -179,10 +195,9 @@ export class HabitsService {
       }
 
       await manager.getRepository(HabitEntity).save(habit);
-      if (!habit.isActive)
-        await releaseTimers(manager, userId, { habitId: habit.id });
-
       const now = this.clock.now();
+      if (!habit.isActive)
+        await releaseTimers(manager, userId, { habitId: habit.id }, now);
 
       await this.scheduling.reconcile(manager, habit, now);
 
@@ -207,7 +222,12 @@ export class HabitsService {
       const habit = await this.scheduling.lockHabit(userId, manager, id);
 
       await manager.getRepository(HabitEntity).softRemove(habit);
-      await releaseTimers(manager, userId, { habitId: habit.id });
+      await releaseTimers(
+        manager,
+        userId,
+        { habitId: habit.id },
+        this.clock.now(),
+      );
     });
   }
 }

@@ -105,34 +105,11 @@ history reader uses `withDeleted()`, so previous completion entries remain visib
 No immutable journal or historical snapshot semantics were added. Already sent
 external push notifications cannot be retracted by deleting their source timer.
 
-## Database upgrade — additive, never reset
+## Database schema
 
-For a fresh local learning setup, follow the existing README to create the
-application baseline; development schema synchronization includes `parentId`.
-For an existing database with synchronization disabled:
-
-1. Back up the database and verify the restore procedure in a separate environment.
-2. Install dependencies using the existing lockfile and configure `backend/.env`
-   using `.env.example`; do not put real secrets in the repository.
-3. Stop old application processes so no old code writes concurrently during upgrade.
-4. From `backend`, run:
-
-```sh
-npm ci
-npm run migration:run
-```
-
-5. Deploy/start the updated backend and frontend using the existing project workflow.
-
-`npm run migration:run` builds the backend and applies every pending migration in
-`dist/migrations` with the app's own database settings (`database.options.ts`).
-The versioned `TodoHierarchy1792620000000` migration adds only the nullable column,
-index and restrictive FK. It does not clear records or assign existing parents.
-It is idempotent for already synchronized development schemas and is recorded in
-`app_migrations`. The migration requires the existing application baseline; it is
-not a replacement for the broader initial schema/deployment work tracked elsewhere.
-It refuses automatic destructive rollback rather than silently dropping hierarchy
-data. No `docker compose down -v`, schema reset or production deployment is needed.
+The app is not in real use yet, so there are no migrations. Development schema
+synchronization creates `parentId`, its index and the restrictive FK. Versioned
+migrations follow before the first deployment with data worth keeping.
 
 ## API additions
 

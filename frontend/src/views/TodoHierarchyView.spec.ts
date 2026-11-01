@@ -1,3 +1,4 @@
+import { TODO_FIELDS } from "../types/fixtures";
 import { mount, flushPromises, enableAutoUnmount } from "@vue/test-utils";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import TodoHierarchyView from "./TodoHierarchyView.vue";
@@ -22,6 +23,7 @@ vi.mock("../api/day-planner.api", () => ({
 }));
 enableAutoUnmount(afterEach);
 const node = (id: number, parentId: number | null): HierarchyTodo => ({
+    ...TODO_FIELDS,
   id,
   parentId,
   title: `Todo ${id}`,

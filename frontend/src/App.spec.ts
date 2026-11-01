@@ -15,7 +15,6 @@ function mountApp() {
   return mount(App, {
     global: {
       stubs: {
-        PushSettings: { template: "<button>Benachrichtigungen</button>" },
         TodayView: { template: '<main data-view="today">Today</main>' },
         TodoDumpView: { template: '<main data-view="dump">Dump</main>' },
         HistoryView: { template: '<main data-view="history">History</main>' },
@@ -23,6 +22,11 @@ function mountApp() {
           template: '<main data-view="hierarchy">Tree</main>',
         },
         HabitsView: { template: '<main data-view="habits">Habits</main>' },
+        SettingsView: {
+          emits: ["signOut"],
+          template:
+            '<main data-view="settings"><button data-test="sign-out" @click="$emit(\'signOut\')">Abmelden</button></main>',
+        },
       },
     },
   });
@@ -32,7 +36,7 @@ describe("App navigation", () => {
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
-    expect(wrapper.findAll("nav button")).toHaveLength(7);
+    expect(wrapper.findAll("nav button")).toHaveLength(8);
   });
   it("opens the habit overview and marks only that navigation button active", async () => {
     const wrapper = mountApp();
@@ -46,6 +50,25 @@ describe("App navigation", () => {
         .slice(0, 4)
         .map((button) => button.attributes("aria-pressed")),
     ).toEqual(["false", "false", "false", "true"]);
+  });
+  it("opens the settings from the navigation", async () => {
+    const wrapper = mountApp();
+    await flushPromises();
+    const button = wrapper
+      .findAll("nav button")
+      .find(
+        (candidate) => candidate.attributes("aria-label") === "Einstellungen",
+      )!;
+    await button.trigger("click");
+    expect(wrapper.find('[data-view="settings"]').exists()).toBe(true);
+    expect(button.attributes("aria-pressed")).toBe("true");
+  });
+  it("returns from Google into the settings and cleans the address", async () => {
+    history.replaceState(null, "", "/?calendar=connected");
+    const wrapper = mountApp();
+    await flushPromises();
+    expect(wrapper.find('[data-view="settings"]').exists()).toBe(true);
+    expect(window.location.search).toBe("");
   });
   it("can move from Habits to Todo-Dump and back to Today", async () => {
     const wrapper = mountApp();
@@ -73,9 +96,9 @@ describe("History navigation", () => {
   it("opens history and marks it active", async () => {
     const wrapper = mountApp();
     await flushPromises();
-    await wrapper.findAll("nav button")[4]!.trigger("click");
+    await wrapper.findAll("nav button")[5]!.trigger("click");
     expect(wrapper.find('[data-view="history"]').exists()).toBe(true);
-    expect(wrapper.findAll("nav button")[4]!.attributes("aria-pressed")).toBe(
+    expect(wrapper.findAll("nav button")[5]!.attributes("aria-pressed")).toBe(
       "true",
     );
   });
@@ -101,8 +124,8 @@ describe("App authentication boundary", () => {
   it("logs out without retaining the previous view", async () => {
     const wrapper = mountApp();
     await flushPromises();
-    await wrapper.findAll("nav button")[3]!.trigger("click");
-    await wrapper.findAll("nav button")[5]!.trigger("click");
+    await wrapper.get('[aria-label="Einstellungen"]').trigger("click");
+    await wrapper.get('[data-test="sign-out"]').trigger("click");
     await flushPromises();
     expect(logout).toHaveBeenCalled();
     expect(wrapper.find("[data-view]").exists()).toBe(false);

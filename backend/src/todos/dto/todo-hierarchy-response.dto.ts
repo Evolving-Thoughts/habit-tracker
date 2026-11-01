@@ -1,10 +1,12 @@
 import type { TimerState } from '../../timers/timer.entity';
+import type { HabitGoalProgress } from '../habit-goal';
 import type { TodoProgress } from '../todo-hierarchy';
 import type { TodoResponseDto } from './todo-response.dto';
 
 /** GET /todos/hierarchy: every todo with the progress of its subtree. */
 export type HierarchyTodoResponse = TodoResponseDto & {
   progress: TodoProgress;
+  habitGoal: HabitGoalProgress | null;
 };
 
 /** GET /todos/:id/deletion-preview: what a confirmed delete would remove. */

@@ -8,6 +8,7 @@ export type DayPlannerTodoItem = {
   type: "todo";
   todoId: number;
   title: string;
+  categoryName: string | null;
   status: TodoStatus;
   scheduledDate: string;
   scheduledAt: string | null;
@@ -22,10 +23,13 @@ export type DayPlannerHabitItem = {
   type: "habit";
   occurrenceId: number;
   plannedDurationMinutes: number | null;
+  timeOfDay: string | null;
   habitId: number;
   title: string;
-  status: HabitOccurrenceStatus;
+  categoryName: string | null;
+  status: HabitOccurrenceStatus | "cancelled";
   scheduledDate: string;
+  moveUntil: string | null;
   scheduleType: HabitScheduleType;
   isOverdue: boolean;
   timerEligible: boolean;
@@ -36,4 +40,10 @@ export type DayPlannerItem = DayPlannerTodoItem | DayPlannerHabitItem;
 export type DayPlannerResponse = {
   date: string;
   items: DayPlannerItem[];
+  externalEvents: {
+    id: number;
+    title: string;
+    start: string;
+    end: string;
+  }[];
 };

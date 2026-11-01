@@ -29,7 +29,7 @@ import { HabitSchedulingService } from '../src/habits/scheduling/habit-schedulin
 import { HabitOccurrenceResponseDto } from '../src/habit-occurrences/dto/habit-occurrence-response.dto';
 import { HabitOccurrenceEntity } from '../src/habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../src/habit-occurrences/enums/habit-occurrence-status.enum';
-import { addDays, weekRange } from '../src/common/date/local-day';
+import { addDays, dayOf, weekRange } from '../src/common/date/local-day';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
 
 describe('Habit domain and day planner (e2e)', () => {
@@ -171,6 +171,64 @@ describe('Habit domain and day planner (e2e)', () => {
     });
   }
 
+  describe('manual rescheduling', () => {
+    const move = (id: number, moved: string) =>
+      request(server)
+        .post(`/habit-occurrences/${id}/reschedule`)
+        .send({ date: moved });
+
+    it('moves within the window without touching the schedule grid', async () => {
+      await create({ schedule: interval(3) });
+      const occurrence = await firstOccurrence();
+      const target = relativeDate(2);
+
+      const moved = await move(occurrence.id, target).expect(200);
+      expect(moved.body).toMatchObject({
+        scheduledDate: occurrence.scheduledDate,
+        movedToDate: target,
+      });
+      expect((await planner()).items).toEqual([]);
+      expect(
+        await dataSource.getRepository(HabitOccurrenceEntity).count(),
+      ).toBe(1);
+    });
+
+    it('rejects days outside the window and in the past', async () => {
+      await create({ schedule: interval(3) });
+      const occurrence = await firstOccurrence();
+
+      await move(occurrence.id, relativeDate(3)).expect(409);
+      await move(occurrence.id, relativeDate(-1)).expect(409);
+      await move(occurrence.id, 'bald').expect(400);
+    });
+
+    it('reports the last movable day in the planner', async () => {
+      await create({ schedule: interval(3) });
+      expect((await planner()).items[0]).toMatchObject({
+        moveUntil: relativeDate(2),
+      });
+    });
+
+    it('refuses while a timer is open', async () => {
+      await create({ schedule: interval(3) });
+      const occurrence = await firstOccurrence();
+      await request(server)
+        .post('/timers')
+        .send({
+          kind: 'occurrence',
+          targetId: occurrence.id,
+          durationMinutes: 10,
+        })
+        .expect(201);
+
+      await move(occurrence.id, relativeDate(1)).expect(409);
+    });
+
+    it('answers 404 for an unknown occurrence', async () => {
+      await move(999999, relativeDate(1)).expect(404);
+    });
+  });
+
   async function planner(): Promise<DayPlannerResponseDto> {
     const response = await request(server)
       .get('/day-planner/today')
@@ -308,6 +366,24 @@ describe('Habit domain and day planner (e2e)', () => {
           },
         })
         .expect(400);
+    });
+
+    it('offers no timer run for a habit moved to a later day', async () => {
+      const habit = await create({
+        schedule: interval(7),
+      });
+      const { timerOccurrenceId } = (
+        await request(server).get(`/habits/${habit.id}`).expect(200)
+      ).body as HabitResponseDto;
+      await request(server)
+        .post(`/habit-occurrences/${timerOccurrenceId}/reschedule`)
+        .send({ date: addDays(dayOf(new Date()), 1) })
+        .expect(200);
+
+      const moved = await request(server)
+        .get(`/habits/${habit.id}`)
+        .expect(200);
+      expect((moved.body as HabitResponseDto).timerOccurrenceId).toBeNull();
     });
 
     it('reads and lists habits', async () => {
@@ -1082,6 +1158,7 @@ describe('Habit domain and day planner (e2e)', () => {
       expect(await planner()).toEqual({
         date: date(),
         items: [],
+        externalEvents: [],
       });
     });
   });

@@ -45,7 +45,7 @@ describe('History API (e2e)', () => {
     if (db.options.database !== 'habit_tracker_test')
       throw new Error('Refusing non-test DB');
     await db.query(
-      'TRUNCATE push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, auth_sessions, auth_tokens, users RESTART IDENTITY CASCADE',
+      'TRUNCATE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, auth_sessions, auth_tokens, users RESTART IDENTITY CASCADE',
     );
     await seedAuth(app);
     await db.getRepository(UserEntity).save({
@@ -118,7 +118,7 @@ describe('History API (e2e)', () => {
     'date=0000-01-01',
     'date=9999-12-31',
     'date=9999-12-30&view=week',
-    'date=2026-10-07&view=month',
+    'date=2026-10-07&view=year',
     'filter=unknown',
     'date=2026-10-07&extra=1',
     'date=2026-10-07&date=2026-10-08',

@@ -1,13 +1,10 @@
-import { join } from 'node:path';
 import type { DataSourceOptions } from 'typeorm';
+import { Baseline1793522450873 } from './migrations/1793522450873-Baseline';
+import { FixedTodosNeedDate1793600000000 } from './migrations/1793600000000-FixedTodosNeedDate';
 
 type PostgresOptions = Extract<DataSourceOptions, { type: 'postgres' }>;
 
-/**
- * The one database configuration, shared by the Nest app and the migration
- * runner (scripts/migrate.cjs). Every compiled file in src/migrations is
- * picked up automatically; the runner never synchronizes or drops tables.
- */
+/** The one database configuration of the Nest app. */
 export function databaseOptions(
   read: (key: string) => string | undefined,
 ): PostgresOptions {
@@ -24,7 +21,6 @@ export function databaseOptions(
     username: required('DB_USER'),
     password: required('DB_PASSWORD'),
     database: required('DB_NAME'),
-    migrations: [join(__dirname, '..', 'migrations', '*.js')],
-    migrationsTableName: 'app_migrations',
+    migrations: [Baseline1793522450873, FixedTodosNeedDate1793600000000],
   };
 }

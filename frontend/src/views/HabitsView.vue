@@ -3,8 +3,8 @@ import { computed, ref } from "vue";
 import { getHabits } from "../api/day-planner.api";
 import { useListFocus } from "../composables/useListFocus";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
-import { notifyDataChanged } from "../composables/data-sync";
 import { useLoader } from "../composables/useLoader";
+import { useWrites } from "../composables/useWrites";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
@@ -28,8 +28,9 @@ const {
 } = useLoader(getHabits, {
   initial: [] as HabitResponse[],
   fallbackError: "Die Habits konnten nicht geladen werden.",
-  refreshOnChange: () => editingId.value === null,
+  refreshOnChange: () => editingId.value === null && !creationOpen.value,
 });
+const { applied } = useWrites(loadHabits, errorMessage);
 
 const isBusy = computed(() => isLoading.value || editorBusy.value);
 const groups = computed(() => [
@@ -61,13 +62,12 @@ function closeEditing(): void {
 }
 async function onEditorChanged(): Promise<void> {
   successMessage.value = "Habit-Liste aktualisiert.";
-  notifyDataChanged();
-  await loadHabits(false);
+  await applied();
   closeEditing();
 }
 async function onCreated(): Promise<void> {
   successMessage.value = "Habit erstellt.";
-  await loadHabits(false);
+  await applied();
   creationOpen.value = false;
 }
 </script>

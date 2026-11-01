@@ -94,7 +94,7 @@ describe('Session-scoped timer Push (e2e)', () => {
   });
   beforeEach(async () => {
     await db.query(
-      'TRUNCATE TABLE push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, auth_tokens, auth_sessions, auth_rate_limits, users RESTART IDENTITY',
+      'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, categories, reflections, work_logs, goal_snapshots, auth_tokens, auth_sessions, auth_rate_limits, users RESTART IDENTITY',
     );
     await seedAuth(app);
     now = new Date();

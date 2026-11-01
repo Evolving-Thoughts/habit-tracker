@@ -96,3 +96,15 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+## Datenbankschema
+
+Das Schema entsteht nur über Migrationen in `src/database/migrations`. Der Start des Backends führt offene Migrationen aus; `synchronize` ist aus.
+
+Nach einer Änderung an einer Entität:
+
+```bash
+npm run migration:generate -- src/database/migrations/Name
+```
+
+Die neue Klasse danach in `src/database/database.options.ts` eintragen. Eine leere Datenbank zum Vergleichen ist dafür nötig, wenn die Dev-Datenbank schon abweicht. `npm run migration:run` führt offene Migrationen ohne App-Start aus.

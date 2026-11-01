@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { useTodoDeletion } from "../composables/useTodoDeletion";
 import TodoDeletionSummary from "./TodoDeletionSummary.vue";
+import TodoGoalFields from "./TodoGoalFields.vue";
 
 import {
   TIMER_DURATION_MESSAGE,
   TIMER_MAX_MINUTES,
 } from "../utils/timer-duration";
 import { computed, onMounted, ref } from "vue";
+import { getCategories } from "../api/categories.api";
+import type { CategoryResponse } from "../types/category";
 import {
   changeHabitSchedule,
   deleteHabit,
@@ -17,17 +20,25 @@ import {
 } from "../api/day-planner.api";
 import type { HabitScheduleType } from "../types/day-planner";
 import type {
-  MissedOccurrencePolicy,
   ChangeHabitScheduleInput,
   HabitResponse,
   HabitScheduleRule,
   ScheduleVersionResponse,
   UpdateHabitInput,
-  Weekday,
 } from "../types/habit";
 import { formatHabitSchedule, WEEKDAY_OPTIONS } from "../utils/habit";
-import type { CreateTodoInput } from "../types/todo";
+import type {
+  TodoGoalInput,
+  TodoResponse,
+  UpdateTodoInput,
+} from "../types/todo";
 import { buildTodoInput } from "../utils/todo-input";
+import {
+  emptyScheduleDraft,
+  positiveInteger,
+  scheduleDraftOf,
+  scheduleRuleOf,
+} from "../utils/habit-schedule";
 import {
   formatDateForGermanDisplay,
   getCurrentDateInTimeZone,
@@ -78,10 +89,21 @@ async function requestDeletion(): Promise<void> {
 }
 
 const title = ref("");
+const categories = ref<CategoryResponse[]>([]);
+const categoryId = ref<number | null>(null);
+const why = ref("");
+const originalCategoryId = ref<number | null>(null);
+const originalWhy = ref("");
 
 // Todo-Felder
+const periodStart = ref("");
+const periodEnd = ref("");
+const goalHabitId = ref<number | null>(null);
+const goalTarget = ref<string | number>("");
+const loadedTodo = ref<TodoResponse | null>(null);
 const scheduledAt = ref("");
 const duration = ref<string | number>("");
+const timeOfDay = ref("");
 const isFixed = ref(false);
 
 const originalScheduledAt = ref<string | null>(null);
@@ -93,13 +115,7 @@ const loadedHabit = ref<HabitResponse | null>(null);
 const changeSchedule = ref(false);
 const effectiveFrom = ref(getCurrentDateInTimeZone());
 const today = computed(() => getCurrentDateInTimeZone());
-const missedPolicy = ref<MissedOccurrencePolicy>("carry_over");
-
-const scheduleType = ref<HabitScheduleType>("interval");
-
-const intervalDays = ref<string | number>(2);
-const weeklyTarget = ref<string | number>(3);
-const selectedWeekdays = ref<Weekday[]>([]);
+const schedule = ref(emptyScheduleDraft());
 
 
 const scheduleLabels: Record<HabitScheduleType, string> = {
@@ -109,7 +125,7 @@ const scheduleLabels: Record<HabitScheduleType, string> = {
 };
 
 const scheduleLabel = computed(() => {
-  return scheduleLabels[scheduleType.value];
+  return scheduleLabels[schedule.value.type];
 });
 
 const isBusy = computed(() => {
@@ -117,13 +133,40 @@ const isBusy = computed(() => {
 });
 
 
+function fillAssignment(entity: {
+  categoryId?: number | null;
+  why?: string | null;
+}): void {
+  categoryId.value = originalCategoryId.value = entity.categoryId ?? null;
+  why.value = originalWhy.value = entity.why ?? "";
+}
+
+/** Only what changed, so a plain edit never overwrites these fields. */
+function assignmentChanges(): { categoryId?: number | null; why?: string | null } {
+  const value = why.value.trim();
+  return {
+    ...(categoryId.value !== originalCategoryId.value
+      ? { categoryId: categoryId.value }
+      : {}),
+    ...(value !== originalWhy.value ? { why: value || null } : {}),
+  };
+}
+
 async function loadEntity(): Promise<void> {
   emit("busy", true);
 
   try {
+    categories.value = await getCategories();
+
     if (props.kind === "todo") {
       const todo = await getTodo(props.entityId);
 
+      fillAssignment(todo);
+      loadedTodo.value = todo;
+      periodStart.value = todo.periodStart ?? "";
+      periodEnd.value = todo.periodEnd ?? "";
+      goalHabitId.value = todo.goalHabitId ?? null;
+      goalTarget.value = todo.goalTarget ?? "";
       title.value = todo.title;
       duration.value = todo.plannedDurationMinutes ?? "";
       isFixed.value = todo.isFixed;
@@ -138,10 +181,12 @@ async function loadEntity(): Promise<void> {
     } else {
       const habit = await getHabit(props.entityId);
 
+      fillAssignment(habit);
       title.value = habit.title;
       isActive.value = habit.isActive;
       loadedHabit.value = habit;
       duration.value = habit.plannedDurationMinutes ?? "";
+      timeOfDay.value = habit.timeOfDay ?? "";
       const version = habit.currentSchedule ?? habit.upcomingSchedule;
       if (version) fillSchedule(version.schedule);
     }
@@ -168,44 +213,48 @@ function validatedTitle(): string {
   return value;
 }
 
-function positiveInteger(
-  value: string | number,
-  message: string,
-  maximum?: number,
-): number {
-  const number = Number(value);
-
-  if (
-    !Number.isInteger(number) ||
-    number < 1 ||
-    (maximum !== undefined && number > maximum)
-  ) {
-    throw new Error(message);
-  }
-
-  return number;
-}
-
-function todoInput(): CreateTodoInput {
-  return buildTodoInput(
-    {
-      title: title.value,
-      scheduledAt: scheduledAt.value,
-      duration: duration.value,
-      isFixed: isFixed.value,
-    },
-    { localInput: originalLocalInput.value, iso: originalScheduledAt.value },
+/** Only what changed, so a plain edit leaves period and goal alone. */
+function goalChanges(): TodoGoalInput {
+  const todo = loadedTodo.value;
+  const target =
+    goalHabitId.value === null
+      ? null
+      : positiveInteger(
+          goalTarget.value,
+          "Die Sollmenge muss eine ganze Zahl ab 1 sein.",
+        );
+  const next: TodoGoalInput = {
+    periodStart: periodStart.value || null,
+    periodEnd: periodEnd.value || null,
+    goalHabitId: goalHabitId.value,
+    goalTarget: target,
+  };
+  const keys = Object.keys(next) as (keyof TodoGoalInput)[];
+  return Object.fromEntries(
+    keys
+      .filter((key) => next[key] !== (todo?.[key] ?? null))
+      .map((key) => [key, next[key]]),
   );
 }
 
+function todoInput(): UpdateTodoInput {
+  return {
+    ...buildTodoInput(
+      {
+        title: title.value,
+        scheduledAt: scheduledAt.value,
+        duration: duration.value,
+        isFixed: isFixed.value,
+      },
+      { localInput: originalLocalInput.value, iso: originalScheduledAt.value },
+    ),
+    ...assignmentChanges(),
+    ...goalChanges(),
+  };
+}
+
 function fillSchedule(rule: HabitScheduleRule): void {
-  scheduleType.value = rule.type;
-  missedPolicy.value =
-    rule.type === "weekly_target" ? "skip" : rule.missedOccurrencePolicy;
-  intervalDays.value = rule.type === "interval" ? rule.intervalDays : 2;
-  weeklyTarget.value = rule.type === "weekly_target" ? rule.weeklyTarget : 3;
-  selectedWeekdays.value =
-    rule.type === "fixed_weekdays" ? [...rule.weekdays] : [];
+  schedule.value = scheduleDraftOf(rule);
 }
 
 function describeSchedule(version: ScheduleVersionResponse): string {
@@ -221,7 +270,7 @@ function editUpcomingSchedule(): void {
 }
 
 function buildHabitInput(): UpdateHabitInput {
-  const input: UpdateHabitInput = {};
+  const input: UpdateHabitInput = assignmentChanges();
   const value = validatedTitle();
   if (value !== loadedHabit.value?.title) input.title = value;
   if (isActive.value !== loadedHabit.value?.isActive)
@@ -235,6 +284,8 @@ function buildHabitInput(): UpdateHabitInput {
     : null;
   if (minutes !== (loadedHabit.value?.plannedDurationMinutes ?? null))
     input.plannedDurationMinutes = minutes;
+  const time = timeOfDay.value || null;
+  if (time !== (loadedHabit.value?.timeOfDay ?? null)) input.timeOfDay = time;
   return input;
 }
 
@@ -245,41 +296,10 @@ function buildScheduleChange(): ChangeHabitScheduleInput {
   ) {
     throw new Error("Bitte wähle heute oder ein zukünftiges gültiges Datum.");
   }
-  let schedule: HabitScheduleRule;
-  switch (scheduleType.value) {
-    case "interval":
-      schedule = {
-        type: "interval",
-        intervalDays: positiveInteger(
-          intervalDays.value,
-          "Das Intervall muss eine ganze Zahl ab 1 Tag sein.",
-        ),
-        missedOccurrencePolicy: missedPolicy.value,
-      };
-      break;
-    case "fixed_weekdays":
-      if (!selectedWeekdays.value.length)
-        throw new Error("Bitte wähle mindestens einen Wochentag.");
-      schedule = {
-        type: "fixed_weekdays",
-        weekdays: WEEKDAY_OPTIONS
-          .filter((option) => selectedWeekdays.value.includes(option.value))
-          .map((option) => option.value),
-        missedOccurrencePolicy: missedPolicy.value,
-      };
-      break;
-    case "weekly_target":
-      schedule = {
-        type: "weekly_target",
-        weeklyTarget: positiveInteger(
-          weeklyTarget.value,
-          "Das Wochenziel muss zwischen 1 und 7 liegen.",
-          7,
-        ),
-      };
-      break;
-  }
-  return { effectiveFrom: effectiveFrom.value, schedule };
+  return {
+    effectiveFrom: effectiveFrom.value,
+    schedule: scheduleRuleOf(schedule.value),
+  };
 }
 
 async function save(): Promise<void> {
@@ -389,6 +409,31 @@ onMounted(loadEntity);
           required
         />
 
+        <label for="planner-edit-category">Kategorie · optional</label>
+        <select
+          id="planner-edit-category"
+          v-model="categoryId"
+          name="category"
+        >
+          <option :value="null">Keine</option>
+          <option
+            v-for="category in categories"
+            :key="category.id"
+            :value="category.id"
+          >
+            {{ category.name }}
+          </option>
+        </select>
+
+        <label for="planner-edit-why">Warum · optional</label>
+        <textarea
+          id="planner-edit-why"
+          v-model="why"
+          name="why"
+          maxlength="1000"
+          rows="2"
+        />
+
         <template v-if="kind === 'todo'">
           <label for="planner-edit-date"> Zeitpunkt · optional </label>
           <input
@@ -402,6 +447,13 @@ onMounted(loadEntity);
             Deutsche Zeit (Europe/Berlin). Ohne Zeitpunkt landet das Todo im
             Dump.
           </small>
+
+          <TodoGoalFields
+            v-model:period-start="periodStart"
+            v-model:period-end="periodEnd"
+            v-model:habit-id="goalHabitId"
+            v-model:target="goalTarget"
+          />
 
           <label for="planner-edit-duration">
             Dauer in Minuten · optional
@@ -422,6 +474,13 @@ onMounted(loadEntity);
         </template>
 
         <template v-else>
+          <label for="habit-edit-time">Uhrzeit · optional</label
+          ><input
+            id="habit-edit-time"
+            v-model="timeOfDay"
+            name="timeOfDay"
+            type="time"
+          />
           <label for="habit-edit-duration"
             >Standarddauer in Minuten · optional</label
           ><input
@@ -519,7 +578,7 @@ onMounted(loadEntity);
             </label>
             <select
               id="planner-edit-schedule-type"
-              v-model="scheduleType"
+              v-model="schedule.type"
               name="scheduleType"
             >
               <option value="interval">Intervall</option>
@@ -527,11 +586,11 @@ onMounted(loadEntity);
               <option value="weekly_target">Häufigkeit pro Woche</option>
             </select>
 
-            <template v-if="scheduleType === 'interval'">
+            <template v-if="schedule.type === 'interval'">
               <label for="planner-edit-interval"> Alle wie viele Tage? </label>
               <input
                 id="planner-edit-interval"
-                v-model="intervalDays"
+                v-model="schedule.intervalDays"
                 name="intervalDays"
                 type="number"
                 min="1"
@@ -542,7 +601,7 @@ onMounted(loadEntity);
             </template>
 
             <fieldset
-              v-else-if="scheduleType === 'fixed_weekdays'"
+              v-else-if="schedule.type === 'fixed_weekdays'"
               class="item-editor__weekdays"
             >
               <legend>Ausführungstage</legend>
@@ -553,7 +612,7 @@ onMounted(loadEntity);
                 class="item-editor__weekday"
               >
                 <input
-                  v-model="selectedWeekdays"
+                  v-model="schedule.weekdays"
                   name="weekdays"
                   type="checkbox"
                   :value="option.value"
@@ -568,7 +627,7 @@ onMounted(loadEntity);
               </label>
               <input
                 id="planner-edit-weekly-target"
-                v-model="weeklyTarget"
+                v-model="schedule.weeklyTarget"
                 name="weeklyTarget"
                 type="number"
                 min="1"
@@ -581,13 +640,13 @@ onMounted(loadEntity);
               </small>
             </template>
 
-            <template v-if="scheduleType !== 'weekly_target'">
+            <template v-if="schedule.type !== 'weekly_target'">
               <label for="planner-edit-policy">
                 Verhalten bei verpassten Terminen
               </label>
               <select
                 id="planner-edit-policy"
-                v-model="missedPolicy"
+                v-model="schedule.missedPolicy"
                 name="missedPolicy"
               >
                 <option value="carry_over">Übertragen</option>

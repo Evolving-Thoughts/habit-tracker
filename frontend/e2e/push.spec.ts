@@ -48,14 +48,13 @@ test("push setting persists explicit opt-out and rebinds opted-in devices after 
   await mockBrowserSubscription(page);
   await page.goto("/");
   await page
-    .getByRole("button", { name: "Benachrichtigungen", exact: true })
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  const dialog = page.getByRole("dialog");
-  const toggle = dialog.getByRole("switch");
+  const toggle = page.getByRole("switch");
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-checked", "true");
-  await dialog.getByRole("button", { name: "Dialog schließen" }).click();
   await page.getByRole("button", { name: "Abmelden", exact: true }).click();
   await page
     .getByLabel("E-Mail-Adresse", { exact: true })
@@ -65,18 +64,20 @@ test("push setting persists explicit opt-out and rebinds opted-in devices after 
     .fill("only-for-browser-tests");
   await page.getByRole("button", { name: "Anmelden", exact: true }).click();
   await page
-    .getByRole("button", { name: "Benachrichtigungen", exact: true })
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
   await expect(toggle).toHaveAttribute("aria-checked", "true");
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   await page.reload();
   await page
-    .getByRole("button", { name: "Benachrichtigungen", exact: true })
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   await expect(
-    dialog.getByText(/ohne Aufgaben- oder Habit-Titel/),
+    page.getByText(/ohne Aufgaben- oder Habit-Titel/),
   ).toBeVisible();
 });
 test("blocked push permission has an actionable hint and never forces a prompt", async ({
@@ -87,10 +88,9 @@ test("blocked push permission has an actionable hint and never forces a prompt",
   );
   await page.goto("/");
   await page
-    .getByRole("button", { name: "Benachrichtigungen", exact: true })
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await expect(
-    page.getByRole("dialog").getByText(/Website-Einstellungen/),
-  ).toBeVisible();
+  await expect(page.getByText(/Website-Einstellungen/)).toBeVisible();
   await expect(page.getByRole("switch")).toHaveCount(0);
 });

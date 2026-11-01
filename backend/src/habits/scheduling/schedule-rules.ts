@@ -271,6 +271,28 @@ export function expiresAt(
   return midnightInTimeZone(expiryDate);
 }
 
+/** Last day an occurrence of this slot can be moved to: its window's end. */
+export function lastMovableDate(
+  version: HabitScheduleVersionEntity,
+  scheduledDate: string,
+): string {
+  return addDays(dayOf(expiresAt(version, scheduledDate)), -1);
+}
+
+/** Whether a run of this slot may lie on `date`, as seen from `today`. */
+export function isInMoveWindow(
+  version: HabitScheduleVersionEntity,
+  scheduledDate: string,
+  date: string,
+  today: string,
+): boolean {
+  return (
+    date >= today &&
+    date >= scheduledDate &&
+    date <= lastMovableDate(version, scheduledDate)
+  );
+}
+
 export function slotStartsAt(
   version: HabitScheduleVersionEntity,
   scheduledDate: string,

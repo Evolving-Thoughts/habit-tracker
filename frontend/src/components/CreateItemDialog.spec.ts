@@ -1,3 +1,4 @@
+import { TODO_FIELDS, HABIT_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHabit, createTodo } from "../api/day-planner.api";
@@ -9,6 +10,7 @@ vi.mock("../api/day-planner.api", () => ({
 }));
 enableAutoUnmount(afterEach);
 const habit: HabitResponse = {
+    ...HABIT_FIELDS,
   id: 10,
   title: "Joggen",
   isActive: true,
@@ -23,6 +25,7 @@ describe("CreateItemDialog", () => {
     vi.resetAllMocks();
     vi.mocked(createHabit).mockResolvedValue(habit);
     vi.mocked(createTodo).mockResolvedValue({
+    ...TODO_FIELDS,
       id: 1,
       parentId: null,
       title: "Test",

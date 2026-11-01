@@ -16,6 +16,7 @@ const emit = defineEmits<{
   toggle: [item: DayPlannerItem];
   skip: [item: DayPlannerHabitItem];
   edit: [item: DayPlannerItem];
+  move: [item: DayPlannerItem];
 }>();
 
 const isCompleted = computed(() => {
@@ -44,6 +45,12 @@ const statusLabel = computed(() => {
 
 const typeLabel = computed(() => {
   return props.item.type === "todo" ? "Todo" : "Habit";
+});
+
+const canMove = computed(() => {
+  if (props.item.status !== "pending") return false;
+  if (props.item.type === "todo") return props.item.scheduledAt !== null;
+  return (props.item.moveUntil ?? "") > props.item.scheduledDate;
 });
 
 function toggle(): void {
@@ -104,6 +111,8 @@ function skip(): void {
       <div class="planner-item__metadata">
         <span>{{ typeLabel }}</span>
 
+        <span v-if="item.categoryName">{{ item.categoryName }}</span>
+
         <span>
           {{ formatDateForGermanDisplay(item.scheduledDate) }}
         </span>
@@ -116,6 +125,10 @@ function skip(): void {
           "
         >
           {{ formatTimeForGermanDisplay(item.scheduledAt) }}
+        </span>
+
+        <span v-if="item.type === 'habit' && item.timeOfDay">
+          {{ item.timeOfDay }}
         </span>
 
         <span v-if="item.plannedDurationMinutes != null">
@@ -150,6 +163,16 @@ function skip(): void {
           @click="skip"
         >
           Überspringen
+        </button>
+        <button
+          v-if="canMove"
+          class="planner-item__move-button"
+          data-move-button
+          type="button"
+          :disabled="isUpdating"
+          @click="emit('move', item)"
+        >
+          Verschieben
         </button>
       </div>
     </div>
@@ -231,7 +254,8 @@ function skip(): void {
 }
 
 .planner-item__check:disabled,
-.planner-item__skip-button:disabled {
+.planner-item__skip-button:disabled,
+.planner-item__move-button:disabled {
   cursor: wait;
   opacity: 0.6;
 }
@@ -307,7 +331,8 @@ function skip(): void {
   margin-top: 0.75rem;
 }
 
-.planner-item__skip-button {
+.planner-item__skip-button,
+.planner-item__move-button {
   padding: 0;
   border: 0;
   background: transparent;

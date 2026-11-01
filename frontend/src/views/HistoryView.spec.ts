@@ -1,10 +1,18 @@
+import { PLANNED_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getHistory } from "../api/history.api";
+import { notifyViewsChanged } from "../composables/data-sync";
 import { getCurrentDateInTimeZone } from "../utils/date";
 import type { HistoryItem, HistoryResponse } from "../types/history";
 import HistoryView from "./HistoryView.vue";
 vi.mock("../api/history.api", () => ({ getHistory: vi.fn() }));
+vi.mock("../api/work-logs.api", () => ({
+  getWorkDay: vi.fn().mockResolvedValue({ date: "", totalMinutes: 0, logs: [] }),
+}));
+vi.mock("../api/reflections.api", () => ({
+  getReflection: vi.fn().mockResolvedValue({ date: "", text: "" }),
+}));
 enableAutoUnmount(afterEach);
 const mock = vi.mocked(getHistory);
 function item(overrides: Partial<HistoryItem> = {}): HistoryItem {
@@ -35,6 +43,36 @@ beforeEach(() => {
   vi.clearAllMocks();
   mock.mockResolvedValue(response());
 });
+describe("refreshing", () => {
+  it("reloads in the background when data changes elsewhere", async () => {
+    const wrapper = mount(HistoryView);
+    await flushPromises();
+    mock.mockResolvedValueOnce(response([item({ title: "Vom Timer" })]));
+    notifyViewsChanged();
+    expect(wrapper.find("[role=status]").exists()).toBe(false);
+    await flushPromises();
+    expect(wrapper.text()).toContain("Vom Timer");
+  });
+});
+describe("week quota", () => {
+  it("shows the share of completed habit occurrences", async () => {
+    const wrapper = mount(HistoryView);
+    await flushPromises();
+    expect(wrapper.find(".week-quota").exists()).toBe(false);
+    mock.mockResolvedValueOnce({
+      today: "2026-10-30",
+      timeZone: "Europe/Berlin",
+      startDate: "2026-10-26",
+      endDate: "2026-11-01",
+      days: [],
+      weekQuota: { completed: 7, total: 10, percentage: 70 },
+    });
+    await wrapper.findAll("button").find((b) => b.text() === "Woche")!.trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".week-quota").text()).toContain("7 von 10 (70 %)");
+  });
+});
+
 describe("HistoryView", () => {
   it("requests the current Berlin day", async () => {
     mount(HistoryView);
@@ -228,6 +266,7 @@ describe("HistoryView", () => {
     const data = response();
     data.days[0]!.planned = [
       {
+    ...PLANNED_FIELDS,
         key: "todo:2",
         type: "todo",
         id: 2,
@@ -239,6 +278,7 @@ describe("HistoryView", () => {
         plannedDurationMinutes: 15,
       },
       {
+    ...PLANNED_FIELDS,
         key: "habit:3:2026-10-07",
         type: "habit",
         id: null,

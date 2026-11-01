@@ -11,22 +11,25 @@ import {
 import ModalDialog from "../components/ModalDialog.vue";
 import CreateTodoForm from "../components/CreateTodoForm.vue";
 import PlannerItemEditor from "../components/PlannerItemEditor.vue";
+import GoalBurnup from "../components/GoalBurnup.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
 import TodoDeletionSummary from "../components/TodoDeletionSummary.vue";
 import { useListFocus } from "../composables/useListFocus";
-import { notifyDataChanged } from "../composables/data-sync";
 import { useLoader } from "../composables/useLoader";
+import { useWrites } from "../composables/useWrites";
 import { useTodoDeletion } from "../composables/useTodoDeletion";
+import { formatDateForGermanDisplay } from "../utils/date";
 const page = ref<HTMLElement | null>(null),
   listFocus = useListFocus(page);
 const collapsed = ref(new Set<number>());
 const saving = ref(false),
-  error = ref(""),
+  error = ref<string | null>(""),
   success = ref("");
 const action = ref<"create" | "move" | "edit" | "delete" | null>(null),
   selected = ref<HierarchyTodo | null>(null);
 const formBusy = ref(false),
   parent = ref("");
+const burnupTodo = ref<HierarchyTodo | null>(null);
 const {
   preview,
   prepare: prepareDeletion,
@@ -35,7 +38,9 @@ const {
 } = useTodoDeletion();
 const dragged = ref<number | null>(null),
   dropTarget = ref<number | null | undefined>(undefined);
-const busy = computed(() => saving.value || formBusy.value);
+const busy = computed(
+  () => saving.value || formBusy.value || writing.value,
+);
 // Refreshes after timer and other views' changes, unless a dialog is open.
 const {
   data: todos,
@@ -45,8 +50,10 @@ const {
 } = useLoader(getTodoHierarchy, {
   initial: [] as HierarchyTodo[],
   fallbackError: "Aufgaben konnten nicht geladen werden.",
-  refreshOnChange: () => !busy.value && action.value === null,
+  refreshOnChange: () =>
+    !busy.value && action.value === null && burnupTodo.value === null,
 });
+const { write, applied, busy: writing } = useWrites(load, error);
 const shownError = computed(() => error.value || loadError.value || "");
 const rows = computed(() => visibleHierarchy(todos.value, collapsed.value));
 const children = computed(() => hierarchyChildren(todos.value));
@@ -74,29 +81,21 @@ async function run(
   if (busy.value) return;
   const activeLabel = document.activeElement?.getAttribute("aria-label");
   const hadDialog = action.value !== null;
-  saving.value = true;
-  error.value = "";
   success.value = "";
-  try {
-    await fn();
-    if (notify) notifyDataChanged();
-    await load();
-    if (loadError.value) return;
+  const done = await write(fn, {
+    fallbackError: "Änderung fehlgeschlagen.",
+    ...(notify ? {} : { notify: null }),
+  });
+  if (done && !loadError.value) {
     success.value = text;
     action.value = null;
     selected.value = null;
-  } catch (e) {
-    error.value = message(e);
-  } finally {
-    saving.value = false;
-    await nextTick();
-    if (!hadDialog && activeLabel)
-      page.value
-        ?.querySelectorAll<HTMLElement>("[aria-label]")
-        .forEach((el) => {
-          if (el.getAttribute("aria-label") === activeLabel) el.focus();
-        });
   }
+  await nextTick();
+  if (!hadDialog && activeLabel)
+    page.value?.querySelectorAll<HTMLElement>("[aria-label]").forEach((el) => {
+      if (el.getAttribute("aria-label") === activeLabel) el.focus();
+    });
 }
 function toggleCollapse(id: number) {
   const next = new Set(collapsed.value);
@@ -121,18 +120,16 @@ async function created() {
     next.delete(selected.value.id);
     collapsed.value = next;
   }
-  await load();
+  await applied();
   action.value = null;
   selected.value = null;
-  notifyDataChanged();
   success.value = "Todo angelegt.";
 }
 async function changed() {
   formBusy.value = false;
-  await load();
+  await applied();
   action.value = null;
   selected.value = null;
-  notifyDataChanged();
   success.value = "Änderungen gespeichert.";
 }
 function move(todo: HierarchyTodo, target: number | null) {
@@ -207,6 +204,14 @@ async function confirmDelete() {
       </button>
     </p>
     <p v-if="success" role="status">{{ success }}</p>
+    <ModalDialog
+      v-if="burnupTodo"
+      :title="`Burnup: ${burnupTodo.title}`"
+      focus-selector="button"
+      @close="burnupTodo = null"
+    >
+      <GoalBurnup :todo-id="burnupTodo.id" />
+    </ModalDialog>
     <p v-if="loading" role="status">Aufgaben werden geladen …</p>
     <p v-else-if="!todos.length && !shownError">
       Noch keine Todos. Lege dein erstes Todo an.
@@ -276,6 +281,15 @@ async function confirmDelete() {
                 }}{{ todo.isFixed ? " · fix" : "" }}</span
               >
             </p>
+            <p v-if="todo.periodStart && todo.periodEnd" class="period">
+              {{ formatDateForGermanDisplay(todo.periodStart) }} –
+              {{ formatDateForGermanDisplay(todo.periodEnd) }}
+              <template v-if="todo.habitGoal">
+                · {{ todo.habitGoal.habitTitle }}:
+                {{ todo.habitGoal.completed }}/{{ todo.habitGoal.target }}
+                {{ todo.habitGoal.reached ? "· Ziel erreicht" : "" }}
+              </template>
+            </p>
             <progress
               max="100"
               :value="todo.progress.percentage"
@@ -306,6 +320,14 @@ async function confirmDelete() {
               @click="open('create', todo)"
             >
               ＋ Kind</button
+            ><button
+              v-if="todo.parentId === null"
+              type="button"
+              :disabled="busy"
+              :aria-label="`Burnup von ${todo.title}`"
+              @click="burnupTodo = todo"
+            >
+              Burnup</button
             ><button
               type="button"
               :disabled="busy"
@@ -519,6 +541,11 @@ async function confirmDelete() {
   margin: 4px 0;
   overflow-wrap: anywhere;
 }
+.content .period {
+  margin: 0.25rem 0;
+  font-size: 0.8125rem;
+}
+
 .content progress {
   display: block;
   width: min(200px, 100%);

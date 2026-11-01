@@ -1,3 +1,4 @@
+import { HABIT_FIELDS, TODO_FIELDS, PLANNER_HABIT_FIELDS, PLANNER_TODO_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -16,6 +17,9 @@ import type {
 } from "../types/day-planner";
 import TodayView from "./TodayView.vue";
 
+vi.mock("../api/categories.api", () => ({
+  getCategories: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("../api/day-planner.api", () => ({
   getToday: vi.fn(),
   createTodo: vi.fn(),
@@ -41,6 +45,7 @@ function makeTodo(
   overrides: Partial<DayPlannerTodoItem> = {},
 ): DayPlannerTodoItem {
   return {
+    ...PLANNER_TODO_FIELDS,
     type: "todo",
     todoId: 1,
     title: "NestJS lernen",
@@ -60,6 +65,7 @@ function makeHabit(
   overrides: Partial<DayPlannerHabitItem> = {},
 ): DayPlannerHabitItem {
   return {
+    ...PLANNER_HABIT_FIELDS,
     type: "habit",
     plannedDurationMinutes: null,
     occurrenceId: 20,
@@ -67,6 +73,7 @@ function makeHabit(
     title: "Joggen",
     status: "pending",
     scheduledDate: "2026-10-02",
+    moveUntil: null,
     scheduleType: "interval",
     isOverdue: false,
     timerEligible: true,
@@ -80,6 +87,7 @@ function makePlanner(
   return {
     date: "2026-10-02",
     items,
+    externalEvents: [],
   };
 }
 
@@ -360,6 +368,7 @@ describe("TodayView habit schedule editing", () => {
     vi.setSystemTime(new Date("2026-10-02T12:00:00Z"));
     getTodayMock.mockResolvedValue(makePlanner([makeHabit()]));
     vi.mocked(getHabit).mockResolvedValue({
+    ...HABIT_FIELDS,
       id: 10,
       title: "Joggen",
       isActive: true,
@@ -435,6 +444,7 @@ describe("TodayView creation flow", () => {
     vi.resetAllMocks();
     getTodayMock.mockResolvedValue(makePlanner());
     vi.mocked(createHabit).mockResolvedValue({
+    ...HABIT_FIELDS,
       id: 10,
       title: "Joggen",
       isActive: true,
@@ -445,6 +455,7 @@ describe("TodayView creation flow", () => {
       upcomingSchedule: null,
     });
     vi.mocked(createTodo).mockResolvedValue({
+    ...TODO_FIELDS,
       id: 1,
       parentId: null,
       title: "Test",
@@ -527,6 +538,7 @@ describe("TodayView creation flow", () => {
   it("opens a Habit editor in a modal and restores focus on close", async () => {
     getTodayMock.mockResolvedValueOnce(makePlanner([makeHabit()]));
     vi.mocked(getHabit).mockResolvedValue({
+    ...HABIT_FIELDS,
       id: 10,
       title: "Joggen",
       isActive: true,

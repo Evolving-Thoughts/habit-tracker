@@ -6,18 +6,21 @@ import {
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { useListFocus } from "../composables/useListFocus";
-import { notifyDataChanged } from "../composables/data-sync";
 import { useLoader } from "../composables/useLoader";
+import { useWrites } from "../composables/useWrites";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import PlannerItem from "../components/PlannerItem.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
+import MoveItemDialog from "../components/MoveItemDialog.vue";
+import ReplanDialog from "../components/ReplanDialog.vue";
 import type {
   DayPlannerHabitItem,
   DayPlannerItem,
   DayPlannerResponse,
 } from "../types/day-planner";
-import { formatDateForGermanDisplay } from "../utils/date";
+import {
+  formatTimeForGermanDisplay, formatDateForGermanDisplay } from "../utils/date";
 
 type EditingTarget = {
   kind: "todo" | "habit";
@@ -28,10 +31,10 @@ const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
 
 
-const updatingKeys = ref<string[]>([]);
-
 const editingTarget = ref<EditingTarget | null>(null);
 const editorBusy = ref(false);
+const movingItem = ref<DayPlannerItem | null>(null);
+const replanOpen = ref(false);
 const creationOpen = ref(false);
 const creationMessage = ref<string | null>(null);
 
@@ -78,9 +81,12 @@ const {
   refreshOnChange: () =>
     !editorBusy.value &&
     !editingTarget.value &&
+    !movingItem.value &&
+    !replanOpen.value &&
     !creationOpen.value &&
-    updatingKeys.value.length === 0,
+    !writes.busy.value,
 });
+const writes = useWrites(loadToday, errorMessage);
 
 function getItemKey(item: DayPlannerItem): string {
   return item.type === "todo"
@@ -89,23 +95,7 @@ function getItemKey(item: DayPlannerItem): string {
 }
 
 function isUpdating(item: DayPlannerItem): boolean {
-  return editorBusy.value || updatingKeys.value.includes(getItemKey(item));
-}
-
-function startUpdating(item: DayPlannerItem): void {
-  const key = getItemKey(item);
-
-  if (!updatingKeys.value.includes(key)) {
-    updatingKeys.value.push(key);
-  }
-}
-
-function stopUpdating(item: DayPlannerItem): void {
-  const key = getItemKey(item);
-
-  updatingKeys.value = updatingKeys.value.filter(
-    (existingKey) => existingKey !== key,
-  );
+  return editorBusy.value || writes.isWriting(getItemKey(item));
 }
 
 
@@ -114,29 +104,19 @@ async function toggleItem(item: DayPlannerItem): Promise<void> {
     return;
   }
 
-  startUpdating(item);
-  errorMessage.value = null;
-
-  try {
-    if (item.type === "todo") {
-      await updateTodoCompletion(item.todoId, item.status !== "completed");
-    } else {
-      await updateOccurrenceStatus(
-        item.occurrenceId,
-        item.status === "pending" ? "completed" : "pending",
-      );
-    }
-
-    notifyDataChanged();
-    await loadToday(false);
-  } catch (error: unknown) {
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : "Der Eintrag konnte nicht aktualisiert werden.";
-  } finally {
-    stopUpdating(item);
-  }
+  await writes.write(
+    () =>
+      item.type === "todo"
+        ? updateTodoCompletion(item.todoId, item.status !== "completed")
+        : updateOccurrenceStatus(
+            item.occurrenceId,
+            item.status === "pending" ? "completed" : "pending",
+          ),
+    {
+      key: getItemKey(item),
+      fallbackError: "Der Eintrag konnte nicht aktualisiert werden.",
+    },
+  );
 }
 
 async function skipHabit(item: DayPlannerHabitItem): Promise<void> {
@@ -144,26 +124,17 @@ async function skipHabit(item: DayPlannerHabitItem): Promise<void> {
     return;
   }
 
-  startUpdating(item);
-  errorMessage.value = null;
-
-  try {
-    await updateOccurrenceStatus(item.occurrenceId, "skipped");
-
-    notifyDataChanged();
-    await loadToday(false);
-  } catch (error: unknown) {
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : "Das Habit konnte nicht übersprungen werden.";
-  } finally {
-    stopUpdating(item);
-  }
+  await writes.write(
+    () => updateOccurrenceStatus(item.occurrenceId, "skipped"),
+    {
+      key: getItemKey(item),
+      fallbackError: "Das Habit konnte nicht übersprungen werden.",
+    },
+  );
 }
 
 function openEditing(item: DayPlannerItem): void {
-  if (editorBusy.value || updatingKeys.value.length > 0) {
+  if (editorBusy.value || writes.busy.value) {
     return;
   }
 
@@ -186,16 +157,44 @@ function closeEditing(): void {
 }
 
 async function onEditorChanged(): Promise<void> {
-  notifyDataChanged();
-  await loadToday(false);
+  await writes.applied();
   closeEditing();
+}
+
+function openMoving(item: DayPlannerItem): void {
+  if (editorBusy.value || writes.busy.value) {
+    return;
+  }
+
+  listFocus.remember(getItemKey(item));
+  movingItem.value = item;
+}
+
+function closeMoving(): void {
+  movingItem.value = null;
+  editorBusy.value = false;
+}
+
+async function onMoved(): Promise<void> {
+  await writes.applied();
+  closeMoving();
+}
+
+function closeReplan(): void {
+  replanOpen.value = false;
+  editorBusy.value = false;
+}
+
+async function onReplanned(): Promise<void> {
+  await writes.applied();
+  closeReplan();
 }
 
 function openCreation(): void {
   if (
     isLoading.value ||
     editorBusy.value ||
-    updatingKeys.value.length ||
+    writes.busy.value ||
     editingTarget.value
   )
     return;
@@ -207,8 +206,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
     kind === "todo"
       ? "Todo erstellt. Ohne Zeitpunkt findest du es im Todo-Dump."
       : "Habit erstellt. Es erscheint ab seinem Startdatum an fälligen Tagen.";
-  notifyDataChanged();
-  await loadToday(false);
+  await writes.applied();
   creationOpen.value = false;
 }
 
@@ -221,7 +219,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
       :disabled="
         isLoading ||
         editorBusy ||
-        updatingKeys.length > 0 ||
+        writes.busy.value ||
         editingTarget !== null
       "
       @click="openCreation"
@@ -238,6 +236,14 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
       </div>
 
       <div class="today-view__header-actions">
+        <button
+          class="today-view__replan"
+          type="button"
+          :disabled="isLoading || editorBusy"
+          @click="replanOpen = true"
+        >
+          Neu planen
+        </button>
         <button
           class="today-view__refresh"
           type="button"
@@ -268,6 +274,38 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
       @busy="editorBusy = $event"
       @changed="onEditorChanged"
       @close="closeEditing"
+    />
+
+    <section
+      v-if="planner?.externalEvents?.length"
+      class="today-view__external"
+      aria-label="Termine aus Google Kalender"
+    >
+      <h2>Termine aus Google Kalender</h2>
+      <ul>
+        <li v-for="event in planner.externalEvents" :key="event.id">
+          {{ formatTimeForGermanDisplay(event.start) }} ·
+          {{ event.title }}
+        </li>
+      </ul>
+    </section>
+
+    <ReplanDialog
+      v-if="replanOpen"
+      :return-focus="() => null"
+      @busy="editorBusy = $event"
+      @applied="onReplanned"
+      @close="closeReplan"
+    />
+
+    <MoveItemDialog
+      v-if="movingItem && planner"
+      :item="movingItem"
+      :today="planner.date"
+      :return-focus="listFocus.returnFocus"
+      @busy="editorBusy = $event"
+      @moved="onMoved"
+      @close="closeMoving"
     />
 
     <p v-if="errorMessage" class="today-view__error" role="alert">
@@ -301,6 +339,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
             @toggle="toggleItem"
             @skip="skipHabit"
             @edit="openEditing"
+            @move="openMoving"
           />
         </div>
       </section>
@@ -321,6 +360,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
             @toggle="toggleItem"
             @skip="skipHabit"
             @edit="openEditing"
+            @move="openMoving"
           />
         </div>
       </section>
@@ -341,6 +381,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
             @toggle="toggleItem"
             @skip="skipHabit"
             @edit="openEditing"
+            @move="openMoving"
           />
         </div>
       </section>
@@ -397,6 +438,23 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
   color: #677287;
 }
 
+.today-view__external {
+  margin-bottom: 1.5rem;
+  color: #677287;
+  font-size: 0.875rem;
+}
+
+.today-view__external h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.today-view__external ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.today-view__replan,
 .today-view__refresh {
   padding: 0.65rem 0.9rem;
   border: 1px solid #ccd2dc;
@@ -408,6 +466,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
   cursor: pointer;
 }
 
+.today-view__replan:disabled,
 .today-view__refresh:disabled {
   cursor: wait;
   opacity: 0.5;

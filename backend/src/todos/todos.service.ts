@@ -8,15 +8,20 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'node:crypto';
 import { EntityManager, Repository } from 'typeorm';
+import { assertOwnedCategory, normalizeWhy } from '../categories/assignment';
 import { Clock } from '../common/clock';
+import { assertDateOnly } from '../common/date/date-only.utils';
+import { atSameWallClock } from '../common/date/local-day';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import {
   discardTimersOfTodos,
+  hasOpenTimer,
   releaseTimers,
   timersOfTodos,
 } from '../timers/timer-target';
 import { TimerEntity } from '../timers/timer.entity';
 import { CreateTodoDto } from './dto/create-todo.dto';
+import { RescheduleTodoDto } from './dto/reschedule-todo.dto';
 import {
   DeletionPreviewResponse,
   HierarchyTodoResponse,
@@ -24,6 +29,7 @@ import {
 import { UpdateTodoDto } from './dto/update-todo.dto';
 import { TodoEntity } from './entities/todo.entity';
 import { TodoMapper } from './mappers/todo.mapper';
+import { assertGoalAvailable, assertGoalShape, habitGoals } from './habit-goal';
 import { backlogTodos } from './todo-agenda';
 import {
   CorruptHierarchyError,
@@ -69,9 +75,11 @@ export class TodosService {
   async hierarchy(userId: string): Promise<HierarchyTodoResponse[]> {
     const todos = await this.findAll(userId);
     const progress = this.tree(todos).progress();
+    const goals = await habitGoals(this.todoRepository.manager, todos);
     return todos.map((todo) => ({
       ...TodoMapper.toResponseDto(todo),
       progress: progress.get(todo.id)!,
+      habitGoal: goals.get(todo.id) ?? null,
     }));
   }
 
@@ -83,10 +91,17 @@ export class TodosService {
     return this.unitOfWork.run(userId, async (manager) => {
       await this.assertCanPlace(manager, userId, null, parentId);
       const repository = manager.getRepository(TodoEntity);
+      const categoryId =
+        dto.categoryId !== undefined
+          ? dto.categoryId
+          : await this.parentCategory(manager, userId, parentId);
+      await assertOwnedCategory(manager, userId, categoryId);
       return repository.save(
         repository.create({
           userId,
           parentId,
+          categoryId,
+          why: normalizeWhy(dto.why),
           title: dto.title,
           completed: false,
           completedAt: null,
@@ -114,6 +129,22 @@ export class TodosService {
         await this.assertCanPlace(manager, userId, id, dto.parentId);
         todo.parentId = dto.parentId;
       }
+      if (dto.categoryId !== undefined) {
+        await assertOwnedCategory(manager, userId, dto.categoryId);
+        todo.categoryId = dto.categoryId;
+      }
+      if (dto.why !== undefined) todo.why = normalizeWhy(dto.why);
+      if (dto.periodStart !== undefined) todo.periodStart = dto.periodStart;
+      if (dto.periodEnd !== undefined) todo.periodEnd = dto.periodEnd;
+      if (dto.goalHabitId !== undefined) todo.goalHabitId = dto.goalHabitId;
+      if (dto.goalTarget !== undefined) todo.goalTarget = dto.goalTarget;
+      assertGoalShape({
+        periodStart: todo.periodStart ?? null,
+        periodEnd: todo.periodEnd ?? null,
+        goalHabitId: todo.goalHabitId ?? null,
+        goalTarget: todo.goalTarget ?? null,
+      });
+      await assertGoalAvailable(manager, userId, todo);
       if (dto.title !== undefined) todo.title = dto.title;
       if (dto.scheduledAt !== undefined)
         todo.scheduledAt =
@@ -131,8 +162,48 @@ export class TodosService {
       const saved = await repository.save(todo);
       // A completed todo is no timer target any more.
       if (todo.completed)
-        await releaseTimers(manager, userId, { todoIds: [id] });
+        await releaseTimers(
+          manager,
+          userId,
+          { todoIds: [id] },
+          this.clock.now(),
+        );
       return saved;
+    });
+  }
+
+  /** Moves an open todo to another day; time and duration stay. */
+  async reschedule(
+    userId: string,
+    id: number,
+    dto: RescheduleTodoDto,
+  ): Promise<TodoEntity> {
+    assertDateOnly(dto.date);
+    return this.unitOfWork.run(userId, async (manager) => {
+      const repository = manager.getRepository(TodoEntity);
+      const todo = await repository.findOneBy({ id, userId });
+      if (!todo)
+        throw new NotFoundException(`Todo with ID ${id} was not found`);
+      if (todo.completed)
+        throw new ConflictException(
+          'Erledigte Todos können nicht verschoben werden.',
+        );
+      if (!todo.scheduledAt)
+        throw new BadRequestException('Das Todo hat noch keinen Termin.');
+      if (dto.date < this.clock.today())
+        throw new BadRequestException(
+          'Todos können nicht in die Vergangenheit verschoben werden.',
+        );
+      if (todo.isFixed && !dto.confirmFixed)
+        throw new ConflictException(
+          'Feste Termine müssen ausdrücklich bestätigt werden.',
+        );
+      if (await hasOpenTimer(manager, userId, { todoId: id }))
+        throw new ConflictException(
+          'Beende zuerst den Timer, bevor du das Todo verschiebst.',
+        );
+      todo.scheduledAt = atSameWallClock(todo.scheduledAt, dto.date);
+      return repository.save(todo);
     });
   }
 
@@ -177,7 +248,7 @@ export class TodosService {
           'Deletion preview changed. Review the preview again.',
         );
       const ids = snapshot.todos.map((t) => t.id);
-      await discardTimersOfTodos(manager, userId, ids);
+      await discardTimersOfTodos(manager, userId, ids, this.clock.now());
       await manager
         .getRepository(TodoEntity)
         .createQueryBuilder()
@@ -213,6 +284,19 @@ export class TodosService {
       )
       .digest('hex');
     return { todos, timers, confirmationToken };
+  }
+
+  /** A new child starts in its parent's category; there is no live inheritance. */
+  private async parentCategory(
+    manager: EntityManager,
+    userId: string,
+    parentId: number | null,
+  ): Promise<number | null> {
+    if (parentId === null) return null;
+    const parent = await manager
+      .getRepository(TodoEntity)
+      .findOneBy({ id: parentId, userId });
+    return parent?.categoryId ?? null;
   }
 
   /** Validates a placement against the parent's live ancestor chain. */

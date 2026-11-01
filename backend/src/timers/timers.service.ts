@@ -12,10 +12,12 @@ import { dayOf } from '../common/date/local-day';
 import { TimerEntity } from './timer.entity';
 import { StartTimerDto } from './timer.dto';
 import {
+  closeWorkSegment,
   effectiveDuration,
   isOccurrenceTimerEligible,
   isTodoTimerEligible,
   isValidTimerDuration,
+  stopTimer,
   TIMER_MAX_MINUTES,
   TIMER_MIN_MINUTES,
 } from './timer-target';
@@ -135,14 +137,18 @@ export class TimersService {
         error instanceof NotFoundException || error instanceof ConflictException
       ))
         throw error;
-      timer.state = 'stopped';
-      timer.endsAt = null;
-      return manager.save(timer);
+      // Reconciling the target may have released this timer in the meantime.
+      return stopTimer(
+        manager,
+        await manager.findOneByOrFail(TimerEntity, { id: timer.id }),
+        now,
+      );
     }
     if (
       timer.state === 'running' &&
       remainingMilliseconds(timer.endsAt!, now) === 0
     ) {
+      await closeWorkSegment(manager, timer, now);
       timer.finishedAt = timer.endsAt;
       timer.state = 'finished';
       timer.endsAt = null;
@@ -237,9 +243,7 @@ export class TimersService {
             message: 'Ein anderer Timer ist bereits aktiv.',
             code: 'ACTIVE_TIMER_EXISTS',
           });
-        active.state = 'stopped';
-        active.endsAt = null;
-        await manager.save(active);
+        await stopTimer(manager, active, now);
       }
       await this.persistDuration(manager, target, minutes);
       // Determine deadline only after acquiring locks and persisting the target duration.
@@ -256,6 +260,7 @@ export class TimersService {
           durationMinutes: minutes,
           remainingMilliseconds: minutes * 60_000,
           endsAt: new Date(now.getTime() + minutes * 60_000),
+          segmentStartedAt: now,
           finishedAt: null,
         }),
       );
@@ -273,9 +278,7 @@ export class TimersService {
       if (!timer) throw new NotFoundException('Timer nicht gefunden.');
       const now = this.clock.now();
       if (action === 'stop') {
-        timer.state = 'stopped';
-        timer.endsAt = null;
-        await manager.save(timer);
+        await stopTimer(manager, timer, now);
         const latest = await this.findCurrent(manager, userId);
         return this.response(
           await this.reconcile(manager, userId, latest, now),
@@ -307,11 +310,13 @@ export class TimersService {
           timer.finishedAt = now;
         }
       } else if (action === 'pause' && timer.state === 'running') {
+        await closeWorkSegment(manager, timer, now);
         timer.remainingMilliseconds = remainingMilliseconds(timer.endsAt!, now);
         timer.endsAt = null;
         timer.state = 'paused';
       } else if (action === 'resume' && timer.state === 'paused') {
         timer.endsAt = new Date(now.getTime() + timer.remainingMilliseconds);
+        timer.segmentStartedAt = now;
         timer.state = 'running';
       }
       return this.response(await manager.save(timer), now);

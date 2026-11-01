@@ -8,9 +8,14 @@ import { HabitOccurrenceStatus as Status } from '../habit-occurrences/enums/habi
 import {
   expiresAt,
   isScheduledOn,
+  lastMovableDate,
   latestSlotOnOrBefore,
   slotStartsAt,
 } from '../habits/scheduling/schedule-rules';
+import {
+  completedBetween,
+  isCompletedOn,
+} from '../habits/scheduling/occurrence-lifecycle';
 import { HistoryPlannedItem, HistoryWeeklyTarget } from './history.dto';
 import { effectiveDuration } from '../timers/timer-target';
 
@@ -51,6 +56,30 @@ export function forecastSlots(
   }
   return result;
 }
+/** Slots of runs moved into `dates` from a slot outside of them. */
+export function movedSlots(
+  versions: HabitScheduleVersionEntity[],
+  occurrences: HabitOccurrenceEntity[],
+  slots: ForecastSlot[],
+  dates: string[],
+): ForecastSlot[] {
+  const known = new Set(
+    slots.map((slot) => `${slot.version.id}:${slot.scheduledDate}`),
+  );
+  return occurrences.flatMap((occurrence) => {
+    const { movedToDate, scheduledDate, scheduleVersionId } = occurrence;
+    const version = versions.find((item) => item.id === scheduleVersionId);
+    if (
+      !version ||
+      movedToDate === null ||
+      occurrence.status !== Status.PENDING ||
+      !dates.includes(movedToDate) ||
+      known.has(`${scheduleVersionId}:${scheduledDate}`)
+    )
+      return [];
+    return [{ version, date: movedToDate, scheduledDate }];
+  });
+}
 export function plannedHabits(
   habits: HabitEntity[],
   slots: ForecastSlot[],
@@ -66,10 +95,7 @@ export function plannedHabits(
   );
   const completedToday = new Set(
     occurrences
-      .filter(
-        (item) =>
-          item.status === Status.COMPLETED && item.resolvedDate === today,
-      )
+      .filter((item) => isCompletedOn(item, today))
       .map((item) => item.habitId),
   );
   return slots.flatMap((slot) => {
@@ -90,9 +116,13 @@ export function plannedHabits(
         id: stored?.id ?? null,
         habitId: habit.id,
         title: habit.title,
-        date: slot.date,
+        date: stored?.movedToDate ?? slot.date,
         scheduledDate: slot.scheduledDate,
-        isOverdue: slot.scheduledDate < today,
+        isOverdue: (stored?.movedToDate ?? slot.scheduledDate) < today,
+        isFixed: false,
+        moveUntil: stored
+          ? lastMovableDate(slot.version, slot.scheduledDate)
+          : null,
         plannedDurationMinutes: stored
           ? effectiveDuration(stored, habit)
           : habit.plannedDurationMinutes,
@@ -136,16 +166,11 @@ export function weeklyTargets(
             )),
     );
     if (!activeDates.length) continue;
-    // The scheduler counts all completions of this habit in the calendar week,
-    // including completions under a previous rule, not just this version.
-    const completed = occurrences.filter(
-      (item) =>
-        item.habitId === habit.id &&
-        item.status === Status.COMPLETED &&
-        item.resolvedDate !== null &&
-        item.resolvedDate >= countRange.startDate &&
-        item.resolvedDate <= countRange.endDate,
-    ).length;
+    const completed = completedBetween(
+      occurrences.filter((item) => item.habitId === habit.id),
+      countRange.startDate,
+      countRange.endDate,
+    );
     result.push({
       key: `weekly:${version.id}`,
       habitId: habit.id,

@@ -1,5 +1,13 @@
 import { request } from "./http";
-import type { HierarchyTodo, DeletionPreview } from "../types/todo-hierarchy";
+import type {
+  BurnupPoint,
+  DeletionPreview,
+  HierarchyTodo,
+} from "../types/todo-hierarchy";
+
+export function getBurnup(todoId: number): Promise<BurnupPoint[]> {
+  return request<BurnupPoint[]>(`/todos/${todoId}/burnup`);
+}
 export function getTodoHierarchy(): Promise<HierarchyTodo[]> {
   return request("/todos/hierarchy");
 }

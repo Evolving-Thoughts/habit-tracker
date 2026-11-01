@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import { getHistory } from "../api/history.api";
+import DayReflection from "../components/DayReflection.vue";
+import DayWorkLogs from "../components/DayWorkLogs.vue";
 import HistoryItem from "../components/HistoryItem.vue";
 import HistoryPlannedItems from "../components/HistoryPlannedItems.vue";
+import { useLoader } from "../composables/useLoader";
 import type {
   HistoryResponse,
   HistoryFilter,
@@ -21,11 +24,25 @@ import {
 const date = ref(getCurrentDateInTimeZone());
 const view = ref<HistoryViewMode>("day");
 const filter = ref<HistoryFilter>("all");
-const result = ref<HistoryResponse | null>(null);
-const loading = ref(true);
-const error = ref("");
-let generation = 0;
-let abort: AbortController | undefined;
+const {
+  data: result,
+  isLoading: loading,
+  errorMessage: error,
+  reload: load,
+} = useLoader<HistoryResponse | null>(
+  (signal) => {
+    if (!supportedHistoryDate(date.value, view.value))
+      throw new Error("Bitte wähle ein gültiges Datum zwischen 1000 und 9999.");
+    return getHistory(date.value, view.value, filter.value, signal);
+  },
+  {
+    initial: null,
+    fallbackError: "Der Verlauf konnte nicht geladen werden.",
+    params: [date, view, filter],
+    resetOnLoad: true,
+    refreshOnChange: () => true,
+  },
+);
 const groups = [
   { status: "completed" as const, label: "Erledigt" },
   { status: "skipped" as const, label: "Übersprungen" },
@@ -35,6 +52,21 @@ const heading = computed(() => {
   return view.value === "day"
     ? dayLabel(result.value.startDate)
     : `${formatDateForGermanDisplay(result.value.startDate)} – ${formatDateForGermanDisplay(result.value.endDate)}`;
+});
+/** Entries of the shown day that can take a manual work log. */
+const workTargets = computed(() => {
+  const shown = result.value?.days[0];
+  if (!shown) return [];
+  const entries = [...shown.items, ...(shown.planned ?? [])];
+  const seen = new Set<string>();
+  return entries.flatMap((entry) => {
+    if (entry.id === null) return [];
+    const kind = entry.type === "todo" ? ("todo" as const) : ("occurrence" as const);
+    const key = `${kind}-${entry.id}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ kind, targetId: entry.id, title: entry.title }];
+  });
 });
 const hasItems = computed(
   () =>
@@ -61,42 +93,6 @@ function openDay(value: string): void {
 function today(): void {
   date.value = getCurrentDateInTimeZone();
 }
-async function load(): Promise<void> {
-  const requestGeneration = ++generation;
-  abort?.abort();
-  abort = new AbortController();
-  error.value = "";
-  result.value = null;
-  if (!supportedHistoryDate(date.value, view.value)) {
-    error.value = "Bitte wähle ein gültiges Datum zwischen 1000 und 9999.";
-    loading.value = false;
-    return;
-  }
-  loading.value = true;
-  try {
-    const response = await getHistory(
-      date.value,
-      view.value,
-      filter.value,
-      abort.signal,
-    );
-    if (generation === requestGeneration) result.value = response;
-  } catch (cause) {
-    if (generation === requestGeneration)
-      error.value =
-        cause instanceof Error
-          ? cause.message
-          : "Der Verlauf konnte nicht geladen werden.";
-  } finally {
-    if (generation === requestGeneration) loading.value = false;
-  }
-}
-watch([date, view, filter], () => void load());
-onMounted(() => void load());
-onUnmounted(() => {
-  generation += 1;
-  abort?.abort();
-});
 </script>
 <template>
   <main class="history-view">
@@ -150,15 +146,37 @@ onUnmounted(() => {
       >
         ›
       </button>
-      <button class="refresh" @click="load">Aktualisieren</button>
+      <button class="refresh" @click="load()">Aktualisieren</button>
     </div>
     <p v-if="loading" role="status">Verlauf wird geladen …</p>
     <div v-else-if="error" class="error" role="alert">
       <p>{{ error }}</p>
-      <button @click="load">Erneut versuchen</button>
+      <button @click="load()">Erneut versuchen</button>
     </div>
     <template v-else-if="result">
       <h2 class="period-heading" tabindex="-1">{{ heading }}</h2>
+      <DayReflection
+        v-if="view === 'day' && result.startDate <= result.today"
+        :date="result.startDate"
+      />
+      <DayWorkLogs
+        v-if="view === 'day' && result.startDate <= result.today"
+        :date="result.startDate"
+        :targets="workTargets"
+      />
+      <p v-if="result.weekQuota" class="week-quota">
+        Wochenquote Habits: {{ result.weekQuota.completed }} von
+        {{ result.weekQuota.total }} ({{ result.weekQuota.percentage }} %)
+      </p>
+      <section v-if="result.perfectWeek" class="perfect-week">
+        <h2>{{ result.perfectWeek.perfect ? "Perfect Week!" : "Perfect Week" }}</h2>
+        <ul>
+          <li v-for="item in result.perfectWeek.categories" :key="item.id">
+            {{ item.name }}: {{ item.completed }} von {{ item.target }}
+            {{ item.reached ? "✓" : "" }}
+          </li>
+        </ul>
+      </section>
       <p v-if="!hasItems" class="empty">
         Für diesen Zeitraum gibt es keine Einträge{{
           filter === "all" ? "" : " für diesen Filter"
@@ -445,6 +463,20 @@ summary span {
   }
 }
 .planning-note,
+.perfect-week h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.perfect-week ul {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}
+
+.week-quota {
+  font-weight: 600;
+}
+
 .weekly-targets p {
   color: #61718c;
   font-size: 0.875rem;
