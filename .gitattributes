@@ -1,0 +1,3 @@
+# Impeccable ships LF scripts that must stay runnable
+.claude/skills/impeccable/** -text
+.claude/agents/impeccable-*.md -text
