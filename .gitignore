@@ -57,3 +57,7 @@ Desktop.ini
 **/test-results/
 **/blob-report/
 **/playwright/.cache/
+
+# Impeccable: local hooks and platform binaries (reinstall with npx impeccable install)
+.claude/settings.local.json
+.claude/skills/impeccable/scripts/bin/

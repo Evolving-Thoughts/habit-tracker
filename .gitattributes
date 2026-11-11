@@ -1,0 +1,4 @@
+# Impeccable ships LF scripts that must stay runnable
+.claude/skills/impeccable/** text eol=lf
+.claude/skills/impeccable/**/*.cmd text eol=crlf
+.claude/agents/impeccable-*.md text eol=lf
