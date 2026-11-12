@@ -1,13 +1,10 @@
 import { test, expect } from "./fixtures";
-import { createTodo, today, visit, daysAfter } from "./helpers";
+import { createTodo, today, visit, daysAfter, openView } from "./helpers";
 import { API_URL } from "./environment";
 import type { HistoryResponse } from "../src/types/history";
 
 async function history(page: import("@playwright/test").Page) {
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Verlauf", exact: true })
-    .click();
+  await openView(page, "Verlauf");
   await expect(
     page.getByRole("heading", { name: "Verlauf", exact: true }),
   ).toBeVisible();
@@ -40,10 +37,7 @@ test("History: a completed Dump Todo has no invented schedule, persists, and dis
   await page.reload();
   await history(page);
   await expect(card).toBeVisible();
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Heute", exact: true })
-    .click();
+  await openView(page, "Heute");
   await page
     .getByRole("button", { name: "Ideen sammeln wieder öffnen", exact: true })
     .click();
@@ -210,10 +204,7 @@ test("History: error retry and logout do not retain private results", async ({
     .getByRole("button", { name: "Erneut versuchen", exact: true })
     .click();
   await expect(page.locator(".empty")).toBeVisible();
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Einstellungen", exact: true })
-    .click();
+  await openView(page, "Einstellungen");
   await page.getByRole("button", { name: "Abmelden", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Willkommen zurück" }),

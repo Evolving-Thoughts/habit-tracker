@@ -1,18 +1,23 @@
 import { test, expect } from "./fixtures";
-import { createTodo, today, visit, list } from "./helpers";
+import {
+  createTodo,
+  today,
+  visit,
+  list,
+  openView,
+  showResolved,
+} from "./helpers";
 import { API_URL } from "./environment";
 
 test("Todo-Dump: create, persist, rename, complete/reopen and confirmed delete", async ({
   page,
   request,
+  isMobile,
 }) => {
   await visit(page, "Todo-Dump");
   await createTodo(page, "NestJS lernen");
   await page.reload();
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Todo-Dump", exact: true })
-    .click();
+  await openView(page, "Todo-Dump");
   await expect(
     page.getByRole("heading", { name: "NestJS lernen", exact: true }),
   ).toBeVisible();
@@ -20,7 +25,10 @@ test("Todo-Dump: create, persist, rename, complete/reopen and confirmed delete",
     .getByRole("button", { name: "NestJS lernen bearbeiten", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.locator('[name="editTitle"]')).toBeFocused();
+  // Touch screens keep the keyboard closed until a field is tapped.
+  await expect(
+    isMobile ? dialog : dialog.locator('[name="editTitle"]'),
+  ).toBeFocused();
   await dialog.locator('[name="editTitle"]').fill("TypeScript lernen");
   await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(dialog).not.toBeVisible();
@@ -36,10 +44,8 @@ test("Todo-Dump: create, persist, rename, complete/reopen and confirmed delete",
   await expect(
     page.getByRole("heading", { name: "TypeScript lernen", exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Heute", exact: true })
-    .click();
+  await openView(page, "Heute");
+  await showResolved(page);
   await expect(
     page.getByRole("button", {
       name: "TypeScript lernen wieder öffnen",
@@ -64,10 +70,7 @@ test("Todo-Dump: create, persist, rename, complete/reopen and confirmed delete",
   await expect(
     page.getByRole("heading", { name: "TypeScript lernen", exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Todo-Dump", exact: true })
-    .click();
+  await openView(page, "Todo-Dump");
   await page
     .getByRole("button", { name: "TypeScript lernen bearbeiten", exact: true })
     .click();
@@ -107,6 +110,7 @@ test("Today: create scheduled Todo, edit, complete/reopen and delete", async ({
   await page
     .getByRole("button", { name: "Heute schreiben erledigen", exact: true })
     .click();
+  await showResolved(page);
   await expect(
     page.getByRole("button", {
       name: "Heute schreiben wieder öffnen",
@@ -145,10 +149,7 @@ test("scheduling a Dump Todo moves it into Today", async ({
   await expect(
     page.getByRole("heading", { name: "Geplantes Todo", exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Heute", exact: true })
-    .click();
+  await openView(page, "Heute");
   await expect(
     page.getByRole("heading", { name: "Geplantes Todo", exact: true }),
   ).toBeVisible();
@@ -217,10 +218,7 @@ test("switching back to Dump before reopen finishes refreshes it after the write
       })
       .click();
     await started;
-    await page
-      .getByRole("navigation")
-      .getByRole("button", { name: "Todo-Dump", exact: true })
-      .click();
+    await openView(page, "Todo-Dump");
     // Prove that the newly mounted Dump first reads the old completed state.
     await expect(
       page.getByText("Dein Todo-Dump ist leer.", { exact: true }),

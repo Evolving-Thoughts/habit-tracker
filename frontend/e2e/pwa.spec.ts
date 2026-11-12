@@ -1,3 +1,4 @@
+import { openView } from "./helpers";
 import { test, expect } from "./fixtures";
 
 test("built PWA has a valid standalone manifest and installable icons", async ({
@@ -43,7 +44,7 @@ test("service worker controls the built app without caching authenticated API da
 }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("button", { name: "Einstellungen", exact: true }),
+    page.getByRole("navigation", { name: "Ansichten" }),
   ).toBeVisible();
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
   const response = await page.request.get("/api/auth/me");
@@ -61,10 +62,7 @@ test("service worker controls the built app without caching authenticated API da
   });
   expect(status).toBe("network-unavailable");
   await context.setOffline(false);
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Einstellungen", exact: true })
-    .click();
+  await openView(page, "Einstellungen");
   await page.getByRole("button", { name: "Abmelden", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Anmelden", exact: true }),

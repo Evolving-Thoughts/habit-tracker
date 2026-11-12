@@ -260,13 +260,17 @@ onUnmounted(() => {
   position: sticky;
   top: max(0.5rem, env(safe-area-inset-top));
   z-index: 20;
-  width: min(100% - 2rem, 46rem);
+  width: min(100% - 2rem, var(--page-width));
   margin: 1rem auto 0;
-  padding: 1rem;
-  border: 1px solid #bacbed;
-  border-radius: 0.875rem;
-  background: #fff;
-  box-shadow: 0 4px 16px #172c5014;
+  padding: var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+@media (min-width: 56rem) {
+  .timer-bar {
+    top: calc(3.5rem + 0.5rem);
+  }
 }
 .timer-bar__row {
   display: flex;
@@ -281,7 +285,7 @@ onUnmounted(() => {
   overflow-wrap: anywhere;
 }
 .timer-bar__text small {
-  color: #59657a;
+  color: var(--color-ink-muted);
   font-size: 0.875rem;
 }
 .timer-bar__text strong {
@@ -289,20 +293,20 @@ onUnmounted(() => {
 }
 .timer-bar__time {
   font-size: 1.75rem;
-  font-weight: 650;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
-  color: #2457c5;
+  color: var(--color-action-strong);
 }
 .timer-bar__controls {
   display: flex;
   gap: 0.5rem;
 }
 .timer-bar__error {
-  color: #b42318;
+  color: var(--color-danger);
   margin: 0.5rem 0 0;
 }
 .timer-bar__hint {
-  color: #59657a;
+  color: var(--color-ink-muted);
   margin: 0.75rem 0 0;
   font-size: 0.875rem;
 }
@@ -314,12 +318,13 @@ onUnmounted(() => {
 }
 .timer-dialog-actions button,
 .timer-bar__error button {
-  min-height: 2.75rem;
-  border: 1px solid #ccd2dc;
-  border-radius: 0.625rem;
-  background: #fff;
-  color: #2457c5;
-  padding: 0.65rem 0.9rem;
+  min-height: var(--tap);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-action-tint);
+  color: var(--color-action-strong);
+  font-weight: 700;
+  padding: 0 var(--space-4);
   font: inherit;
   cursor: pointer;
 }

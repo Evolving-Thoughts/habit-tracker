@@ -1,3 +1,4 @@
+import { openView } from "./helpers";
 import { test, expect } from "./fixtures";
 import { API_URL } from "./environment";
 import type { APIRequestContext, Page } from "@playwright/test";
@@ -15,10 +16,7 @@ const create = async (
 };
 const open = async (page: Page) => {
   await page.goto("/");
-  await page
-    .getByRole("navigation", { name: "Ansichten" })
-    .getByRole("button", { name: "Aufgabenbaum", exact: true })
-    .click();
+  await openView(page, "Aufgabenbaum");
   await expect(
     page.getByRole("heading", { name: "Aufgabenbaum", exact: true }),
   ).toBeVisible();
@@ -76,14 +74,12 @@ test("Tree: add child, collapse, independent completion and reopen, persist", as
     .click();
   await expect(row(page, child.id)).toBeVisible();
   await page.reload();
-  await page
-    .getByRole("navigation", { name: "Ansichten" })
-    .getByRole("button", { name: "Aufgabenbaum", exact: true })
-    .click();
+  await openView(page, "Aufgabenbaum");
   await expect(row(page, child.id)).toBeVisible();
 });
 test("Tree: accessible move to parent and root, edit duration, preserve own schedule", async ({
   page,
+  isMobile,
   request,
 }) => {
   const a = await create(request, "Backend verstehen"),
@@ -96,7 +92,8 @@ test("Tree: accessible move to parent and root, edit duration, preserve own sche
     })
     .click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("combobox")).toBeFocused();
+  // Touch screens keep the picker closed until it is tapped.
+  await expect(isMobile ? dialog : dialog.getByRole("combobox")).toBeFocused();
   await dialog.getByRole("combobox").selectOption(String(a.id));
   await dialog
     .getByRole("button", { name: "Verschieben", exact: true })

@@ -10,8 +10,14 @@ export const TODO_FIELDS = {
 
 export const HABIT_FIELDS = { categoryId: null, why: null, timeOfDay: null };
 
-export const PLANNER_TODO_FIELDS = { categoryName: null };
+const PLANNER_CONTEXT = { why: null, goal: null, workedMinutes: 0 };
 
-export const PLANNER_HABIT_FIELDS = { categoryName: null, timeOfDay: null };
+export const PLANNER_TODO_FIELDS = { categoryName: null, ...PLANNER_CONTEXT };
+
+export const PLANNER_HABIT_FIELDS = {
+  categoryName: null,
+  timeOfDay: null,
+  ...PLANNER_CONTEXT,
+};
 
 export const PLANNED_FIELDS = { isFixed: false, moveUntil: null };

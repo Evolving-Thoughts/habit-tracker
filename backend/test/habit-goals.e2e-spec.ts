@@ -120,6 +120,52 @@ describe('Habit goals on todos (e2e)', () => {
     expect(node.progress.percentage).toBe(0);
   });
 
+  it('shows the why and the goal of an item in the day planner', async () => {
+    const habitId = await habit();
+    await request(server)
+      .patch(`/habits/${habitId}`)
+      .send({ why: 'Halbmarathon im März' })
+      .expect(200);
+    const id = await todo();
+    await setGoal(id, {
+      ...period,
+      goalHabitId: habitId,
+      goalTarget: 20,
+    }).expect(200);
+    await request(server)
+      .post('/todos')
+      .send({
+        title: 'Schuhe kaufen',
+        parentId: id,
+        why: 'Ohne Blasen laufen',
+        scheduledAt: new Date().toISOString(),
+      })
+      .expect(201);
+
+    const day = await request(server).get('/day-planner/today').expect(200);
+    const items = (
+      day.body as {
+        items: { title: string; why: string | null; goal: object | null }[];
+        workedMinutes: number;
+      }
+    ).items;
+    expect(items.find((item) => item.title === 'Laufen')).toMatchObject({
+      why: 'Halbmarathon im März',
+      goal: {
+        title: 'Ziel',
+        completed: 0,
+        target: 20,
+        periodEnd: period.periodEnd,
+      },
+      workedMinutes: 0,
+    });
+    expect(items.find((item) => item.title === 'Schuhe kaufen')).toMatchObject({
+      why: 'Ohne Blasen laufen',
+      goal: { title: 'Ziel', completed: null, target: null },
+    });
+    expect((day.body as { workedMinutes: number }).workedMinutes).toBe(0);
+  });
+
   it('refuses a second goal for the same habit in an overlapping period', async () => {
     const habitId = await habit();
     const goal = { ...period, goalHabitId: habitId, goalTarget: 3 };

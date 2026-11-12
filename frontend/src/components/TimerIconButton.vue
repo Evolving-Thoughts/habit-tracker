@@ -60,29 +60,34 @@ defineEmits<{ click: [] }>();
 .timer-icon {
   display: grid;
   place-items: center;
-  flex: 0 0 2.75rem;
-  width: 2.75rem;
-  height: 2.75rem;
+  flex: 0 0 var(--tap);
+  width: var(--tap);
+  height: var(--tap);
   padding: 0;
-  border: 1px solid #cad6f5;
+  border: 0;
   border-radius: 50%;
-  background: #eaf0ff;
-  color: #2457c5;
+  background: var(--color-action-tint);
+  color: var(--color-action-strong);
   cursor: pointer;
+  transition: transform 160ms var(--ease-out);
 }
 .timer-icon svg {
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.375rem;
+  height: 1.375rem;
 }
 .timer-icon:hover:not(:disabled) {
-  background: #dbe6ff;
+  background: #ffe2cf;
+}
+.timer-icon:active:not(:disabled) {
+  transform: scale(0.92);
 }
 .timer-icon:focus-visible {
-  outline: 3px solid #2457c5;
+  outline: 3px solid var(--color-action-strong);
   outline-offset: 3px;
 }
 .timer-icon:disabled {
-  opacity: 0.5;
+  background: transparent;
+  color: var(--color-ink-soft);
   cursor: not-allowed;
 }
 </style>

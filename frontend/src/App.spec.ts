@@ -31,37 +31,45 @@ function mountApp() {
     },
   });
 }
+function tab(wrapper: ReturnType<typeof mountApp>, name: string) {
+  return wrapper
+    .findAll("nav button")
+    .find(
+      (button) =>
+        (button.attributes("aria-label") ?? button.text().trim()) === name,
+    )!;
+}
 describe("App navigation", () => {
   it("starts with Today and offers five views", async () => {
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
-    expect(wrapper.findAll("nav button")).toHaveLength(8);
+    // Four tabs, Mehr, and four views behind it.
+    expect(wrapper.findAll("nav button")).toHaveLength(9);
   });
   it("opens the habit overview and marks only that navigation button active", async () => {
     const wrapper = mountApp();
     await flushPromises();
-    await wrapper.findAll("nav button")[3]!.trigger("click");
+    await tab(wrapper, "Habits").trigger("click");
     expect(wrapper.find('[data-view="habits"]').exists()).toBe(true);
     expect(wrapper.find('[data-view="today"]').exists()).toBe(false);
     expect(
       wrapper
         .findAll("nav button")
         .slice(0, 4)
-        .map((button) => button.attributes("aria-pressed")),
-    ).toEqual(["false", "false", "false", "true"]);
+        .map((button) => button.attributes("aria-current")),
+    ).toEqual([undefined, undefined, "page", undefined]);
   });
   it("opens the settings from the navigation", async () => {
     const wrapper = mountApp();
     await flushPromises();
-    const button = wrapper
-      .findAll("nav button")
-      .find(
-        (candidate) => candidate.attributes("aria-label") === "Einstellungen",
-      )!;
+    const button = tab(wrapper, "Einstellungen");
     await button.trigger("click");
     expect(wrapper.find('[data-view="settings"]').exists()).toBe(true);
-    expect(button.attributes("aria-pressed")).toBe("true");
+    expect(button.attributes("aria-current")).toBe("page");
+    expect(
+      wrapper.get(".tab-bar__more").attributes("data-active"),
+    ).toBeDefined();
   });
   it("returns from Google into the settings and cleans the address", async () => {
     history.replaceState(null, "", "/?calendar=connected");
@@ -73,10 +81,10 @@ describe("App navigation", () => {
   it("can move from Habits to Todo-Dump and back to Today", async () => {
     const wrapper = mountApp();
     await flushPromises();
-    await wrapper.findAll("nav button")[3]!.trigger("click");
-    await wrapper.findAll("nav button")[1]!.trigger("click");
+    await tab(wrapper, "Habits").trigger("click");
+    await tab(wrapper, "Todo-Dump").trigger("click");
     expect(wrapper.find('[data-view="dump"]').exists()).toBe(true);
-    await wrapper.findAll("nav button")[0]!.trigger("click");
+    await tab(wrapper, "Heute").trigger("click");
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
   });
 });
@@ -84,23 +92,30 @@ describe("App navigation", () => {
 it("opens the task hierarchy", async () => {
   const wrapper = mountApp();
   await flushPromises();
-  const button = wrapper
-    .findAll("nav button")
-    .find((button) => button.text() === "Aufgabenbaum")!;
+  const button = tab(wrapper, "Aufgabenbaum");
   await button.trigger("click");
   expect(wrapper.find('[data-view="hierarchy"]').exists()).toBe(true);
-  expect(button.attributes("aria-pressed")).toBe("true");
+  expect(button.attributes("aria-current")).toBe("page");
 });
 
 describe("History navigation", () => {
   it("opens history and marks it active", async () => {
     const wrapper = mountApp();
     await flushPromises();
-    await wrapper.findAll("nav button")[5]!.trigger("click");
+    await tab(wrapper, "Verlauf").trigger("click");
     expect(wrapper.find('[data-view="history"]').exists()).toBe(true);
-    expect(wrapper.findAll("nav button")[5]!.attributes("aria-pressed")).toBe(
-      "true",
-    );
+    expect(tab(wrapper, "Verlauf").attributes("aria-current")).toBe("page");
+  });
+
+  it("opens and closes the Mehr menu", async () => {
+    const wrapper = mountApp();
+    await flushPromises();
+    const more = wrapper.get(".tab-bar__more");
+    expect(more.attributes("aria-expanded")).toBe("false");
+    await more.trigger("click");
+    expect(more.attributes("aria-expanded")).toBe("true");
+    await tab(wrapper, "Verlauf").trigger("click");
+    expect(more.attributes("aria-expanded")).toBe("false");
   });
 });
 
@@ -124,7 +139,7 @@ describe("App authentication boundary", () => {
   it("logs out without retaining the previous view", async () => {
     const wrapper = mountApp();
     await flushPromises();
-    await wrapper.get('[aria-label="Einstellungen"]').trigger("click");
+    await tab(wrapper, "Einstellungen").trigger("click");
     await wrapper.get('[data-test="sign-out"]').trigger("click");
     await flushPromises();
     expect(logout).toHaveBeenCalled();

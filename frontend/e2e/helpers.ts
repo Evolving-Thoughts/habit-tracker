@@ -10,15 +10,26 @@ export function daysAfter(date: string, days: number): string {
   result.setUTCDate(result.getUTCDate() + days);
   return result.toISOString().slice(0, 10);
 }
+/** Opens a view; on phones the rarer views sit behind Mehr. */
+export async function openView(page: Page, name: string) {
+  const navigation = page.getByRole("navigation", { name: "Ansichten" });
+  const target = navigation.getByRole("button", { name, exact: true });
+  if (!(await target.isVisible()))
+    await navigation.getByRole("button", { name: "Mehr", exact: true }).click();
+  await target.click();
+}
+/** Today folds finished items away; this unfolds them. */
+export async function showResolved(page: Page) {
+  const toggle = page.getByRole("button", { name: /\d+ abgeschlossen/ });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true")
+    await toggle.click();
+}
 export async function visit(
   page: Page,
   view: "Heute" | "Todo-Dump" | "Habits",
 ) {
   await page.goto("/");
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: view, exact: true })
-    .click();
+  await openView(page, view);
   await expect(page.locator(".create-button")).toBeEnabled();
 }
 export async function createTodo(

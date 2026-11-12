@@ -28,7 +28,9 @@ const emit = defineEmits<{ click: [] }>();
 .create-button {
   position: fixed;
   right: calc(1rem + env(safe-area-inset-right, 0px));
-  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  bottom: calc(
+    var(--tab-bar-height) + 1rem + env(safe-area-inset-bottom, 0px)
+  );
   z-index: 20;
   display: grid;
   width: 3.5rem;
@@ -36,11 +38,12 @@ const emit = defineEmits<{ click: [] }>();
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: 0.875rem;
-  background: #2457c5;
-  color: #fff;
-  box-shadow: 0 2px 8px rgb(15 23 42 / 18%);
+  border-radius: 1.125rem;
+  background: var(--color-action);
+  color: var(--color-on-action);
+  box-shadow: 0 4px 14px rgb(154 51 10 / 28%);
   cursor: pointer;
+  transition: transform 420ms var(--spring);
 }
 .create-button svg {
   display: block;
@@ -48,14 +51,24 @@ const emit = defineEmits<{ click: [] }>();
   height: 1.5rem;
 }
 .create-button:hover:not(:disabled) {
-  background: #1c46a1;
+  background: var(--color-action-strong);
+}
+.create-button:active:not(:disabled) {
+  transform: var(--press);
 }
 .create-button:disabled {
-  opacity: 0.5;
-  cursor: wait;
+  background: var(--color-ink-soft);
+  cursor: not-allowed;
 }
 .create-button:focus-visible {
-  outline: 3px solid rgb(53 103 220 / 40%);
+  outline: 3px solid var(--color-action-strong);
   outline-offset: 3px;
+}
+@media (min-width: 56rem) {
+  /* Docked beside the page column instead of drifting to the window edge. */
+  .create-button {
+    right: max(1rem, calc(50vw - (var(--page-width) / 2) - 4.5rem));
+    bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  }
 }
 </style>
