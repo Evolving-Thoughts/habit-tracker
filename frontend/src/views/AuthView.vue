@@ -9,6 +9,7 @@ import {
   resetPassword,
 } from "../api/auth.api";
 import type { User } from "../api/auth.api";
+import AppIcon from "../components/AppIcon.vue";
 const props = defineProps<{
   link?: { kind: "verify" | "reset"; token: string };
 }>();
@@ -25,6 +26,9 @@ const message = ref("");
 const passwordMode = computed(() =>
   ["login", "register", "reset"].includes(mode.value),
 );
+const needsNewPassword = computed(() =>
+  ["register", "reset"].includes(mode.value),
+);
 const heading = computed(
   () =>
     ({
@@ -34,6 +38,20 @@ const heading = computed(
       resend: "Bestätigung erneut senden",
       verify: "E-Mail bestätigen",
       reset: "Neues Passwort festlegen",
+    })[mode.value],
+);
+const intro = computed(
+  () =>
+    ({
+      login:
+        "Schön, dass du da bist. Deine Aufgaben und Gewohnheiten, nur für dich.",
+      register:
+        "Ein Konto nur für dich. Danach schicken wir dir einen Link zur Bestätigung.",
+      forgot:
+        "Wir senden dir einen Link, mit dem du ein neues Passwort festlegen kannst.",
+      resend: "Wir senden dir den Bestätigungslink noch einmal.",
+      verify: "Bestätige deine E-Mail-Adresse mit diesem einmaligen Link.",
+      reset: "Wähle ein neues Passwort für dein Konto.",
     })[mode.value],
 );
 function select(next: typeof mode.value): void {
@@ -78,7 +96,7 @@ async function submit(): Promise<void> {
       await resetPassword(props.link.token, password.value);
       selectAfter("login");
       message.value =
-        "Passwort geändert. Bitte melde dich erneut an. Alle bisherigen Sessions wurden beendet.";
+        "Passwort geändert. Bitte melde dich neu an. Auf allen anderen Geräten bist du jetzt abgemeldet.";
     }
   } catch (cause) {
     error.value =
@@ -96,13 +114,19 @@ function selectAfter(next: typeof mode.value): void {
 </script>
 <template>
   <main class="auth-page">
-    <p class="eyebrow">HABIT TRACKER</p>
     <section class="auth-card" aria-labelledby="auth-heading">
-      <h1 id="auth-heading">{{ heading }}</h1>
-      <p class="intro">Deine Aufgaben und Gewohnheiten. Nur für dich.</p>
-      <form @submit.prevent="submit">
+      <p class="wordmark">
+        <span class="wordmark__mark"><AppIcon name="habits" /></span>
+        Habit Tracker
+      </p>
+      <h1 id="auth-heading" class="auth-card__title">{{ heading }}</h1>
+      <p class="auth-card__intro">{{ intro }}</p>
+      <form class="auth-form" @submit.prevent="submit">
         <fieldset :disabled="pending">
-          <label v-if="!['verify', 'reset'].includes(mode)" for="auth-email"
+          <label
+            v-if="!['verify', 'reset'].includes(mode)"
+            class="field"
+            for="auth-email"
             >E-Mail-Adresse
             <input
               id="auth-email"
@@ -114,7 +138,7 @@ function selectAfter(next: typeof mode.value): void {
               required
             />
           </label>
-          <label v-if="passwordMode" for="auth-password"
+          <label v-if="passwordMode" class="field" for="auth-password"
             >{{ mode === "reset" ? "Neues Passwort" : "Passwort" }}
             <input
               id="auth-password"
@@ -127,14 +151,14 @@ function selectAfter(next: typeof mode.value): void {
               minlength="12"
               maxlength="128"
               required
-              aria-describedby="password-help"
+              :aria-describedby="needsNewPassword ? 'password-help' : undefined"
             />
           </label>
-          <p v-if="passwordMode" id="password-help" class="hint">
+          <p v-if="needsNewPassword" id="password-help" class="auth-form__hint">
             Mindestens 12 Zeichen. Ein langer, einzigartiger Satz eignet sich
             gut.
           </p>
-          <label v-if="['register', 'reset'].includes(mode)" for="auth-confirm"
+          <label v-if="needsNewPassword" class="field" for="auth-confirm"
             >Passwort wiederholen
             <input
               id="auth-confirm"
@@ -147,21 +171,17 @@ function selectAfter(next: typeof mode.value): void {
               required
             />
           </label>
-          <p v-if="mode === 'verify'" class="hint">
-            Bestätige deine E-Mail-Adresse mit diesem einmaligen Link.
+          <p v-if="error" role="alert" class="form-error auth-form__error">
+            {{ error }}
           </p>
-          <p v-if="mode === 'forgot'" class="hint">
-            Wir senden dir einen Link, mit dem du ein neues Passwort festlegen
-            kannst.
-          </p>
-          <button class="primary" type="submit">
+          <button class="btn btn--primary auth-form__submit" type="submit">
             {{
               pending
                 ? "Bitte warten …"
                 : {
                     login: "Anmelden",
                     register: "Registrieren",
-                    forgot: "Reset-Link senden",
+                    forgot: "Link senden",
                     resend: "Bestätigungslink senden",
                     verify: "E-Mail bestätigen",
                     reset: "Passwort speichern",
@@ -170,164 +190,167 @@ function selectAfter(next: typeof mode.value): void {
           </button>
         </fieldset>
       </form>
-      <p v-if="error" role="alert" class="error">{{ error }}</p>
-      <p v-if="message" role="status" class="success">{{ message }}</p>
+      <p v-if="message" role="status" class="auth-card__message">
+        {{ message }}
+      </p>
       <div class="auth-links">
-        <button
-          v-if="mode !== 'login'"
-          type="button"
-          :disabled="pending"
-          @click="select('login')"
-        >
-          Zur Anmeldung
-        </button>
-        <template v-else>
-          <button type="button" :disabled="pending" @click="select('register')">
-            Konto erstellen
-          </button>
-          <button type="button" :disabled="pending" @click="select('forgot')">
+        <template v-if="mode === 'login'">
+          <button
+            class="btn btn--link"
+            type="button"
+            :disabled="pending"
+            @click="select('forgot')"
+          >
             Passwort vergessen?
           </button>
-          <button type="button" :disabled="pending" @click="select('resend')">
+          <button
+            class="btn btn--link"
+            type="button"
+            :disabled="pending"
+            @click="select('register')"
+          >
+            Konto erstellen
+          </button>
+          <button
+            class="btn btn--link auth-links__minor"
+            type="button"
+            :disabled="pending"
+            @click="select('resend')"
+          >
             Bestätigung erneut senden
           </button>
         </template>
-        <button
-          v-if="mode === 'verify'"
-          type="button"
-          :disabled="pending"
-          @click="select('resend')"
-        >
-          Neuen Bestätigungslink anfordern
-        </button>
-        <button
-          v-if="mode === 'reset'"
-          type="button"
-          :disabled="pending"
-          @click="select('forgot')"
-        >
-          Neuen Reset-Link anfordern
-        </button>
+        <template v-else>
+          <button
+            v-if="mode === 'verify'"
+            class="btn btn--link"
+            type="button"
+            :disabled="pending"
+            @click="select('resend')"
+          >
+            Neuen Bestätigungslink anfordern
+          </button>
+          <button
+            v-if="mode === 'reset'"
+            class="btn btn--link"
+            type="button"
+            :disabled="pending"
+            @click="select('forgot')"
+          >
+            Neuen Link anfordern
+          </button>
+          <button
+            class="btn btn--link"
+            type="button"
+            :disabled="pending"
+            @click="select('login')"
+          >
+            Zurück zur Anmeldung
+          </button>
+        </template>
       </div>
     </section>
   </main>
 </template>
 <style scoped>
 .auth-page {
-  width: min(100% - 2rem, 28rem);
-  margin: 3rem auto;
-}
-.eyebrow {
-  color: #566581;
-  font-size: 0.875rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  margin: 0 0 1rem;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: var(--space-6) var(--space-4);
 }
 .auth-card {
-  background: white;
-  padding: 1.5rem;
-  border: 1px solid #ccd2dc;
-  border-radius: 1rem;
+  width: min(100%, 27rem);
+  padding: var(--space-6) var(--space-5) var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
 }
-h1 {
-  margin: 0;
-  font-size: 1.75rem;
-  line-height: 1.2;
-}
-.intro,
-.hint {
-  color: #566581;
-  line-height: 1.5;
-}
-.intro {
-  margin: 0.75rem 0 1.5rem;
-}
-fieldset {
-  border: 0;
-  padding: 0;
-  margin: 0;
-  min-width: 0;
-}
-label {
-  display: block;
-  margin-bottom: 1rem;
-  font-weight: 600;
-}
-input {
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  margin-top: 0.5rem;
-  min-height: 3rem;
-  padding: 0.7rem;
-  font: inherit;
-  border: 1px solid #7b8aa3;
-  border-radius: 0.5rem;
-}
-.hint {
-  font-size: 0.875rem;
-  margin: -0.25rem 0 1rem;
-}
-button {
-  min-height: 2.75rem;
-  font: inherit;
-  cursor: pointer;
-  border-radius: 0.5rem;
-}
-.primary {
-  width: 100%;
-  border: 1px solid #2457c5;
-  background: #2457c5;
-  color: white;
-  padding: 0.7rem 1rem;
-}
-.auth-links {
-  border-top: 1px solid #e0e5ed;
-  margin-top: 1.5rem;
-  padding-top: 0.75rem;
+.wordmark {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.25rem;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0 0 var(--space-5);
+  color: var(--color-ink);
+  font-size: 1.125rem;
+  font-weight: 800;
 }
-.auth-links button {
-  background: transparent;
+.wordmark__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: var(--color-action-tint);
+  color: var(--color-ink);
+}
+.wordmark__mark :deep(svg) {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+.auth-card__title {
+  margin: 0;
+  font-size: clamp(1.5rem, 6vw, 1.875rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+.auth-card__intro {
+  margin: var(--space-2) 0 var(--space-5);
+  color: var(--color-ink-muted);
+  text-wrap: pretty;
+}
+.auth-form fieldset {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
   border: 0;
-  color: #2457c5;
-  text-align: left;
-  padding: 0.5rem 0;
 }
-.error,
-.success {
-  padding: 0.75rem;
-  border-radius: 0.5rem;
-  line-height: 1.5;
+.auth-form__hint {
+  margin: calc(var(--space-2) * -1) 0 0;
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+}
+.auth-form__error {
   overflow-wrap: anywhere;
 }
-.error {
-  background: #fff0f1;
-  color: #a51222;
+.auth-form__submit {
+  width: 100%;
+  min-height: 3.25rem;
+  margin-top: var(--space-1);
+  border-radius: var(--radius-control);
+  font-size: 1.0625rem;
 }
-.success {
-  background: #edf7f1;
-  color: #1e603c;
+.auth-card__message {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-ground);
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
 }
-:focus-visible {
-  outline: 3px solid #2457c5;
-  outline-offset: 3px;
+.auth-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  justify-content: center;
+  margin-top: var(--space-4);
 }
-button:disabled,
-fieldset:disabled {
-  opacity: 0.65;
-  cursor: wait;
+.auth-links__minor {
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
 }
 @media (max-width: 32rem) {
   .auth-page {
-    margin: 1.5rem auto;
+    padding: var(--space-4);
   }
   .auth-card {
-    padding: 1.25rem;
+    padding: var(--space-5) var(--space-4) var(--space-3);
   }
 }
 </style>

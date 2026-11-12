@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onUnmounted, ref } from "vue";
 import {
   createCategory,
   deleteCategory,
@@ -7,14 +7,25 @@ import {
   renameCategory,
   setCategoryTarget,
 } from "../api/categories.api";
+import AppIcon from "../components/AppIcon.vue";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import type { CategoryResponse } from "../types/category";
+import { categoryMark } from "../utils/category-mark";
 
 const newName = ref("");
 const editingId = ref<number | null>(null);
 const editedName = ref("");
 const deletingId = ref<number | null>(null);
+/** Write errors stay next to the form; load errors get the recovery panel. */
+const saveError = ref<string | null>(null);
+/** Quiet per-row feedback after a weekly target change. */
+const targetFeedback = ref<
+  | { id: number; saved: true }
+  | { id: number; saved: false; message: string }
+  | null
+>(null);
+let feedbackTimer: ReturnType<typeof setTimeout> | undefined;
 
 const {
   data: categories,
@@ -26,7 +37,9 @@ const {
   fallbackError: "Die Kategorien konnten nicht geladen werden.",
   refreshOnChange: () => !isSaving.value && editingId.value === null,
 });
-const { write, busy: isSaving } = useWrites(reload, errorMessage);
+const { write, busy: isSaving } = useWrites(reload, saveError);
+
+onUnmounted(() => clearTimeout(feedbackTimer));
 
 const run = (action: () => Promise<unknown>): Promise<boolean> =>
   write(action, {
@@ -50,12 +63,36 @@ async function saveName(id: number): Promise<void> {
     editingId.value = null;
 }
 
+function showTargetFeedback(
+  feedback: NonNullable<typeof targetFeedback.value>,
+): void {
+  clearTimeout(feedbackTimer);
+  targetFeedback.value = feedback;
+  if (feedback.saved)
+    feedbackTimer = setTimeout(() => (targetFeedback.value = null), 2000);
+}
+
 async function saveTarget(id: number, value: string): Promise<void> {
   const target = Number(value);
-  if (!value) await run(() => setCategoryTarget(id, null));
-  else if (Number.isInteger(target) && target >= 1)
-    await run(() => setCategoryTarget(id, target));
-  else errorMessage.value = "Das Wochensoll muss eine ganze Zahl ab 1 sein.";
+  if (value && !(Number.isInteger(target) && target >= 1)) {
+    showTargetFeedback({
+      id,
+      saved: false,
+      message: "Das Wochensoll muss eine ganze Zahl ab 1 sein.",
+    });
+    return;
+  }
+  const saved = await run(() => setCategoryTarget(id, value ? target : null));
+  if (saved) showTargetFeedback({ id, saved: true });
+  else {
+    showTargetFeedback({
+      id,
+      saved: false,
+      message:
+        saveError.value ?? "Das Wochensoll konnte nicht gespeichert werden.",
+    });
+    saveError.value = null;
+  }
 }
 
 async function remove(id: number): Promise<void> {
@@ -64,30 +101,77 @@ async function remove(id: number): Promise<void> {
 </script>
 
 <template>
-  <main class="categories-view">
-    <h1>Kategorien</h1>
+  <main class="page categories-view">
+    <header class="page-header">
+      <h1 class="page-title">Kategorien</h1>
+      <p class="page-lead">
+        Kategorien ordnen deine Aufgaben und Habits. Ein Wochensoll ist
+        freiwillig.
+      </p>
+    </header>
 
-    <form class="categories-view__row" @submit.prevent="add">
-      <label class="categories-view__grow">
+    <form class="categories-view__create" @submit.prevent="add">
+      <label class="field categories-view__grow">
         Neue Kategorie
         <input v-model="newName" name="name" maxlength="60" />
       </label>
-      <button type="submit" :disabled="isSaving || !newName.trim()">
-        Hinzufügen
+      <button
+        class="btn btn--primary"
+        type="submit"
+        :disabled="isSaving || !newName.trim()"
+      >
+        <AppIcon name="plus" />
+        Anlegen
       </button>
     </form>
-
-    <p v-if="errorMessage" class="categories-view__error" role="alert">
-      {{ errorMessage }}
-    </p>
-    <p v-if="isLoading">Kategorien werden geladen …</p>
-    <p v-else-if="!categories.length && !errorMessage">
-      Noch keine Kategorien. Zuordnen kannst du sie beim Bearbeiten eines Todos
-      oder Habits.
+    <p
+      v-if="saveError"
+      class="form-error categories-view__save-error"
+      role="alert"
+    >
+      {{ saveError }}
     </p>
 
-    <ul class="categories-view__list">
-      <li v-for="category in categories" :key="category.id">
+    <div
+      v-if="isLoading"
+      class="skeleton categories-view__state"
+      role="status"
+      aria-label="Kategorien werden geladen"
+    >
+      <span />
+      <span />
+      <span />
+    </div>
+
+    <div
+      v-else-if="errorMessage"
+      class="alert categories-view__state"
+      role="alert"
+    >
+      <p>{{ errorMessage }}</p>
+      <button class="btn btn--ground" type="button" @click="reload()">
+        <AppIcon name="refresh" />
+        Erneut versuchen
+      </button>
+    </div>
+
+    <div
+      v-else-if="!categories.length"
+      class="empty-state categories-view__state"
+    >
+      <strong>Noch keine Kategorien.</strong>
+      <span>
+        Lege oben eine an. Zuordnen kannst du sie beim Bearbeiten einer Aufgabe
+        oder eines Habits.
+      </span>
+    </div>
+
+    <ul v-else class="card categories-view__list">
+      <li
+        v-for="category in categories"
+        :key="category.id"
+        class="categories-view__item"
+      >
         <form
           v-if="editingId === category.id"
           class="categories-view__row"
@@ -95,53 +179,109 @@ async function remove(id: number): Promise<void> {
         >
           <input
             v-model="editedName"
-            class="categories-view__grow"
-            :aria-label="`${category.name} umbenennen`"
+            class="input categories-view__grow"
+            :aria-label="`Neuer Name für ${category.name}`"
             maxlength="60"
           />
-          <button type="submit" :disabled="isSaving">Speichern</button>
-          <button type="button" @click="editingId = null">Abbrechen</button>
+          <button class="btn" type="submit" :disabled="isSaving">
+            Speichern
+          </button>
+          <button
+            class="btn btn--quiet"
+            type="button"
+            @click="editingId = null"
+          >
+            Abbrechen
+          </button>
         </form>
-        <div v-else-if="deletingId === category.id">
+
+        <div
+          v-else-if="deletingId === category.id"
+          class="categories-view__confirm"
+        >
           <p>
             „{{ category.name }}“ löschen? Zugeordnete Einträge bleiben ohne
             Kategorie erhalten.
           </p>
           <div class="categories-view__row">
             <button
+              class="btn btn--danger"
               type="button"
               :disabled="isSaving"
               @click="remove(category.id)"
             >
               Löschen
             </button>
-            <button type="button" @click="deletingId = null">Abbrechen</button>
+            <button
+              class="btn btn--quiet"
+              type="button"
+              @click="deletingId = null"
+            >
+              Abbrechen
+            </button>
           </div>
         </div>
-        <div v-else class="categories-view__row">
-          <span class="categories-view__grow">{{ category.name }}</span>
-          <label class="categories-view__target">
-            Wochensoll
-            <input
-              type="number"
-              min="1"
-              step="1"
-              :value="category.weeklyTarget ?? ''"
-              :aria-label="`Wochensoll für ${category.name}`"
-              @change="
-                saveTarget(
-                  category.id,
-                  ($event.target as HTMLInputElement).value,
-                )
-              "
-            />
-          </label>
-          <button type="button" @click="startEditing(category)">
-            Umbenennen
-          </button>
-          <button type="button" @click="deletingId = category.id">
-            Löschen
-          </button>
+
+        <div v-else class="categories-view__entry">
+          <span
+            class="category-mark"
+            :style="{ background: categoryMark(category.name) }"
+            aria-hidden="true"
+          />
+          <span class="categories-view__name">{{ category.name }}</span>
+          <div class="categories-view__target">
+            <label class="categories-view__target-field">
+              <span aria-hidden="true">Wochensoll</span>
+              <input
+                class="input"
+                type="number"
+                inputmode="numeric"
+                min="1"
+                step="1"
+                :value="category.weeklyTarget ?? ''"
+                :aria-label="`Wochensoll für ${category.name}`"
+                @change="
+                  saveTarget(
+                    category.id,
+                    ($event.target as HTMLInputElement).value,
+                  )
+                "
+              />
+            </label>
+            <span class="categories-view__status" aria-live="polite">
+              <template
+                v-if="
+                  targetFeedback?.id === category.id && targetFeedback.saved
+                "
+                >Gespeichert</template
+              >
+            </span>
+          </div>
+          <div class="categories-view__actions">
+            <button
+              class="btn btn--quiet btn--icon"
+              type="button"
+              :aria-label="`${category.name} umbenennen`"
+              @click="startEditing(category)"
+            >
+              <AppIcon name="edit" />
+            </button>
+            <button
+              class="btn btn--quiet btn--icon"
+              type="button"
+              :aria-label="`${category.name} löschen`"
+              @click="deletingId = category.id"
+            >
+              <AppIcon name="trash" />
+            </button>
+          </div>
+          <p
+            v-if="targetFeedback?.id === category.id && !targetFeedback.saved"
+            class="form-error categories-view__row-error"
+            role="alert"
+          >
+            {{ targetFeedback.message }}
+          </p>
         </div>
       </li>
     </ul>
@@ -149,81 +289,145 @@ async function remove(id: number): Promise<void> {
 </template>
 
 <style scoped>
-.categories-view {
-  display: grid;
-  gap: 1rem;
-  width: min(100%, 42rem);
-  margin: 0 auto;
-  padding: 1.5rem 1rem;
+.categories-view__create {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: end;
 }
 
-.categories-view h1,
-.categories-view p {
-  margin: 0;
+.categories-view__grow {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.categories-view__save-error {
+  margin-top: var(--space-2);
+}
+
+.categories-view__state,
+.categories-view__list {
+  margin-top: var(--space-5);
+}
+
+.categories-view__list {
+  margin-bottom: 0;
+  padding: var(--space-1) var(--space-4);
+  list-style: none;
+}
+
+.categories-view__item {
+  padding: var(--space-2) 0;
+}
+
+.categories-view__item + .categories-view__item {
+  border-top: 1px solid var(--color-line);
 }
 
 .categories-view__row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: end;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
 }
 
-.categories-view__grow {
-  display: grid;
-  flex: 1 1 12rem;
-  gap: 0.25rem;
+.category-mark {
+  flex: none;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 0.2rem;
+}
+
+.categories-view__name {
+  flex: 1 1 8rem;
   min-width: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 
+/* Mobile: name and actions on one line, the weekly target below the name. */
+.categories-view__entry {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "mark name actions"
+    ". target target"
+    ". error error";
+  gap: 0 var(--space-3);
+  align-items: center;
+}
+
+.categories-view__entry .category-mark {
+  grid-area: mark;
+}
+
+.categories-view__name {
+  grid-area: name;
+}
+
 .categories-view__target {
+  grid-area: target;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  padding-bottom: var(--space-1);
+}
+
+.categories-view__target-field {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.categories-view__target .input {
+  width: 4.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.categories-view__actions {
+  grid-area: actions;
+  display: flex;
+  margin-inline-end: calc(var(--space-2) * -1);
+}
+
+.categories-view__status {
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.categories-view__row-error {
+  grid-area: error;
+  padding-bottom: var(--space-1);
+}
+
+@media (min-width: 36rem) {
+  .categories-view__entry {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "mark name target actions"
+      ". error error error";
+  }
+
+  .categories-view__target {
+    flex-direction: row-reverse;
+    padding-bottom: 0;
+  }
+}
+
+.categories-view__confirm {
   display: grid;
-  gap: 0.25rem;
-  width: 6rem;
-  font-size: 0.8125rem;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
 }
 
-.categories-view__target input {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.categories-view input {
-  min-height: 2.75rem;
-  padding: 0 0.625rem;
-  border: 1px solid #d9dde5;
-  border-radius: 0.625rem;
-  font: inherit;
-}
-
-.categories-view button {
-  min-height: 2.75rem;
-  padding: 0 0.875rem;
-  border: 1px solid #d9dde5;
-  border-radius: 0.625rem;
-  background: #ffffff;
-  color: #182033;
-  font: inherit;
-  cursor: pointer;
-}
-
-.categories-view__list {
-  display: grid;
-  gap: 0.5rem;
+.categories-view__confirm p {
   margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.categories-view__list li {
-  padding: 0.75rem;
-  border: 1px solid #d9dde5;
-  border-radius: 0.875rem;
-  background: #ffffff;
-}
-
-.categories-view__error {
-  color: #b42318;
 }
 </style>

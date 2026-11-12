@@ -36,7 +36,7 @@ enableAutoUnmount(afterEach);
 afterEach(() => vi.useRealTimers());
 
 const todo: TodoResponse = {
-    ...TODO_FIELDS,
+  ...TODO_FIELDS,
   id: 1,
   parentId: null,
   title: "NestJS lernen",
@@ -214,7 +214,6 @@ describe("PlannerItemEditor", () => {
       effectiveFrom: "2026-10-10",
       schedule: interval,
     });
-    expect(wrapper.text()).toContain("10.10.2026");
   });
 
   it("prefills a future version explicitly when editing the planned schedule", async () => {

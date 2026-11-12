@@ -3,6 +3,8 @@ export type HistoryItem = {
   id: number;
   habitId: number | null;
   title: string;
+  categoryName: string | null;
+  why: string | null;
   status: "completed" | "skipped";
   date: string;
   scheduledDate: string | null;
@@ -16,6 +18,8 @@ export type HistoryPlannedItem = {
   id: number | null;
   habitId: number | null;
   title: string;
+  categoryName: string | null;
+  why: string | null;
   date: string;
   scheduledDate: string;
   isOverdue: boolean;

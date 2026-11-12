@@ -21,7 +21,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <select :id="id" v-model="choice" class="category-select" name="category">
+  <select :id="id" v-model="choice" name="category">
     <option value="default">
       {{ inheritsFromParent ? "Wie übergeordnetes Todo" : "Keine" }}
     </option>
@@ -35,17 +35,3 @@ onMounted(async () => {
     </option>
   </select>
 </template>
-
-<style scoped>
-.category-select {
-  width: 100%;
-  height: 3rem;
-  min-width: 0;
-  padding: 0.7rem;
-  border: 1px solid #bfc7d4;
-  border-radius: 0.5rem;
-  background: #ffffff;
-  color: #182033;
-  font: inherit;
-}
-</style>

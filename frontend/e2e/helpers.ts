@@ -10,15 +10,94 @@ export function daysAfter(date: string, days: number): string {
   result.setUTCDate(result.getUTCDate() + days);
   return result.toISOString().slice(0, 10);
 }
+const SHORT_MONTHS = [
+  "Jan.",
+  "Feb.",
+  "März",
+  "Apr.",
+  "Mai",
+  "Juni",
+  "Juli",
+  "Aug.",
+  "Sept.",
+  "Okt.",
+  "Nov.",
+  "Dez.",
+];
+const WEEKDAYS = [
+  "Sonntag",
+  "Montag",
+  "Dienstag",
+  "Mittwoch",
+  "Donnerstag",
+  "Freitag",
+  "Samstag",
+];
+/** "7. Okt.", as the calendar writes dates. */
+export function shortDate(date: string): string {
+  return `${Number(date.slice(8, 10))}. ${SHORT_MONTHS[Number(date.slice(5, 7)) - 1]}`;
+}
+/** "Mittwoch, 7. Okt." */
+export function dayLabel(date: string): string {
+  return `${WEEKDAYS[new Date(`${date}T12:00:00Z`).getUTCDay()]}, ${shortDate(date)}`;
+}
+/** Opens a view; on phones the rarer views sit behind Mehr. */
+export async function openView(page: Page, name: string) {
+  const navigation = page.getByRole("navigation", { name: "Ansichten" });
+  const target = navigation.getByRole("button", { name, exact: true });
+  await expect(navigation).toBeVisible();
+  if (!(await target.isVisible()))
+    await navigation.getByRole("button", { name: "Mehr", exact: true }).click();
+  await target.click();
+}
+/** Opens Kalender (Monat by default) and waits until it has loaded. */
+export async function openCalendar(
+  page: Page,
+  mode: "Monat" | "Woche" | "Tag" = "Monat",
+) {
+  await openView(page, "Kalender");
+  const view = page.locator(".calendar-view");
+  const loading = view.getByRole("status", { name: "Kalender wird geladen" });
+  await expect(view).toBeVisible();
+  await expect(loading).toHaveCount(0);
+  if (mode !== "Monat") {
+    await view.getByRole("button", { name: mode, exact: true }).click();
+    await expect(
+      view.getByRole("button", { name: mode, exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(loading).toHaveCount(0);
+  }
+  return view;
+}
+/** Picks Alle, Todos or Habits in the calendar filter. */
+export async function filterCalendar(
+  page: Page,
+  label: "Alle" | "Todos" | "Habits",
+) {
+  const menuButton = page
+    .locator(".calendar-view")
+    .getByRole("button", { name: /^Einträge: / });
+  await menuButton.click();
+  await expect(menuButton).toHaveAttribute("aria-expanded", "true");
+  await page
+    .getByRole("menu", { name: "Einträge" })
+    .getByRole("menuitemradio", { name: label, exact: true })
+    .click();
+  await expect(page.getByRole("menu", { name: "Einträge" })).toHaveCount(0);
+  await expect(menuButton).toHaveAccessibleName(`Einträge: ${label}`);
+}
+/** Today folds finished items away; this unfolds them. */
+export async function showResolved(page: Page) {
+  const toggle = page.getByRole("button", { name: /\d+ abgeschlossen/ });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true")
+    await toggle.click();
+}
 export async function visit(
   page: Page,
   view: "Heute" | "Todo-Dump" | "Habits",
 ) {
   await page.goto("/");
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: view, exact: true })
-    .click();
+  await openView(page, view);
   await expect(page.locator(".create-button")).toBeEnabled();
 }
 export async function createTodo(

@@ -72,12 +72,34 @@ onUnmounted(() => {
 </script>
 <template>
   <div class="push-settings">
-    <p>Diese Einstellung gilt nur für dieses Gerät und diesen Browser.</p>
-    <p>
-      Alle angemeldeten Geräte mit aktiviertem Push erhalten die neutrale
-      Nachricht „Dein Timer ist abgelaufen“ — ohne Aufgaben- oder Habit-Titel.
+    <div class="push-settings__row">
+      <span id="push-settings-label" class="push-settings__label">
+        Timer-Benachrichtigungen
+      </span>
+      <button
+        v-if="
+          available &&
+          (enabled || (config.configured && permission !== 'denied'))
+        "
+        data-test="push-toggle"
+        class="push-switch"
+        type="button"
+        role="switch"
+        aria-labelledby="push-settings-label"
+        :aria-checked="enabled"
+        :disabled="busy"
+        @click="toggle"
+      >
+        <span class="push-switch__track" aria-hidden="true">
+          <span class="push-switch__thumb" />
+        </span>
+      </button>
+    </div>
+    <p class="push-settings__text">
+      Meldet auf diesem Gerät, wenn ein Timer abläuft, ohne Aufgaben- oder
+      Habit-Titel.
     </p>
-    <p role="status">
+    <p class="visually-hidden" role="status">
       {{
         busy
           ? "Einstellung wird geprüft …"
@@ -86,73 +108,112 @@ onUnmounted(() => {
             : "Auf diesem Gerät deaktiviert"
       }}
     </p>
-    <p v-if="!available">
-      Push benötigt einen unterstützten Browser und die gebaute PWA über HTTPS.
+    <p v-if="!available" class="push-settings__hint">
+      Dieser Browser kann hier keine Benachrichtigungen anzeigen. Öffne die App
+      dafür als installierte App auf deinem Handy.
     </p>
-    <p v-else-if="!config.configured">
-      Push ist auf dem Server noch nicht eingerichtet.
+    <p v-else-if="!config.configured" class="push-settings__hint">
+      Benachrichtigungen sind auf dem Server noch nicht eingerichtet.
     </p>
-    <p v-else-if="permission === 'denied'">
-      Benachrichtigungen sind durch den Browser blockiert. Du kannst die
-      Erlaubnis in seinen Website-Einstellungen ändern.
+    <p v-else-if="permission === 'denied'" class="push-settings__hint">
+      Dein Browser blockiert Benachrichtigungen für diese App. Du kannst sie in
+      den Website-Einstellungen des Browsers wieder erlauben.
     </p>
-    <button
-      v-if="
-        available && (enabled || (config.configured && permission !== 'denied'))
-      "
-      data-test="push-toggle"
-      type="button"
-      role="switch"
-      :aria-checked="enabled"
-      :disabled="busy"
-      @click="toggle"
-    >
-      {{ enabled ? "Push deaktivieren" : "Push aktivieren" }}
-    </button>
-    <p v-if="error" role="alert">{{ error }}</p>
-    <button v-if="error" type="button" :disabled="busy" @click="refresh">
-      Erneut prüfen
-    </button>
-    <p>
-      Nach dem Abmelden werden keine neuen Meldungen an dieses Gerät versandt.
-      Die Browser-Erlaubnis bleibt bestehen. Bewusst deaktiviertes Push bleibt
-      auch nach einem neuen Login deaktiviert.
-    </p>
-    <p>
-      Die Zustellung kann durch Android oder das Netzwerk verzögert werden. Für
-      den Tunnel-Test müssen PC und Backend laufen.
-    </p>
+    <template v-if="error">
+      <p class="form-error" role="alert">{{ error }}</p>
+      <button
+        class="btn push-settings__retry"
+        type="button"
+        :disabled="busy"
+        @click="refresh"
+      >
+        Erneut prüfen
+      </button>
+    </template>
   </div>
 </template>
 <style scoped>
 .push-settings {
-  font-size: 0.875rem;
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
 }
-p {
-  margin: 0 0 1rem;
-  color: #526481;
-  line-height: 1.5;
+.push-settings p {
+  margin: 0;
 }
-button {
-  min-height: 2.75rem;
-  padding: 0.65rem 1rem;
-  border: 1px solid #ccd2dc;
-  border-radius: 0.625rem;
-  background: #fff;
-  color: #2f3a4f;
-  font: inherit;
+.push-settings__row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  justify-self: stretch;
+  min-height: var(--tap);
+}
+.push-settings__label {
+  font-weight: 700;
+}
+.push-settings__text,
+.push-settings__hint {
+  max-width: 65ch;
+  color: var(--color-ink-muted);
+  text-wrap: pretty;
+}
+.push-settings__hint {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-ground);
+  color: var(--color-ink);
+}
+.push-settings__retry {
+  margin-top: var(--space-1);
+}
+/* The switch: a 2.75rem tap target around a small track. */
+.push-switch {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  min-width: 3.75rem;
+  min-height: var(--tap);
+  margin-inline-end: calc(var(--space-2) * -1);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
   cursor: pointer;
+  transition: transform 420ms var(--spring);
 }
-button:disabled {
-  opacity: 0.55;
-  cursor: default;
+.push-switch:active:not(:disabled) {
+  transform: var(--press);
+  transition-duration: 90ms;
 }
-[role="alert"] {
-  color: #b91c1c;
-  margin-top: 1rem;
+.push-switch:disabled {
+  cursor: progress;
 }
-[role="switch"][aria-checked="true"] {
-  background: #2457c5;
-  color: white;
+.push-switch__track {
+  display: flex;
+  align-items: center;
+  width: 3rem;
+  height: 1.75rem;
+  padding: 0.1875rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-ink-soft);
+  transition: background-color 160ms var(--ease-out);
+}
+.push-switch__thumb {
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 50%;
+  background: var(--color-surface);
+  box-shadow: 0 1px 2px rgb(43 29 22 / 20%);
+  transition: transform 320ms var(--spring);
+}
+.push-switch[aria-checked="true"] .push-switch__track {
+  background: var(--color-action);
+}
+.push-switch[aria-checked="true"] .push-switch__thumb {
+  transform: translateX(1.25rem);
+}
+.push-switch:disabled .push-switch__track {
+  opacity: 0.6;
 }
 </style>

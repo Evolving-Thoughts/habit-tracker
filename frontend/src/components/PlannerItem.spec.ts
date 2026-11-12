@@ -50,27 +50,58 @@ function makeHabit(
 }
 
 describe("PlannerItem", () => {
-  it("shows a todo with German date, time and duration", () => {
+  it("shows the given time, duration and the fixed flag once", () => {
     const wrapper = mount(PlannerItem, {
       props: {
-        item: makeTodo(),
+        item: makeTodo({ categoryName: "Lernen" }),
+        time: "10:00",
         isUpdating: false,
       },
     });
 
     expect(wrapper.get("h3").text()).toBe("NestJS lernen");
-
-    expect(wrapper.text()).toContain("02.10.2026");
-
-    // Am 02.10. gilt in Berlin UTC+2.
-    expect(wrapper.text()).toContain("10:00");
+    expect(wrapper.get(".planner-item__time").text()).toBe("10:00");
+    expect(wrapper.text()).toContain("Lernen");
     expect(wrapper.text()).toContain("30 Min.");
     expect(wrapper.text()).toContain("Fester Termin");
-
-    expect(wrapper.get(".planner-item__status").text()).toBe("Offen");
+    // The day is today; repeating it on every row is noise.
+    expect(wrapper.text()).not.toContain("02.10.2026");
   });
 
-  it("shows actual completion time for an unscheduled Todo without a fake planning time or Play", () => {
+  it("puts logged time beside the planned time and names the goal", () => {
+    const wrapper = mount(PlannerItem, {
+      props: {
+        item: makeTodo({
+          workedMinutes: 45,
+          plannedDurationMinutes: 60,
+          goal: {
+            title: "Halbmarathon",
+            completed: null,
+            target: null,
+            periodEnd: null,
+          },
+        }),
+        isUpdating: false,
+      },
+    });
+    expect(wrapper.text()).toContain("45/60 Min.");
+    expect(wrapper.text()).toContain("Ziel: Halbmarathon");
+  });
+
+  it("shows the original day for carried-over items and hides actions when compact", () => {
+    const wrapper = mount(PlannerItem, {
+      props: {
+        item: makeHabit({ isOverdue: true, scheduledDate: "2026-09-28" }),
+        isUpdating: false,
+        showDate: true,
+        compact: true,
+      },
+    });
+    expect(wrapper.get(".planner-item__time").text()).toBe("28.09.");
+    expect(wrapper.find(".planner-item__skip-button").exists()).toBe(false);
+  });
+
+  it("offers no Play for a completed Todo", () => {
     const wrapper = mount(PlannerItem, {
       props: {
         item: makeTodo({
@@ -81,7 +112,6 @@ describe("PlannerItem", () => {
         isUpdating: false,
       },
     });
-    expect(wrapper.text()).toContain("Erledigt um 20:30");
     expect(
       wrapper.find('[aria-label="Timer für NestJS lernen starten"]').exists(),
     ).toBe(false);
@@ -199,8 +229,6 @@ describe("PlannerItem", () => {
     });
 
     expect(wrapper.classes()).toContain("planner-item--overdue");
-
-    expect(wrapper.get(".planner-item__status").text()).toBe("Überfällig");
   });
 
   it("disables all habit actions while an update is running", () => {
@@ -220,6 +248,23 @@ describe("PlannerItem", () => {
       expect(button.element.disabled).toBe(true);
     }
 
-    expect(wrapper.get(".planner-item__check").text()).toBe("…");
+    expect(
+      wrapper.get(".planner-item__check").attributes("aria-busy"),
+    ).toBe("true");
+  });
+
+  it("names each action after its item for screen readers", () => {
+    const wrapper = mount(PlannerItem, {
+      props: {
+        item: makeHabit({ moveUntil: "2026-10-04" }),
+        isUpdating: false,
+      },
+    });
+    expect(
+      wrapper.find('button[aria-label="Joggen überspringen"]').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('button[aria-label="Joggen verschieben"]').exists(),
+    ).toBe(true);
   });
 });

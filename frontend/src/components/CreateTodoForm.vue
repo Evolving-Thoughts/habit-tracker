@@ -64,8 +64,8 @@ async function submit(): Promise<void> {
 
     successMessage.value =
       input.scheduledAt === null
-        ? "Todo erstellt. Es liegt im Todo-Dump und erscheint nicht in „Heute“."
-        : "Todo erstellt. Es erscheint am geplanten Tag in „Heute“.";
+        ? "Todo erstellt. Es liegt im Todo-Dump."
+        : "Todo erstellt. Es steht am geplanten Tag in Heute.";
 
     emit("created");
   } catch (error: unknown) {
@@ -83,18 +83,16 @@ async function submit(): Promise<void> {
 <template>
   <section
     class="create-todo"
-    :class="{ 'create-todo--embedded': embedded }"
+    :class="{ card: !embedded }"
     :aria-labelledby="embedded ? undefined : 'create-todo-heading'"
   >
     <h2 v-if="!embedded" id="create-todo-heading">Neues Todo</h2>
 
     <form novalidate @submit.prevent="submit">
       <fieldset :disabled="isSubmitting">
-        <div class="create-todo__field">
-          <label for="todo-title">Titel</label>
-
+        <label class="field">
+          Titel
           <input
-            id="todo-title"
             v-model="title"
             name="title"
             type="text"
@@ -102,49 +100,35 @@ async function submit(): Promise<void> {
             required
             placeholder="Was möchtest du erledigen?"
           />
-        </div>
+        </label>
 
-        <div class="create-todo__field">
-          <label for="todo-category">Kategorie · optional</label>
-
+        <label class="field">
+          Kategorie · optional
           <CategorySelect
             id="todo-category"
             v-model="category"
             :inherits-from-parent="parentId != null"
           />
-        </div>
+        </label>
 
-        <div class="create-todo__field">
-          <label for="todo-why">Warum · optional</label>
-
-          <textarea
-            id="todo-why"
-            v-model="why"
-            name="why"
-            maxlength="1000"
-            rows="2"
-          />
-        </div>
+        <label class="field">
+          Warum · optional
+          <textarea v-model="why" name="why" maxlength="1000" rows="2" />
+        </label>
 
         <div class="create-todo__row">
-          <div class="create-todo__field">
-            <label for="todo-scheduled-at"> Zeitpunkt · optional </label>
-
+          <label class="field">
+            Zeitpunkt · optional
             <input
-              id="todo-scheduled-at"
               v-model="scheduledAt"
               name="scheduledAt"
               type="datetime-local"
             />
+          </label>
 
-            <small> Uhrzeit in deutscher Zeit (Europe/Berlin). </small>
-          </div>
-
-          <div class="create-todo__field">
-            <label for="todo-duration"> Dauer in Minuten · optional </label>
-
+          <label class="field">
+            Dauer in Minuten · optional
             <input
-              id="todo-duration"
               v-model="durationMinutes"
               name="duration"
               type="number"
@@ -152,29 +136,25 @@ async function submit(): Promise<void> {
               step="1"
               placeholder="30"
             />
-          </div>
+          </label>
         </div>
 
         <label class="create-todo__checkbox">
           <input v-model="isFixed" name="isFixed" type="checkbox" />
-
           Fester Termin
         </label>
 
-        <p class="create-todo__hint">
-          Ohne Zeitpunkt landet das Todo im Todo-Dump. Ein fester Termin
-          benötigt einen Zeitpunkt.
+        <p class="create-todo__hint">Ohne Zeitpunkt landet es im Todo-Dump.</p>
+
+        <p v-if="errorMessage" class="form-error" role="alert">
+          {{ errorMessage }}
         </p>
 
-        <button type="submit">
+        <button class="btn btn--primary create-todo__submit" type="submit">
           {{ isSubmitting ? "Wird gespeichert …" : "Todo erstellen" }}
         </button>
       </fieldset>
     </form>
-
-    <p v-if="errorMessage" class="create-todo__error" role="alert">
-      {{ errorMessage }}
-    </p>
 
     <p v-if="successMessage" class="create-todo__success" role="status">
       {{ successMessage }}
@@ -183,122 +163,54 @@ async function submit(): Promise<void> {
 </template>
 
 <style scoped>
-.create-todo.create-todo--embedded {
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.create-todo {
-  margin-bottom: 2rem;
-  padding: 1rem;
-  border: 1px solid #d9dde5;
-  border-radius: 0.875rem;
-  background: #ffffff;
-}
-
 .create-todo h2 {
-  margin: 0 0 1rem;
+  margin: 0 0 var(--space-4);
   font-size: 1.125rem;
+  font-weight: 800;
 }
 
 .create-todo fieldset {
+  display: grid;
+  gap: var(--space-4);
   min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
-}
-
-.create-todo__field {
-  display: grid;
-  align-content: start;
-  gap: 0.375rem;
-  min-width: 0;
-}
-
-.create-todo__field label {
-  color: #39445a;
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-.create-todo__field textarea {
-  width: 100%;
-  min-width: 0;
-  padding: 0.7rem;
-  border: 1px solid #bfc7d4;
-  border-radius: 0.5rem;
-  background: #ffffff;
-  color: #182033;
-  font: inherit;
-  resize: vertical;
-}
-
-.create-todo__field input {
-  width: 100%;
-  height: 3rem;
-  min-width: 0;
-  padding: 0.7rem;
-  border: 1px solid #bfc7d4;
-  border-radius: 0.5rem;
-  background: #ffffff;
-  color: #182033;
-}
-
-.create-todo__field small,
-.create-todo__hint {
-  color: #697386;
-  font-size: 0.875rem;
-  line-height: 1.5;
 }
 
 .create-todo__row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin-top: 1rem;
+  gap: var(--space-4);
 }
 
 .create-todo__checkbox {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   align-items: center;
-  margin-top: 1rem;
-  font-size: 0.875rem;
-  min-height: 2.75rem;
+  min-height: var(--tap);
+  font-weight: 600;
 }
 
-.create-todo button {
-  padding: 0.7rem 1rem;
-  border: 0;
-  border-radius: 0.5rem;
-  background: #2457c5;
-  color: #ffffff;
-  font: inherit;
-  cursor: pointer;
+.create-todo__checkbox input {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
-.create-todo fieldset:disabled {
-  opacity: 0.65;
-}
-
-.create-todo fieldset:disabled button {
-  cursor: wait;
-}
-
-.create-todo__error,
+.create-todo__hint,
 .create-todo__success {
-  margin: 1rem 0 0;
+  margin: 0;
+  color: var(--color-ink-muted);
   font-size: 0.875rem;
-  line-height: 1.5;
-}
-
-.create-todo__error {
-  color: #b42318;
 }
 
 .create-todo__success {
-  color: #146c43;
+  margin-top: var(--space-3);
+  font-weight: 600;
+}
+
+.create-todo__submit {
+  justify-self: start;
 }
 
 @media (max-width: 32rem) {

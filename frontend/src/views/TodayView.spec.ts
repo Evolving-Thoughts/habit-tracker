@@ -7,6 +7,7 @@ import {
   createHabit,
   getHabit,
   changeHabitSchedule,
+  rescheduleTodo,
   updateOccurrenceStatus,
   updateTodoCompletion,
 } from "../api/day-planner.api";
@@ -26,6 +27,8 @@ vi.mock("../api/day-planner.api", () => ({
   createHabit: vi.fn(),
   updateOccurrenceStatus: vi.fn(),
   updateTodoCompletion: vi.fn(),
+  rescheduleTodo: vi.fn(),
+  rescheduleOccurrence: vi.fn(),
   getTodo: vi.fn(),
   getHabit: vi.fn(),
   updateTodo: vi.fn(),
@@ -88,17 +91,23 @@ function makePlanner(
     date: "2026-10-02",
     items,
     externalEvents: [],
+    workedMinutes: 0,
   };
 }
 
 describe("TodayView", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    // 08:00 in Berlin; the default todo is planned for 10:00.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
 
     getTodayMock.mockResolvedValue(makePlanner());
     updateTodoMock.mockResolvedValue(undefined);
     updateOccurrenceMock.mockResolvedValue(undefined);
+    vi.mocked(rescheduleTodo).mockResolvedValue(undefined as never);
   });
+  afterEach(() => vi.useRealTimers());
 
   it("shows loading while the initial request is pending", async () => {
     let resolveRequest!: (planner: DayPlannerResponse) => void;
@@ -111,14 +120,17 @@ describe("TodayView", () => {
 
     const wrapper = mount(TodayView);
 
-    expect(wrapper.text()).toContain("Tagesplan wird geladen");
-
+    expect(
+      wrapper.find('[aria-label="Tagesplan wird geladen"]').exists(),
+    ).toBe(true);
     expect(getTodayMock).toHaveBeenCalledTimes(1);
 
     resolveRequest(makePlanner());
     await flushPromises();
 
-    expect(wrapper.text()).not.toContain("Tagesplan wird geladen");
+    expect(
+      wrapper.find('[aria-label="Tagesplan wird geladen"]').exists(),
+    ).toBe(false);
   });
 
   it("shows an empty state after loading an empty planner", async () => {
@@ -126,9 +138,8 @@ describe("TodayView", () => {
 
     await flushPromises();
 
-    expect(wrapper.text()).toContain("02.10.2026");
+    expect(wrapper.get("h1").text()).toBe("Freitag, 2. Okt.");
     expect(wrapper.text()).toContain("Für heute ist nichts geplant.");
-
     expect(wrapper.findAll(".planner-item")).toHaveLength(0);
   });
 
@@ -144,7 +155,7 @@ describe("TodayView", () => {
     );
   });
 
-  it("groups overdue, open and resolved items", async () => {
+  it("arranges focus, catch-up and the resolved items", async () => {
     getTodayMock.mockResolvedValueOnce(
       makePlanner([
         makeTodo({
@@ -153,9 +164,7 @@ describe("TodayView", () => {
           scheduledAt: "2026-10-01T08:00:00.000Z",
           isOverdue: true,
         }),
-        makeHabit({
-          title: "Offenes Habit",
-        }),
+        makeHabit({ title: "Offenes Habit" }),
         makeTodo({
           todoId: 2,
           title: "Erledigtes Todo",
@@ -171,30 +180,73 @@ describe("TodayView", () => {
     );
 
     const wrapper = mount(TodayView);
-
     await flushPromises();
 
-    const sections = wrapper.findAll(".today-section");
+    expect(wrapper.get(".focus").text()).toContain("Offenes Habit");
+    expect(wrapper.get(".today-view__progress").text()).toBe(
+      "2 von 3 erledigt",
+    );
+    const catchUp = wrapper.get(".catch-up__toggle");
+    expect(catchUp.text()).toContain("1 Eintrag von früher");
+    expect(wrapper.text()).not.toContain("Überfälliges Todo");
+    await catchUp.trigger("click");
+    expect(wrapper.get(".catch-up__body").text()).toContain(
+      "Überfälliges Todo",
+    );
 
-    expect(sections).toHaveLength(3);
-
-    expect(sections[0]!.get("h2").text()).toBe("Überfällig");
-    expect(sections[0]!.text()).toContain("Überfälliges Todo");
-
-    expect(sections[1]!.get("h2").text()).toBe("Offen");
-    expect(sections[1]!.text()).toContain("Offenes Habit");
-
-    expect(sections[2]!.get("h2").text()).toBe("Abgeschlossen");
-    expect(sections[2]!.text()).toContain("Erledigtes Todo");
-    expect(sections[2]!.text()).toContain("Übersprungenes Habit");
-
-    expect(sections[2]!.findAll(".planner-item")).toHaveLength(2);
+    const resolved = wrapper.get(".resolved__toggle");
+    expect(resolved.text()).toContain("2 abgeschlossen");
+    await resolved.trigger("click");
+    expect(wrapper.findAll("#resolved-list .planner-item")).toHaveLength(2);
   });
 
-  it("completes a todo and reloads the planner", async () => {
+  it("shows the why and the goal on the focus only", async () => {
+    getTodayMock.mockResolvedValueOnce(
+      makePlanner([
+        makeHabit({
+          why: "Halbmarathon im März",
+          goal: {
+            title: "20 Läufe",
+            completed: 12,
+            target: 20,
+            periodEnd: "2026-12-31",
+          },
+        }),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.get(".focus__why").text()).toBe("Halbmarathon im März");
+    expect(wrapper.get(".focus__meta").text()).toContain(
+      "20 Läufe: 12 von 20 bis 31.12.2026",
+    );
+  });
+
+  it("names the next step after the focus and puts the rest on the time axis", async () => {
+    getTodayMock.mockResolvedValueOnce(
+      makePlanner([
+        makeTodo(),
+        makeTodo({
+          todoId: 2,
+          title: "Bewerbung",
+          scheduledAt: "2026-10-02T10:00:00.000Z",
+        }),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.get("#focus-title").text()).toBe("NestJS lernen");
+    expect(wrapper.get(".today-view__next").text()).toContain(
+      "12:00 Bewerbung",
+    );
+    expect(wrapper.get(".timeline").text()).toContain("Bewerbung");
+    expect(wrapper.get(".timeline").text()).not.toContain("NestJS lernen");
+  });
+
+  it("completes the focus, reloads and offers undo", async () => {
     getTodayMock
       .mockResolvedValueOnce(makePlanner([makeTodo()]))
-      .mockResolvedValueOnce(
+      .mockResolvedValue(
         makePlanner([
           makeTodo({
             status: "completed",
@@ -204,20 +256,23 @@ describe("TodayView", () => {
       );
 
     const wrapper = mount(TodayView);
-
     await flushPromises();
 
     await wrapper
       .get('button[aria-label="NestJS lernen erledigen"]')
       .trigger("click");
-
     await flushPromises();
 
     expect(updateTodoMock).toHaveBeenCalledWith(1, true);
-
     expect(getTodayMock).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).toContain("Alles für heute erledigt.");
+    expect(wrapper.get(".today-view__toast").text()).toContain(
+      "„NestJS lernen“ erledigt",
+    );
 
-    expect(wrapper.get(".planner-item__status").text()).toBe("Erledigt");
+    await wrapper.get(".today-view__toast button").trigger("click");
+    await flushPromises();
+    expect(updateTodoMock).toHaveBeenLastCalledWith(1, false);
   });
 
   it("reopens a completed todo", async () => {
@@ -231,13 +286,12 @@ describe("TodayView", () => {
     );
 
     const wrapper = mount(TodayView);
-
     await flushPromises();
+    await wrapper.get(".resolved__toggle").trigger("click");
 
     await wrapper
       .get('button[aria-label="NestJS lernen wieder öffnen"]')
       .trigger("click");
-
     await flushPromises();
 
     expect(updateTodoMock).toHaveBeenCalledWith(1, false);
@@ -255,17 +309,16 @@ describe("TodayView", () => {
       );
 
       const wrapper = mount(TodayView);
-
       await flushPromises();
+      if (initialStatus !== "pending")
+        await wrapper.get(".resolved__toggle").trigger("click");
 
       await wrapper
         .get(`button[aria-label="Joggen ${actionLabel}"]`)
         .trigger("click");
-
       await flushPromises();
 
       expect(updateOccurrenceMock).toHaveBeenCalledWith(20, targetStatus);
-
       expect(updateTodoMock).not.toHaveBeenCalled();
       expect(getTodayMock).toHaveBeenCalledTimes(2);
     },
@@ -275,52 +328,43 @@ describe("TodayView", () => {
     getTodayMock.mockResolvedValue(makePlanner([makeHabit()]));
 
     const wrapper = mount(TodayView);
-
     await flushPromises();
 
-    await wrapper.get(".planner-item__skip-button").trigger("click");
-
+    await wrapper
+      .get('button[aria-label="Joggen überspringen"]')
+      .trigger("click");
     await flushPromises();
 
     expect(updateOccurrenceMock).toHaveBeenCalledWith(20, "skipped");
-
     expect(getTodayMock).toHaveBeenCalledTimes(2);
   });
 
   it("shows an update error without reloading the planner", async () => {
     getTodayMock.mockResolvedValueOnce(makePlanner([makeTodo()]));
-
     updateTodoMock.mockRejectedValueOnce(new Error("Speichern fehlgeschlagen"));
 
     const wrapper = mount(TodayView);
-
     await flushPromises();
 
-    await wrapper
-      .get('button[aria-label="NestJS lernen erledigen"]')
-      .trigger("click");
-
+    const done = wrapper.get<HTMLButtonElement>(
+      'button[aria-label="NestJS lernen erledigen"]',
+    );
+    await done.trigger("click");
     await flushPromises();
 
     expect(wrapper.get('[role="alert"]').text()).toBe(
       "Speichern fehlgeschlagen",
     );
-
     expect(getTodayMock).toHaveBeenCalledTimes(1);
-
-    // Der ursprüngliche Eintrag bleibt offen.
-    expect(wrapper.get(".planner-item__status").text()).toBe("Offen");
-
-    expect(
-      wrapper.get<HTMLButtonElement>(".planner-item__check").element.disabled,
-    ).toBe(false);
+    expect(wrapper.get("#focus-title").text()).toBe("NestJS lernen");
+    expect(done.element.disabled).toBe(false);
+    expect(wrapper.find(".today-view__toast button").exists()).toBe(false);
   });
 
   it("disables an item while its update is pending", async () => {
     let resolveUpdate!: () => void;
 
     getTodayMock.mockResolvedValue(makePlanner([makeTodo()]));
-
     updateTodoMock.mockReturnValueOnce(
       new Promise<void>((resolve) => {
         resolveUpdate = resolve;
@@ -328,13 +372,11 @@ describe("TodayView", () => {
     );
 
     const wrapper = mount(TodayView);
-
     await flushPromises();
 
     const button = wrapper.get<HTMLButtonElement>(
       'button[aria-label="NestJS lernen erledigen"]',
     );
-
     await button.trigger("click");
 
     expect(button.element.disabled).toBe(true);
@@ -342,22 +384,47 @@ describe("TodayView", () => {
 
     resolveUpdate();
     await flushPromises();
-
-    expect(
-      wrapper.get<HTMLButtonElement>(".planner-item__check").element.disabled,
-    ).toBe(false);
   });
 
-  it("reloads the planner when refresh is clicked", async () => {
+  it("plans every movable carried-over item for today in one go", async () => {
+    getTodayMock.mockResolvedValue(
+      makePlanner([
+        makeTodo({
+          title: "Alt eins",
+          scheduledDate: "2026-09-30",
+          scheduledAt: "2026-09-30T08:00:00.000Z",
+          isOverdue: true,
+        }),
+        makeTodo({
+          todoId: 2,
+          title: "Alt zwei",
+          scheduledDate: "2026-10-01",
+          scheduledAt: "2026-10-01T08:00:00.000Z",
+          isOverdue: true,
+        }),
+        makeTodo({
+          todoId: 3,
+          title: "Fester Termin",
+          scheduledDate: "2026-10-01",
+          scheduledAt: "2026-10-01T09:00:00.000Z",
+          isFixed: true,
+          isOverdue: true,
+        }),
+      ]),
+    );
     const wrapper = mount(TodayView);
+    await flushPromises();
+    await wrapper.get(".catch-up__toggle").trigger("click");
 
+    const all = wrapper.get(".catch-up__all");
+    expect(all.text()).toBe("Alle 2 heute einplanen");
+    await all.trigger("click");
     await flushPromises();
 
-    await wrapper.get(".today-view__refresh").trigger("click");
-
-    await flushPromises();
-
-    expect(getTodayMock).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(rescheduleTodo).mock.calls).toEqual([
+      [1, "2026-10-02", false],
+      [2, "2026-10-02", false],
+    ]);
   });
 });
 

@@ -1,5 +1,12 @@
 import { test, expect } from "./fixtures";
-import { visit, createTodo, daysAfter, today } from "./helpers";
+import {
+  visit,
+  createTodo,
+  daysAfter,
+  today,
+  openView,
+  showResolved,
+} from "./helpers";
 import { API_URL } from "./environment";
 import type { TimerResponse } from "../src/api/timers.api";
 const read = async (request: import("@playwright/test").APIRequestContext) => {
@@ -23,10 +30,7 @@ test("Todo timer: direct play, sticky bar, reload, second device, pause/duration
   expect((await read(request)).timer?.durationMinutes).toBe(30);
   await page.reload();
   await expect(bar).toContainText("Schreiben");
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Habits", exact: true })
-    .click();
+  await openView(page, "Habits");
   await expect(bar).toBeVisible();
   const other = await browser.newContext({
     storageState: await context.storageState(),
@@ -121,19 +125,13 @@ test("switching requires confirmation and completing a Dump Todo persists it in 
     page.getByRole("heading", { name: "Zweite Aufgabe", exact: true }),
   ).toHaveCount(0);
   await expect(page.getByRole("complementary")).toHaveCount(0);
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Heute", exact: true })
-    .click();
+  await openView(page, "Heute");
+  await showResolved(page);
   await expect(
     page.getByRole("heading", { name: "Zweite Aufgabe", exact: true }),
   ).toBeVisible();
-  await expect(
-    page.locator(".planner-item").filter({
-      has: page.getByRole("heading", { name: "Zweite Aufgabe", exact: true }),
-    }),
-  ).toContainText("Erledigt um");
   await page.reload();
+  await showResolved(page);
   await expect(
     page.getByRole("heading", { name: "Zweite Aufgabe", exact: true }),
   ).toBeVisible();

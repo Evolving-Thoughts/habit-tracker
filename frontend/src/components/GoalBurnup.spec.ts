@@ -40,15 +40,15 @@ describe("GoalBurnup", () => {
   it("shows done and total scope with its growth", async () => {
     const wrapper = await render();
     expect(wrapper.findAll("polyline")).toHaveLength(2);
-    expect(wrapper.text()).toContain("1 von 4 Todos erledigt, 3 verbleibend");
+    expect(wrapper.text()).toContain("1 von 4 Aufgaben erledigt, 3 noch offen");
     expect(wrapper.text()).toContain("Gesamtumfang");
   });
 
   it("switches to the remaining line and to minutes", async () => {
     const wrapper = await render();
-    await press(wrapper, "Burndown");
+    await press(wrapper, "Noch offen");
     expect(wrapper.findAll("polyline")).toHaveLength(1);
-    expect(wrapper.text()).toContain("Verbleibend");
+    expect(wrapper.find(".burnup__legend").text()).toContain("Noch offen");
     await press(wrapper, "Minuten");
     expect(wrapper.text()).toContain("30 von 90 Min. erledigt");
   });
@@ -56,6 +56,16 @@ describe("GoalBurnup", () => {
   it("shows why loading failed", async () => {
     vi.mocked(getBurnup).mockRejectedValueOnce(new Error("Offline"));
     const wrapper = await render();
-    expect(wrapper.find('[role="alert"]').text()).toBe("Offline");
+    expect(wrapper.find('[role="alert"] p').text()).toBe("Offline");
+    await press(wrapper, "Erneut versuchen");
+    await flushPromises();
+    expect(wrapper.findAll("polyline")).toHaveLength(2);
+  });
+
+  it("draws progress in ink and the scope as a dashed muted line", async () => {
+    const wrapper = await render();
+    expect(wrapper.find(".burnup__line--actual").exists()).toBe(true);
+    expect(wrapper.find(".burnup__line--scope").exists()).toBe(true);
+    expect(wrapper.html()).not.toMatch(/#[0-9a-f]{6}/i);
   });
 });

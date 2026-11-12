@@ -7,6 +7,7 @@ import {
   ref,
   watch,
 } from "vue";
+import AppIcon from "./AppIcon.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -65,9 +66,15 @@ function guardSubmission(event: Event): void {
     event.stopPropagation();
   }
 }
+/** On touch screens a focused field would pop the keyboard up unasked. */
+function opensKeyboard(target: HTMLElement): boolean {
+  const touch = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+  return touch && target.matches("input, textarea, select");
+}
 async function focusContent(): Promise<void> {
   await nextTick();
   const target = dialog.value?.querySelector<HTMLElement>(props.focusSelector);
+  if (target && opensKeyboard(target)) return;
   if (target && target !== focusedElement && !target.matches(":disabled")) {
     focusedElement = target;
     target.focus({ preventScroll: true });
@@ -119,7 +126,7 @@ onUnmounted(() => {
         :disabled="busy"
         @click="close"
       >
-        <span aria-hidden="true">×</span>
+        <AppIcon name="close" />
       </button>
     </header>
     <fieldset
@@ -140,46 +147,44 @@ onUnmounted(() => {
   overscroll-behavior: contain;
   box-sizing: border-box;
   margin: auto;
-  padding: 1.5rem;
-  border: 1px solid #d9dde5;
-  border-radius: 0.875rem;
-  background: #fff;
-  color: #182033;
-  box-shadow: 0 4px 24px rgb(15 23 42 / 15%);
+  padding: var(--space-5);
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: 0 12px 40px rgb(43 29 22 / 22%);
 }
 .modal-dialog::backdrop {
-  background: rgb(15 23 42 / 40%);
+  background: rgb(43 29 22 / 40%);
 }
 .modal-dialog__header {
   display: flex;
-  gap: 1rem;
+  gap: var(--space-4);
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1.25rem;
+  margin-bottom: var(--space-4);
 }
 .modal-dialog h2 {
   margin: 0;
-  font-size: 1.25rem;
-  line-height: 1.4;
+  font-size: 1.375rem;
+  font-weight: 800;
+  line-height: 1.3;
 }
 .modal-dialog__close {
-  flex: 0 0 2.75rem;
-  height: 2.75rem;
+  display: grid;
+  flex: 0 0 var(--tap);
+  height: var(--tap);
+  place-items: center;
   padding: 0;
   border: 0;
-  border-radius: 0.5rem;
-  background: #f2f4f8;
-  color: #39445a;
-  font-size: 1.75rem;
+  border-radius: 50%;
+  background: var(--color-action-tint);
+  color: var(--color-ink-muted);
   cursor: pointer;
 }
 .modal-dialog__close:disabled {
-  opacity: 0.5;
-  cursor: wait;
-}
-.modal-dialog__close:focus-visible {
-  outline: 3px solid rgb(53 103 220 / 30%);
-  outline-offset: 2px;
+  color: var(--color-ink-soft);
+  cursor: progress;
 }
 .modal-dialog__content {
   min-width: 0;
@@ -187,9 +192,43 @@ onUnmounted(() => {
   padding: 0;
   border: 0;
 }
+/* One control language for every dialog body: tinted secondary, solid primary. */
+.modal-dialog__content :deep(button) {
+  min-height: var(--tap);
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-action-tint);
+  color: var(--color-action-strong);
+  font-weight: 700;
+  cursor: pointer;
+}
+.modal-dialog__content :deep(button[type="submit"]),
+.modal-dialog__content :deep(button[data-primary]) {
+  background: var(--color-action);
+  color: var(--color-on-action);
+}
+.modal-dialog__content :deep(button:disabled) {
+  background: var(--color-ground);
+  color: var(--color-ink-soft);
+  cursor: not-allowed;
+}
+.modal-dialog__content :deep(input:not([type="checkbox"]):not([type="radio"])),
+.modal-dialog__content :deep(select),
+.modal-dialog__content :deep(textarea) {
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border: 1.5px solid var(--color-line);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+.modal-dialog__content :deep(textarea) {
+  padding: var(--space-2) var(--space-3);
+}
 @media (max-width: 32rem) {
   .modal-dialog {
-    padding: 1rem;
+    padding: var(--space-4);
   }
 }
 </style>

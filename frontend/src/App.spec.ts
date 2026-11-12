@@ -17,7 +17,9 @@ function mountApp() {
       stubs: {
         TodayView: { template: '<main data-view="today">Today</main>' },
         TodoDumpView: { template: '<main data-view="dump">Dump</main>' },
-        HistoryView: { template: '<main data-view="history">History</main>' },
+        CalendarView: {
+          template: '<main data-view="calendar">Calendar</main>',
+        },
         TodoHierarchyView: {
           template: '<main data-view="hierarchy">Tree</main>',
         },
@@ -31,37 +33,45 @@ function mountApp() {
     },
   });
 }
+function tab(wrapper: ReturnType<typeof mountApp>, name: string) {
+  return wrapper
+    .findAll("nav button")
+    .find(
+      (button) =>
+        (button.attributes("aria-label") ?? button.text().trim()) === name,
+    )!;
+}
 describe("App navigation", () => {
-  it("starts with Today and offers five views", async () => {
+  it("starts with Today and offers the views", async () => {
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
+    // Four tabs, Mehr, and three views behind it.
     expect(wrapper.findAll("nav button")).toHaveLength(8);
   });
   it("opens the habit overview and marks only that navigation button active", async () => {
     const wrapper = mountApp();
     await flushPromises();
-    await wrapper.findAll("nav button")[3]!.trigger("click");
+    await tab(wrapper, "Habits").trigger("click");
     expect(wrapper.find('[data-view="habits"]').exists()).toBe(true);
     expect(wrapper.find('[data-view="today"]').exists()).toBe(false);
     expect(
       wrapper
         .findAll("nav button")
         .slice(0, 4)
-        .map((button) => button.attributes("aria-pressed")),
-    ).toEqual(["false", "false", "false", "true"]);
+        .map((button) => button.attributes("aria-current")),
+    ).toEqual([undefined, undefined, "page", undefined]);
   });
   it("opens the settings from the navigation", async () => {
     const wrapper = mountApp();
     await flushPromises();
-    const button = wrapper
-      .findAll("nav button")
-      .find(
-        (candidate) => candidate.attributes("aria-label") === "Einstellungen",
-      )!;
+    const button = tab(wrapper, "Einstellungen");
     await button.trigger("click");
     expect(wrapper.find('[data-view="settings"]').exists()).toBe(true);
-    expect(button.attributes("aria-pressed")).toBe("true");
+    expect(button.attributes("aria-current")).toBe("page");
+    expect(
+      wrapper.get(".tab-bar__more").attributes("data-active"),
+    ).toBeDefined();
   });
   it("returns from Google into the settings and cleans the address", async () => {
     history.replaceState(null, "", "/?calendar=connected");
@@ -73,10 +83,10 @@ describe("App navigation", () => {
   it("can move from Habits to Todo-Dump and back to Today", async () => {
     const wrapper = mountApp();
     await flushPromises();
-    await wrapper.findAll("nav button")[3]!.trigger("click");
-    await wrapper.findAll("nav button")[1]!.trigger("click");
+    await tab(wrapper, "Habits").trigger("click");
+    await tab(wrapper, "Todo-Dump").trigger("click");
     expect(wrapper.find('[data-view="dump"]').exists()).toBe(true);
-    await wrapper.findAll("nav button")[0]!.trigger("click");
+    await tab(wrapper, "Heute").trigger("click");
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
   });
 });
@@ -84,23 +94,56 @@ describe("App navigation", () => {
 it("opens the task hierarchy", async () => {
   const wrapper = mountApp();
   await flushPromises();
-  const button = wrapper
-    .findAll("nav button")
-    .find((button) => button.text() === "Aufgabenbaum")!;
+  const button = tab(wrapper, "Aufgabenbaum");
   await button.trigger("click");
   expect(wrapper.find('[data-view="hierarchy"]').exists()).toBe(true);
-  expect(button.attributes("aria-pressed")).toBe("true");
+  expect(button.attributes("aria-current")).toBe("page");
 });
 
-describe("History navigation", () => {
-  it("opens history and marks it active", async () => {
+describe("Calendar navigation", () => {
+  it("opens the calendar as a main tab, without a separate Verlauf", async () => {
     const wrapper = mountApp();
     await flushPromises();
-    await wrapper.findAll("nav button")[5]!.trigger("click");
-    expect(wrapper.find('[data-view="history"]').exists()).toBe(true);
-    expect(wrapper.findAll("nav button")[5]!.attributes("aria-pressed")).toBe(
-      "true",
-    );
+    expect(tab(wrapper, "Verlauf")).toBeUndefined();
+    await tab(wrapper, "Kalender").trigger("click");
+    expect(wrapper.find('[data-view="calendar"]').exists()).toBe(true);
+    expect(tab(wrapper, "Kalender").attributes("aria-current")).toBe("page");
+  });
+
+  it("opens and closes the Mehr menu", async () => {
+    const wrapper = mountApp();
+    await flushPromises();
+    const more = wrapper.get(".tab-bar__more");
+    expect(more.attributes("aria-expanded")).toBe("false");
+    await more.trigger("click");
+    expect(more.attributes("aria-expanded")).toBe("true");
+    await tab(wrapper, "Aufgabenbaum").trigger("click");
+    expect(more.attributes("aria-expanded")).toBe("false");
+  });
+});
+
+describe("App boot error", () => {
+  it("explains a lost connection calmly and retries", async () => {
+    vi.mocked(getMe).mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const wrapper = mountApp();
+    await flushPromises();
+    const alert = wrapper.get('[role="alert"]');
+    expect(alert.text()).toContain("Keine Verbindung zum Server");
+    expect(alert.text()).toContain("Deine Daten sind sicher.");
+    expect(alert.text()).not.toContain("Failed to fetch");
+    await alert.get("button.btn--primary").trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".boot-error").exists()).toBe(false);
+    expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
+  });
+
+  it("shows the message of other failures under the title", async () => {
+    vi.mocked(getMe).mockRejectedValueOnce(new Error("Wartungsarbeiten"));
+    const wrapper = mountApp();
+    await flushPromises();
+    const alert = wrapper.get('[role="alert"]');
+    expect(alert.text()).toContain("Keine Verbindung zum Server");
+    expect(alert.text()).toContain("Wartungsarbeiten");
   });
 });
 
@@ -124,7 +167,7 @@ describe("App authentication boundary", () => {
   it("logs out without retaining the previous view", async () => {
     const wrapper = mountApp();
     await flushPromises();
-    await wrapper.get('[aria-label="Einstellungen"]').trigger("click");
+    await tab(wrapper, "Einstellungen").trigger("click");
     await wrapper.get('[data-test="sign-out"]').trigger("click");
     await flushPromises();
     expect(logout).toHaveBeenCalled();
