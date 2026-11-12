@@ -190,6 +190,7 @@ test("switching back to Dump before reopen finishes refreshes it after the write
     ).status(),
   ).toBe(200);
   await visit(page, "Heute");
+  await showResolved(page);
   let release!: () => void;
   let entered!: () => void;
   const gate = new Promise<void>((resolve) => {

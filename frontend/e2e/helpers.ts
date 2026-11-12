@@ -14,6 +14,7 @@ export function daysAfter(date: string, days: number): string {
 export async function openView(page: Page, name: string) {
   const navigation = page.getByRole("navigation", { name: "Ansichten" });
   const target = navigation.getByRole("button", { name, exact: true });
+  await expect(navigation).toBeVisible();
   if (!(await target.isVisible()))
     await navigation.getByRole("button", { name: "Mehr", exact: true }).click();
   await target.click();

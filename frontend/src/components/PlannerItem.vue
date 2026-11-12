@@ -91,7 +91,8 @@ function skip(): void {
     </button>
 
     <div class="planner-item__content">
-      <h3>
+      <!-- The heading keeps the plain title; the button inside says "bearbeiten". -->
+      <h3 :aria-label="item.title">
         <button
           class="planner-item__title"
           data-edit-button

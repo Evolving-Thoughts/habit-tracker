@@ -59,7 +59,7 @@ describe('Habit goals on todos (e2e)', () => {
   });
   beforeEach(() =>
     db.query(
-      'TRUNCATE timers, habit_occurrences, habit_schedule_versions, habits, todos CASCADE',
+      'TRUNCATE work_logs, timers, habit_occurrences, habit_schedule_versions, habits, todos CASCADE',
     ),
   );
   afterAll(() => app.close());

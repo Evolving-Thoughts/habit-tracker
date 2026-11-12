@@ -1,5 +1,12 @@
 import { test, expect } from "./fixtures";
-import { createTodo, today, visit, daysAfter, openView } from "./helpers";
+import {
+  createTodo,
+  today,
+  visit,
+  daysAfter,
+  openView,
+  showResolved,
+} from "./helpers";
 import { API_URL } from "./environment";
 import type { HistoryResponse } from "../src/types/history";
 
@@ -38,6 +45,7 @@ test("History: a completed Dump Todo has no invented schedule, persists, and dis
   await history(page);
   await expect(card).toBeVisible();
   await openView(page, "Heute");
+  await showResolved(page);
   await page
     .getByRole("button", { name: "Ideen sammeln wieder öffnen", exact: true })
     .click();
