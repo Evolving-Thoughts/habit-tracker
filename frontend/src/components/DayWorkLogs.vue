@@ -92,36 +92,65 @@ watch(
 
 <template>
   <section class="work-logs" aria-label="Arbeitszeit">
-    <h3>
+    <h3 class="work-logs__title">
       Tatsächliche Arbeitszeit
-      <span v-if="day">{{ day.totalMinutes }} Min.</span>
+      <span v-if="day" class="count">{{ day.totalMinutes }} Min.</span>
     </h3>
-    <p v-if="error" class="work-logs__error" role="alert">{{ error }}</p>
-    <ul v-if="day?.logs.length">
+    <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+    <ul v-if="day?.logs.length" class="work-logs__list">
       <li v-for="log in day.logs" :key="log.id">
         <form
           v-if="editingId === log.id"
           class="work-logs__row"
           @submit.prevent="saveEdit(log.id)"
         >
-          <input v-model="editFrom" type="time" aria-label="Start" />
-          <input v-model="editTo" type="time" aria-label="Ende" />
-          <button type="submit" :disabled="saving">Speichern</button>
-          <button type="button" @click="editingId = null">Abbrechen</button>
+          <input
+            v-model="editFrom"
+            class="input work-logs__time"
+            type="time"
+            aria-label="Start"
+          />
+          <input
+            v-model="editTo"
+            class="input work-logs__time"
+            type="time"
+            aria-label="Ende"
+          />
+          <button type="submit" class="btn btn--primary" :disabled="saving">
+            Speichern
+          </button>
+          <button
+            type="button"
+            class="btn btn--quiet"
+            @click="editingId = null"
+          >
+            Abbrechen
+          </button>
         </form>
         <div v-else class="work-logs__row">
           <span class="work-logs__grow">
-            {{ log.title }} ·
-            {{ formatTimeForGermanDisplay(log.startedAt) }}–{{
-              formatTimeForGermanDisplay(log.endedAt)
-            }}
-            · {{ log.minutes }} Min.
-            <small>{{ log.source === "timer" ? "Timer" : "Nachtrag" }}</small>
+            <strong>{{ log.title }}</strong>
+            <span class="work-logs__meta">
+              {{ formatTimeForGermanDisplay(log.startedAt) }}–{{
+                formatTimeForGermanDisplay(log.endedAt)
+              }}
+              · {{ log.minutes }} Min. ·
+              {{ log.source === "timer" ? "Timer" : "Nachtrag" }}
+            </span>
           </span>
-          <button type="button" @click="startEditing(log)">Korrigieren</button>
           <button
             type="button"
+            class="btn"
+            :aria-label="`${log.title} ${formatTimeForGermanDisplay(log.startedAt)} korrigieren`"
+            @click="startEditing(log)"
+          >
+            Korrigieren
+          </button>
+          <button
+            type="button"
+            class="btn btn--quiet"
             :disabled="saving"
+            :aria-label="`${log.title} ${formatTimeForGermanDisplay(log.startedAt)} löschen`"
             @click="run(() => deleteWorkLog(log.id))"
           >
             Löschen
@@ -129,24 +158,31 @@ watch(
         </div>
       </li>
     </ul>
-    <form
-      v-if="targets.length"
-      class="work-logs__row"
-      @submit.prevent="add"
-    >
-      <select v-model="targetKey" name="target" aria-label="Eintrag">
-        <option value="">Eintrag wählen</option>
-        <option
-          v-for="target in targets"
-          :key="keyOf(target)"
-          :value="keyOf(target)"
-        >
-          {{ target.title }}
-        </option>
-      </select>
-      <input v-model="from" name="from" type="time" aria-label="Start" />
-      <input v-model="to" name="to" type="time" aria-label="Ende" />
-      <button type="submit" :disabled="saving || !canAdd">Nachtragen</button>
+    <form v-if="targets.length" class="work-logs__add" @submit.prevent="add">
+      <label class="field work-logs__target">
+        Eintrag
+        <select v-model="targetKey" name="target">
+          <option value="">Eintrag wählen</option>
+          <option
+            v-for="target in targets"
+            :key="keyOf(target)"
+            :value="keyOf(target)"
+          >
+            {{ target.title }}
+          </option>
+        </select>
+      </label>
+      <label class="field">
+        Von
+        <input v-model="from" name="from" type="time" />
+      </label>
+      <label class="field">
+        Bis
+        <input v-model="to" name="to" type="time" />
+      </label>
+      <button type="submit" class="btn" :disabled="saving || !canAdd">
+        Nachtragen
+      </button>
     </form>
   </section>
 </template>
@@ -154,65 +190,79 @@ watch(
 <style scoped>
 .work-logs {
   display: grid;
-  gap: 0.5rem;
-  margin: 1rem 0;
+  gap: var(--space-3);
 }
 
-.work-logs h3 {
+.work-logs__title {
   display: flex;
+  gap: var(--space-3);
   justify-content: space-between;
   margin: 0;
   font-size: 1rem;
+  font-weight: 800;
 }
 
-.work-logs ul {
+.work-logs__list {
   display: grid;
-  gap: 0.5rem;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+.work-logs__list li + li {
+  border-top: 1px solid var(--color-line);
+}
+
 .work-logs__row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: var(--space-2);
   align-items: center;
+  padding: var(--space-2) 0;
 }
 
 .work-logs__grow {
+  display: grid;
   flex: 1 1 12rem;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.work-logs small {
-  color: #697386;
+.work-logs__meta {
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
 }
 
-.work-logs input,
-.work-logs select,
-.work-logs button {
-  min-height: 2.75rem;
-  padding: 0 0.625rem;
-  border: 1px solid #d9dde5;
-  border-radius: 0.625rem;
-  background: #ffffff;
-  color: #182033;
-  font: inherit;
+.work-logs__time {
+  flex: 1 1 6rem;
+  width: auto;
 }
 
-.work-logs select {
-  flex: 1 1 10rem;
-  min-width: 0;
+.work-logs__add {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  align-items: end;
 }
 
-.work-logs button {
-  cursor: pointer;
+.work-logs__target {
+  grid-column: 1 / -1;
 }
 
-.work-logs__error {
-  margin: 0;
-  color: #b42318;
+.work-logs__add .btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+@media (min-width: 40rem) {
+  .work-logs__add {
+    grid-template-columns: minmax(0, 2fr) 1fr 1fr auto;
+  }
+
+  .work-logs__target,
+  .work-logs__add .btn {
+    grid-column: auto;
+  }
 }
 </style>

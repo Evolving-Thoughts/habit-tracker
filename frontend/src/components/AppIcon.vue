@@ -14,6 +14,18 @@ defineProps<{
     | "check"
     | "replan"
     | "chevron"
+    | "chevron-left"
+    | "chevron-down"
+    | "plus"
+    | "edit"
+    | "trash"
+    | "move"
+    | "child"
+    | "chart"
+    | "timer"
+    | "refresh"
+    | "logout"
+    | "search"
     | "close";
 }>();
 </script>
@@ -83,6 +95,51 @@ defineProps<{
     </template>
     <template v-else-if="name === 'chevron'">
       <path d="m9 6 6 6-6 6" />
+    </template>
+    <template v-else-if="name === 'chevron-left'">
+      <path d="m15 6-6 6 6 6" />
+    </template>
+    <template v-else-if="name === 'chevron-down'">
+      <path d="m6 9 6 6 6-6" />
+    </template>
+    <template v-else-if="name === 'plus'">
+      <path d="M12 5v14M5 12h14" />
+    </template>
+    <template v-else-if="name === 'edit'">
+      <path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z" />
+      <path d="m13.5 6.5 4 4" />
+    </template>
+    <template v-else-if="name === 'trash'">
+      <path d="M4 7h16M10 11v6M14 11v6" />
+      <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
+    </template>
+    <template v-else-if="name === 'move'">
+      <rect x="3.5" y="5" width="13" height="13" rx="3" />
+      <path d="M3.5 9.5h13M14 14h7M18 11l3 3-3 3" />
+    </template>
+    <template v-else-if="name === 'child'">
+      <path d="M6 4v9a3 3 0 0 0 3 3h9" />
+      <path d="m15 13 3 3-3 3" />
+    </template>
+    <template v-else-if="name === 'chart'">
+      <path d="M4 4v16h16" />
+      <path d="m7 15 4-4 3 3 5-6" />
+    </template>
+    <template v-else-if="name === 'timer'">
+      <circle cx="12" cy="13" r="7.5" />
+      <path d="M12 9v4l2.5 2M9.5 2.5h5" />
+    </template>
+    <template v-else-if="name === 'refresh'">
+      <path d="M20 12a8 8 0 1 1-2.3-5.6L20 8.5" />
+      <path d="M20 4v4.5h-4.5" />
+    </template>
+    <template v-else-if="name === 'logout'">
+      <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
+      <path d="M10 8l-4 4 4 4M6 12h10" />
+    </template>
+    <template v-else-if="name === 'search'">
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m20 20-4.4-4.4" />
     </template>
     <template v-else>
       <path d="M6 6l12 12M18 6 6 18" />

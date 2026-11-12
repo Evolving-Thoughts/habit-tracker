@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-12T12:35:29.653Z",
+  "generatedAt": "2026-11-12T16:51:48.000Z",
   "title": "Design System: Habit-Tracker",
   "extensions": {
     "colorMeta": {
@@ -152,6 +152,21 @@
           "#b5aca6",
           "#d7cfca",
           "#f3ede9"
+        ]
+      },
+      "action-tint-hover": {
+        "role": "primary",
+        "displayName": "Dichter Apricot-Hauch",
+        "canonical": "#ffe2cf",
+        "tonalRamp": [
+          "#1a0b02",
+          "#3b2414",
+          "#60422d",
+          "#876348",
+          "#ab8668",
+          "#ccab90",
+          "#ebd0b9",
+          "#fff0e4"
         ]
       },
       "on-action": {
@@ -308,15 +323,15 @@
     "typographyMeta": {
       "display": {
         "displayName": "Display",
-        "purpose": "Wochentag und Datum oben auf Heute."
+        "purpose": "Wochentag und Datum oben auf Heute; Seitentitel jeder Ansicht."
       },
       "headline": {
         "displayName": "Headline",
-        "purpose": "Titel der Fokuskarte."
+        "purpose": "Titel der Fokuskarte und der Anmeldekarte."
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Abschnittstitel; Dialogtitel 1.375rem, Leerzustand 1.25rem im selben Gewicht."
+        "purpose": "Abschnittstitel, Leerzustand, Wortmarke; Dialog- und Boot-Fehlertitel 1.375rem."
       },
       "body-large": {
         "displayName": "Body Large",
@@ -328,7 +343,7 @@
       },
       "label": {
         "displayName": "Label",
-        "purpose": "Uhrzeiten, Metazeilen, Jetzt; tabellarische Ziffern."
+        "purpose": "Uhrzeiten, Metazeilen, Jetzt, Feldlabels, Zähler; tabellarische Ziffern."
       },
       "nav-label": {
         "displayName": "Nav Label",
@@ -339,7 +354,7 @@
       {
         "name": "shadow-card",
         "value": "0 1px 2px rgb(107 50 18 / 6%), 0 6px 18px rgb(107 50 18 / 7%)",
-        "purpose": "Nur die Fokuskarte; Basis des Mehr-Popovers."
+        "purpose": "Die eine gehobene Karte pro Ansicht (Fokus, Quote, Anmeldung, Boot-Fehler), gewählter Kalendertag, Filtermenü."
       },
       {
         "name": "tab-bar-edge",
@@ -349,7 +364,12 @@
       {
         "name": "popover",
         "value": "var(--shadow-card), 0 12px 32px rgb(107 50 18 / 16%)",
-        "purpose": "Mehr-Menü."
+        "purpose": "Mehr-Menü und Aktionsmenü."
+      },
+      {
+        "name": "segment-rest",
+        "value": "0 1px 2px rgb(107 50 18 / 12%)",
+        "purpose": "Gewähltes Segment; Schalter-Daumen mit rgb(43 29 22 / 20%)."
       },
       {
         "name": "dialog",
@@ -395,6 +415,10 @@
         "value": "32rem"
       },
       {
+        "name": "menu-popover",
+        "value": "40rem"
+      },
+      {
         "name": "wide",
         "value": "56rem"
       }
@@ -413,9 +437,17 @@
       "name": "Getönter Button",
       "kind": "button",
       "refersTo": "button-tinted",
-      "description": "Standard für jede Nebenaktion: Überspringen, Bearbeiten, Verschieben, Dialog-Sekundär.",
+      "description": "Basis-Button (.btn): Standard für jede Nebenaktion.",
       "html": "<button class=\"ds-btn-tinted\">Verschieben</button>",
       "css": ".ds-btn-tinted{min-height:2.75rem;padding:0 1rem;border:0;border-radius:999px;background:var(--color-action-tint,#fff1e8);color:var(--color-action-strong,#9a330a);font:700 .9375rem 'Nunito Variable',ui-rounded,system-ui,sans-serif;cursor:pointer;transition:transform 420ms var(--spring,ease-out)}.ds-btn-tinted:active{transform:scale(.97);transition-duration:90ms}.ds-btn-tinted:focus-visible{outline:3px solid var(--color-action-strong,#9a330a);outline-offset:2px}"
+    },
+    {
+      "name": "Leiser Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Ohne Fläche in gedämpfter Tinte, Hover Apricot-Hauch: Abbrechen, Menüeinträge.",
+      "html": "<button class=\"ds-btn-quiet\">Abbrechen</button>",
+      "css": ".ds-btn-quiet{min-height:2.75rem;padding:0 1rem;border:0;border-radius:999px;background:transparent;color:var(--color-ink-muted,#6b4d3d);font:700 .9375rem 'Nunito Variable',ui-rounded,system-ui,sans-serif;cursor:pointer;transition:transform 420ms var(--spring,ease-out),background-color 160ms var(--ease-out,ease-out)}.ds-btn-quiet:hover{background:var(--color-action-tint,#fff1e8);color:var(--color-action-strong,#9a330a)}.ds-btn-quiet:active{transform:scale(.97);transition-duration:90ms}.ds-btn-quiet:focus-visible{outline:3px solid var(--color-action-strong,#9a330a);outline-offset:2px}"
     },
     {
       "name": "Button auf Grund",
@@ -442,6 +474,22 @@
       "css": ".ds-input{min-height:2.75rem;padding:0 .75rem;border:1.5px solid var(--color-line,#f1cfb4);border-radius:var(--radius-control,.875rem);background:var(--color-surface,#fff);color:var(--color-ink,#2b1d16);caret-color:var(--color-action,#c2410c);font:400 1rem 'Nunito Variable',ui-rounded,system-ui,sans-serif}.ds-input:focus-visible{outline:3px solid var(--color-action-strong,#9a330a);outline-offset:2px}"
     },
     {
+      "name": "Segmentwahl",
+      "kind": "chip",
+      "refersTo": "segmented",
+      "description": "Modus-Wahl wie Monat · Woche · Tag; gewählt ist Tinte auf Weiß.",
+      "html": "<div class=\"ds-seg\"><button aria-pressed=\"true\">Monat</button><button aria-pressed=\"false\">Woche</button><button aria-pressed=\"false\">Tag</button></div>",
+      "css": ".ds-seg{display:inline-flex;gap:.25rem;padding:.25rem;border-radius:999px;background:var(--color-ground-deep,#f9d3b5);font-family:'Nunito Variable',ui-rounded,system-ui,sans-serif}.ds-seg button{min-height:2.25rem;padding:0 1rem;border:0;border-radius:999px;background:transparent;color:var(--color-ink-muted,#6b4d3d);font:700 1rem 'Nunito Variable',ui-rounded,system-ui,sans-serif;cursor:pointer}.ds-seg button[aria-pressed=true]{background:var(--color-surface,#fff);color:var(--color-ink,#2b1d16);box-shadow:0 1px 2px rgb(107 50 18/12%)}.ds-seg button:focus-visible{outline:3px solid var(--color-action-strong,#9a330a);outline-offset:2px}"
+    },
+    {
+      "name": "Filter-Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Pille mit Apricot-Linie; gewählt Weiß mit Tintenrahmen.",
+      "html": "<div class=\"ds-chips\"><button class=\"ds-chip\" aria-pressed=\"true\">Alle</button><button class=\"ds-chip\" aria-pressed=\"false\">Habits</button><button class=\"ds-chip\" aria-pressed=\"false\">Todos</button></div>",
+      "css": ".ds-chips{display:flex;flex-wrap:wrap;gap:.5rem}.ds-chip{min-height:2.75rem;padding:0 1rem;border:1.5px solid var(--color-line,#f1cfb4);border-radius:999px;background:transparent;color:var(--color-ink-muted,#6b4d3d);font:700 1rem 'Nunito Variable',ui-rounded,system-ui,sans-serif;cursor:pointer}.ds-chip[aria-pressed=true]{border-color:var(--color-ink,#2b1d16);background:var(--color-surface,#fff);color:var(--color-ink,#2b1d16)}.ds-chip:focus-visible{outline:3px solid var(--color-action-strong,#9a330a);outline-offset:2px}"
+    },
+    {
       "name": "Fokuskarte",
       "kind": "card",
       "refersTo": "card-focus",
@@ -456,6 +504,22 @@
       "description": "Zeit | Ring | Inhalt; der Ring füllt sich orange beim Abhaken.",
       "html": "<div class=\"ds-ground\"><div class=\"ds-item\"><span class=\"ds-item-time\">15:00</span><button class=\"ds-item-check\" aria-label=\"Erledigt\"><span></span></button><div><h3>Bewerbung überarbeiten</h3><p><i style=\"background:#8c6b55\"></i>Arbeit<b>45/60 Min.</b></p></div></div></div>",
       "css": ".ds-ground{background:var(--color-ground,#fde4d0);padding:1rem}.ds-item{display:grid;grid-template-columns:2.75rem 2.75rem minmax(0,1fr);gap:.5rem;align-items:start;padding:.5rem 1rem .75rem .75rem;border-radius:var(--radius-card,1.375rem);background:var(--color-surface,#fff);color:var(--color-ink,#2b1d16);font-family:'Nunito Variable',ui-rounded,system-ui,sans-serif}.ds-item-time{padding-top:.7rem;color:var(--color-ink-muted,#6b4d3d);font-size:.875rem;font-weight:700;font-variant-numeric:tabular-nums}.ds-item-check{display:grid;place-items:center;width:2.75rem;height:2.75rem;padding:0;border:0;border-radius:50%;background:none;cursor:pointer;transition:transform 420ms var(--spring,ease-out)}.ds-item-check span{box-sizing:border-box;width:1.875rem;height:1.875rem;border:2.5px solid var(--color-action,#c2410c);border-radius:50%;transition:background-color 240ms var(--ease-out,ease-out)}.ds-item-check:hover span{background:var(--color-action,#c2410c)}.ds-item-check:active{transform:scale(.86);transition-duration:90ms}.ds-item-check:focus-visible{outline:3px solid var(--color-action-strong,#9a330a);outline-offset:2px}.ds-item h3{margin:.55rem 0 0;font-size:1.0625rem;font-weight:700;line-height:1.35}.ds-item p{display:flex;gap:.375rem;align-items:center;margin:.15rem 0 0;color:var(--color-ink-muted,#6b4d3d);font-size:.875rem;font-variant-numeric:tabular-nums}.ds-item b{margin-left:.375rem;font-weight:400}.ds-item i{width:.625rem;height:.625rem;border-radius:.2rem}"
+    },
+    {
+      "name": "Quotenkarte mit Fortschrittsbalken",
+      "kind": "card",
+      "refersTo": "progress-bar",
+      "description": "Wochenquote: große Zahl, Label, flacher Tintenbalken auf tiefem Apricot.",
+      "html": "<div class=\"ds-ground\"><section class=\"ds-quota\"><p class=\"ds-quota-v\">3 von 12</p><p class=\"ds-quota-l\">Habits diese Woche</p><div class=\"ds-bar\"><span style=\"width:25%\"></span></div></section></div>",
+      "css": ".ds-ground{background:var(--color-ground,#fde4d0);padding:1rem}.ds-quota{display:grid;gap:.25rem;padding:1.5rem;border-radius:var(--radius-card,1.375rem);background:var(--color-surface,#fff);color:var(--color-ink,#2b1d16);box-shadow:var(--shadow-card,0 1px 2px rgb(107 50 18/6%),0 6px 18px rgb(107 50 18/7%));font-family:'Nunito Variable',ui-rounded,system-ui,sans-serif}.ds-quota p{margin:0}.ds-quota-v{font-size:3rem;font-weight:800;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}.ds-quota-l{color:var(--color-ink-muted,#6b4d3d);font-weight:700}.ds-bar{height:.625rem;margin-top:.75rem;overflow:hidden;border-radius:999px;background:var(--color-ground-deep,#f9d3b5)}.ds-bar span{display:block;height:100%;border-radius:inherit;background:var(--color-ink,#2b1d16)}"
+    },
+    {
+      "name": "Leerzustand",
+      "kind": "card",
+      "refersTo": "empty-state",
+      "description": "Weiße Karte, zentriert, fetter Titel und gedämpfter Satz.",
+      "html": "<div class=\"ds-ground\"><div class=\"ds-empty\"><strong>Noch nichts im Dump</strong><span>Lege oben mit Plus an, was dir durch den Kopf geht.</span></div></div>",
+      "css": ".ds-ground{background:var(--color-ground,#fde4d0);padding:1rem}.ds-empty{display:grid;gap:.5rem;justify-items:center;padding:2rem 1.5rem;border-radius:var(--radius-card,1.375rem);background:var(--color-surface,#fff);color:var(--color-ink-muted,#6b4d3d);text-align:center;font-family:'Nunito Variable',ui-rounded,system-ui,sans-serif}.ds-empty strong{color:var(--color-ink,#2b1d16);font-size:1.125rem;font-weight:800}"
     },
     {
       "name": "Tab-Leiste",
@@ -483,12 +547,13 @@
       "Große weiche Ecken (Karte 1.375rem, Control 0.875rem, Pillen).",
       "Nunito Variable, kräftige 700/800-Gewichte für Titel und Labels, tabellarische Ziffern für Zeiten und Zählungen.",
       "Flach mit einem einzigen leisen Kartenschatten; Druck federt.",
-      "Mobile zuerst: Tap-Ziele ab 2.75rem, feste Tab-Leiste unten, ab 56rem Leiste oben."
+      "Mobile zuerst: Tap-Ziele ab 2.75rem, feste Tab-Leiste unten, ab 56rem Leiste oben.",
+      "Ein gemeinsamer Bausatz (Seite, Buttons, Felder, Segmentwahl, Chips, Karte, Zustände) für jede Ansicht."
     ],
     "rules": [
       {
         "name": "The Orange-Means-Tap Rule",
-        "body": "Die Aktionsfarbe steht nur auf Antippbarem. Statusanzeigen, Linien, Überschriften und Kategorien sind nie orange; die Jetzt-Linie ist Tinte.",
+        "body": "Die Aktionsfarbe steht nur auf Antippbarem. Statusanzeigen, Linien, Überschriften, Fortschritt und Kategorien sind nie orange; die Jetzt-Linie ist Tinte.",
         "section": "colors"
       },
       {
@@ -502,8 +567,18 @@
         "section": "colors"
       },
       {
+        "name": "The Last-Step-Red Rule",
+        "body": "Neben Fehlern ist die einzige rote Fläche der letzte, unumkehrbare Schritt einer Löschung (\"Ja, löschen\"). Der Weg dorthin, etwa \"Löschen\" im Aktionsmenü, bleibt in Tinte.",
+        "section": "colors"
+      },
+      {
+        "name": "The Ink-Choice Rule",
+        "body": "Auswahl ist keine zweite Farbe: gewähltes Segment und gewählter Chip sind Tinte auf Weiß, Fortschritt ist ein flacher Tintenbalken auf tiefem Apricot.",
+        "section": "colors"
+      },
+      {
         "name": "The Tabular-Time Rule",
-        "body": "Jede Uhrzeit, Minutenangabe und Zählung (\"10/35 Min.\", \"1 von 4\") setzt tabellarische Ziffern.",
+        "body": "Jede Uhrzeit, Minutenangabe und Zählung (\"10/35 Min.\", \"1 von 4\", \"3 von 12\") setzt tabellarische Ziffern.",
         "section": "typography"
       },
       {
@@ -513,7 +588,7 @@
       },
       {
         "name": "The One-Lifted-Card Rule",
-        "body": "Auf einer Seite trägt nur die eine Fokuskarte den Kartenschatten. Listenkarten liegen flach.",
+        "body": "Pro Ansicht trägt höchstens eine ruhende Karte den Kartenschatten. Listenkarten, Leerzustände und Einstellungskarten liegen flach.",
         "section": "elevation"
       },
       {
@@ -524,7 +599,9 @@
     ],
     "dos": [
       "Do Farben, Ecken, Abstände, Tap-Größen und Bewegung ausschließlich über die Tokens in `frontend/src/style.css` beziehen.",
+      "Do neue Ansichten aus den gemeinsamen Bausteinen (Seite, Buttons, Felder, Segmentwahl, Chips, Karte, Leerzustand, Hinweis, Skelett) zusammensetzen.",
       "Do jede Nebenaktion als getönte Pille (action-tint, Schrift action-strong) bauen und pro Kontext höchstens einen orange gefüllten Primär-Button setzen.",
+      "Do Zeilenaktionen in einem Menü \"Aktionen für …\" bündeln: unteres Blatt auf dem Handy, Popover ab 40rem.",
       "Do antippbare Elemente mit `--press` drücken und über `--spring` (420ms) zurückfedern lassen.",
       "Do Tap-Ziele von mindestens 2.75rem halten, auch auf dem Desktop.",
       "Do Kategorien mit `categoryMark()` als kleine Marke zeigen, nie als eingefärbte Fläche.",
@@ -532,13 +609,14 @@
       "Do Uhrzeiten und Zählungen mit tabellarischen Ziffern setzen."
     ],
     "donts": [
-      "Don't Orange auf nicht antippbare Elemente legen (Überschriften, Linien, Status, Kategorien).",
+      "Don't Orange auf nicht antippbare Elemente legen (Überschriften, Linien, Status, Fortschritt, Kategorien, Verlaufspunkte).",
       "Don't Grau verwenden; Text und Linien bleiben in der warmen Tinten- und Apricot-Familie.",
       "Don't Verläufe, harte versetzte Schatten oder schwarze Schatten einsetzen.",
       "Don't Überfälliges rot färben oder als Warnblock oben stapeln; Nachholen ist ein Angebot in tiefem Apricot.",
+      "Don't Rot für Löschwege vor der endgültigen Bestätigung verwenden; \"Löschen\" im Menü ist Tinte.",
+      "Don't eine zweite Farbe für Auswahl einführen; gewählt heißt Tinte auf Weiß.",
       "Don't Konfetti oder Spielelemente als Bestätigung zeigen; die Bestätigung ist der gefüllte Ring und der Toast mit Rückgängig.",
-      "Don't Überzeilen in Versalien über Titel setzen; Kontext steht in der Metazeile.",
-      "Don't die alten Stile aus Todo-Dump, Aufgabenbaum, Habits, Kategorien, Verlauf, Kalender oder Einstellungen als Vorlage nehmen; sie sind zur Migration vorgemerkt."
+      "Don't Überzeilen in Versalien über Titel setzen; Kontext steht in der Metazeile."
     ]
   }
 }

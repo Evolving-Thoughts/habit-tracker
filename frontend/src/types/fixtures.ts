@@ -20,4 +20,12 @@ export const PLANNER_HABIT_FIELDS = {
   ...PLANNER_CONTEXT,
 };
 
-export const PLANNED_FIELDS = { isFixed: false, moveUntil: null };
+const HISTORY_CONTEXT = { categoryName: null, why: null };
+
+export const HISTORY_ITEM_FIELDS = HISTORY_CONTEXT;
+
+export const PLANNED_FIELDS = {
+  ...HISTORY_CONTEXT,
+  isFixed: false,
+  moveUntil: null,
+};

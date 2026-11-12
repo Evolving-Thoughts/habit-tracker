@@ -13,8 +13,11 @@ const MARKS = [
 ];
 
 export function categoryMark(name: string): string {
-  let hash = 0;
+  // FNV-1a: a multiplier of 31 is 1 modulo 6, which made the mark depend on
+  // the plain sum of the characters and let common names collide.
+  let hash = 2166136261;
   for (const character of name)
-    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+    hash = Math.imul(hash ^ character.charCodeAt(0), 16777619) >>> 0;
+  hash = (hash ^ (hash >>> 16)) >>> 0;
   return MARKS[hash % MARKS.length]!;
 }

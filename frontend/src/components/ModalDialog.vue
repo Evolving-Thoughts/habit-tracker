@@ -209,8 +209,8 @@ onUnmounted(() => {
   color: var(--color-on-action);
 }
 .modal-dialog__content :deep(button:disabled) {
-  background: #f6ebe4;
-  color: #8a6654;
+  background: var(--color-ground);
+  color: var(--color-ink-soft);
   cursor: not-allowed;
 }
 .modal-dialog__content :deep(input:not([type="checkbox"]):not([type="radio"])),

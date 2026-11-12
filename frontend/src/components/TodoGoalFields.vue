@@ -20,25 +20,28 @@ onMounted(async () => {
 </script>
 
 <template>
-  <label for="todo-period-start">Zeitraum von · optional</label>
-  <input
-    id="todo-period-start"
-    v-model="periodStart"
-    name="periodStart"
-    type="date"
-  />
-  <label for="todo-period-end">Zeitraum bis · optional</label>
-  <input id="todo-period-end" v-model="periodEnd" name="periodEnd" type="date" />
+  <div class="goal-fields__row">
+    <label class="field">
+      Zeitraum von · optional
+      <input v-model="periodStart" name="periodStart" type="date" />
+    </label>
+    <label class="field">
+      Zeitraum bis · optional
+      <input v-model="periodEnd" name="periodEnd" type="date" />
+    </label>
+  </div>
 
-  <label for="todo-goal-habit">Habit-Ziel · optional</label>
-  <select id="todo-goal-habit" v-model="habitId" name="goalHabit">
-    <option :value="null">Keines</option>
-    <option v-for="habit in habits" :key="habit.id" :value="habit.id">
-      {{ habit.title }}
-    </option>
-  </select>
-  <template v-if="habitId !== null">
-    <label for="todo-goal-target">Sollmenge im Zeitraum</label>
+  <label class="field">
+    Zählt für ein Habit · optional
+    <select v-model="habitId" name="goalHabit">
+      <option :value="null">Keines</option>
+      <option v-for="habit in habits" :key="habit.id" :value="habit.id">
+        {{ habit.title }}
+      </option>
+    </select>
+  </label>
+  <div v-if="habitId !== null" class="field">
+    <label for="todo-goal-target">Wie oft im Zeitraum?</label>
     <input
       id="todo-goal-target"
       v-model="target"
@@ -46,7 +49,28 @@ onMounted(async () => {
       type="number"
       min="1"
       step="1"
+      aria-describedby="todo-goal-hint"
     />
-    <small>Erledigte Ausführungen zählen. Ein Habit zählt je Zeitraum für ein Ziel.</small>
-  </template>
+    <small id="todo-goal-hint" class="goal-fields__hint"
+      >Jede erledigte Ausführung des Habits zählt mit.</small
+    >
+  </div>
 </template>
+
+<style scoped>
+.goal-fields__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+.goal-fields__hint {
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+@media (max-width: 32rem) {
+  .goal-fields__row {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

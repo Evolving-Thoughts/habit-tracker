@@ -66,7 +66,7 @@ describe("AuthView", () => {
       "r".repeat(43),
       "a-new-long-password",
     );
-    expect(wrapper.text()).toContain("Alle bisherigen Sessions");
+    expect(wrapper.text()).toContain("allen anderen Geräten");
   });
   it("shows errors without leaking the token into the UI", async () => {
     vi.mocked(auth.verifyEmail).mockRejectedValue(new Error("Link abgelaufen"));

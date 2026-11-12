@@ -7,10 +7,7 @@ import {
   TIMER_MAX_MINUTES,
 } from "../utils/timer-duration";
 import { computed, onMounted, onUnmounted, provide, ref, watch } from "vue";
-import {
-  createTimerController,
-  timerKey,
-} from "../composables/useTimer";
+import { createTimerController, timerKey } from "../composables/useTimer";
 import {
   updateTodoCompletion,
   updateOccurrenceStatus,
@@ -122,8 +119,7 @@ onUnmounted(() => {
             : timer.state === "finished" || remaining === 0
               ? "Zeit abgelaufen"
               : "Timer läuft"
-        }}</small
-        ><strong>{{ timer.title }}</strong>
+        }}</small><strong>{{ timer.title }}</strong>
       </div>
       <span class="timer-bar__time" aria-label="Verbleibende Zeit">{{
         display
@@ -332,9 +328,11 @@ input {
   width: 100%;
   margin-top: 0.5rem;
   min-height: 2.75rem;
-  padding: 0.7rem;
-  border: 1px solid #bfc7d4;
-  border-radius: 0.5rem;
+  padding: 0 var(--space-3);
+  border: 1.5px solid var(--color-line);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-ink);
   font: inherit;
 }
 @media (max-width: 32rem) {

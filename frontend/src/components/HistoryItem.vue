@@ -1,114 +1,161 @@
 <script setup lang="ts">
+import { computed } from "vue";
+import AppIcon from "./AppIcon.vue";
 import type { HistoryItem } from "../types/history";
-import {
-  formatDateForGermanDisplay,
-  formatTimeForGermanDisplay,
-} from "../utils/date";
-defineProps<{ item: HistoryItem }>();
+import { categoryMark } from "../utils/category-mark";
+import { formatTimeForGermanDisplay } from "../utils/date";
+import { shortDate } from "../utils/history";
+
+const props = defineProps<{ item: HistoryItem }>();
+
+const completed = computed(() => props.item.status === "completed");
+const time = computed(() =>
+  completed.value && props.item.resolvedAt
+    ? formatTimeForGermanDisplay(props.item.resolvedAt)
+    : "",
+);
+const details = computed(() => {
+  const { item } = props;
+  const parts: string[] = [];
+  if (item.type === "todo" && !item.scheduledDate)
+    parts.push("Aus dem Todo-Dump");
+  if (time.value) parts.push(`Erledigt um ${time.value}`);
+  if (!completed.value) parts.push("Übersprungen");
+  if (item.plannedDurationMinutes !== null)
+    parts.push(`${item.plannedDurationMinutes} Min. geplant`);
+  // Only when it landed on another day than planned.
+  if (item.scheduledDate && item.scheduledDate !== item.date)
+    parts.push(`Geplant für ${shortDate(item.scheduledDate)}`);
+  if (item.deleted) parts.push("Gelöscht");
+  return parts;
+});
 </script>
+
 <template>
   <li
     class="history-item"
+    :class="{
+      'history-item--skipped': !completed,
+      'history-item--untimed': !time,
+    }"
     :data-history-key="`${item.type}-${item.id}`"
     :data-status="item.status"
   >
-    <span class="history-item__icon" aria-hidden="true">
-      <svg
-        viewBox="0 0 24 24"
-        width="18"
-        height="18"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path v-if="item.status === 'completed'" d="m5 12 4 4 10-10" />
-        <template v-else>
-          <path d="M9 10H4V5" />
-          <path d="M4 10a8 8 0 1 1 2 8" />
-        </template>
-      </svg>
+    <span v-if="time" class="history-item__time">{{ time }}</span>
+    <!-- Read-only state: history is a record, not something to tick. -->
+    <span class="history-item__state" aria-hidden="true">
+      <AppIcon v-if="completed" name="check" />
     </span>
     <div class="history-item__content">
-      <div class="history-item__heading">
-        <h3>{{ item.title }}</h3>
-        <span v-if="item.deleted" class="history-item__deleted">Gelöscht</span>
-      </div>
-      <p>
-        {{ item.type === "todo" ? "Todo" : "Habit" }}
-        <template v-if="item.type === 'todo' && !item.scheduledDate">
-          · Aus dem Todo-Dump</template
-        >
-        <template v-if="item.status === 'completed' && item.resolvedAt">
-          · Erledigt um
-          {{ formatTimeForGermanDisplay(item.resolvedAt) }}</template
-        >
-        <template v-if="item.plannedDurationMinutes !== null">
-          · Geplant: {{ item.plannedDurationMinutes }} Min.</template
-        >
-      </p>
+      <h3>{{ item.title }}</h3>
+      <p v-if="item.why" class="history-item__why">{{ item.why }}</p>
       <p
-        v-if="
-          item.scheduledDate &&
-          (item.status === 'skipped' || item.scheduledDate !== item.date)
-        "
+        v-if="item.categoryName || details.length"
+        class="history-item__details"
       >
-        Geplant für {{ formatDateForGermanDisplay(item.scheduledDate) }}
+        <span v-if="item.categoryName" class="history-item__category">
+          <i
+            class="history-item__mark"
+            :style="{ background: categoryMark(item.categoryName) }"
+            aria-hidden="true"
+          />{{ item.categoryName }}
+        </span>
+        <span v-for="part in details" :key="part">{{ part }}</span>
       </p>
     </div>
   </li>
 </template>
+
 <style scoped>
 .history-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.875rem;
-  padding: 1rem;
-  border: 1px solid #d6dce7;
-  border-radius: 1rem;
-  background: white;
-}
-.history-item__icon {
   display: grid;
+  grid-template-columns: 2.75rem 1.25rem minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+.history-item--untimed {
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+}
+
+.history-item__time {
+  padding-top: 0.15rem;
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A small filled dot, not a ring: it reports a state, it is not a control. */
+.history-item__state {
+  display: grid;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.125rem;
   place-items: center;
-  flex: 0 0 1.75rem;
-  height: 1.75rem;
   border-radius: 50%;
-  background: #e5f5ed;
-  color: #146c43;
+  background: var(--color-ink-muted);
+  color: var(--color-surface);
 }
-.history-item[data-status="skipped"] .history-item__icon {
-  background: #eff1f5;
-  color: #647086;
+
+.history-item__state :deep(svg) {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  stroke-width: 3.5;
 }
+
+.history-item--skipped .history-item__state {
+  border: 1.5px dashed var(--color-ink-soft);
+  background: transparent;
+}
+
 .history-item__content {
   min-width: 0;
-  flex: 1;
 }
-.history-item__heading {
-  display: flex;
-  gap: 0.75rem;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-h3 {
+
+.history-item h3 {
   margin: 0;
-  font-size: 1rem;
+  color: var(--color-ink);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.35;
   overflow-wrap: anywhere;
-  color: #202b40;
 }
-p {
-  margin: 0.5rem 0 0;
-  color: #61718c;
+
+.history-item--skipped h3 {
+  color: var(--color-ink-muted);
+}
+
+.history-item__why {
+  margin: 0.15rem 0 0;
+  color: var(--color-ink-muted);
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.history-item__details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  margin: 0.15rem 0 0;
+  color: var(--color-ink-muted);
   font-size: 0.875rem;
-  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
 }
-.history-item__deleted {
-  font-size: 0.75rem;
-  background: #eff1f5;
-  color: #5d677c;
-  border-radius: 0.4rem;
-  padding: 0.2rem 0.4rem;
+
+.history-item__category {
+  display: inline-flex;
+  gap: 0.375rem;
+  align-items: center;
+}
+
+.history-item__mark {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 0.2rem;
 }
 </style>

@@ -76,7 +76,7 @@ defineEmits<{ click: [] }>();
   height: 1.375rem;
 }
 .timer-icon:hover:not(:disabled) {
-  background: #ffe2cf;
+  background: var(--color-action-tint-hover);
 }
 .timer-icon:active:not(:disabled) {
   transform: scale(0.92);

@@ -44,6 +44,15 @@ test("Todo-Dump: create, persist, rename, complete/reopen and confirmed delete",
   await expect(
     page.getByRole("heading", { name: "TypeScript lernen", exact: true }),
   ).toHaveCount(0);
+  // The tick folds the item away and offers the same undo as Today.
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: "„TypeScript lernen“ erledigt" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "1 erledigt", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
   await openView(page, "Heute");
   await showResolved(page);
   await expect(

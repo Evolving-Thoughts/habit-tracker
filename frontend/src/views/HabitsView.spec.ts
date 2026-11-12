@@ -14,6 +14,7 @@ import type {
   HabitScheduleRule,
   ScheduleVersionResponse,
 } from "../types/habit";
+import { getCategories } from "../api/categories.api";
 import HabitsView from "./HabitsView.vue";
 vi.mock("../api/categories.api", () => ({
   getCategories: vi.fn().mockResolvedValue([]),
@@ -84,13 +85,15 @@ describe("HabitsView", () => {
       }),
     );
     const wrapper = mount(HabitsView);
-    expect(wrapper.text()).toContain("Habits werden geladen");
+    expect(
+      wrapper.find('.skeleton[aria-label="Habits werden geladen"]').exists(),
+    ).toBe(true);
     expect(
       wrapper.get<HTMLButtonElement>(".create-button").element.disabled,
     ).toBe(true);
     resolve([]);
     await flushPromises();
-    expect(wrapper.text()).not.toContain("Habits werden geladen");
+    expect(wrapper.find(".skeleton").exists()).toBe(false);
   });
   it("refreshes on target changes only when no Habit editor is open", async () => {
     vi.mocked(getHabits).mockResolvedValue([habit()]);
@@ -120,7 +123,7 @@ describe("HabitsView", () => {
     expect(wrapper.find("dialog").exists()).toBe(false);
     expect(wrapper.find("form").exists()).toBe(false);
   });
-  it("groups active and paused habits and shows their current schedules", async () => {
+  it("groups active and paused habits and says their schedules in plain words", async () => {
     vi.mocked(getHabits).mockResolvedValueOnce([
       habit(),
       habit({
@@ -143,9 +146,10 @@ describe("HabitsView", () => {
     expect(wrapper.get('[data-group="paused"]').text()).toContain(
       "Gitarre spielen",
     );
-    expect(wrapper.text()).toContain("Montag, Donnerstag");
+    expect(wrapper.text()).toContain("Mo, Do");
     expect(wrapper.text()).toContain("Alle 2 Tage");
-    expect(wrapper.text()).toContain("02.10.2026");
+    expect(wrapper.text()).not.toContain("Gültig seit");
+    expect(wrapper.text()).not.toContain("Aktiv");
     expect(wrapper.findAll("[data-habit-id]")).toHaveLength(2);
   });
   it("shows a future-only habit so it can be edited before it is due", async () => {
@@ -160,9 +164,7 @@ describe("HabitsView", () => {
     ]);
     const wrapper = mount(HabitsView);
     await flushPromises();
-    expect(wrapper.text()).toContain("Geplant ab 10.10.2026");
-    expect(wrapper.text()).toContain("3 Mal pro Woche");
-    expect(wrapper.text()).toContain("Noch kein aktuell gültiger Zeitplan.");
+    expect(wrapper.text()).toContain("Ab 10.10.: 3× pro Woche");
     expect(
       wrapper.find('button[aria-label="Joggen bearbeiten"]').exists(),
     ).toBe(true);
@@ -178,9 +180,43 @@ describe("HabitsView", () => {
     ]);
     const wrapper = mount(HabitsView);
     await flushPromises();
-    expect(wrapper.text()).toContain("Alle 2 Tage");
-    expect(wrapper.text()).toContain("4 Mal pro Woche");
-    expect(wrapper.text()).toContain("Aktueller Zeitplan");
+    expect(wrapper.get(".habit-card__details").text()).toContain("Alle 2 Tage");
+    expect(wrapper.get(".habit-card__next").text()).toBe(
+      "Ab 10.10.: 4× pro Woche",
+    );
+  });
+  it("shows the why, category, time and duration on the card", async () => {
+    vi.mocked(getCategories).mockResolvedValue([{ id: 3, name: "Sport" }]);
+    vi.mocked(getHabits).mockResolvedValueOnce([
+      habit({
+        why: "Damit ich fit bleibe",
+        categoryId: 3,
+        timeOfDay: "07:30",
+        plannedDurationMinutes: 20,
+        currentSchedule: version({ type: "weekly_target", weeklyTarget: 3 }),
+      }),
+    ]);
+    const wrapper = mount(HabitsView);
+    await flushPromises();
+    expect(wrapper.get(".habit-card__why").text()).toBe("Damit ich fit bleibe");
+    expect(wrapper.get(".habit-card__details").text()).toBe(
+      "Sport3× pro Woche07:30 Uhr20 Min.",
+    );
+    expect(wrapper.find(".category-mark").exists()).toBe(true);
+  });
+  it("offers a retry when loading fails", async () => {
+    vi.mocked(getHabits)
+      .mockRejectedValueOnce(new Error("Backend nicht erreichbar"))
+      .mockResolvedValueOnce([habit()]);
+    const wrapper = mount(HabitsView);
+    await flushPromises();
+    const retry = wrapper
+      .findAll(".alert button")
+      .find((button) => button.text() === "Erneut versuchen");
+    await retry!.trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".alert").exists()).toBe(false);
+    expect(wrapper.find('[data-habit-id="10"]').exists()).toBe(true);
   });
   it("handles a habit with no schedule", async () => {
     vi.mocked(getHabits).mockResolvedValueOnce([
@@ -188,8 +224,9 @@ describe("HabitsView", () => {
     ]);
     const wrapper = mount(HabitsView);
     await flushPromises();
-    expect(wrapper.text()).toContain("Noch kein Zeitplan hinterlegt.");
-    expect(wrapper.get(".habit-card__status").text()).toBe("Ohne Zeitplan");
+    expect(wrapper.get(".habit-card__details").text()).toBe(
+      "Noch kein Zeitplan",
+    );
   });
   it("shows an initial load error without an empty state", async () => {
     vi.mocked(getHabits).mockRejectedValueOnce(
@@ -208,7 +245,7 @@ describe("HabitsView", () => {
       .mockRejectedValueOnce(new Error("Aktualisieren fehlgeschlagen"));
     const wrapper = mount(HabitsView);
     await flushPromises();
-    await wrapper.get(".habits-view__refresh").trigger("click");
+    window.dispatchEvent(new Event("timer-data-changed"));
     await flushPromises();
     expect(wrapper.get('[role="alert"]').text()).toBe(
       "Aktualisieren fehlgeschlagen",
@@ -250,7 +287,7 @@ describe("HabitsView", () => {
     });
     expect(wrapper.find("dialog").exists()).toBe(false);
     expect(getHabits).toHaveBeenCalledTimes(2);
-    expect(wrapper.text()).toContain("Geplant ab 10.10.2026");
+    expect(wrapper.text()).toContain("Ab 10.10.: Täglich");
     expect(wrapper.get('[role="status"]').text()).toBe("Habit erstellt.");
   });
   it("cancels creation without reloading", async () => {

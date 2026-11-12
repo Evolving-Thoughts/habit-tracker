@@ -17,7 +17,9 @@ function mountApp() {
       stubs: {
         TodayView: { template: '<main data-view="today">Today</main>' },
         TodoDumpView: { template: '<main data-view="dump">Dump</main>' },
-        HistoryView: { template: '<main data-view="history">History</main>' },
+        CalendarView: {
+          template: '<main data-view="calendar">Calendar</main>',
+        },
         TodoHierarchyView: {
           template: '<main data-view="hierarchy">Tree</main>',
         },
@@ -40,12 +42,12 @@ function tab(wrapper: ReturnType<typeof mountApp>, name: string) {
     )!;
 }
 describe("App navigation", () => {
-  it("starts with Today and offers five views", async () => {
+  it("starts with Today and offers the views", async () => {
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
-    // Four tabs, Mehr, and four views behind it.
-    expect(wrapper.findAll("nav button")).toHaveLength(9);
+    // Four tabs, Mehr, and three views behind it.
+    expect(wrapper.findAll("nav button")).toHaveLength(8);
   });
   it("opens the habit overview and marks only that navigation button active", async () => {
     const wrapper = mountApp();
@@ -98,13 +100,14 @@ it("opens the task hierarchy", async () => {
   expect(button.attributes("aria-current")).toBe("page");
 });
 
-describe("History navigation", () => {
-  it("opens history and marks it active", async () => {
+describe("Calendar navigation", () => {
+  it("opens the calendar as a main tab, without a separate Verlauf", async () => {
     const wrapper = mountApp();
     await flushPromises();
-    await tab(wrapper, "Verlauf").trigger("click");
-    expect(wrapper.find('[data-view="history"]').exists()).toBe(true);
-    expect(tab(wrapper, "Verlauf").attributes("aria-current")).toBe("page");
+    expect(tab(wrapper, "Verlauf")).toBeUndefined();
+    await tab(wrapper, "Kalender").trigger("click");
+    expect(wrapper.find('[data-view="calendar"]').exists()).toBe(true);
+    expect(tab(wrapper, "Kalender").attributes("aria-current")).toBe("page");
   });
 
   it("opens and closes the Mehr menu", async () => {
@@ -114,8 +117,33 @@ describe("History navigation", () => {
     expect(more.attributes("aria-expanded")).toBe("false");
     await more.trigger("click");
     expect(more.attributes("aria-expanded")).toBe("true");
-    await tab(wrapper, "Verlauf").trigger("click");
+    await tab(wrapper, "Aufgabenbaum").trigger("click");
     expect(more.attributes("aria-expanded")).toBe("false");
+  });
+});
+
+describe("App boot error", () => {
+  it("explains a lost connection calmly and retries", async () => {
+    vi.mocked(getMe).mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const wrapper = mountApp();
+    await flushPromises();
+    const alert = wrapper.get('[role="alert"]');
+    expect(alert.text()).toContain("Keine Verbindung zum Server");
+    expect(alert.text()).toContain("Deine Daten sind sicher.");
+    expect(alert.text()).not.toContain("Failed to fetch");
+    await alert.get("button.btn--primary").trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".boot-error").exists()).toBe(false);
+    expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
+  });
+
+  it("shows the message of other failures under the title", async () => {
+    vi.mocked(getMe).mockRejectedValueOnce(new Error("Wartungsarbeiten"));
+    const wrapper = mountApp();
+    await flushPromises();
+    const alert = wrapper.get('[role="alert"]');
+    expect(alert.text()).toContain("Keine Verbindung zum Server");
+    expect(alert.text()).toContain("Wartungsarbeiten");
   });
 });
 

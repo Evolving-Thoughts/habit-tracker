@@ -18,6 +18,7 @@ import PlannerItem from "../components/PlannerItem.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
 import MoveItemDialog from "../components/MoveItemDialog.vue";
 import ReplanDialog from "../components/ReplanDialog.vue";
+import UndoToast from "../components/UndoToast.vue";
 import type {
   DayPlannerHabitItem,
   DayPlannerItem,
@@ -671,12 +672,11 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
       </section>
     </template>
 
-    <div class="today-view__toast" role="status" aria-live="polite">
-      <div v-if="undo" class="today-view__toast-body">
-        <span>{{ undo.label }}</span>
-        <button type="button" @click="undoLast">Rückgängig</button>
-      </div>
-    </div>
+    <UndoToast
+      class="today-view__toast"
+      :label="undo?.label ?? null"
+      @undo="undoLast"
+    />
   </main>
 </template>
 
@@ -1111,59 +1111,9 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
   }
 }
 
-.today-view__toast {
-  position: fixed;
-  right: 0;
-  bottom: calc(
-    var(--tab-bar-height) + 5.25rem + env(safe-area-inset-bottom, 0px)
-  );
-  left: 0;
-  z-index: 40;
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.today-view__toast-body {
-  display: flex;
-  gap: var(--space-3);
-  align-items: center;
-  max-width: min(100% - 2rem, 28rem);
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
-  border-radius: var(--radius-pill);
-  background: var(--color-ink);
-  color: #ffffff;
-  font-weight: 600;
-  box-shadow: 0 8px 24px rgb(43 29 22 / 30%);
-  pointer-events: auto;
-  animation: today-toast 240ms var(--ease-out);
-}
-
-.today-view__toast-body button {
-  min-height: var(--tap);
-  padding: 0 var(--space-4);
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: #ffffff;
-  color: var(--color-action-strong);
-  font-weight: 800;
-  cursor: pointer;
-}
-
-@keyframes today-toast {
-  from {
-    transform: translateY(0.75rem);
-    opacity: 0;
-  }
-}
-
 @media (min-width: 56rem) {
   .today-view {
     padding-top: var(--space-6);
-  }
-
-  .today-view__toast {
-    bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
   }
 }
 

@@ -67,15 +67,13 @@ test("password reset by email invalidates an existing device session", async ({
     ).status(),
   ).toBe(200);
   await page
-    .getByRole("button", { name: "Zur Anmeldung", exact: true })
+    .getByRole("button", { name: "Zurück zur Anmeldung", exact: true })
     .click();
   await page
     .getByRole("button", { name: "Passwort vergessen?", exact: true })
     .click();
   await page.getByLabel("E-Mail-Adresse", { exact: true }).fill(EMAIL);
-  await page
-    .getByRole("button", { name: "Reset-Link senden", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Link senden", exact: true }).click();
   await expect(page.getByRole("status")).toBeVisible();
   const token = await mailToken(request, EMAIL, "reset");
   await page.goto(`/#reset=${token}`);
