@@ -10,7 +10,6 @@ export const startTimer = (target: TimerTarget, replaceTimerId?: string) =>
     body: JSON.stringify({
       kind: target.kind,
       targetId: target.targetId,
-      durationMinutes: target.durationMinutes,
       ...(replaceTimerId ? { replaceTimerId } : {}),
     }),
   });
@@ -19,7 +18,8 @@ export const timerAction = (id: string, action: "pause" | "resume" | "stop") =>
     method: "POST",
     body: "{}",
   });
-export const changeTimerDuration = (id: string, durationMinutes: number) =>
+/** Changes the planned minutes of the stopwatch's target. */
+export const changeTimerTarget = (id: string, durationMinutes: number) =>
   request<TimerResponse>(`/timers/${id}/duration`, {
     method: "PATCH",
     body: JSON.stringify({ durationMinutes }),

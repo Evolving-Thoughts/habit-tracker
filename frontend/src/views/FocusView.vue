@@ -1,0 +1,513 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import {
+  getToday,
+  reorderDay,
+  updateOccurrenceStatus,
+  updateTodoCompletion,
+} from "../api/day-planner.api";
+import AppIcon from "../components/AppIcon.vue";
+import { notifyDataChanged } from "../composables/data-sync";
+import { useLoader } from "../composables/useLoader";
+import { useTimer } from "../composables/useTimer";
+import { hrefOf } from "../routes";
+import type { DayPlannerItem, DayPlannerResponse } from "../types/day-planner";
+import { categoryMark } from "../utils/category-mark";
+import { formatStopwatch } from "../utils/stopwatch";
+import {
+  arrangeToday,
+  formatDuration,
+  itemKey,
+  nowInBerlin,
+} from "../utils/today-agenda";
+
+/**
+ * One quest in view, nothing else: what is up now, its why, and a stopwatch.
+ * Finishing it brings up the next one in the order of the day.
+ */
+const timer = useTimer();
+const busy = ref(false);
+const actionError = ref<string | null>(null);
+
+const {
+  data: planner,
+  isLoading,
+  errorMessage,
+  reload,
+} = useLoader<DayPlannerResponse | null>(getToday, {
+  initial: null,
+  fallbackError: "Der Tag konnte nicht geladen werden.",
+  refreshOnChange: () => !busy.value,
+});
+
+const now = ref(nowInBerlin());
+let clock: ReturnType<typeof setInterval> | undefined;
+onMounted(() => {
+  clock = setInterval(() => (now.value = nowInBerlin()), 60_000);
+  window.addEventListener("keydown", onKeydown);
+});
+onUnmounted(() => {
+  clearInterval(clock);
+  window.removeEventListener("keydown", onKeydown);
+});
+
+const agenda = computed(() =>
+  planner.value ? arrangeToday(planner.value, now.value) : null,
+);
+
+function isTimed(item: DayPlannerItem): boolean {
+  const running = timer?.timer.value;
+  if (!running) return false;
+  return item.type === "todo"
+    ? running.kind === "todo" && running.targetId === item.todoId
+    : running.kind === "occurrence" && running.targetId === item.occurrenceId;
+}
+
+/** What the stopwatch runs on stays in view; otherwise what is up now. */
+const current = computed<DayPlannerItem | null>(() => {
+  const day = agenda.value;
+  if (!day) return null;
+  const open = planner.value!.items.filter((item) => item.status === "pending");
+  return open.find(isTimed) ?? day.focus;
+});
+const timed = computed(() => !!current.value && isTimed(current.value));
+const running = computed(
+  () => timed.value && timer?.timer.value?.state === "running",
+);
+
+const display = computed(() =>
+  formatStopwatch(timed.value ? (timer?.elapsed.value ?? 0) : 0),
+);
+const stateLabel = computed(() => {
+  if (!timed.value) return "Bereit";
+  if (!running.value) return "Pausiert";
+  return timer?.reached.value ? "Soll erreicht" : "Läuft";
+});
+const facts = computed(() => {
+  const item = current.value;
+  if (!item) return [];
+  const parts: string[] = [];
+  if (item.plannedDurationMinutes != null)
+    parts.push(`Soll ${formatDuration(item.plannedDurationMinutes)}`);
+  if (item.workedMinutes > 0)
+    parts.push(`heute schon ${formatDuration(item.workedMinutes)}`);
+  if (item.timeOfDay) parts.push(`Termin um ${item.timeOfDay} Uhr`);
+  return parts;
+});
+
+/** The order of the day after the one in view. */
+const upcoming = computed(() =>
+  (agenda.value?.queue ?? []).filter((item) => item !== current.value),
+);
+const nextAppointment = computed(() => {
+  const day = agenda.value;
+  if (!day) return null;
+  const entry = day.timeline[day.nowIndex];
+  if (!entry) return null;
+  return `${entry.time} ${entry.kind === "item" ? entry.item.title : entry.event.title}`;
+});
+/** Only what is part of the order can be put behind the rest of it. */
+const canPostpone = computed(
+  () =>
+    !!current.value &&
+    !current.value.timeOfDay &&
+    (agenda.value?.queue.length ?? 0) > 1,
+);
+
+async function act(work: () => Promise<unknown>, fallback: string) {
+  if (busy.value) return;
+  busy.value = true;
+  actionError.value = null;
+  try {
+    await work();
+  } catch (cause) {
+    actionError.value = cause instanceof Error ? cause.message : fallback;
+  } finally {
+    busy.value = false;
+  }
+}
+
+function toggleStopwatch(): void {
+  const item = current.value;
+  if (!item || !timer || timer.busy.value) return;
+  if (!timed.value)
+    void timer.start(
+      item.type === "todo"
+        ? { kind: "todo", targetId: item.todoId, title: item.title }
+        : { kind: "occurrence", targetId: item.occurrenceId, title: item.title },
+    );
+  else void timer.action(running.value ? "pause" : "resume");
+}
+
+/** Done: the server ends its stopwatch, and the next quest comes into view. */
+function complete(): Promise<void> {
+  const item = current.value;
+  if (!item) return Promise.resolve();
+  return act(async () => {
+    if (item.type === "todo") await updateTodoCompletion(item.todoId, true);
+    else await updateOccurrenceStatus(item.occurrenceId, "completed");
+    notifyDataChanged();
+    await Promise.all([reload(false), timer?.refresh()]);
+  }, "Das Erledigen hat nicht geklappt.");
+}
+
+function skip(): Promise<void> {
+  const item = current.value;
+  if (!item || item.type !== "habit") return Promise.resolve();
+  return act(async () => {
+    await updateOccurrenceStatus(item.occurrenceId, "skipped");
+    notifyDataChanged();
+    await Promise.all([reload(false), timer?.refresh()]);
+  }, "Das Überspringen hat nicht geklappt.");
+}
+
+/** Not now: it goes to the end of the order, and its stopwatch ends. */
+function postpone(): Promise<void> {
+  const item = current.value;
+  const queue = agenda.value?.queue;
+  if (!item || !queue || !canPostpone.value) return Promise.resolve();
+  return act(async () => {
+    if (timed.value) await timer?.action("stop");
+    const order = [...queue.filter((entry) => entry !== item), item];
+    await reorderDay(
+      order.map((entry) =>
+        entry.type === "todo"
+          ? { type: "todo" as const, id: entry.todoId }
+          : { type: "habit" as const, id: entry.occurrenceId },
+      ),
+    );
+    notifyDataChanged();
+    await reload(false);
+  }, "Das Verschieben hat nicht geklappt.");
+}
+
+function onKeydown(event: KeyboardEvent): void {
+  const target = event.target as HTMLElement | null;
+  const typing =
+    !!target &&
+    (target.isContentEditable ||
+      ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(target.tagName));
+  if (event.key === "Escape" && !event.defaultPrevented) {
+    window.location.hash = hrefOf("today");
+  } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    void complete();
+  } else if (event.key === " " && !typing) {
+    event.preventDefault();
+    toggleStopwatch();
+  }
+}
+</script>
+
+<template>
+  <main class="focus-view">
+    <header class="focus-view__bar">
+      <a class="focus-view__back" :href="hrefOf('today')">
+        <AppIcon name="chevron-left" />
+        <span>Heute</span>
+      </a>
+      <p class="focus-view__eyebrow">Fokus-Modus</p>
+    </header>
+
+    <p v-if="errorMessage || actionError" class="focus-view__error" role="alert">
+      {{ errorMessage || actionError }}
+    </p>
+
+    <div
+      v-if="isLoading"
+      class="focus-view__stage"
+      role="status"
+      aria-label="Fokus-Modus wird geladen"
+    >
+      <span class="focus-view__bone" />
+    </div>
+
+    <section
+      v-else-if="current"
+      :key="itemKey(current)"
+      class="focus-view__stage"
+      aria-labelledby="focus-view-title"
+    >
+      <p v-if="current.campaign" class="focus-view__campaign">
+        <i
+          class="category-mark"
+          :style="{ background: categoryMark(current.campaign.title) }"
+          aria-hidden="true"
+        />{{ current.campaign.title }}
+      </p>
+      <h1 id="focus-view-title" class="focus-view__title">
+        {{ current.title }}
+      </h1>
+      <p v-if="current.why" class="focus-view__why">{{ current.why }}</p>
+
+      <p
+        class="focus-view__time"
+        :class="{ 'focus-view__time--idle': !running }"
+        role="timer"
+        aria-label="Gearbeitete Zeit"
+      >
+        {{ display }}
+      </p>
+      <p class="focus-view__state">
+        <strong>{{ stateLabel }}</strong>
+        <span v-for="fact in facts" :key="fact">{{ fact }}</span>
+      </p>
+
+      <div class="focus-view__actions">
+        <button
+          class="btn btn--primary focus-view__primary"
+          type="button"
+          :disabled="busy || !current.timerEligible || timer?.busy.value"
+          @click="toggleStopwatch"
+        >
+          {{ !timed ? "Starten" : running ? "Pausieren" : "Weiter" }}
+        </button>
+        <button
+          class="btn focus-view__done"
+          type="button"
+          :disabled="busy"
+          :aria-label="`${current.title} erledigen`"
+          @click="complete"
+        >
+          <AppIcon name="check" />
+          <span>Erledigt</span>
+        </button>
+      </div>
+      <div class="focus-view__later">
+        <button
+          v-if="canPostpone"
+          class="btn btn--quiet"
+          type="button"
+          :disabled="busy"
+          @click="postpone"
+        >
+          Später
+        </button>
+        <button
+          v-if="current.type === 'habit'"
+          class="btn btn--quiet"
+          type="button"
+          :disabled="busy"
+          :aria-label="`${current.title} überspringen`"
+          @click="skip"
+        >
+          Überspringen
+        </button>
+      </div>
+
+      <dl v-if="upcoming.length || nextAppointment" class="focus-view__ahead">
+        <div v-if="upcoming.length">
+          <dt>Danach</dt>
+          <dd>{{ upcoming[0]!.title }}</dd>
+        </div>
+        <div v-if="nextAppointment">
+          <dt>Nächster Termin</dt>
+          <dd>{{ nextAppointment }}</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section v-else-if="planner" class="focus-view__stage focus-view__empty">
+      <h1 class="focus-view__title">Alles erledigt</h1>
+      <p>
+        Für heute ist nichts mehr offen.
+        <template v-if="planner.workedMinutes > 0">
+          Du hast {{ formatDuration(planner.workedMinutes) }} gearbeitet.
+        </template>
+      </p>
+      <a class="btn btn--primary" :href="hrefOf('today')">Zurück zu Heute</a>
+    </section>
+  </main>
+</template>
+
+<style scoped>
+.focus-view {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  width: min(100% - 2rem, 36rem);
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: var(--space-4) 0 var(--space-6);
+}
+
+.focus-view__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.focus-view__back {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+  min-height: var(--tap);
+  padding-right: var(--space-3);
+  border-radius: var(--radius-control);
+  color: var(--color-action-strong);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.focus-view__back :deep(svg) {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.focus-view__eyebrow {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.focus-view__error {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-danger-tint);
+  color: var(--color-danger);
+}
+
+.focus-view__stage {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) 0;
+  text-align: center;
+}
+
+.focus-view__campaign {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0;
+  padding: 0.25rem var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.category-mark {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 0.2rem;
+}
+
+.focus-view__title {
+  margin: 0;
+  font-size: clamp(1.5rem, 6vw, 1.875rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.focus-view__why {
+  max-width: 34ch;
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 1.0625rem;
+  text-wrap: pretty;
+}
+
+.focus-view__time {
+  margin: var(--space-4) 0 0;
+  font-size: clamp(4rem, 22vw, 7rem);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.focus-view__time--idle {
+  color: var(--color-ink-soft);
+}
+
+.focus-view__state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  justify-content: center;
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.focus-view__state strong {
+  color: var(--color-ink);
+}
+
+.focus-view__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  justify-content: center;
+  margin-top: var(--space-4);
+}
+
+.focus-view__primary {
+  min-width: 11rem;
+}
+
+.focus-view__done {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.focus-view__done :deep(svg) {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.focus-view__later {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: center;
+}
+
+.focus-view__ahead {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  margin: var(--space-5) 0 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-line);
+  text-align: left;
+}
+
+.focus-view__ahead div {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.focus-view__ahead dt {
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.focus-view__ahead dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.focus-view__empty p {
+  max-width: 34ch;
+  margin: 0;
+  color: var(--color-ink-muted);
+}
+
+.focus-view__bone {
+  width: min(100%, 16rem);
+  height: 6rem;
+  border-radius: var(--radius-card);
+  background: var(--color-ground-deep);
+}
+</style>

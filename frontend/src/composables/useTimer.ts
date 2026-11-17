@@ -4,7 +4,7 @@ import {
   getCurrentTimer,
   startTimer,
   timerAction,
-  changeTimerDuration,
+  changeTimerTarget,
   type Timer,
   type TimerTarget,
   type TimerResponse,
@@ -21,8 +21,9 @@ export function createTimerController() {
   let alive = true;
   let revision = 0;
   let reading = false;
+  // The time worked at the moment of the last answer, on the local clock.
   let sampledAt = tick.value;
-  let sampledServerTime = Date.now();
+  let sampledElapsed = 0;
   function apply(
     response: TimerResponse,
     startedAt: number,
@@ -31,8 +32,10 @@ export function createTimerController() {
     const previous = timer.value;
     const receivedAt = performance.now();
     sampledAt = receivedAt;
-    sampledServerTime =
-      Date.parse(response.serverNow) + (receivedAt - startedAt) / 2;
+    // The server answered about halfway through the request.
+    sampledElapsed =
+      (response.timer?.elapsedMilliseconds ?? 0) +
+      (response.timer?.state === "running" ? (receivedAt - startedAt) / 2 : 0);
     timer.value = response.timer;
     tick.value = receivedAt;
     error.value = "";
@@ -40,21 +43,23 @@ export function createTimerController() {
       remote &&
       previous &&
       (previous.id !== response.timer?.id ||
-        previous.durationMinutes !== response.timer?.durationMinutes)
+        previous.targetMinutes !== response.timer?.targetMinutes)
     )
       notifyViewsChanged();
   }
-  const remaining = computed(() => {
+  /** Time worked so far; a running stopwatch counts on from the last answer. */
+  const elapsed = computed(() => {
     if (!timer.value) return 0;
-    if (timer.value.state !== "running")
-      return timer.value.remainingMilliseconds;
-    return Math.max(
-      0,
-      Date.parse(timer.value.endsAt!) -
-        sampledServerTime -
-        (tick.value - sampledAt),
-    );
+    if (timer.value.state !== "running") return sampledElapsed;
+    return sampledElapsed + Math.max(0, tick.value - sampledAt);
   });
+  /** The planned minutes are worked; the stopwatch runs on regardless. */
+  const reached = computed(
+    () =>
+      !!timer.value &&
+      timer.value.targetMinutes !== null &&
+      elapsed.value >= timer.value.targetMinutes * 60_000,
+  );
   async function refresh(): Promise<void> {
     if (!alive || busy.value || reading) return;
     reading = true;
@@ -108,7 +113,7 @@ export function createTimerController() {
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === "ACTIVE_TIMER_EXISTS") {
         await refresh();
-        if (timer.value && ["running", "paused"].includes(timer.value.state))
+        if (timer.value)
           switching.value = { target, previousId: timer.value.id };
       }
     }
@@ -130,7 +135,7 @@ export function createTimerController() {
       return false;
     }
   }
-  async function duration(
+  async function setTarget(
     minutes: number,
     expectedId?: string,
   ): Promise<boolean> {
@@ -142,7 +147,7 @@ export function createTimerController() {
       return false;
     }
     try {
-      return await mutate(() => changeTimerDuration(current.id, minutes), true);
+      return await mutate(() => changeTimerTarget(current.id, minutes), true);
     } catch {
       return false;
     }
@@ -152,11 +157,12 @@ export function createTimerController() {
     error,
     busy,
     switching,
-    remaining,
+    elapsed,
+    reached,
     refresh,
     start,
     action,
-    duration,
+    setTarget,
     pulse: () => {
       tick.value = performance.now();
     },

@@ -90,76 +90,147 @@ describe('Synced timers and Dump completion (e2e)', () => {
     if (db?.isInitialized) await clear();
     await app?.close();
   });
-  it('starts from the saved duration, persists a deadline and retries idempotently', async () => {
+  const MINUTE = 60_000;
+  const later = (milliseconds: number): void => {
+    now = new Date(now.getTime() + milliseconds);
+  };
+  const logs = () =>
+    db.getRepository(WorkLogEntity).find({ order: { startedAt: 'ASC' } });
+
+  it('counts up from the start, takes the planned minutes as target and retries idempotently', async () => {
     const id = await todo();
     const first = await start({ kind: 'todo', targetId: id });
     expect(first.timer).toMatchObject({
       state: 'running',
-      durationMinutes: 2,
-      remainingMilliseconds: 120000,
+      elapsedMilliseconds: 0,
+      targetMinutes: 2,
+      targetReachedAt: null,
     });
-    expect(first.timer?.endsAt).toBe(
-      new Date(now.getTime() + 120000).toISOString(),
-    );
-    now = new Date(now.getTime() + 30000);
+    later(30_000);
     const retry = await start({ kind: 'todo', targetId: id });
     expect(retry.timer?.id).toBe(first.timer?.id);
-    expect(retry.timer?.remainingMilliseconds).toBe(90000);
+    expect(retry.timer?.elapsedMilliseconds).toBe(30_000);
     expect(await db.getRepository(TimerEntity).count()).toBe(1);
   });
-  it('pauses, survives a long device absence, then resumes the saved remainder', async () => {
+  it('runs without a planned duration', async () => {
+    const id = (
+      (await client().post('/todos').send({ title: 'Offen' }).expect(201))
+        .body as { id: number }
+    ).id;
+    const timer = (await start({ kind: 'todo', targetId: id })).timer!;
+    expect(timer).toMatchObject({ state: 'running', targetMinutes: null });
+    later(45 * MINUTE);
+    expect((await read()).timer).toMatchObject({
+      state: 'running',
+      elapsedMilliseconds: 45 * MINUTE,
+      targetReachedAt: null,
+    });
+  });
+  it('pauses, survives a long device absence, then counts on from the saved time', async () => {
     const id = await todo();
     const timer = (await start({ kind: 'todo', targetId: id })).timer!;
-    now = new Date(now.getTime() + 30123);
+    later(30_123);
     const paused = await action(timer.id, 'pause');
-    expect(paused.timer?.remainingMilliseconds).toBe(89877);
-    now = new Date(now.getTime() + 3600000);
+    expect(paused.timer).toMatchObject({
+      state: 'paused',
+      elapsedMilliseconds: 30_123,
+    });
+    later(3_600_000);
     expect((await read()).timer).toMatchObject({
       state: 'paused',
-      remainingMilliseconds: 89877,
+      elapsedMilliseconds: 30_123,
     });
-    const resumed = await action(timer.id, 'resume');
-    expect(resumed.timer?.endsAt).toBe(
-      new Date(now.getTime() + 89877).toISOString(),
-    );
-    expect((await action(timer.id, 'resume')).timer?.endsAt).toBe(
-      resumed.timer?.endsAt,
-    );
+    await action(timer.id, 'resume');
+    // A repeated resume does not start a second stretch.
+    await action(timer.id, 'resume');
+    later(10_000);
+    expect((await read()).timer?.elapsedMilliseconds).toBe(40_123);
   });
-  it('expires after absence without completing the target and frees the active slot', async () => {
+  it('marks the target as reached, keeps running past it and completes nothing', async () => {
     const id = await todo(1);
+    const started = now;
     const timer = (await start({ kind: 'todo', targetId: id })).timer!;
-    now = new Date(now.getTime() + 61000);
+    later(61_000);
     expect((await read()).timer).toMatchObject({
-      state: 'finished',
-      remainingMilliseconds: 0,
-      finishedAt: timer.endsAt,
+      id: timer.id,
+      state: 'running',
+      elapsedMilliseconds: 61_000,
+      targetReachedAt: new Date(started.getTime() + MINUTE).toISOString(),
     });
+    later(5 * MINUTE);
+    expect((await read()).timer?.elapsedMilliseconds).toBe(361_000);
     expect(
       (await db.getRepository(TodoEntity).findOneByOrFail({ id })).completed,
     ).toBe(false);
-    const next = await todo();
-    expect(
-      (await start({ kind: 'todo', targetId: next })).timer?.targetId,
-    ).toBe(next);
+    // The stopwatch still holds the one active slot.
+    await client()
+      .post('/timers')
+      .send({ kind: 'todo', targetId: await todo() })
+      .expect(409);
   });
-  it('logs the work once when a timer runs into an expired occurrence', async () => {
+  it('logs every stretch as work, split at each pause', async () => {
+    const id = await todo();
+    const first = now;
+    const timer = (await start({ kind: 'todo', targetId: id })).timer!;
+    later(10 * MINUTE);
+    await action(timer.id, 'pause');
+    later(60 * MINUTE);
+    const second = now;
+    await action(timer.id, 'resume');
+    later(5 * MINUTE);
+    await action(timer.id, 'stop');
+    expect(
+      (await logs()).map(({ startedAt, endedAt, source, todoId }) => ({
+        startedAt,
+        endedAt,
+        source,
+        todoId,
+      })),
+    ).toEqual([
+      {
+        startedAt: first,
+        endedAt: new Date(first.getTime() + 10 * MINUTE),
+        source: 'timer',
+        todoId: id,
+      },
+      {
+        startedAt: second,
+        endedAt: new Date(second.getTime() + 5 * MINUTE),
+        source: 'timer',
+        todoId: id,
+      },
+    ]);
+  });
+  it('cuts a stopwatch nobody ended after twelve hours and leaves it paused', async () => {
+    const id = await todo();
+    const started = now;
+    const timer = (await start({ kind: 'todo', targetId: id })).timer!;
+    later(30 * 3_600_000);
+    expect((await read()).timer).toMatchObject({
+      id: timer.id,
+      state: 'paused',
+      elapsedMilliseconds: 12 * 3_600_000,
+    });
+    const [log] = await logs();
+    expect(log.startedAt).toEqual(started);
+    expect(log.endedAt).toEqual(new Date(started.getTime() + 12 * 3_600_000));
+    expect(await logs()).toHaveLength(1);
+  });
+  it('logs the work once, and not past the limit, when a timer runs into an expired occurrence', async () => {
     await habit();
     const occurrence = (await planner()).items.find(
       (item) => item.type === 'habit',
     );
     const started = now;
-    await start({
-      kind: 'occurrence',
-      targetId: occurrence!.occurrenceId,
-      durationMinutes: 4320,
-    });
-    now = new Date(now.getTime() + 36 * 3_600_000);
+    await start({ kind: 'occurrence', targetId: occurrence!.occurrenceId });
+    later(36 * 3_600_000);
     expect((await read()).timer).toBeNull();
-    const logs = await db.getRepository(WorkLogEntity).find();
-    expect(logs).toHaveLength(1);
-    expect(logs[0].startedAt).toEqual(started);
-    expect(logs[0].endedAt).toEqual(now);
+    const stored = await logs();
+    expect(stored).toHaveLength(1);
+    expect(stored[0].startedAt).toEqual(started);
+    expect(stored[0].endedAt).toEqual(
+      new Date(started.getTime() + 12 * 3_600_000),
+    );
   });
   it('allows only one timer across simultaneous devices, including paused timers', async () => {
     const a = await todo(),
@@ -204,36 +275,57 @@ describe('Synced timers and Dump completion (e2e)', () => {
       (await db.getRepository(TodoEntity).findOneByOrFail({ id: a })).completed,
     ).toBe(false);
   });
-  it('changes total duration only while paused, preserves elapsed time and stores it on the Todo', async () => {
+  it('rejects a duration sent with the start: the target comes from the quest', async () => {
     const id = await todo();
-    const timer = (await start({ kind: 'todo', targetId: id })).timer!;
     await client()
-      .patch(`/timers/${timer.id}/duration`)
-      .send({ durationMinutes: 3 })
-      .expect(409);
-    now = new Date(now.getTime() + 30000);
-    await action(timer.id, 'pause');
-    const result = (
+      .post('/timers')
+      .send({ kind: 'todo', targetId: id, durationMinutes: 5 })
+      .expect(400);
+  });
+  it('changes the target while running or paused, keeps the time worked and stores it on the Todo', async () => {
+    const id = await todo();
+    const started = now;
+    const timer = (await start({ kind: 'todo', targetId: id })).timer!;
+    later(30_000);
+    const running = (
       await client()
         .patch(`/timers/${timer.id}/duration`)
         .send({ durationMinutes: 3 })
         .expect(200)
     ).body as TimerResponse;
-    expect(result.timer).toMatchObject({
-      state: 'paused',
-      durationMinutes: 3,
-      remainingMilliseconds: 150000,
+    expect(running.timer).toMatchObject({
+      state: 'running',
+      targetMinutes: 3,
+      elapsedMilliseconds: 30_000,
+      targetReachedAt: null,
     });
     expect(
       (await db.getRepository(TodoEntity).findOneByOrFail({ id }))
         .plannedDurationMinutes,
     ).toBe(3);
+    // The new target is reached three minutes after the start.
+    later(150_000);
+    expect((await read()).timer?.targetReachedAt).toBe(
+      new Date(started.getTime() + 3 * MINUTE).toISOString(),
+    );
+    await action(timer.id, 'pause');
+    const raised = (
+      await client()
+        .patch(`/timers/${timer.id}/duration`)
+        .send({ durationMinutes: 10 })
+        .expect(200)
+    ).body as TimerResponse;
+    expect(raised.timer).toMatchObject({
+      state: 'paused',
+      targetMinutes: 10,
+      elapsedMilliseconds: 180_000,
+      targetReachedAt: null,
+    });
   });
-  it('finishes if a reduced duration is already fully elapsed', async () => {
+  it('counts a lowered target that is already worked as reached right away', async () => {
     const id = await todo(3);
     const timer = (await start({ kind: 'todo', targetId: id })).timer!;
-    now = new Date(now.getTime() + 90000);
-    await action(timer.id, 'pause');
+    later(90_000);
     const response = (
       await client()
         .patch(`/timers/${timer.id}/duration`)
@@ -241,8 +333,9 @@ describe('Synced timers and Dump completion (e2e)', () => {
         .expect(200)
     ).body as TimerResponse;
     expect(response.timer).toMatchObject({
-      state: 'finished',
-      remainingMilliseconds: 0,
+      state: 'running',
+      targetMinutes: 1,
+      targetReachedAt: now.toISOString(),
     });
   });
   it('stops idempotently, keeps saved duration and does not complete the target', async () => {
@@ -434,17 +527,19 @@ describe('Synced timers and Dump completion (e2e)', () => {
     expect((await read()).timer).toBeNull();
   });
   it.each([0, -1, 1.5, 10081, null])(
-    'validates duration %s and never accepts a supplied owner',
+    'rejects %s as target and never accepts a supplied owner',
     async (durationMinutes) => {
       const id = await todo();
       await client()
         .post('/timers')
-        .send({ kind: 'todo', targetId: id, durationMinutes })
-        .expect(durationMinutes === null ? 201 : 400);
-      await client()
-        .post('/timers')
         .send({ kind: 'todo', targetId: id, userId: TEST_USER })
         .expect(400);
+      const timer = (await start({ kind: 'todo', targetId: id })).timer!;
+      await client()
+        .patch(`/timers/${timer.id}/duration`)
+        .send({ durationMinutes })
+        .expect(400);
+      expect((await read()).timer?.targetMinutes).toBe(2);
     },
   );
   it('preserves Dump completion time after reload, repeat completion and metadata edits', async () => {

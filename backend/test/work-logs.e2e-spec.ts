@@ -104,11 +104,14 @@ describe('Work logs (e2e)', () => {
     });
   });
 
-  it('stops counting at the deadline of a finished timer', async () => {
-    await start(await todo());
+  it('keeps counting past the planned minutes until the stopwatch is paused', async () => {
+    const timer = await start(await todo());
     advance(90);
+    // Reaching the target of 60 minutes ends nothing.
     await request(server).get('/timers/current').expect(200);
-    expect((await day()).logs.map((log) => log.minutes)).toEqual([60]);
+    expect((await day()).logs).toEqual([]);
+    await request(server).post(`/timers/${timer}/pause`).send({}).expect(201);
+    expect((await day()).logs.map((log) => log.minutes)).toEqual([90]);
   });
 
   it('adds a manual entry, corrects and deletes it', async () => {

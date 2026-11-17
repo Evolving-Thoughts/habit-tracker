@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -16,32 +15,35 @@ import {
   effectiveDuration,
   isOccurrenceTimerEligible,
   isTodoTimerEligible,
-  isValidTimerDuration,
   stopTimer,
-  TIMER_MAX_MINUTES,
-  TIMER_MIN_MINUTES,
 } from './timer-target';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { ownedOccurrences } from '../habit-occurrences/owned-occurrences';
 import {
-  remainingAfterDurationChange,
-  remainingMilliseconds,
+  elapsedAt,
+  forgottenSince,
+  hasReachedTarget,
+  targetReachesAt,
 } from './timer-math';
+
 export interface TimerResponse {
   serverNow: string;
+  /** The user's one running or paused stopwatch. */
   timer: null | {
     id: string;
     kind: 'todo' | 'occurrence';
     targetId: number;
     title: string;
-    state: 'running' | 'paused' | 'finished';
-    durationMinutes: number;
-    remainingMilliseconds: number;
-    endsAt: string | null;
-    finishedAt: string | null;
+    state: 'running' | 'paused';
+    /** Time worked up to `serverNow`; a client counts on from there. */
+    elapsedMilliseconds: number;
+    /** Planned minutes of the target, if it has any. */
+    targetMinutes: number | null;
+    targetReachedAt: string | null;
   };
 }
+
 @Injectable()
 export class TimersService {
   constructor(
@@ -68,13 +70,9 @@ export class TimersService {
               targetId: timer.todoId ?? timer.occurrenceId!,
               title: timer.title,
               state: timer.state,
-              durationMinutes: timer.durationMinutes,
-              remainingMilliseconds:
-                timer.state === 'running'
-                  ? remainingMilliseconds(timer.endsAt!, now)
-                  : timer.remainingMilliseconds,
-              endsAt: timer.endsAt?.toISOString() ?? null,
-              finishedAt: timer.finishedAt?.toISOString() ?? null,
+              elapsedMilliseconds: elapsedAt(timer, now),
+              targetMinutes: timer.targetMinutes,
+              targetReachedAt: timer.targetReachedAt?.toISOString() ?? null,
             },
     };
   }
@@ -113,6 +111,34 @@ export class TimersService {
     occurrence.habit = habit;
     return occurrence;
   }
+  private targetOf(
+    manager: EntityManager,
+    userId: string,
+    timer: TimerEntity,
+    now: Date,
+  ): Promise<TodoEntity | HabitOccurrenceEntity> {
+    return this.target(
+      manager,
+      userId,
+      timer.todoId !== null ? 'todo' : 'occurrence',
+      timer.todoId ?? timer.occurrenceId!,
+      now,
+    );
+  }
+  /** Ends the running stretch at `at` and leaves the stopwatch paused. */
+  private async pause(
+    manager: EntityManager,
+    timer: TimerEntity,
+    at: Date,
+  ): Promise<void> {
+    await closeWorkSegment(manager, timer, at);
+    timer.state = 'paused';
+    timer.targetReachesAt = null;
+  }
+  /**
+   * Brings a stored stopwatch up to `now`: stops it if its target is gone,
+   * marks a target that was reached meanwhile, and cuts a stretch nobody ended.
+   */
   private async reconcile(
     manager: EntityManager,
     userId: string,
@@ -120,18 +146,15 @@ export class TimersService {
     now: Date,
   ): Promise<TimerEntity | null> {
     if (!timer || timer.state === 'stopped') return timer;
-    const oldState = timer.state;
-    const oldTitle = timer.title;
+    let changed = false;
     try {
-      const target = await this.target(
-        manager,
-        userId,
-        timer.todoId !== null ? 'todo' : 'occurrence',
-        timer.todoId ?? timer.occurrenceId!,
-        now,
-      );
-      timer.title =
+      const target = await this.targetOf(manager, userId, timer, now);
+      const title =
         target instanceof TodoEntity ? target.title : target.habit.title;
+      if (title !== timer.title) {
+        timer.title = title;
+        changed = true;
+      }
     } catch (error) {
       if (!(
         error instanceof NotFoundException || error instanceof ConflictException
@@ -144,34 +167,25 @@ export class TimersService {
         now,
       );
     }
-    if (
-      timer.state === 'running' &&
-      remainingMilliseconds(timer.endsAt!, now) === 0
-    ) {
-      await closeWorkSegment(manager, timer, now);
-      timer.finishedAt = timer.endsAt;
-      timer.state = 'finished';
-      timer.endsAt = null;
-      timer.remainingMilliseconds = 0;
+    const cut = forgottenSince(timer, now);
+    if (timer.targetReachesAt && timer.targetReachesAt <= (cut ?? now)) {
+      timer.targetReachedAt = timer.targetReachesAt;
+      timer.targetReachesAt = null;
+      changed = true;
     }
-    return timer.state !== oldState || timer.title !== oldTitle
-      ? manager.save(timer)
-      : timer;
+    if (cut) {
+      await this.pause(manager, timer, cut);
+      changed = true;
+    }
+    return changed ? manager.save(timer) : timer;
   }
-  private async findCurrent(
+  private findCurrent(
     manager: EntityManager,
     userId: string,
   ): Promise<TimerEntity | null> {
-    // Prefer the unique active row; transaction start timestamps are not a reliable activity order.
-    return (
-      (await manager.findOne(TimerEntity, {
-        where: { userId, state: In(['running', 'paused']) },
-      })) ??
-      (await manager.findOne(TimerEntity, {
-        where: { userId },
-        order: { createdAt: 'DESC', id: 'DESC' },
-      }))
-    );
+    return manager.findOne(TimerEntity, {
+      where: { userId, state: In(['running', 'paused']) },
+    });
   }
   // Internal worker/receipt hook. Caller MUST hold the same user write lock as timer transitions.
   async notificationTimer(
@@ -211,11 +225,13 @@ export class TimersService {
   }
   async start(userId: string, dto: StartTimerDto): Promise<TimerResponse> {
     return this.transaction(userId, async (manager) => {
-      let active = await manager.findOne(TimerEntity, {
-        where: { userId, state: In(['running', 'paused']) },
-      });
       let now = this.clock.now();
-      active = await this.reconcile(manager, userId, active, now);
+      const active = await this.reconcile(
+        manager,
+        userId,
+        await this.findCurrent(manager, userId),
+        now,
+      );
       const target = await this.target(
         manager,
         userId,
@@ -223,21 +239,11 @@ export class TimersService {
         dto.targetId,
         now,
       );
-      const minutes =
-        dto.durationMinutes ??
-        (target instanceof HabitOccurrenceEntity
-          ? effectiveDuration(target, target.habit)
-          : target.plannedDurationMinutes);
-      if (!isValidTimerDuration(minutes))
-        throw new BadRequestException(
-          `Eine Dauer zwischen ${TIMER_MIN_MINUTES} und ${TIMER_MAX_MINUTES} Minuten ist erforderlich.`,
-        );
-      if (active && (active.state === 'running' || active.state === 'paused')) {
+      if (active && active.state !== 'stopped') {
         const same =
           (dto.kind === 'todo' ? active.todoId : active.occurrenceId) ===
           dto.targetId;
-        if (same && active.durationMinutes === minutes && !dto.replaceTimerId)
-          return this.response(active, now);
+        if (same && !dto.replaceTimerId) return this.response(active, now);
         if (dto.replaceTimerId !== active.id)
           throw new ConflictException({
             message: 'Ein anderer Timer ist bereits aktiv.',
@@ -245,81 +251,103 @@ export class TimersService {
           });
         await stopTimer(manager, active, now);
       }
-      await this.persistDuration(manager, target, minutes);
-      // Determine deadline only after acquiring locks and persisting the target duration.
+      // The stretch starts only after every lock is held.
       now = this.clock.now();
-      const timer = await manager.save(
-        TimerEntity,
-        manager.create(TimerEntity, {
-          userId,
-          todoId: dto.kind === 'todo' ? dto.targetId : null,
-          occurrenceId: dto.kind === 'occurrence' ? dto.targetId : null,
-          title:
-            target instanceof TodoEntity ? target.title : target.habit.title,
-          state: 'running',
-          durationMinutes: minutes,
-          remainingMilliseconds: minutes * 60_000,
-          endsAt: new Date(now.getTime() + minutes * 60_000),
-          segmentStartedAt: now,
-          finishedAt: null,
-        }),
-      );
-      return this.response(timer, now);
+      const timer = manager.create(TimerEntity, {
+        userId,
+        todoId: dto.kind === 'todo' ? dto.targetId : null,
+        occurrenceId: dto.kind === 'occurrence' ? dto.targetId : null,
+        title: target instanceof TodoEntity ? target.title : target.habit.title,
+        state: 'running',
+        targetMinutes:
+          target instanceof HabitOccurrenceEntity
+            ? effectiveDuration(target, target.habit)
+            : target.plannedDurationMinutes,
+        elapsedMilliseconds: 0,
+        segmentStartedAt: now,
+        targetReachedAt: null,
+      });
+      timer.targetReachesAt = targetReachesAt(timer);
+      return this.response(await manager.save(TimerEntity, timer), now);
     });
   }
   async action(
     userId: string,
     id: string,
     action: 'pause' | 'resume' | 'stop',
-    durationMinutes?: number,
   ): Promise<TimerResponse> {
     return this.transaction(userId, async (manager) => {
-      let timer = await manager.findOneBy(TimerEntity, { id, userId });
-      if (!timer) throw new NotFoundException('Timer nicht gefunden.');
+      const stored = await manager.findOneBy(TimerEntity, { id, userId });
+      if (!stored) throw new NotFoundException('Timer nicht gefunden.');
       const now = this.clock.now();
       if (action === 'stop') {
-        await stopTimer(manager, timer, now);
-        const latest = await this.findCurrent(manager, userId);
+        // Stopping what another device already stopped changes nothing.
+        if (stored.state !== 'stopped') await stopTimer(manager, stored, now);
         return this.response(
-          await this.reconcile(manager, userId, latest, now),
+          await this.reconcile(
+            manager,
+            userId,
+            await this.findCurrent(manager, userId),
+            now,
+          ),
           now,
         );
       }
-      timer = await this.reconcile(manager, userId, timer, now);
-      if (!timer || timer.state === 'stopped')
-        throw new ConflictException('Der Timer ist nicht mehr aktiv.');
-      if (durationMinutes !== undefined) {
-        if (timer.state !== 'paused')
-          throw new ConflictException('Zum Ändern der Dauer zuerst pausieren.');
-        const target = await this.target(
-          manager,
-          userId,
-          timer.todoId !== null ? 'todo' : 'occurrence',
-          timer.todoId ?? timer.occurrenceId!,
-          now,
-        );
-        timer.remainingMilliseconds = remainingAfterDurationChange(
-          timer.durationMinutes,
-          timer.remainingMilliseconds,
-          durationMinutes,
-        );
-        timer.durationMinutes = durationMinutes;
-        await this.persistDuration(manager, target, durationMinutes);
-        if (timer.remainingMilliseconds === 0) {
-          timer.state = 'finished';
-          timer.finishedAt = now;
-        }
-      } else if (action === 'pause' && timer.state === 'running') {
-        await closeWorkSegment(manager, timer, now);
-        timer.remainingMilliseconds = remainingMilliseconds(timer.endsAt!, now);
-        timer.endsAt = null;
-        timer.state = 'paused';
-      } else if (action === 'resume' && timer.state === 'paused') {
-        timer.endsAt = new Date(now.getTime() + timer.remainingMilliseconds);
+      const timer = await this.active(manager, userId, stored, now);
+      if (action === 'pause' && timer.state === 'running')
+        await this.pause(manager, timer, now);
+      else if (action === 'resume' && timer.state === 'paused') {
         timer.segmentStartedAt = now;
         timer.state = 'running';
+        timer.targetReachesAt = targetReachesAt(timer);
       }
       return this.response(await manager.save(timer), now);
     });
+  }
+  /**
+   * Changes the planned minutes of the stopwatch's target. The time already
+   * worked stays; only the moment the target is reached moves.
+   */
+  async setTarget(
+    userId: string,
+    id: string,
+    minutes: number,
+  ): Promise<TimerResponse> {
+    return this.transaction(userId, async (manager) => {
+      const stored = await manager.findOneBy(TimerEntity, { id, userId });
+      if (!stored) throw new NotFoundException('Timer nicht gefunden.');
+      const now = this.clock.now();
+      const timer = await this.active(manager, userId, stored, now);
+      await this.persistDuration(
+        manager,
+        await this.targetOf(manager, userId, timer, now),
+        minutes,
+      );
+      timer.targetMinutes = minutes;
+      if (hasReachedTarget(timer, now)) {
+        timer.targetReachesAt = null;
+        if (!timer.targetReachedAt) {
+          timer.targetReachedAt = now;
+          // Whoever just set this target needs no notification about it.
+          timer.pushHandledAt = now;
+        }
+      } else {
+        timer.targetReachedAt = null;
+        timer.pushHandledAt = null;
+        timer.targetReachesAt = targetReachesAt(timer);
+      }
+      return this.response(await manager.save(timer), now);
+    });
+  }
+  private async active(
+    manager: EntityManager,
+    userId: string,
+    stored: TimerEntity,
+    now: Date,
+  ): Promise<TimerEntity> {
+    const timer = await this.reconcile(manager, userId, stored, now);
+    if (!timer || timer.state === 'stopped')
+      throw new ConflictException('Der Timer ist nicht mehr aktiv.');
+    return timer;
   }
 }

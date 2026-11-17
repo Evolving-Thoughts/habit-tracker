@@ -55,7 +55,8 @@ describe('Session-scoped timer Push (e2e)', () => {
   }
   const sub = async (name = 'device-one', hash = sessionHash) =>
     push.subscribe(TEST_USER, hash, dto(name));
-  async function timer() {
+  /** A todo with a one-minute target and a stopwatch running on it. */
+  async function timer(replaceTimerId?: string) {
     const response = await client()
       .post('/todos')
       .send({ title: 'Private test title', plannedDurationMinutes: 1 })
@@ -64,7 +65,7 @@ describe('Session-scoped timer Push (e2e)', () => {
     const started = (
       await client()
         .post('/timers')
-        .send({ kind: 'todo', targetId })
+        .send({ kind: 'todo', targetId, replaceTimerId })
         .expect(201)
     ).body as TimerResponse;
     return { id: started.timer!.id, targetId };
@@ -160,7 +161,7 @@ describe('Session-scoped timer Push (e2e)', () => {
     for (const call of transport.send.mock.calls) {
       expect(JSON.stringify(call[1])).not.toContain('Private test title');
       expect(call[2]).toBeLessThanOrEqual(30);
-      expect((call[1] as { type: string }).type).toBe('timer-finished');
+      expect((call[1] as { type: string }).type).toBe('timer-target-reached');
     }
     await push.sendPending();
     expect(transport.send).toHaveBeenCalledTimes(2);
@@ -201,7 +202,8 @@ describe('Session-scoped timer Push (e2e)', () => {
           .patch(`/todos/${started.targetId}`)
           .send({ completed: true })
           .expect(200);
-      if (kind === 'replace') await timer();
+      // Past its target the stopwatch still runs, so another one replaces it.
+      if (kind === 'replace') await timer(started.id);
       await push.sendPending();
       expect(transport.send).not.toHaveBeenCalled();
       expect((await deliveries())[0].state).toBe('cancelled');
@@ -302,10 +304,11 @@ describe('Session-scoped timer Push (e2e)', () => {
   });
   it('suppresses late catch-up and expired queued work after a restart', async () => {
     await sub();
-    await timer();
+    const late = await timer();
     now = new Date(now.getTime() + 95_000);
     await push.enqueueDue();
     expect(await deliveries()).toHaveLength(0);
+    await action(late.id, 'stop');
     await timer();
     await due();
     now = new Date(now.getTime() + 31_000);

@@ -1,40 +1,72 @@
-# Synced timers and Todo completion
+# Synced stopwatch and Todo completion
 
 ## Scope
 
-One running **or paused** timer per signed-in user, shared by all devices. Existing verified-email authentication and ownership remain in force. A completed timer releases the active slot; only the latest timer is shown. This PR adds no Web Push, service worker alarm, native Android alarm, or automatic task completion.
+One running **or paused** stopwatch per signed-in user, shared by all devices.
+It counts up. The planned minutes of its target are an optional **target**: the
+moment it is reached is recorded and notified once, and the stopwatch runs on.
+Nothing is completed automatically.
 
 ## UI
 
-- A saved duration adds a round Play icon to open Todos (Today and Dump) and due Habit occurrences. It starts immediately. In Habits, Play is disabled when there is no open due occurrence; future and paused Habits cannot start an arbitrary occurrence.
-- Optional **Standarddauer in Minuten** in Habit creation/editing. An occurrence override wins over that default.
-- A sticky timer bar remains visible across all three views: Play = resume, two bars = pause, square = stop. The bar is above the content and stays visible on long lists. Controls are 44px circles with SVG, accessible names and tooltips.
-- Stop and switching to another target require explicit confirmation. Switching checks the exact old timer ID and changes both timers atomically. A stale device cannot accidentally stop a newer timer. Stop/duration dialogs remember their timer ID and close on a remote target switch.
-- Pause before changing the total duration. Already elapsed time is retained: 2-minute timer after 30 seconds -> change to 3 minutes -> 2:30 remaining. If the shortened total is already elapsed, the timer finishes.
-- Duration changes persist on the Todo or **only on that specific Habit occurrence**. They do not change the Habit default. Editing a target's default/planned duration outside the timer does not silently change the active deadline.
-- Expiration shows **Zeit abgelaufen**, not automatic completion. A separate check icon completes the target explicitly; Stop closes a finished timer.
-- Completing/deleting the linked Todo, pausing/deleting the Habit, or resolving its occurrence (completed, skipped, cancelled, expired) stops the linked timer in the same transaction (`releaseTimers` in `backend/src/timers/timer-target.ts`). An occurrence that only becomes non-actionable by the passage of time (schedule/week boundary) is stopped at the next reconciliation. There is no independent timer detached from a target.
+- Every open Todo and every due Habit occurrence has a round Play icon; a planned
+  duration is not needed. Future and paused Habits cannot start an occurrence.
+- A sticky timer bar stays visible across the views: time worked, "von n Min."
+  when there is a target, and round 44px controls: pause/resume, change target,
+  complete, end. The label reads "Stoppuhr läuft", "Pausiert" or "Soll erreicht".
+- Ending needs no confirmation: every stretch is in the logbook already.
+  Switching to another target still asks, and checks the exact old timer ID, so a
+  stale device cannot end a newer stopwatch.
+- The target can be changed while running or paused. The time worked stays; only
+  the moment the target is reached moves. It is stored on the Todo or **only on
+  that Habit occurrence**, never on the Habit default.
+- Completing/deleting the linked Todo, pausing/deleting the Habit, or resolving its
+  occurrence ends the stopwatch in the same transaction (`releaseTimers` in
+  `backend/src/timers/timer-target.ts`).
+- **Fokus-Modus** (`#/fokus`, `FocusView.vue`): one quest in view with its campaign,
+  its why and the stopwatch large; no navigation and no timer bar. What the
+  stopwatch runs on stays in view; otherwise it is the head of the day's order, or
+  an appointment that is running. "Erledigt" brings up the next one, "Später" puts
+  the quest behind the rest of the order and ends its stopwatch. Space
+  starts/pauses, Ctrl+Enter completes, Escape leads back to Heute.
 
-## Locked Android / multiple devices
+## Time, devices and forgotten stopwatches
 
-PostgreSQL stores an absolute UTC `endsAt`. The browser derives the display from the server clock plus a monotonic local anchor, rather than decrementing a counter. Reloading or returning after a locked/backgrounded phone reconstructs the correct remaining time. Paused timers store their remaining milliseconds, with no live deadline.
+PostgreSQL stores the time of all finished stretches (`elapsedMilliseconds`) and
+the start of the running one (`segmentStartedAt`). The time worked is derived from
+these instants (`timer-math.ts`), never from a counter that ticks, so a locked
+phone or a restarted server cannot make it drift. The browser counts on from the
+server's answer on a monotonic clock.
 
-Foreground devices poll every **3 seconds**, and refresh on focus/visibility return. This is eventual synchronization, not a hard real-time latency guarantee. An offline device can display its last known deadline, but cannot know about changes on another device until reconnecting; an error is shown rather than silently claiming synchronization.
+Every stretch becomes a work log when it ends (pause, end, completion). A stretch
+that nobody ends counts for at most **twelve hours**: the next read cuts it there
+and leaves the stopwatch paused, so a stopwatch forgotten overnight does not turn
+into work that never happened.
 
-**There is no notification/sound guarantee while the screen is locked.** Push/background delivery and Android alarm reliability are separate follow-up work. Physical Android has not been tested by the agent; mobile Chromium emulation is not a substitute.
+Foreground devices poll every **3 seconds**, and refresh on focus/visibility
+return. This is eventual synchronization, not a real-time guarantee.
 
 ## Backend
 
 Protected endpoints, ownership taken exclusively from the session:
 
-- `GET /timers/current` -> `{ serverNow, timer }` (`timer: null` if absent/stopped).
-- `POST /timers` -> `{ kind: "todo" | "occurrence", targetId, durationMinutes?, replaceTimerId? }`. Omitted duration uses the saved target duration/default. A conflicting active timer returns HTTP 409 with `code: ACTIVE_TIMER_EXISTS`.
+- `GET /timers/current` -> `{ serverNow, timer }`, `timer: null` without a running
+  or paused stopwatch. `timer` carries `state`, `elapsedMilliseconds` (as of
+  `serverNow`), `targetMinutes` and `targetReachedAt`.
+- `POST /timers` -> `{ kind: "todo" | "occurrence", targetId, replaceTimerId? }`.
+  The target minutes come from the target. A conflicting active stopwatch returns
+  HTTP 409 with `code: ACTIVE_TIMER_EXISTS`.
 - `POST /timers/:id/pause`, `/resume`, `/stop` with JSON `{}`.
-- `PATCH /timers/:id/duration` with `{ durationMinutes }`, paused only.
+- `PATCH /timers/:id/duration` with `{ durationMinutes }` sets the target.
 
-Foreign target/timer IDs return 404. Global exact-Origin and JSON checks apply. Per-user row locks serialize transitions across devices and server processes; a partial unique index enforces at most one running/paused row. Database checks enforce exactly one target, valid state/duration/remainder/deadline. Target validation and duration writes happen in the same transaction. Finished timers are reconciled lazily on a read/action; `finishedAt` is the original deadline, not the later poll time.
+Foreign target/timer IDs return 404. Per-user row locks serialize transitions
+across devices and server processes; a partial unique index enforces at most one
+running/paused row. Database checks enforce exactly one target, a valid state and
+that exactly a running stopwatch has a running stretch. Old stopped rows are
+retained.
 
-Minutes: integer 1..10080 (7 days). Habit/occurrence duration columns are nullable. Development `synchronize` adds the new table/columns; no legacy migration, backfill or development database deletion is needed for this PR. Production schema migrations are still separate. Old stopped/finished timer rows are retained; retention/cleanup is later operational work, not automatic deletion.
+The push worker notifies once when the target is reached (`targetReachesAt` /
+`targetReachedAt`); see `timer-push.md`.
 
 ## Todo-Dump -> Today -> later tracking
 

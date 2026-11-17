@@ -71,10 +71,54 @@ describe('Migrations (e2e)', () => {
       [id, root],
     );
 
+    // One timer of each kind the countdown model knew.
+    await db.query(
+      `INSERT INTO timers
+         ("userId", "todoId", title, state, "durationMinutes",
+          "remainingMilliseconds", "endsAt", "segmentStartedAt", "finishedAt")
+       VALUES
+         ($1, $2, 'Pausiert', 'paused', 30, 600000, NULL, NULL, NULL),
+         ($1, $2, 'Abgelaufen', 'finished', 10, 0, NULL, NULL, '2026-03-10T09:00:00Z'),
+         ($1, $2, 'Gestoppt', 'stopped', 5, 240000, NULL, NULL, NULL)`,
+      [id, root],
+    );
+
     const applied = await db.runMigrations();
 
-    expect(applied).toHaveLength(3);
+    expect(applied).toHaveLength(4);
     expect(await remainingChanges()).toEqual([]);
+    expect(
+      await db.query(
+        `SELECT title, state, "targetMinutes", "elapsedMilliseconds",
+                "targetReachedAt" IS NOT NULL AS reached
+         FROM timers ORDER BY "createdAt", title`,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        // A paused countdown stays paused with the time already worked.
+        {
+          title: 'Pausiert',
+          state: 'paused',
+          targetMinutes: 30,
+          elapsedMilliseconds: 1200000,
+          reached: false,
+        },
+        {
+          title: 'Abgelaufen',
+          state: 'stopped',
+          targetMinutes: 10,
+          elapsedMilliseconds: 600000,
+          reached: true,
+        },
+        {
+          title: 'Gestoppt',
+          state: 'stopped',
+          targetMinutes: 5,
+          elapsedMilliseconds: 60000,
+          reached: false,
+        },
+      ]),
+    );
     expect(
       await db.query(
         `SELECT title, "parentId", "scheduledDate"::text, "timeOfDay", "dayPosition"

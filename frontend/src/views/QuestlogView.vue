@@ -504,7 +504,6 @@ async function onCreated(): Promise<void> {
               kind="todo"
               :target-id="todo.id"
               :title="todo.title"
-              :duration="todo.plannedDurationMinutes"
               :eligible="todo.timerEligible"
               :disabled="isBusy"
             />

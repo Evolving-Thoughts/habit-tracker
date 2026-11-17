@@ -25,7 +25,7 @@ Vier Dinge zusammen, die andere Tracker meist getrennt halten:
 - **Kampagnen und Dailies verbunden:** Quests bilden Hierarchien aus Kampagne, Questreihe und Quest; eine Quest kann ein Daily mit Zeitraum und Sollmenge verlinken, etwa 20 Läufe bis Dezember.
 - **Planen nach Tag und Reihenfolge:** Eine Quest hat ihren Tag, nur ein Termin hat eine Uhrzeit. Was heute ansteht, zieht man in die Reihenfolge, in der man es angehen will; Offenes wandert mit einem Schritt auf morgen. Termine stehen in beide Richtungen im eigenen Google Kalender.
 - **Reflexion und Warum:** Quests und Dailies tragen ein persönliches Warum. Ohne eigenes übernehmen sie das der Quest oder Kampagne darüber, und zwar live: Ändert sich das Warum der Kampagne, ändert es sich überall darunter; dazu kommen Tagesreflexion, Wochenquote und Perfect Week je Kategorie.
-- **Zeit erfassen:** Timer und echte Arbeitszeit stehen neben der geplanten Zeit.
+- **Zeit erfassen:** Eine Stoppuhr misst die echte Arbeitszeit; die geplante Dauer ist nur ein Soll, das die Stoppuhr nicht anhält. Im Fokus-Modus steht eine einzige Quest im Blick.
 
 ## Operating Context
 
@@ -35,7 +35,7 @@ Oberflächensprache ist Deutsch.
 
 ## Capabilities and Constraints
 
-- Ansichten: Heute, Questlog, Kampagnen, Kalender (Monat, Woche, Tag), Dailies, Kategorien, Einstellungen. Jede hat eine eigene Adresse (`#/heute`, `#/questlog`, …), sodass Zurück und Neuladen funktionieren.
+- Ansichten: Heute, Fokus-Modus, Questlog, Kampagnen, Kalender (Monat, Woche, Tag), Dailies, Kategorien, Einstellungen. Jede hat eine eigene Adresse (`#/heute`, `#/questlog`, …), sodass Zurück und Neuladen funktionieren.
 - Fachbegriffe: siehe Glossar. Daily und Ausführung (einzelner Lauf eines Dailys) sind zu unterscheiden.
 - Technik: Vue 3, NestJS, PostgreSQL; Android über Capacitor als Hülle um die Web-App.
 - Offen: ob und wann die App öffentlich wird.
@@ -56,7 +56,8 @@ Die Oberfläche spricht das Vokabular links. Code, API und Datenbank behalten di
 | Termin | Quest mit fester Uhrzeit | `todo` mit `timeOfDay` |
 | Reihenfolge | In welcher Folge der Tag abgearbeitet wird | `dayPosition` |
 | Logbuch | Was erledigt und wie lange gearbeitet wurde | `history`, `work_logs` |
-| Fokus-Modus | Eine Quest im Blick, mit Timer | – |
+| Fokus-Modus | Eine Quest im Blick, mit Stoppuhr | – |
+| Soll | Geplante Dauer; die Stoppuhr läuft darüber hinaus | `plannedDurationMinutes`, `targetMinutes` |
 
 Eine Quest wird zur Kampagne, sobald sie Unter-Quests hat; es gibt dafür kein eigenes Feld.
 

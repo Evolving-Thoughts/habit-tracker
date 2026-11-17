@@ -4,7 +4,7 @@ import TimerProvider from "./TimerProvider.vue";
 import {
   getCurrentTimer,
   timerAction,
-  changeTimerDuration,
+  changeTimerTarget,
   type TimerResponse,
 } from "../api/timers.api";
 import { updateTodoCompletion } from "../api/day-planner.api";
@@ -12,7 +12,7 @@ vi.mock("../api/timers.api", () => ({
   getCurrentTimer: vi.fn(),
   startTimer: vi.fn(),
   timerAction: vi.fn(),
-  changeTimerDuration: vi.fn(),
+  changeTimerTarget: vi.fn(),
 }));
 vi.mock("../api/day-planner.api", () => ({
   updateTodoCompletion: vi.fn(),
@@ -20,7 +20,9 @@ vi.mock("../api/day-planner.api", () => ({
 }));
 enableAutoUnmount(afterEach);
 const response = (
-  state: "running" | "paused" | "finished" = "running",
+  state: "running" | "paused" = "running",
+  elapsedMilliseconds = 65_000,
+  targetMinutes: number | null = 2,
 ): TimerResponse => ({
   serverNow: "2026-10-03T10:00:00Z",
   timer: {
@@ -29,65 +31,94 @@ const response = (
     targetId: 1,
     title: "Schreiben",
     state,
-    durationMinutes: 2,
-    remainingMilliseconds: state === "finished" ? 0 : 120000,
-    endsAt: state === "running" ? "2026-10-03T10:02:00Z" : null,
-    finishedAt: null,
+    elapsedMilliseconds,
+    targetMinutes,
+    targetReachedAt: null,
   },
 });
+const none: TimerResponse = { serverNow: response().serverNow, timer: null };
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.spyOn(performance, "now").mockReturnValue(1000);
   vi.mocked(getCurrentTimer).mockResolvedValue(response());
   vi.mocked(timerAction).mockResolvedValue(response("paused"));
-  vi.mocked(changeTimerDuration).mockResolvedValue(response("paused"));
+  vi.mocked(changeTimerTarget).mockResolvedValue(response("paused"));
 });
+afterEach(() => vi.restoreAllMocks());
 describe("global Timer bar", () => {
-  it("shows countdown and icon controls, pauses and requests a stop confirmation", async () => {
+  it("shows the time worked against the target, pauses and ends without asking", async () => {
     const w = mount(TimerProvider);
     await flushPromises();
-    expect(w.get('[aria-label="Verbleibende Zeit"]').text()).toBe("02:00");
+    expect(w.get('[aria-label="Gearbeitete Zeit"]').text()).toBe("01:05");
+    expect(w.get(".timer-bar__target").text()).toBe("von 2 Min.");
+    expect(w.text()).toContain("Stoppuhr läuft");
     await w.get('button[aria-label="Timer pausieren"]').trigger("click");
     await flushPromises();
     expect(w.text()).toContain("Pausiert");
     expect(w.find('button[aria-label="Timer fortsetzen"]').exists()).toBe(true);
-    await w.get('button[aria-label="Timer stoppen"]').trigger("click");
+    vi.mocked(timerAction).mockResolvedValue(none);
+    await w.get('button[aria-label="Timer beenden"]').trigger("click");
     await flushPromises();
-    expect(timerAction).toHaveBeenCalledTimes(1);
-    vi.mocked(timerAction).mockResolvedValue({
-      serverNow: response().serverNow,
-      timer: null,
-    });
-    await w.get("[data-confirm-stop]").trigger("click");
-    await flushPromises();
+    // The work is logged either way, so ending needs no confirmation.
     expect(timerAction).toHaveBeenLastCalledWith("a", "stop");
     expect(w.find("aside").exists()).toBe(false);
   });
-  it("validates and saves a paused duration only", async () => {
-    vi.mocked(getCurrentTimer).mockResolvedValue(response("paused"));
+  it("shows no target for a quest without planned minutes", async () => {
+    vi.mocked(getCurrentTimer).mockResolvedValue(
+      response("running", 5_000, null),
+    );
     const w = mount(TimerProvider);
     await flushPromises();
-    await w.get('button[aria-label="Timerdauer ändern"]').trigger("click");
+    expect(w.find(".timer-bar__target").exists()).toBe(false);
+    expect(w.text()).not.toContain("Soll erreicht");
+  });
+  it("says when the target is reached and keeps counting", async () => {
+    vi.mocked(getCurrentTimer).mockResolvedValue(response("running", 119_000));
+    const w = mount(TimerProvider);
     await flushPromises();
+    expect(w.find(".timer-bar__hint").exists()).toBe(false);
+    vi.mocked(performance.now).mockReturnValue(4000);
+    await vi.waitFor(() => expect(w.text()).toContain("Soll erreicht"), {
+      timeout: 2000,
+    });
+    expect(w.get('[role="status"]').text()).toContain(
+      "Die Stoppuhr läuft weiter",
+    );
+    expect(w.get('[aria-label="Gearbeitete Zeit"]').text()).toBe("02:02");
+    expect(updateTodoCompletion).not.toHaveBeenCalled();
+  });
+  it("validates and saves a new target, also while running", async () => {
+    const w = mount(TimerProvider);
+    await flushPromises();
+    await w.get('button[aria-label="Soll ändern"]').trigger("click");
+    await flushPromises();
+    expect(
+      w.get<HTMLInputElement>('input[name="timerMinutes"]').element.value,
+    ).toBe("2");
     await w.get('input[name="timerMinutes"]').setValue("0");
     await w.get("form").trigger("submit");
     await flushPromises();
-    expect(changeTimerDuration).not.toHaveBeenCalled();
+    expect(changeTimerTarget).not.toHaveBeenCalled();
     expect(w.get('[role="alert"]').text()).toContain("1 bis 10080");
     await w.get('input[name="timerMinutes"]').setValue("3");
     await w.get("form").trigger("submit");
     await flushPromises();
-    expect(changeTimerDuration).toHaveBeenCalledWith("a", 3);
+    expect(changeTimerTarget).toHaveBeenCalledWith("a", 3);
     expect(w.find("dialog").exists()).toBe(false);
   });
-  it("does not auto-complete when time expires", async () => {
-    vi.mocked(getCurrentTimer).mockResolvedValue(response("finished"));
+  it("completes the quest from the bar at any time", async () => {
     const w = mount(TimerProvider);
     await flushPromises();
-    expect(w.text()).toContain("Noch nicht als erledigt");
-    expect(updateTodoCompletion).not.toHaveBeenCalled();
+    vi.mocked(getCurrentTimer).mockResolvedValue(none);
     await w.get('button[aria-label="Schreiben erledigen"]').trigger("click");
     await flushPromises();
     expect(updateTodoCompletion).toHaveBeenCalledWith(1, true);
+    expect(w.find("aside").exists()).toBe(false);
+  });
+  it("hides the bar where a view shows the stopwatch itself, but keeps its dialogs", async () => {
+    const w = mount(TimerProvider, { props: { hideBar: true } });
+    await flushPromises();
+    expect(w.find("aside").exists()).toBe(false);
   });
   it("polls and removes intervals/listeners after unmount", async () => {
     vi.useFakeTimers();

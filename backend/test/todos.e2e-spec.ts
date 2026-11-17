@@ -124,7 +124,7 @@ describe('Todos API (e2e)', () => {
       const todo = await scheduled();
       await request(httpServer)
         .post('/timers')
-        .send({ kind: 'todo', targetId: todo.id, durationMinutes: 10 })
+        .send({ kind: 'todo', targetId: todo.id })
         .expect(201);
       await move(todo.id, { date: tomorrow }).expect(409);
     });

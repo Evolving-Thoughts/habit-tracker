@@ -135,10 +135,9 @@ export class PushService {
       .getRepository(TimerEntity)
       .createQueryBuilder('t')
       .where('t.pushHandledAt IS NULL')
-      .andWhere(
-        "((t.state = 'running' AND t.endsAt <= :now) OR (t.state = 'finished' AND t.finishedAt <= :now))",
-        { now },
-      )
+      .andWhere('(t.targetReachesAt <= :now OR t.targetReachedAt <= :now)', {
+        now,
+      })
       .orderBy('t.createdAt', 'ASC')
       .take(100)
       .getMany();
@@ -153,13 +152,14 @@ export class PushService {
           row.id,
           at,
         );
-        if (timer?.state === 'paused' || timer?.state === 'running') return;
+        // Still on its way to the target: look again once it is due.
+        if (timer && !timer.targetReachedAt) return;
         row.pushHandledAt = at;
-        // Don't save the stale candidate object: reconciliation may have just finished/stopped it.
+        // Don't save the stale candidate object: reconciliation may have just changed or stopped it.
         await manager.update(TimerEntity, row.id, { pushHandledAt: at });
-        if (timer?.state !== 'finished' || !timer.finishedAt) return;
+        if (!timer?.targetReachedAt) return;
         const expiresAt = new Date(
-          timer.finishedAt.getTime() + DELIVERY_WINDOW_MS,
+          timer.targetReachedAt.getTime() + DELIVERY_WINDOW_MS,
         );
         if (expiresAt <= at) return; // No late catch-up notifications after an offline server.
         for (const subscription of await this.subscriptions(
@@ -214,7 +214,7 @@ export class PushService {
         );
         if (
           !subscription ||
-          timer?.state !== 'finished' ||
+          !timer?.targetReachedAt ||
           delivery.expiresAt <= now
         ) {
           delivery.state = 'cancelled';
@@ -229,7 +229,7 @@ export class PushService {
             keys: { p256dh: subscription.p256dh, auth: subscription.auth },
           },
           {
-            type: 'timer-finished',
+            type: 'timer-target-reached',
             timerId: timer.id,
             deliveryId: delivery.id,
             subscriptionId: subscription.id,
@@ -287,7 +287,7 @@ export class PushService {
         delivery.timerId,
         now,
       );
-      return { allowed: timer?.state === 'finished' };
+      return { allowed: !!timer?.targetReachedAt };
     });
   }
 }

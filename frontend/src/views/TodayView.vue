@@ -39,6 +39,7 @@ import {
   withQueueOrder,
 } from "../utils/today-agenda";
 import { categoryMark } from "../utils/category-mark";
+import { hrefOf } from "../routes";
 
 type EditingTarget = {
   kind: "todo" | "habit";
@@ -542,10 +543,13 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
                   : agenda.focus.occurrenceId
               "
               :title="agenda.focus.title"
-              :duration="agenda.focus.plannedDurationMinutes"
               :eligible="agenda.focus.timerEligible"
               :disabled="isUpdating(agenda.focus)"
             />
+            <a class="focus__mode" :href="hrefOf('focus')">
+              <AppIcon name="focus" />
+              <span>Fokus-Modus</span>
+            </a>
             <button
               v-if="agenda.focus.type === 'habit'"
               class="focus__more focus__more--tinted"
@@ -949,6 +953,24 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
 .focus__done:disabled {
   background: var(--color-ink-soft);
   cursor: progress;
+}
+
+.focus__mode {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: 3.25rem;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-action-tint);
+  color: var(--color-action-strong);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.focus__mode :deep(svg) {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .focus__more {

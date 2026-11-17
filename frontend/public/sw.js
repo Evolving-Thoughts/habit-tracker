@@ -55,7 +55,7 @@ self.addEventListener("push", (event) => {
       try {
         const data = event.data?.json();
         if (
-          data?.type !== "timer-finished" ||
+          data?.type !== "timer-target-reached" ||
           !pushId(data.timerId) ||
           !pushId(data.deliveryId) ||
           !pushId(data.subscriptionId)
@@ -85,7 +85,7 @@ self.addEventListener("push", (event) => {
         const latest = await pushPreference();
         if (!latest.enabled || latest.subscriptionId !== data.subscriptionId)
           return;
-        await self.registration.showNotification("Dein Timer ist abgelaufen", {
+        await self.registration.showNotification("Du hast dein Soll erreicht", {
           body: "Öffne die App, um fortzufahren.",
           icon: "/icon-192.svg",
           tag: `habit-timer-${data.timerId}`,
