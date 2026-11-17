@@ -1,5 +1,6 @@
 import { UserEntity } from '../../auth/auth.entities';
 import { CategoryEntity } from '../../categories/category.entity';
+import type { NotesDocument } from '../todo-notes';
 import {
   Check,
   Column,
@@ -69,6 +70,13 @@ export class TodoEntity {
     length: 200,
   })
   title!: string;
+
+  /**
+   * Rich-text notes as an editor document (see todo-notes.ts). Not selected
+   * by default: lists of todos never carry everybody's notes along.
+   */
+  @Column({ type: 'jsonb', nullable: true, select: false })
+  notes?: NotesDocument | null;
 
   @Column({
     type: 'boolean',

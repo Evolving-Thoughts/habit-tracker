@@ -11,6 +11,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
 } from '@nestjs/common';
 import { DeleteTodoDto } from './dto/delete-todo.dto';
 import {
@@ -19,6 +20,7 @@ import {
 } from './dto/todo-hierarchy-response.dto';
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { RescheduleTodoDto } from './dto/reschedule-todo.dto';
+import { SetTodoNotesDto, TodoNotesResponse } from './dto/todo-notes.dto';
 import { TodoResponseDto } from './dto/todo-response.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
 import { TodoEntity } from './entities/todo.entity';
@@ -95,6 +97,25 @@ export class TodosController {
     const todo = await this.todosService.create(user.id, createTodoDto);
 
     return (await this.respond(user.id, [todo]))[0];
+  }
+
+  @Get(':id/notes')
+  async notes(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<TodoNotesResponse> {
+    return { notes: await this.todosService.notes(user.id, id) };
+  }
+
+  @Put(':id/notes')
+  async setNotes(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SetTodoNotesDto,
+  ): Promise<TodoNotesResponse> {
+    return {
+      notes: await this.todosService.setNotes(user.id, id, dto.notes ?? null),
+    };
   }
 
   @Patch(':id')
