@@ -25,7 +25,7 @@ Vier Dinge zusammen, die andere Tracker meist getrennt halten:
 - **Kampagnen und Dailies verbunden:** Quests bilden Hierarchien aus Kampagne, Questreihe und Quest; eine Quest kann ein Daily mit Zeitraum und Sollmenge verlinken, etwa 20 Läufe bis Dezember.
 - **Planen nach Tag und Reihenfolge:** Eine Quest hat ihren Tag, nur ein Termin hat eine Uhrzeit. Was heute ansteht, zieht man in die Reihenfolge, in der man es angehen will; Offenes wandert mit einem Schritt auf morgen. Termine stehen in beide Richtungen im eigenen Google Kalender.
 - **Reflexion und Warum:** Quests und Dailies tragen ein persönliches Warum. Ohne eigenes übernehmen sie das der Quest oder Kampagne darüber, und zwar live: Ändert sich das Warum der Kampagne, ändert es sich überall darunter; dazu kommen Tagesreflexion, Wochenquote und Perfect Week je Kategorie.
-- **Zeit erfassen:** Eine Stoppuhr misst die echte Arbeitszeit; die geplante Dauer ist nur ein Soll, das die Stoppuhr nicht anhält. Im Fokus-Modus steht eine einzige Quest im Blick.
+- **Zeit erfassen:** Eine Stoppuhr misst die echte Arbeitszeit; die geplante Dauer ist nur ein Soll, das die Stoppuhr nicht anhält. Im Fokus-Modus steht eine einzige Quest im Blick. Was gemessen wurde, steht als Logbuch im Kalender neben dem Plan und, ab fünf Minuten, auch im eigenen Google Kalender.
 - **Notizen:** Jede Quest hat Notizen als formatierten Text (Überschriften, Listen, Checklisten, Zitate, Code, Links). Sie stehen im Fokus-Modus und im Bearbeiten-Dialog und speichern sich von selbst.
 
 ## Operating Context
@@ -36,7 +36,7 @@ Oberflächensprache ist Deutsch.
 
 ## Capabilities and Constraints
 
-- Ansichten: Heute, Plan (die Woche als Brett aus sieben Tagen), Fokus-Modus, Questlog, Kampagnen, Kalender (Monat, Woche, Tag), Dailies, Kategorien, Einstellungen. Jede hat eine eigene Adresse (`#/heute`, `#/plan`, `#/questlog`, …), sodass Zurück und Neuladen funktionieren; der Plan hält auch die gezeigte Woche in der Adresse.
+- Ansichten: Heute, Plan (die Woche als Brett aus sieben Tagen), Fokus-Modus, Questlog, Kampagnen, Kalender (Monat, Woche, Tag; neben dem Geplanten das Logbuch: am Tag die gemessenen Abschnitte auf einer Zeitachse, in der Woche die Zeit je Kampagne, im Monat die Zeit je Tag), Dailies, Kategorien, Einstellungen. Jede hat eine eigene Adresse (`#/heute`, `#/plan`, `#/questlog`, …), sodass Zurück und Neuladen funktionieren; der Plan hält auch die gezeigte Woche in der Adresse.
 - Fachbegriffe: siehe Glossar. Daily und Ausführung (einzelner Lauf eines Dailys) sind zu unterscheiden.
 - Technik: Vue 3, NestJS, PostgreSQL; Android über Capacitor als Hülle um die Web-App.
 - Offen: ob und wann die App öffentlich wird.

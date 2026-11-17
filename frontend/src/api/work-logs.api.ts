@@ -1,13 +1,10 @@
 import { request } from "./http";
 
-import type { WorkLog, WorkDay, WorkLogTimes, WorkTarget } from "../types/work-log";
+import type { WorkLog, WorkLogTimes, WorkTarget } from "../types/work-log";
 
-export type { WorkLog, WorkDay, WorkLogTimes, WorkTarget };
+export type { WorkLog, WorkLogTimes, WorkTarget };
 
-
-export function getWorkDay(date: string): Promise<WorkDay> {
-  return request<WorkDay>(`/work-logs?${new URLSearchParams({ date })}`);
-}
+/* A day's logs come with the calendar's day (see history.api.ts). */
 
 export function createWorkLog(
   target: Pick<WorkTarget, "kind" | "targetId">,

@@ -44,7 +44,7 @@ export const WEEK_ENTRY_FIELDS = {
 
 const HISTORY_CONTEXT = { categoryName: null, why: null };
 
-export const HISTORY_ITEM_FIELDS = HISTORY_CONTEXT;
+export const HISTORY_ITEM_FIELDS = { ...HISTORY_CONTEXT, timeOfDay: null };
 
 export const PLANNED_FIELDS = {
   ...HISTORY_CONTEXT,

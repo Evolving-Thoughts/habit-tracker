@@ -21,3 +21,11 @@ export function categoryMark(name: string): string {
   hash = (hash ^ (hash >>> 16)) >>> 0;
   return MARKS[hash % MARKS.length]!;
 }
+
+/**
+ * The colour of a campaign, wherever one is drawn. Campaigns store no colour
+ * yet, so it comes from the title like a category's; null without a campaign.
+ */
+export function campaignMark(campaign: { title: string } | null): string | null {
+  return campaign ? categoryMark(campaign.title) : null;
+}

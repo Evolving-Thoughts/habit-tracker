@@ -52,10 +52,11 @@ The time-based replanner ("Neu planen"), the day-end setting and the per-calenda
 
 ## Google Calendar
 
-Only appointments are written to the app's own Google calendar. A todo that
-loses its time loses its event; an event deleted in Google puts the todo back
-into the backlog. A new event in the app's calendar becomes an appointment with
-the event's Berlin day and time.
+Of the plan, only appointments are written to the app's own Google calendar.
+A todo that loses its time loses its event; an event deleted in Google puts the
+todo back into the backlog. A new event in the app's calendar becomes an
+appointment with the event's Berlin day and time. Finished work also goes out,
+export only, as Logbuch events (see `logbook.md`).
 
 ## Frontend
 

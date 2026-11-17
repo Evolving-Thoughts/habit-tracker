@@ -3,6 +3,7 @@ import { test, expect } from "./fixtures";
 import { API_URL } from "./environment";
 import type { APIRequestContext } from "@playwright/test";
 import type { TimerResponse } from "../src/api/timers.api";
+import type { HistoryResponse } from "../src/types/history";
 
 const plan = async (request: APIRequestContext, data: object) => {
   const response = await request.post(`${API_URL}/todos`, { data });
@@ -57,11 +58,12 @@ test("Fokus-Modus: one quest in view, stopwatch into the logbook, done brings th
 
   await page.getByRole("button", { name: "Pausieren", exact: true }).click();
   await expect(page.getByText("Pausiert", { exact: true })).toBeVisible();
+  // The day's Logbuch, as the calendar reads it.
   const logs = (
     (await (
-      await request.get(`${API_URL}/work-logs?date=${date}`)
-    ).json()) as { logs: { title: string; source: string }[] }
-  ).logs;
+      await request.get(`${API_URL}/history?date=${date}&view=day`)
+    ).json()) as HistoryResponse
+  ).days[0]!.work.logs;
   expect(logs).toEqual([
     expect.objectContaining({ title: "Kapitel schreiben", source: "timer" }),
   ]);

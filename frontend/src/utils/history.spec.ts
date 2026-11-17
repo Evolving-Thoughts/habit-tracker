@@ -5,6 +5,7 @@ import {
   dayCounts,
   dayLabel,
   daySummary,
+  hasEntries,
   longDate,
   monthLabel,
   shortDate,
@@ -53,6 +54,7 @@ it("counts a day and names only the non-zero counts", () => {
     scheduledDate: null,
     resolvedAt: null,
     plannedDurationMinutes: null,
+    timeOfDay: null,
     deleted: false,
   };
   expect(daySummary(dayCounts({ items: [] }))).toBe("Nichts geplant");
@@ -62,4 +64,11 @@ it("counts a day and names only the non-zero counts", () => {
   });
   expect(counts).toEqual({ completed: 2, skipped: 1, open: 0, events: 1 });
   expect(daySummary(counts)).toBe("2 erledigt · 1 übersprungen · 1 Termin");
+});
+
+it("counts measured work as something to show on a day", () => {
+  const empty = { items: [], work: { minutes: 0, logs: [] } };
+  expect(hasEntries(empty)).toBe(false);
+  expect(hasEntries({ ...empty, work: { minutes: 25 } })).toBe(true);
+  expect(hasEntries({ ...empty, external: [{}] })).toBe(true);
 });

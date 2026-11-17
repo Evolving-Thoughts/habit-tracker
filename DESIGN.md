@@ -23,6 +23,7 @@ colors:
   mark-ochre: "#b08a3e"
   mark-sage: "#5f8f87"
   mark-walnut: "#8c6b55"
+  mark-none: "#cdb4a2"
 typography:
   display:
     fontFamily: "Nunito Variable, ui-rounded, system-ui, -apple-system, Segoe UI, sans-serif"
@@ -240,12 +241,13 @@ Ein warmes, einstimmiges Apricot-Umfeld mit einer gebrannten Orange-Stimme und s
 - **Auf Aktion** (on-action): Schrift und Icons auf Orange.
 
 ### Secondary
-- **Kategoriemarken** (mark-moss, mark-slate, mark-heather, mark-ochre, mark-sage, mark-walnut): kleine Quadrate (0.625rem, Ecke 0.2rem) vor dem Kategorienamen. Kategorien speichern keine Farbe; der Name wird per FNV-1a-Hash stabil auf eine der sechs Marken abgebildet, damit sich auch häufige Namen über alle sechs verteilen.
+- **Kategoriemarken** (mark-moss, mark-slate, mark-heather, mark-ochre, mark-sage, mark-walnut): kleine Quadrate (0.625rem, Ecke 0.2rem) vor dem Kategorienamen. Kategorien speichern keine Farbe; der Name wird per FNV-1a-Hash stabil auf eine der sechs Marken abgebildet, damit sich auch häufige Namen über alle sechs verteilen. Kampagnen bekommen ihre Marke auf demselben Weg, immer über `campaignMark()`.
+- **Ohne Kampagne** (mark-none): helles, warmes Neutral für gemessene Zeit ohne Kampagne, im Logbuch neben den sechs Marken.
 
 ### Neutral
 - **Apricot-Grund** (ground): Seitenhintergrund, Scrollbar-Spur, Hover im Filtermenü.
 - **Tiefer Apricot** (ground-deep): eingelassene Fläche des Nachholen-Panels, Spur der Segmentwahl und Spur aller Fortschrittsbalken.
-- **Kartenweiß** (surface): Karten, Leerzustände, Tab-Leiste, Dialoge, Menüs, gewähltes Segment und gewählter Chip, Buttons, die direkt auf dem Grund liegen ("Auf morgen", Nachholen-Chips). Halbtransparent (55 %) für Kalendertermine, den Arbeitszeit-Umschalter und Ladeskelette.
+- **Kartenweiß** (surface): Karten, Leerzustände, Tab-Leiste, Dialoge, Menüs, gewähltes Segment und gewählter Chip, Buttons, die direkt auf dem Grund liegen ("Auf morgen", Nachholen-Chips). Halbtransparent (55 %) für Kalendertermine, Plan-Blöcke der Zeitachse und Ladeskelette.
 - **Apricot-Linie** (line): Haarlinien zwischen Listenzeilen (Nachholen, Kategorien, Kalenderzeilen, Menütrenner), Einrückungslinie in den Kampagnen, Feld- und Chiprahmen (1.5px), Tab-Leisten-Kante, Unterstreichung von Text-Links.
 - **Warme Tinte** (ink): Fließtext, Titel, die Jetzt-Linie, der Undo-Toast, Füllung aller Fortschrittsbalken, Heute-Rahmen im Kalender (2px innen), Rahmen des gewählten Chips, "Löschen" im Aktionsmenü.
 - **Gedämpfte Tinte** (ink-muted): Metazeilen, Zeiten, Fortschritt, inaktive Tabs, erledigte Titel, Feldlabels, Legende, die Punkte im Monatsraster und der Zustandspunkt in Verlaufszeilen.
@@ -294,7 +296,7 @@ Anmeldung und Boot-Fehler sind die Ausnahme: eine einzelne Karte (26–27rem bre
 
 Mobil steht unten eine feste Tab-Leiste (4.25rem plus Safe Area) mit vier Zielen (Heute, Questlog, Kampagnen, Kalender) und "Mehr" (Plan, Fokus, Dailies, Kategorien, Einstellungen), das ein Popover über der Leiste mit Scrim öffnet. Die Ziele sind Links mit eigener Adresse; beim Wechsel springt die Ansicht nach oben und nimmt den Fokus; der Body hält per Polsterung Abstand zur Leiste. Ab 56rem wird die Leiste zur oberen Leiste (3.5rem hoch, Innenbreite 64rem), alle Ziele sichtbar, kein "Mehr"; Plan steht dort direkt nach Heute.
 
-Der Plan ist die zweite Ausnahme von der Seitenspalte: Er nutzt bis zu 90rem Breite, damit sieben Tagesspalten (mind. 10.5rem) nebeneinander passen. Reicht die Breite nicht, scrollen die Tage innerhalb des Bretts seitwärts, nie die Seite. Unter 40rem füllt ein Tag 85 % der Breite, der nächste lugt herein, die Spalten rasten ein. Der Plus-Button sitzt mobil über der Leiste rechts, auf breiten Schirmen neben der Seitenspalte; Questlog, Kampagnen und Dailies legen über denselben Plus-Button an. Unter 32rem werden Karten- und Dialogpolster auf 1rem reduziert. Ab 40rem wird das Aktionsmenü vom unteren Blatt zum Popover am Auslöser.
+Der Kalender-Tag nutzt ab 56rem bis zu 64rem Breite: links die Liste des Tages, rechts die Zeitachse (19–24rem); mobil stehen beide untereinander. Der Plan ist die weitere Ausnahme von der Seitenspalte: Er nutzt bis zu 90rem Breite, damit sieben Tagesspalten (mind. 10.5rem) nebeneinander passen. Reicht die Breite nicht, scrollen die Tage innerhalb des Bretts seitwärts, nie die Seite. Unter 40rem füllt ein Tag 85 % der Breite, der nächste lugt herein, die Spalten rasten ein. Der Plus-Button sitzt mobil über der Leiste rechts, auf breiten Schirmen neben der Seitenspalte; Questlog, Kampagnen und Dailies legen über denselben Plus-Button an. Unter 32rem werden Karten- und Dialogpolster auf 1rem reduziert. Ab 40rem wird das Aktionsmenü vom unteren Blatt zum Popover am Auslöser.
 
 Einträge sind ein Raster aus Zeitspalte (2.75rem), Haken-Spalte (Tap-Breite) und Inhalt; Kalendertermine halten dieselbe Flucht, ohne Haken. In den Kampagnen rückt jede Ebene ein, eine 1px-Apricot-Linie führt zur Elternzeile. Tap-Ziele messen mindestens 2.75rem, große Ziele 3rem, der Primär-Button 3.25rem.
 
@@ -395,9 +397,9 @@ Weiße, flache Karte: Titel (als Button zum Bearbeiten), Warum-Satz in gedämpft
 
 ### Kalender
 Kopfzeile mit Segmentwahl Monat · Woche · Tag, Vor/Zurück und dem Zeitraum als Titel-Button, der einen Datumswähler öffnet; der Filter ist ein Menü-Chip.
-- **Monat:** Raster aus Tagen in Control-Ecke, heute mit 2px-Tintenrahmen innen, gewählt weiß mit Kartenschatten. Unter jeder Zahl ruhige Punkte (0.4375rem): gefüllt für Erledigtes, Ring für Offenes, ein kurzer Strich in leiser Tinte für Termine; eine Legende in Label-Größe erklärt sie.
-- **Woche:** Quotenkarte mit großer Zahl ("3 von 12"), Label und flachem Tintenbalken auf tiefem Apricot; darunter Daily-Zeilen mit Haarlinien und eine weiße Karte pro Tag.
-- **Tag:** beginnt mit der Tagesreflexion, dann Termine (55 % Weiß), Geplantes, Verlaufszeilen und die Arbeitszeit hinter einem halbtransparenten Umschalter.
+- **Monat:** Raster aus Tagen in Control-Ecke, heute mit 2px-Tintenrahmen innen, gewählt weiß mit Kartenschatten. Unter jeder Zahl ruhige Punkte (0.4375rem): gefüllt für Erledigtes, Ring für Offenes, ein kurzer Strich in leiser Tinte für Termine; darunter die Zeit im Logbuch als kleine Zahl in gedämpfter Tinte ("2 Std. 15 Min.", mobil "2:15 h"), keine Heatmap. Eine Legende in Label-Größe erklärt alles.
+- **Woche:** Quotenkarte mit großer Zahl ("3 von 12"), Label und flachem Tintenbalken auf tiefem Apricot; darunter Daily-Zeilen mit Haarlinien, das Logbuch der Woche als Zeilen je Kampagne (Marke, Name, Zeit; zugleich Legende) und eine weiße Karte pro Tag. Eine Tageskarte mit gemessener Zeit trägt einen gestapelten Pillenbalken (0.625rem) in den Kampagnenmarken, ohne Spur und am längsten Tag der Woche gemessen, daneben die Summe als Text.
+- **Tag:** links die Tagesreflexion, Erledigtes, Übersprungenes, Geplantes und Wochenziele; rechts (mobil darunter) "Logbuch" mit Summe und die Zeitachse: Stundenlinien in Apricot-Linie, Uhrzeiten in leiser Tinte, zwei Spuren "Plan" und "Logbuch" (4rem je Stunde). Plan-Blöcke in 55 % Weiß, Logbuch-Blöcke weiß mit dem 5px-Kampagnenstreifen (ohne Kampagne mark-none), Titel und Dauer; überlappende Blöcke stehen nebeneinander, jeder Block mindestens 2.75rem hoch und antippbar zum Korrigieren. Darunter eine Karte mit den Abschnitten als Liste (Korrigieren, Löschen) und "Zeit nachtragen". Ohne Abschnitt sagt eine ruhige Zeile, dass nichts im Logbuch ist.
 
 ### Verlaufszeile
 Nur lesend: statt des antippbaren Rings ein kleiner gefüllter Punkt (1.25rem) in gedämpfter Tinte mit weißem Haken; übersprungen gestrichelt in leiser Tinte. Ein Zustand, kein Bedienelement, daher nie orange.

@@ -23,6 +23,9 @@
   --color-danger: #b42318;
   --color-danger-tint: #fff0ec;
 
+  /* Measured work without a campaign: a warm neutral beside the marks. */
+  --color-mark-none: #cdb4a2;
+
   --radius-card: 1.375rem;
   --radius-control: 0.875rem;
   --radius-pill: 999px;

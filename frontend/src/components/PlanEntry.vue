@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import AppIcon from "./AppIcon.vue";
 import type { WeekPlanEntry } from "../types/week-plan";
-import { categoryMark } from "../utils/category-mark";
+import { campaignMark as markOf } from "../utils/category-mark";
 import { shortDate } from "../utils/history";
 import { isMovable } from "../utils/week-plan";
 
@@ -42,9 +42,7 @@ const details = computed(() => {
 });
 
 /** Every campaign has its own quiet colour, as on Heute. */
-const campaignMark = computed(() =>
-  props.entry.campaign ? categoryMark(props.entry.campaign.title) : null,
-);
+const campaignMark = computed(() => markOf(props.entry.campaign));
 </script>
 
 <template>

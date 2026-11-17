@@ -19,7 +19,7 @@
 - Soft-gelöschte Todos/Habits behalten ihre Ergebnisse, mit Hinweis **Gelöscht**. Pausierte Habits behalten ihre bisherigen Ergebnisse. Endgültiges Entfernen aus der Datenbank ist kein durch diese Ansicht angebotener Vorgang.
 - Wieder geöffnete Todos/Ausführungen verlieren den aktuellen Erledigungseintrag. Es gibt noch kein unveränderliches Ereignisjournal für jede Erledigung/Wiederöffnung.
 - Karten nutzen den gespeicherten aktuellen Titel. Umbenennen verändert daher auch den angezeigten Titel früherer Ergebnisse; Titel-Snapshots sind nicht Bestandteil dieses PRs.
-- Dauer ist die **geplante**, nicht tatsächlich gemessene Arbeitszeit. Für Habits wird die konkrete Ausführungsdauer bevorzugt, ansonsten die aktuelle Standarddauer genutzt. Keine Zeitstatistik oder historische Dauer-Snapshots.
+- Die Dauer an einem Eintrag ist die **geplante**. Für Habits wird die konkrete Ausführungsdauer bevorzugt, ansonsten die aktuelle Standarddauer genutzt. Die tatsächlich gemessene Arbeitszeit steht getrennt davon im Logbuch jedes Tages (`days[].work`, siehe `logbook.md`).
 - Als erledigt/übersprungen werden nur bereits gespeicherte Ausführungen angezeigt. Wenn der Generator verpasste Termine noch nicht verarbeitet hat, tauchen deren Skips erst nach regulärer Generierung (z.B. „Heute“) auf. Der Verlauf selbst schreibt keine Nachträge.
 
 ## Offen / geplant in Tag und Woche
@@ -39,7 +39,7 @@
 - `date` optional: aktueller Berlin-Tag.
 - `view`: `day` (Standard) oder `week`; für Woche wird das Datum auf die zugehörige Montag–Sonntag-Woche abgebildet.
 - `filter`: `all` (Standard), `todos`, `habits`.
-- Antwort: `today`, `timeZone`, `startDate`, `endDate`, `days: [{date, items}]`. Beide Ansichten liefern `days[].planned` und `weeklyTargets` (für vergangene Tage/Wochen leer). Geplante Einträge haben stabile `key`s; berechnete Habit-Slots haben `id: null`, gespeicherte offene Einträge ihre reale ID. Auch leere Tage werden zurückgegeben; IDs sind zusammen mit `type` eindeutig.
+- Antwort: `today`, `timeZone`, `startDate`, `endDate`, `days: [{date, items, work}]`. Beide Ansichten liefern `days[].planned` und `weeklyTargets` (für vergangene Tage/Wochen leer). `days[].work` ist das Logbuch des Tages (gemessene Minuten; in Tag und Woche auch die Anteile je Kampagne und die einzelnen Abschnitte), Tag und Monat liefern zusätzlich `days[].external` (Termine der gelesenen Google-Kalender). Erledigte Einträge tragen `timeOfDay`, wenn sie eine Uhrzeit hatten. Geplante Einträge haben stabile `key`s; berechnete Habit-Slots haben `id: null`, gespeicherte offene Einträge ihre reale ID. Auch leere Tage werden zurückgegeben; IDs sind zusammen mit `type` eindeutig.
 - Gültige Kalenderdaten und begrenzter Bereich von einem Tag oder sieben Tagen. Jahr mindestens 1000; inklusive exklusiver oberer Query-Grenze höchstens 9999. Ungültige/mehrfach angegebene Parameter und unbekannte Optionen: 400.
 - Authentifiziert, ausschließlich eigene Daten, `Cache-Control: no-store`. Kein Nutzer-ID-Parameter und keine private API-Zwischenspeicherung im Service Worker.
 - Alle Datenabfragen laufen in einer read-only verwendeten Repeatable-Read-Transaktion für einen konsistenten Snapshot. Keine Abhängigkeit vom Occurrence-Generator.
@@ -50,4 +50,4 @@ Kein DB-Reset nötig. Die nullable Spalte `habit_occurrences.resolvedAt` wird du
 
 Tests prüfen zusätzlich überfällige/geplante Todos, Intervall-/Wochentagsprognosen, Regelwechsel, Wochenzielzählung, Filter und unveränderte Datenbankzeilen beim Lesen. Tests prüfen Nutzertrennung einschließlich gelöschter Beziehungen, Berlin-Mitternacht und beide DST-Wechsel, Montag/Jahreswechsel, verspätete Erledigungen, geplante Skip-Tage, Soft-Delete, Reopen, idempotente Erledigung, reine Lesezugriffe, Filter, Leer-/Fehlerzustände und veraltete Frontend-Antworten. Browser-E2E nutzen die echten App-/API-/Datenbank-Komponenten.
 
-Noch nicht enthalten: Monatskalender, Streaks, Quoten, Diagramme, echtes Zeittracking oder unveränderliche Ereignis-Snapshots.
+Seitdem hinzugekommen: Monatsansicht, Wochenquote und Perfect Week sowie das Logbuch der gemessenen Arbeitszeit (`logbook.md`). Noch nicht enthalten: Streaks und unveränderliche Ereignis-Snapshots.

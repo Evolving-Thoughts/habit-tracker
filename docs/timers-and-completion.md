@@ -40,7 +40,8 @@ these instants (`timer-math.ts`), never from a counter that ticks, so a locked
 phone or a restarted server cannot make it drift. The browser counts on from the
 server's answer on a monotonic clock.
 
-Every stretch becomes a work log when it ends (pause, end, completion). A stretch
+Every stretch becomes a work log when it ends (pause, end, completion); the
+calendar shows them as the Logbuch (see `logbook.md`). A stretch
 that nobody ends counts for at most **twelve hours**: the next read cuts it there
 and leaves the stopwatch paused, so a stopwatch forgotten overnight does not turn
 into work that never happened.

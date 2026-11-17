@@ -1,13 +1,14 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getHistory } from "../api/history.api";
-import { getWorkDay } from "../api/work-logs.api";
 import { notifyViewsChanged } from "../composables/data-sync";
 import { HISTORY_ITEM_FIELDS, PLANNED_FIELDS } from "../types/fixtures";
 import type {
+  HistoryDayWork,
   HistoryItem,
   HistoryPlannedItem,
   HistoryResponse,
+  HistoryWorkLog,
 } from "../types/history";
 import CalendarView from "./CalendarView.vue";
 
@@ -17,7 +18,9 @@ vi.mock("../api/day-planner.api", () => ({
   rescheduleOccurrence: vi.fn(),
 }));
 vi.mock("../api/work-logs.api", () => ({
-  getWorkDay: vi.fn(),
+  createWorkLog: vi.fn(),
+  updateWorkLog: vi.fn(),
+  deleteWorkLog: vi.fn(),
 }));
 vi.mock("../api/reflections.api", () => ({
   getReflection: vi.fn().mockResolvedValue({ date: "", text: "" }),
@@ -28,6 +31,7 @@ afterEach(() => vi.useRealTimers());
 
 const mock = vi.mocked(getHistory);
 const TODAY = "2026-10-30";
+const NO_WORK: HistoryDayWork = { minutes: 0, campaigns: [], logs: [] };
 
 function plannedItem(
   overrides: Partial<HistoryPlannedItem> = {},
@@ -87,6 +91,7 @@ const month: HistoryResponse = {
               }),
             ]
           : [],
+      work: { minutes: 0 },
     };
   }),
 };
@@ -100,7 +105,7 @@ function dayResponse(
     timeZone: "Europe/Berlin",
     startDate: date,
     endDate: date,
-    days: [{ date, items }],
+    days: [{ date, items, work: NO_WORK }],
   };
 }
 
@@ -124,6 +129,7 @@ function weekResponse(): HistoryResponse {
               }),
             ]
           : [],
+      work: NO_WORK,
     })),
   };
 }
@@ -173,11 +179,6 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(`${TODAY}T12:00:00Z`));
   mock.mockResolvedValue(month);
-  vi.mocked(getWorkDay).mockResolvedValue({
-    date: "",
-    totalMinutes: 0,
-    logs: [],
-  });
 });
 
 describe("CalendarView month", () => {
@@ -673,24 +674,20 @@ describe("CalendarView day", () => {
     ];
     const wrapper = await renderDay(future);
     expect(wrapper.find("form.day-reflection").exists()).toBe(false);
-    expect(wrapper.find(".work-time").exists()).toBe(false);
+    expect(wrapper.find('select[name="target"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("Logbuch");
     expect(wrapper.get('[aria-label="Saugen verschieben"]').text()).toBe(
       "Verschieben",
     );
   });
 
-  it("keeps time logging behind a disclosure", async () => {
+  it("offers time logging with the Logbuch and says plainly when it is empty", async () => {
     const wrapper = await renderDay(dayResponse([item()]));
-    const toggle = button(wrapper, "Zeit nachtragen");
-    expect(toggle.attributes("aria-expanded")).toBe("false");
-    expect(wrapper.find('section[aria-label="Arbeitszeit"]').exists()).toBe(
-      false,
-    );
-    await toggle.trigger("click");
-    await flushPromises();
-    expect(toggle.attributes("aria-expanded")).toBe("true");
-    const logs = wrapper.get('section[aria-label="Arbeitszeit"]');
-    expect(logs.find('select[name="target"]').text()).toContain("Artikel");
+    const logbook = wrapper.get('[aria-labelledby="day-axis-title"]');
+    expect(logbook.get("h2").text()).toBe("Logbuch");
+    expect(logbook.text()).toContain("Heute ist noch nichts im Logbuch.");
+    expect(logbook.find('select[name="target"]').text()).toContain("Artikel");
+    expect(logbook.find(".day-timeline").exists()).toBe(false);
   });
 });
 
@@ -777,5 +774,137 @@ describe("CalendarView week", () => {
     expect(wrapper.get(".empty-state").text()).toContain(
       "Für diesen Zeitraum gibt es nichts.",
     );
+  });
+});
+
+describe("CalendarView Logbuch", () => {
+  const book = { id: 9, title: "Buch" };
+  function workLog(overrides: Partial<HistoryWorkLog> = {}): HistoryWorkLog {
+    return {
+      id: 1,
+      title: "Kapitel",
+      startedAt: "2026-10-07T08:00:00.000Z",
+      endedAt: "2026-10-07T08:30:00.000Z",
+      minutes: 30,
+      source: "timer",
+      todoId: 1,
+      occurrenceId: null,
+      habitId: null,
+      campaign: book,
+      ...overrides,
+    };
+  }
+
+  it("draws the stretches beside the plan, each named in full", async () => {
+    const data = dayResponse([item()]);
+    data.days[0]!.external = [
+      {
+        id: 5,
+        title: "Besprechung",
+        start: "2026-10-07T06:00:00.000Z",
+        end: "2026-10-07T07:00:00.000Z",
+      },
+    ];
+    data.days[0]!.work = {
+      minutes: 32,
+      campaigns: [
+        { campaign: book, minutes: 30 },
+        { campaign: null, minutes: 2 },
+      ],
+      logs: [
+        workLog(),
+        workLog({
+          id: 2,
+          title: "Mails",
+          startedAt: "2026-10-07T09:00:00.000Z",
+          endedAt: "2026-10-07T09:02:00.000Z",
+          minutes: 2,
+          source: "manual",
+          campaign: null,
+        }),
+      ],
+    };
+    const wrapper = await renderDay(data);
+    const logbook = wrapper.get('[aria-labelledby="day-axis-title"]');
+    expect(logbook.get("h2").text()).toBe("Logbuch 32 Min.");
+    expect(logbook.text()).not.toContain("nichts im Logbuch");
+    const plan = logbook.get('ol[aria-label="Plan"]');
+    expect(plan.text()).toContain("Besprechung");
+    expect(plan.text()).toContain("08:00–09:00");
+    const blocks = logbook.findAll('ol[aria-label="Logbuch"] button');
+    expect(blocks.map((block) => block.attributes("aria-label"))).toEqual([
+      "Kapitel, 10:00 bis 10:30, 30 Min., Kampagne Buch, korrigieren",
+      "Mails, 11:00 bis 11:02, 2 Min., ohne Kampagne, korrigieren",
+    ]);
+    // The list below says the same in words.
+    expect(logbook.get('[aria-label="Einträge im Logbuch"]').text()).toContain(
+      "Nachtrag",
+    );
+    await blocks[0]!.trigger("click");
+    await flushPromises();
+    expect(
+      (logbook.get('input[aria-label="Start"]').element as HTMLInputElement)
+        .value,
+    ).toBe("10:00");
+  });
+
+  it("stacks each day's work by campaign in the week and names the colours", async () => {
+    const wrapper = await render();
+    const week = weekResponse();
+    week.days[2]!.work = {
+      minutes: 135,
+      campaigns: [
+        { campaign: book, minutes: 90 },
+        { campaign: null, minutes: 45 },
+      ],
+      logs: [],
+    };
+    week.days[3]!.work = {
+      minutes: 45,
+      campaigns: [{ campaign: book, minutes: 45 }],
+      logs: [],
+    };
+    mock.mockResolvedValue(week);
+    await chooseMode(wrapper, "Woche");
+    const legend = wrapper.get(".week-logbook");
+    expect(legend.get("h2").text()).toBe("Logbuch 3 Std.");
+    expect(legend.findAll("li").map((row) => row.text())).toEqual([
+      "Buch2 Std. 15 Min.",
+      "Ohne Kampagne45 Min.",
+    ]);
+    const rows = wrapper.findAll(".week-day");
+    expect(rows[0]!.find(".work-bar").exists()).toBe(false);
+    expect(rows[2]!.get(".week-day__worked").text()).toBe("2 Std. 15 Min.");
+    expect(rows[2]!.findAll(".work-bar i")).toHaveLength(2);
+    expect(rows[2]!.get(".work-bar").attributes("style")).toContain(
+      "width: 100%",
+    );
+    expect(rows[3]!.get(".work-bar").attributes("style")).toContain(
+      "width: 33.3",
+    );
+    const description = rows[2]!.attributes("aria-describedby")!;
+    expect(wrapper.get(`[id="${description}"]`).text()).toContain(
+      "2 Std. 15 Min. im Logbuch: Buch 1 Std. 30 Min., Ohne Kampagne 45 Min.",
+    );
+  });
+
+  it("shows a day's worked time quietly in the month", async () => {
+    mock.mockResolvedValue({
+      ...month,
+      days: month.days.map((day) =>
+        day.date === "2026-10-07" ? { ...day, work: { minutes: 135 } } : day,
+      ),
+    });
+    const wrapper = await render();
+    const cell = wrapper.get('.month-day[data-date="2026-10-07"]');
+    expect(cell.attributes("aria-label")).toBe(
+      "7. Oktober, 1 erledigt, 2 Std. 15 Min. im Logbuch",
+    );
+    expect(cell.get(".month-day__work-long").text()).toBe("2 Std. 15 Min.");
+    expect(cell.get(".month-day__work-short").text()).toBe("2:15 h");
+    expect(
+      wrapper.get('.month-day[data-date="2026-10-08"]').find(".month-day__work")
+        .exists(),
+    ).toBe(false);
   });
 });
