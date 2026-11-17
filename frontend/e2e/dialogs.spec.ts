@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { today, visit } from "./helpers";
 import { API_URL } from "./environment";
 
-for (const view of ["Todo-Dump", "Heute", "Habits"] as const) {
+for (const view of ["Questlog", "Heute", "Dailies"] as const) {
   test(`${view}: long list, fixed symmetric plus, modal and focus restoration`, async ({
     page,
     request,
@@ -11,16 +11,16 @@ for (const view of ["Todo-Dump", "Heute", "Habits"] as const) {
     const date = await today(request);
     for (let i = 1; i <= 20; i++) {
       const response = await request.post(
-        `${API_URL}/${view === "Habits" ? "habits" : "todos"}`,
+        `${API_URL}/${view === "Dailies" ? "habits" : "todos"}`,
         {
           data:
-            view === "Habits"
+            view === "Dailies"
               ? {
-                  title: `Aufgabe ${i}`,
+                  title: `Quest ${i}`,
                   schedule: { type: "interval", intervalDays: 2 },
                 }
               : {
-                  title: `Aufgabe ${i}`,
+                  title: `Quest ${i}`,
                   plannedDurationMinutes: 30,
                   ...(view === "Heute"
                     ? { scheduledAt: `${date}T10:00:00Z` }
@@ -51,7 +51,7 @@ for (const view of ["Todo-Dump", "Heute", "Habits"] as const) {
     expect(geometry.dx).toBeLessThan(1);
     expect(geometry.dy).toBeLessThan(1);
     const edit = page.getByRole("button", {
-      name: "Aufgabe 20 bearbeiten",
+      name: "Quest 20 bearbeiten",
       exact: true,
     });
     await edit.scrollIntoViewIfNeeded();
@@ -64,7 +64,7 @@ for (const view of ["Todo-Dump", "Heute", "Habits"] as const) {
       isMobile
         ? dialog
         : dialog.locator(
-            view === "Todo-Dump" ? '[name="editTitle"]' : '[name="title"]',
+            view === "Questlog" ? '[name="editTitle"]' : '[name="title"]',
           ),
     ).toBeFocused();
     expect(await dialog.evaluate((el) => el.matches(":modal"))).toBe(true);
@@ -93,10 +93,10 @@ for (const view of ["Todo-Dump", "Heute", "Habits"] as const) {
     await expect(
       page.getByRole("dialog", {
         name:
-          view === "Todo-Dump"
-            ? "Neues Todo"
-            : view === "Habits"
-              ? "Neues Habit"
+          view === "Questlog"
+            ? "Neue Quest"
+            : view === "Dailies"
+              ? "Neues Daily"
               : "Was möchtest du erstellen?",
       }),
     ).toBeVisible();

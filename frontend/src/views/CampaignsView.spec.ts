@@ -1,7 +1,7 @@
 import { TODO_FIELDS } from "../types/fixtures";
 import { mount, flushPromises, enableAutoUnmount } from "@vue/test-utils";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import TodoHierarchyView from "./TodoHierarchyView.vue";
+import CampaignsView from "./CampaignsView.vue";
 import {
   getTodoHierarchy,
   getDeletionPreview,
@@ -30,7 +30,7 @@ const node = (id: number, parentId: number | null): HierarchyTodo => ({
   ...TODO_FIELDS,
   id,
   parentId,
-  title: `Todo ${id}`,
+  title: `Quest ${id}`,
   completed: false,
   timerEligible: true,
   completedAt: null,
@@ -51,7 +51,7 @@ const button = (w: ReturnType<typeof mount>, text: string) =>
 const openMenu = (w: ReturnType<typeof mount>, title: string) =>
   w.get(`[aria-label="Aktionen für ${title}"][aria-haspopup]`).trigger("click");
 const view = () =>
-  mount(TodoHierarchyView, {
+  mount(CampaignsView, {
     global: {
       stubs: {
         ModalDialog: { template: '<section role="dialog"><slot /></section>' },
@@ -60,7 +60,7 @@ const view = () =>
       },
     },
   });
-describe("TodoHierarchyView", () => {
+describe("CampaignsView", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(getTodoHierarchy).mockResolvedValue([node(1, null), node(2, 1)]);
@@ -71,7 +71,7 @@ describe("TodoHierarchyView", () => {
     vi.mocked(getDeletionPreview).mockResolvedValue({
       confirmationToken: "a".repeat(64),
       todos: [node(1, null), node(2, 1)],
-      timers: [{ id: "timer", todoId: 2, title: "Todo 2", state: "paused" }],
+      timers: [{ id: "timer", todoId: 2, title: "Quest 2", state: "paused" }],
     });
   });
   it("renders independent checkboxes, progress and hierarchy depth", async () => {
@@ -79,7 +79,7 @@ describe("TodoHierarchyView", () => {
     await flushPromises();
     expect(w.findAll("[data-todo-id]")).toHaveLength(2);
     expect(w.get('[data-todo-id="2"]').attributes("data-depth")).toBe("1");
-    expect(w.get('[data-todo-id="2"]').text()).toContain("Teilaufgabe von");
+    expect(w.get('[data-todo-id="2"]').text()).toContain("Gehört zu");
     expect(w.findAll("[role=checkbox]")).toHaveLength(2);
     // Only todos with sub-tasks show a progress bar; leaves stay calm.
     expect(w.findAll("[role=progressbar]")).toHaveLength(1);
@@ -97,28 +97,28 @@ describe("TodoHierarchyView", () => {
     ]);
     const w = view();
     await flushPromises();
-    expect(w.find('[aria-label="Todo 1 einklappen"]').exists()).toBe(false);
+    expect(w.find('[aria-label="Quest 1 einklappen"]').exists()).toBe(false);
     expect(w.text()).toContain("Lernen");
     expect(w.text()).toContain("Für den Job");
   });
   it("keeps row actions behind one menu that Escape closes", async () => {
     const w = view();
     await flushPromises();
-    expect(w.find('[aria-label="Todo 1 verschieben"]').exists()).toBe(false);
-    await openMenu(w, "Todo 1");
+    expect(w.find('[aria-label="Quest 1 verschieben"]').exists()).toBe(false);
+    await openMenu(w, "Quest 1");
     const trigger = w.get('[data-menu-trigger="1"]');
     expect(trigger.attributes("aria-expanded")).toBe("true");
     const menu = w.get("#todo-menu-1");
     const heading = w.get(`#${menu.attributes("aria-labelledby")}`);
-    expect(heading.text()).toBe("Todo 1");
+    expect(heading.text()).toBe("Quest 1");
     expect(
-      w.get('[aria-label="Todo 1 mit allen Teilaufgaben löschen"]').classes(),
+      w.get('[aria-label="Quest 1 mit allen Unter-Quests löschen"]').classes(),
     ).not.toContain("btn--danger");
     expect(
       w.findAll("#todo-menu-1 [role=menuitem]").map((b) => b.text()),
     ).toEqual([
       "Timer starten",
-      "Teilaufgabe hinzufügen",
+      "Unter-Quest hinzufügen",
       "Fortschritt anzeigen",
       "Verschieben",
       "Löschen",
@@ -130,12 +130,12 @@ describe("TodoHierarchyView", () => {
   it("collapses and expands without changing data", async () => {
     const w = view();
     await flushPromises();
-    await w.get('[aria-label="Todo 1 einklappen"]').trigger("click");
+    await w.get('[aria-label="Quest 1 einklappen"]').trigger("click");
     expect(w.findAll("[data-todo-id]")).toHaveLength(1);
-    await w.get('[aria-label="Todo 1 ausklappen"]').trigger("click");
+    await w.get('[aria-label="Quest 1 ausklappen"]').trigger("click");
     expect(w.findAll("[data-todo-id]")).toHaveLength(2);
   });
-  it("toggles only the selected Todo and reloads computed progress", async () => {
+  it("toggles only the selected Quest and reloads computed progress", async () => {
     const w = view();
     await flushPromises();
     await w.get("[role=checkbox]").trigger("click");
@@ -146,8 +146,8 @@ describe("TodoHierarchyView", () => {
   it("excludes self and descendants from move choices and allows root", async () => {
     const w = view();
     await flushPromises();
-    await openMenu(w, "Todo 1");
-    await w.get('[aria-label="Todo 1 verschieben"]').trigger("click");
+    await openMenu(w, "Quest 1");
+    await w.get('[aria-label="Quest 1 verschieben"]').trigger("click");
     expect(w.findAll("select option")).toHaveLength(1);
     await w.get("form").trigger("submit");
     await flushPromises();
@@ -156,9 +156,9 @@ describe("TodoHierarchyView", () => {
   it("does not delete when preview is cancelled and shows active/paused timers", async () => {
     const w = view();
     await flushPromises();
-    await openMenu(w, "Todo 1");
+    await openMenu(w, "Quest 1");
     await w
-      .get('[aria-label="Todo 1 mit allen Teilaufgaben löschen"]')
+      .get('[aria-label="Quest 1 mit allen Unter-Quests löschen"]')
       .trigger("click");
     await flushPromises();
     expect(w.text()).toContain("pausiert");
@@ -168,9 +168,9 @@ describe("TodoHierarchyView", () => {
   it("confirms exactly the reviewed snapshot", async () => {
     const w = view();
     await flushPromises();
-    await openMenu(w, "Todo 1");
+    await openMenu(w, "Quest 1");
     await w
-      .get('[aria-label="Todo 1 mit allen Teilaufgaben löschen"]')
+      .get('[aria-label="Quest 1 mit allen Unter-Quests löschen"]')
       .trigger("click");
     await flushPromises();
     await button(w, "Ja, löschen").trigger("click");
@@ -181,9 +181,9 @@ describe("TodoHierarchyView", () => {
     vi.mocked(deleteTodo).mockRejectedValueOnce(new Error("Preview changed"));
     const w = view();
     await flushPromises();
-    await openMenu(w, "Todo 1");
+    await openMenu(w, "Quest 1");
     await w
-      .get('[aria-label="Todo 1 mit allen Teilaufgaben löschen"]')
+      .get('[aria-label="Quest 1 mit allen Unter-Quests löschen"]')
       .trigger("click");
     await flushPromises();
     await button(w, "Ja, löschen").trigger("click");
@@ -204,14 +204,14 @@ describe("TodoHierarchyView", () => {
     vi.mocked(getTodoHierarchy).mockResolvedValue([]);
     const w = view();
     await flushPromises();
-    expect(w.get(".empty-state").text()).toContain("Noch keine Ziele.");
+    expect(w.get(".empty-state").text()).toContain("Noch keine Kampagnen.");
     expect(w.get(".empty-state").text()).toContain("Plus-Button");
   });
   it("creates through the shared plus button", async () => {
     const w = view();
     await flushPromises();
     const plus = w.get(".create-button");
-    expect(plus.attributes("aria-label")).toBe("Neue Aufgabe");
+    expect(plus.attributes("aria-label")).toBe("Neue Kampagne");
     expect(w.find(".page-header button").exists()).toBe(false);
     await plus.trigger("click");
     expect(w.find("[role=dialog]").exists()).toBe(true);

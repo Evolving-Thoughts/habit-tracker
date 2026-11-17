@@ -27,7 +27,7 @@ const series = computed(() =>
 );
 const latest = computed(() => series.value[series.value.length - 1]);
 const unitLabel = computed(() =>
-  unit.value === "count" ? "Aufgaben" : "Min.",
+  unit.value === "count" ? "Quests" : "Min.",
 );
 const top = computed(() =>
   Math.max(1, ...series.value.map((point) => point.total)),
@@ -89,7 +89,7 @@ onMounted(load);
 </script>
 
 <template>
-  <section class="burnup" aria-label="Fortschritt zum Ziel">
+  <section class="burnup" aria-label="Fortschritt der Kampagne">
     <div
       v-if="loading"
       class="skeleton burnup__skeleton"
@@ -180,7 +180,7 @@ onMounted(load);
         seit {{ shortDate(series[0]!.date) }}.
       </p>
       <p v-if="unit === 'minutes'" class="burnup__note">
-        Minuten zählen nur Aufgaben mit geplanter Dauer.
+        Minuten zählen nur Quests mit geplanter Dauer.
       </p>
     </template>
   </section>

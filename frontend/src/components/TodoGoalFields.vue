@@ -32,7 +32,7 @@ onMounted(async () => {
   </div>
 
   <label class="field">
-    Zählt für ein Habit · optional
+    Zählt für ein Daily · optional
     <select v-model="habitId" name="goalHabit">
       <option :value="null">Keines</option>
       <option v-for="habit in habits" :key="habit.id" :value="habit.id">
@@ -52,7 +52,7 @@ onMounted(async () => {
       aria-describedby="todo-goal-hint"
     />
     <small id="todo-goal-hint" class="goal-fields__hint"
-      >Jede erledigte Ausführung des Habits zählt mit.</small
+      >Jede erledigte Ausführung des Dailys zählt mit.</small
     >
   </div>
 </template>

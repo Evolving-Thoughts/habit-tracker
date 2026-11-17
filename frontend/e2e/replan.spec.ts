@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { createTodo, list, today, visit } from "./helpers";
 
-test("Neu planen previews a missed Todo and moves it only after confirming", async ({
+test("Neu planen previews a missed Quest and moves it only after confirming", async ({
   page,
   request,
 }) => {

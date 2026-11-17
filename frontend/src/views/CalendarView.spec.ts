@@ -142,7 +142,7 @@ const button = (wrapper: Wrapper, text: string) =>
 
 async function chooseFilter(
   wrapper: Wrapper,
-  label: "Alle" | "Todos" | "Habits",
+  label: "Alle" | "Quests" | "Dailies",
 ) {
   await wrapper.get('[aria-haspopup="menu"]').trigger("click");
   await flushPromises();
@@ -339,7 +339,7 @@ describe("CalendarView header", () => {
     await flushPromises();
     expect(menuButton.attributes("aria-expanded")).toBe("true");
     const options = wrapper.findAll('[role="menuitemradio"]');
-    expect(options.map((o) => o.text())).toEqual(["Alle", "Todos", "Habits"]);
+    expect(options.map((o) => o.text())).toEqual(["Alle", "Quests", "Dailies"]);
     expect(options.map((o) => o.attributes("aria-checked"))).toEqual([
       "true",
       "false",
@@ -352,7 +352,7 @@ describe("CalendarView header", () => {
 
   it("requests the chosen filter", async () => {
     const wrapper = await render();
-    await chooseFilter(wrapper, "Todos");
+    await chooseFilter(wrapper, "Quests");
     expect(mock).toHaveBeenLastCalledWith(
       "2026-10-01",
       "month",
@@ -385,8 +385,8 @@ describe("CalendarView entries", () => {
     expect(rows[1]!.find(".history-item__why").exists()).toBe(false);
     const parts = (row: (typeof rows)[number]) =>
       row.findAll(".history-item__details > span").map((part) => part.text());
-    expect(parts(rows[0]!)).not.toContain("Todo");
-    expect(parts(rows[1]!)).not.toContain("Habit");
+    expect(parts(rows[0]!)).not.toContain("Quest");
+    expect(parts(rows[1]!)).not.toContain("Daily");
     const planned = wrapper.get(".planned-item");
     expect(planned.get(".planned-item__category").text()).toBe("Haushalt");
     expect(planned.get(".planned-item__why").text()).toBe("Ruhe zuhause");
@@ -491,13 +491,13 @@ describe("CalendarView states", () => {
 
   it("respects the filter in the empty state and can show everything again", async () => {
     const wrapper = await renderDay(dayResponse());
-    await chooseFilter(wrapper, "Habits");
+    await chooseFilter(wrapper, "Dailies");
     const menuButton = wrapper.get('[aria-haspopup="menu"]');
-    expect(menuButton.text()).toBe("Habits");
-    expect(menuButton.attributes("aria-label")).toBe("Einträge: Habits");
+    expect(menuButton.text()).toBe("Dailies");
+    expect(menuButton.attributes("aria-label")).toBe("Einträge: Dailies");
     const empty = wrapper.get(".empty-state");
     expect(empty.text()).toContain("Für diesen Zeitraum gibt es nichts.");
-    expect(empty.text()).toContain("Gezeigt werden nur Habits.");
+    expect(empty.text()).toContain("Gezeigt werden nur Dailies.");
     await button(wrapper, "Alle zeigen").trigger("click");
     await flushPromises();
     expect(mock).toHaveBeenLastCalledWith(
@@ -551,7 +551,7 @@ describe("CalendarView day", () => {
       wrapper.get('section[aria-label="Übersprungen"]').findAll("li"),
     ).toHaveLength(1);
     expect(wrapper.text()).toContain("Gelöscht");
-    expect(wrapper.text()).toContain("Aus dem Todo-Dump");
+    expect(wrapper.text()).toContain("Aus dem Questlog");
     expect(wrapper.text()).toContain("14:32");
     expect(wrapper.text()).toContain("Geplant für 5. Okt.");
     expect(wrapper.text()).toContain("30 Min. geplant");
@@ -559,7 +559,7 @@ describe("CalendarView day", () => {
     expect(done.find("button").exists()).toBe(false);
   });
 
-  it("does not invent an older Habit's completion time", async () => {
+  it("does not invent an older Daily's completion time", async () => {
     const wrapper = await renderDay(
       dayResponse([item({ type: "habit", resolvedAt: null })]),
     );
@@ -569,7 +569,7 @@ describe("CalendarView day", () => {
   it("passes the selected filter and date", async () => {
     const wrapper = await renderDay(dayResponse());
     await wrapper.get('[name="historyDate"]').setValue("2026-10-05");
-    await chooseFilter(wrapper, "Habits");
+    await chooseFilter(wrapper, "Dailies");
     expect(mock).toHaveBeenLastCalledWith(
       "2026-10-05",
       "day",
@@ -732,7 +732,7 @@ describe("CalendarView week", () => {
     await chooseMode(wrapper, "Woche");
     const quota = wrapper.get(".quota");
     expect(quota.get(".quota__value").text()).toBe("5 von 8");
-    expect(quota.text()).toContain("Habits diese Woche");
+    expect(quota.text()).toContain("Dailies diese Woche");
     expect(quota.get('[role="progressbar"]').attributes("aria-valuenow")).toBe(
       "5",
     );

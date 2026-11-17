@@ -49,7 +49,7 @@ const details = computed(() => {
   }
   if (props.item.type === "todo" && props.item.isFixed)
     parts.push("Fester Termin");
-  if (props.item.goal) parts.push(`Ziel: ${props.item.goal.title}`);
+  if (props.item.goal) parts.push(`Gehört zu: ${props.item.goal.title}`);
   return parts;
 });
 

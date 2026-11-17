@@ -105,7 +105,7 @@ async function remove(id: number): Promise<void> {
     <header class="page-header">
       <h1 class="page-title">Kategorien</h1>
       <p class="page-lead">
-        Kategorien ordnen deine Aufgaben und Habits. Ein Wochensoll ist
+        Kategorien ordnen deine Quests und Dailies. Ein Wochensoll ist
         freiwillig.
       </p>
     </header>
@@ -161,8 +161,8 @@ async function remove(id: number): Promise<void> {
     >
       <strong>Noch keine Kategorien.</strong>
       <span>
-        Lege oben eine an. Zuordnen kannst du sie beim Bearbeiten einer Aufgabe
-        oder eines Habits.
+        Lege oben eine an. Zuordnen kannst du sie beim Bearbeiten einer Quest
+        oder eines Dailys.
       </span>
     </div>
 

@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Habit Tracker",
   "short_name": "Habits",
-  "description": "Deine Aufgaben und Gewohnheiten. Nur für dich.",
+  "description": "Deine Quests und Dailies. Nur für dich.",
   "lang": "de",
   "start_url": "/",
   "scope": "/",

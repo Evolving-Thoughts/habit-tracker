@@ -26,7 +26,7 @@ describe("CategorySelect", () => {
     });
     await flushPromises();
     expect(labels(wrapper)).toEqual([
-      "Wie übergeordnetes Todo",
+      "Wie übergeordnete Quest",
       "Keine",
       "Sport",
     ]);

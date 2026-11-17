@@ -1,18 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 import AppIcon from "./components/AppIcon.vue";
 import TimerProvider from "./components/TimerProvider.vue";
-import TodoHierarchyView from "./views/TodoHierarchyView.vue";
-import CalendarView from "./views/CalendarView.vue";
-import CategoriesView from "./views/CategoriesView.vue";
-import HabitsView from "./views/HabitsView.vue";
-import SettingsView from "./views/SettingsView.vue";
-import TodayView from "./views/TodayView.vue";
-import TodoDumpView from "./views/TodoDumpView.vue";
-
 import AuthView from "./views/AuthView.vue";
 import { getMe, logout } from "./api/auth.api";
 import type { User } from "./api/auth.api";
+import { VIEWS, type AuthLink } from "./router";
+
+const router = useRouter();
+const route = useRoute();
 const user = ref<User | null>(null);
 const loading = ref(true);
 /** Boot failure: null detail means the server could not be reached at all. */
@@ -26,25 +23,19 @@ function bootError(
   return { detail: cause instanceof Error ? cause.message : fallback };
 }
 const authViewKey = ref(0);
-const link = ref<{ kind: "verify" | "reset"; token: string } | undefined>();
-function readLink(): void {
-  const params = new URLSearchParams(window.location.hash.slice(1));
-  const kind = params.has("verify")
-    ? "verify"
-    : params.has("reset")
-      ? "reset"
-      : null;
-  if (kind) {
+const link = ref<AuthLink | undefined>();
+// An email link lands on its own route; take the token and leave the route,
+// so the token is gone from the address bar and the history.
+watch(
+  () => route.meta.authLink && String(route.params.token),
+  (token) => {
+    if (!token || !route.meta.authLink) return;
     authViewKey.value += 1;
-    link.value = { kind, token: params.get(kind)! };
-    history.replaceState(
-      null,
-      "",
-      window.location.pathname + window.location.search,
-    );
-  }
-}
-readLink();
+    link.value = { kind: route.meta.authLink, token };
+    void router.replace({ name: "today" });
+  },
+  { immediate: true },
+);
 function clearLink(): void {
   if (link.value) user.value = null;
   link.value = undefined;
@@ -62,7 +53,7 @@ async function load(): Promise<void> {
 }
 function expire(): void {
   user.value = null;
-  activeView.value = "today";
+  void router.replace({ name: "today" });
 }
 async function signOut(): Promise<void> {
   try {
@@ -72,69 +63,46 @@ async function signOut(): Promise<void> {
     error.value = bootError(cause, "Abmelden hat nicht geklappt.");
   }
 }
-onMounted(() => {
-  void load();
-  window.addEventListener("auth-expired", expire);
-  window.addEventListener("hashchange", readLink);
-});
-onUnmounted(() => {
-  window.removeEventListener("auth-expired", expire);
-  window.removeEventListener("hashchange", readLink);
-});
-function readCalendarReturn(): boolean {
+/** Google sends the browser back with ?calendar=…; that belongs to settings. */
+function readCalendarReturn(): void {
   const url = new URL(window.location.href);
-  if (!url.searchParams.has("calendar")) return false;
+  if (!url.searchParams.has("calendar")) return;
   url.searchParams.delete("calendar");
-  history.replaceState(null, "", url.pathname + url.search + url.hash);
-  return true;
+  history.replaceState(history.state, "", url.pathname + url.search + url.hash);
+  void router.replace({ name: "settings" });
 }
-const VIEWS = [
-  { key: "today", label: "Heute", view: TodayView, primary: true },
-  {
-    key: "todo-dump",
-    label: "Todo-Dump",
-    short: "Dump",
-    view: TodoDumpView,
-    primary: true,
-  },
-  { key: "habits", label: "Habits", view: HabitsView, primary: true },
-  { key: "calendar", label: "Kalender", view: CalendarView, primary: true },
-  {
-    key: "hierarchy",
-    label: "Aufgabenbaum",
-    view: TodoHierarchyView,
-    primary: false,
-  },
-  {
-    key: "categories",
-    label: "Kategorien",
-    view: CategoriesView,
-    primary: false,
-  },
-] as const;
-type ViewKey = (typeof VIEWS)[number]["key"] | "settings";
+readCalendarReturn();
+
 const PRIMARY = VIEWS.filter((view) => view.primary);
 const SECONDARY = VIEWS.filter((view) => !view.primary);
-const activeView = ref<ViewKey>(readCalendarReturn() ? "settings" : "today");
 const moreOpen = ref(false);
-const shownView = computed(
-  () => VIEWS.find(({ key }) => key === activeView.value)?.view,
+const moreActive = computed(() =>
+  SECONDARY.some(({ name }) => name === route.name),
 );
-const moreActive = computed(
-  () =>
-    activeView.value === "settings" ||
-    SECONDARY.some(({ key }) => key === activeView.value),
+// A new view starts at its top, with the keyboard and screen reader in it.
+watch(
+  () => route.name,
+  async () => {
+    moreOpen.value = false;
+    await nextTick();
+    const main = document.querySelector<HTMLElement>("main");
+    if (!main) return;
+    main.tabIndex = -1;
+    main.focus({ preventScroll: true });
+  },
 );
-function show(key: ViewKey): void {
-  activeView.value = key;
-  moreOpen.value = false;
-  window.scrollTo({ top: 0 });
-}
 function onKeydown(event: KeyboardEvent): void {
   if (event.key === "Escape") moreOpen.value = false;
 }
-onMounted(() => window.addEventListener("keydown", onKeydown));
-onUnmounted(() => window.removeEventListener("keydown", onKeydown));
+onMounted(() => {
+  void load();
+  window.addEventListener("auth-expired", expire);
+  window.addEventListener("keydown", onKeydown);
+});
+onUnmounted(() => {
+  window.removeEventListener("auth-expired", expire);
+  window.removeEventListener("keydown", onKeydown);
+});
 </script>
 
 <template>
@@ -160,28 +128,22 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
     :link="link"
     @authenticated="
       user = $event;
-      activeView = 'today';
+      router.replace({ name: 'today' });
     "
     @link-cleared="clearLink"
   />
   <TimerProvider v-else :key="user.id">
     <nav class="tab-bar" aria-label="Ansichten">
       <div class="tab-bar__inner">
-        <button
+        <RouterLink
           v-for="view in PRIMARY"
-          :key="view.key"
-          type="button"
+          :key="view.name"
+          :to="{ name: view.name }"
           class="tab-bar__tab"
-          :aria-label="view.label"
-          :aria-current="activeView === view.key ? 'page' : undefined"
-          @click="show(view.key)"
         >
-          <AppIcon :name="view.key" />
-          <span class="tab-bar__long">{{ view.label }}</span>
-          <span class="tab-bar__short">{{
-            "short" in view ? view.short : view.label
-          }}</span>
-        </button>
+          <AppIcon :name="view.name" />
+          <span>{{ view.label }}</span>
+        </RouterLink>
         <button
           type="button"
           class="tab-bar__tab tab-bar__more"
@@ -198,26 +160,15 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
           class="tab-bar__secondary"
           :data-open="moreOpen || undefined"
         >
-          <button
-            v-for="{ key, label } in SECONDARY"
-            :key="key"
-            type="button"
+          <RouterLink
+            v-for="view in SECONDARY"
+            :key="view.name"
+            :to="{ name: view.name }"
             class="tab-bar__tab"
-            :aria-current="activeView === key ? 'page' : undefined"
-            @click="show(key)"
           >
-            <AppIcon :name="key" />
-            <span>{{ label }}</span>
-          </button>
-          <button
-            type="button"
-            class="tab-bar__tab"
-            :aria-current="activeView === 'settings' ? 'page' : undefined"
-            @click="show('settings')"
-          >
-            <AppIcon name="settings" />
-            <span>Einstellungen</span>
-          </button>
+            <AppIcon :name="view.name" />
+            <span>{{ view.label }}</span>
+          </RouterLink>
         </div>
       </div>
     </nav>
@@ -228,12 +179,16 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
       @click="moreOpen = false"
     />
 
-    <SettingsView
-      v-if="activeView === 'settings'"
-      :email="user.email"
-      @sign-out="signOut"
-    />
-    <component :is="shownView" v-else />
+    <RouterView v-slot="{ Component }">
+      <component
+        :is="Component"
+        v-bind="
+          route.name === 'settings'
+            ? { email: user.email, onSignOut: signOut }
+            : {}
+        "
+      />
+    </RouterView>
   </TimerProvider>
 </template>
 
@@ -318,6 +273,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   color: var(--color-ink-muted);
   font-size: 0.75rem;
   font-weight: 700;
+  text-decoration: none;
   cursor: pointer;
   transition: transform 420ms var(--spring);
 }
@@ -327,10 +283,6 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.tab-bar__long {
-  display: none;
 }
 
 .tab-bar__tab:active {
@@ -405,13 +357,8 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   }
 
   .tab-bar__more,
-  .tab-bar__scrim,
-  .tab-bar__short {
+  .tab-bar__scrim {
     display: none;
-  }
-
-  .tab-bar__long {
-    display: inline;
   }
 
   .tab-bar__secondary,

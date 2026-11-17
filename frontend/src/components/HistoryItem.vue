@@ -18,7 +18,7 @@ const details = computed(() => {
   const { item } = props;
   const parts: string[] = [];
   if (item.type === "todo" && !item.scheduledDate)
-    parts.push("Aus dem Todo-Dump");
+    parts.push("Aus dem Questlog");
   if (time.value) parts.push(`Erledigt um ${time.value}`);
   if (!completed.value) parts.push("Übersprungen");
   if (item.plannedDurationMinutes !== null)

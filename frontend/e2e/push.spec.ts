@@ -68,7 +68,7 @@ test("push setting persists explicit opt-out and rebinds opted-in devices after 
   await page.reload();
   await openView(page, "Einstellungen");
   await expect(toggle).toHaveAttribute("aria-checked", "false");
-  await expect(page.getByText(/ohne Aufgaben- oder Habit-Titel/)).toBeVisible();
+  await expect(page.getByText(/ohne Quest- oder Daily-Titel/)).toBeVisible();
 });
 test("blocked push permission has an actionable hint and never forces a prompt", async ({
   page,

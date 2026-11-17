@@ -23,7 +23,7 @@ function changed(): void {
 <template>
   <ModalDialog
     class="edit-dialog"
-    :title="kind === 'todo' ? 'Todo bearbeiten' : 'Habit bearbeiten'"
+    :title="kind === 'todo' ? 'Quest bearbeiten' : 'Daily bearbeiten'"
     :busy="busy"
     :return-focus="returnFocus"
     focus-selector='input[name="title"]'

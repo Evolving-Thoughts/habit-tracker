@@ -1,6 +1,6 @@
 ---
 name: Habit-Tracker
-description: Warmer, ruhiger Tagesplaner für Aufgaben, Gewohnheiten und Ziele, gebaut für eine Hand am Handy.
+description: Warmer, ruhiger Tagesplaner für Quests, Dailies und Kampagnen, gebaut für eine Hand am Handy.
 colors:
   ground: "#fde4d0"
   ground-deep: "#f9d3b5"
@@ -207,7 +207,7 @@ components:
 
 # Design System: Habit-Tracker
 
-<!-- Aufgenommen aus dem ausgelieferten Code: App-Hülle (Tab-Leiste, Mehr-Menü, Dialoge, Boot-Fehler), Heute, Todo-Dump, Aufgabenbaum, Habits, Kalender (ersetzt Kalender und Verlauf), Kategorien, Einstellungen und Anmeldung. Alle Ansichten beziehen Farben, Ecken und Abstände aus den Tokens und setzen sich aus den gemeinsamen Bausteinen am Ende von frontend/src/style.css zusammen. -->
+<!-- Aufgenommen aus dem ausgelieferten Code: App-Hülle (Tab-Leiste, Mehr-Menü, Dialoge, Boot-Fehler), Heute, Questlog, Kampagnen, Dailies, Kalender (ersetzt Kalender und Verlauf), Kategorien, Einstellungen und Anmeldung. Alle Ansichten beziehen Farben, Ecken und Abstände aus den Tokens und setzen sich aus den gemeinsamen Bausteinen am Ende von frontend/src/style.css zusammen. -->
 
 ## Overview
 
@@ -246,7 +246,7 @@ Ein warmes, einstimmiges Apricot-Umfeld mit einer gebrannten Orange-Stimme und s
 - **Apricot-Grund** (ground): Seitenhintergrund, Scrollbar-Spur, Hover im Filtermenü.
 - **Tiefer Apricot** (ground-deep): eingelassene Fläche des Nachholen-Panels, Spur der Segmentwahl und Spur aller Fortschrittsbalken.
 - **Kartenweiß** (surface): Karten, Leerzustände, Tab-Leiste, Dialoge, Menüs, gewähltes Segment und gewählter Chip, Buttons, die direkt auf dem Grund liegen ("Neu planen", Nachholen-Chips). Halbtransparent (55 %) für Kalendertermine, den Arbeitszeit-Umschalter und Ladeskelette.
-- **Apricot-Linie** (line): Haarlinien zwischen Listenzeilen (Nachholen, Kategorien, Kalenderzeilen, Menütrenner), Einrückungslinie im Aufgabenbaum, Feld- und Chiprahmen (1.5px), Tab-Leisten-Kante, Unterstreichung von Text-Links.
+- **Apricot-Linie** (line): Haarlinien zwischen Listenzeilen (Nachholen, Kategorien, Kalenderzeilen, Menütrenner), Einrückungslinie in den Kampagnen, Feld- und Chiprahmen (1.5px), Tab-Leisten-Kante, Unterstreichung von Text-Links.
 - **Warme Tinte** (ink): Fließtext, Titel, die Jetzt-Linie, der Undo-Toast, Füllung aller Fortschrittsbalken, Heute-Rahmen im Kalender (2px innen), Rahmen des gewählten Chips, "Löschen" im Aktionsmenü.
 - **Gedämpfte Tinte** (ink-muted): Metazeilen, Zeiten, Fortschritt, inaktive Tabs, erledigte Titel, Feldlabels, Legende, die Punkte im Monatsraster und der Zustandspunkt in Verlaufszeilen.
 - **Leise Tinte** (ink-soft): deaktivierte und laufende Zustände, gestrichelter Ring oder Punkt für Übersprungenes, Terminstrich im Monatsraster, ausgeschalteter Schalter.
@@ -292,9 +292,9 @@ Eine zentrierte Spalte: `min(100% - 2rem, 46rem)`, oben 1.5rem, unten 2rem plus 
 
 Anmeldung und Boot-Fehler sind die Ausnahme: eine einzelne Karte (26–27rem breit) mittig auf dem Grund, ohne Tab-Leiste.
 
-Mobil steht unten eine feste Tab-Leiste (4.25rem plus Safe Area) mit vier Zielen und "Mehr", das ein Popover über der Leiste mit Scrim öffnet; der Body hält per Polsterung Abstand zur Leiste. Ab 56rem wird die Leiste zur oberen Leiste (3.5rem hoch, Innenbreite 64rem), alle Ziele sichtbar, Langnamen statt Kurznamen, kein "Mehr". Der Plus-Button sitzt mobil über der Leiste rechts, auf breiten Schirmen neben der Seitenspalte; Dump, Aufgabenbaum und Habits legen über denselben Plus-Button an. Unter 32rem werden Karten- und Dialogpolster auf 1rem reduziert. Ab 40rem wird das Aktionsmenü vom unteren Blatt zum Popover am Auslöser.
+Mobil steht unten eine feste Tab-Leiste (4.25rem plus Safe Area) mit vier Zielen (Heute, Questlog, Kampagnen, Kalender) und "Mehr" (Dailies, Kategorien, Einstellungen), das ein Popover über der Leiste mit Scrim öffnet. Die Ziele sind Links mit eigener Adresse; beim Wechsel springt die Ansicht nach oben und nimmt den Fokus; der Body hält per Polsterung Abstand zur Leiste. Ab 56rem wird die Leiste zur oberen Leiste (3.5rem hoch, Innenbreite 64rem), alle Ziele sichtbar, kein "Mehr". Der Plus-Button sitzt mobil über der Leiste rechts, auf breiten Schirmen neben der Seitenspalte; Questlog, Kampagnen und Dailies legen über denselben Plus-Button an. Unter 32rem werden Karten- und Dialogpolster auf 1rem reduziert. Ab 40rem wird das Aktionsmenü vom unteren Blatt zum Popover am Auslöser.
 
-Einträge sind ein Raster aus Zeitspalte (2.75rem), Haken-Spalte (Tap-Breite) und Inhalt; Kalendertermine halten dieselbe Flucht, ohne Haken. Im Aufgabenbaum rückt jede Ebene ein, eine 1px-Apricot-Linie führt zur Elternzeile. Tap-Ziele messen mindestens 2.75rem, große Ziele 3rem, der Primär-Button 3.25rem.
+Einträge sind ein Raster aus Zeitspalte (2.75rem), Haken-Spalte (Tap-Breite) und Inhalt; Kalendertermine halten dieselbe Flucht, ohne Haken. In den Kampagnen rückt jede Ebene ein, eine 1px-Apricot-Linie führt zur Elternzeile. Tap-Ziele messen mindestens 2.75rem, große Ziele 3rem, der Primär-Button 3.25rem.
 
 ## Elevation & Depth
 
@@ -366,28 +366,28 @@ Ein Menü "Aktionen für …" pro Zeile statt verstreuter Buttons. Unter 40rem e
 Die eine große Karte oben auf Heute: Titel als Headline, Warum-Satz in Body Large, Metazeile mit Kategoriemarke, Uhrzeit, Minuten und Zielstand, darunter "Erledigt" (Primär), Timer (runder getönter Icon-Button) und getönte Nebenaktionen. Direkt darunter, außerhalb der Karte, die Zeile "Danach" mit dem nächsten Eintrag.
 
 ### Eintrag mit Haken-Ring (Signature)
-Zeit | Ring | Inhalt. Der Ring ist 1.875rem, 2.5px Orange; erledigt füllt er sich orange und der Haken springt mit `check-pop` (Skalierung von 0.4, --spring) ein, der Titel wird durchgestrichen und gedämpft. Übersprungen: gestrichelter Ring in leiser Tinte. Derselbe Ring trägt den Todo-Dump (Timer neben dem Titel, Erledigtes unter "n erledigt" eingeklappt) und den Aufgabenbaum.
+Zeit | Ring | Inhalt. Der Ring ist 1.875rem, 2.5px Orange; erledigt füllt er sich orange und der Haken springt mit `check-pop` (Skalierung von 0.4, --spring) ein, der Titel wird durchgestrichen und gedämpft. Übersprungen: gestrichelter Ring in leiser Tinte. Derselbe Ring trägt den Questlog (Timer neben dem Titel, Erledigtes unter "n erledigt" eingeklappt) und den Kampagnen.
 
-### Aufgabenbaum-Zeile
-Weiße Karte je Aufgabe: Einrückungslinie, Chevron zum Auf- und Zuklappen (sonst Platzhalter in Tap-Breite), Haken-Ring, Titel als Button, Metazeile mit Kategoriemarke. Nur Elternaufgaben zeigen Fortschritt als flachen Balken mit Zähler. Rechts der Auslöser des Aktionsmenüs. Beim Ziehen wird das Ziel mit 2px gestrichelter gedämpfter Tinte umrandet.
+### Kampagnen-Zeile
+Weiße Karte je Quest: Einrückungslinie, Chevron zum Auf- und Zuklappen (sonst Platzhalter in Tap-Breite), Haken-Ring, Titel als Button, Metazeile mit Kategoriemarke. Nur Quests mit Unter-Quests zeigen Fortschritt als flachen Balken mit Zähler. Rechts der Auslöser des Aktionsmenüs. Beim Ziehen wird das Ziel mit 2px gestrichelter gedämpfter Tinte umrandet.
 
-### Habit-Karte
-Weiße, flache Karte: Titel (als Button zum Bearbeiten), Warum-Satz in gedämpfter Tinte, Metazeile mit Kategoriemarke und dem Rhythmus in Klartext. Pausierte Habits gedämpft.
+### Daily-Karte
+Weiße, flache Karte: Titel (als Button zum Bearbeiten), Warum-Satz in gedämpfter Tinte, Metazeile mit Kategoriemarke und dem Rhythmus in Klartext. Pausierte Dailies gedämpft.
 
 ### Kalender
 Kopfzeile mit Segmentwahl Monat · Woche · Tag, Vor/Zurück und dem Zeitraum als Titel-Button, der einen Datumswähler öffnet; der Filter ist ein Menü-Chip.
 - **Monat:** Raster aus Tagen in Control-Ecke, heute mit 2px-Tintenrahmen innen, gewählt weiß mit Kartenschatten. Unter jeder Zahl ruhige Punkte (0.4375rem): gefüllt für Erledigtes, Ring für Offenes, ein kurzer Strich in leiser Tinte für Termine; eine Legende in Label-Größe erklärt sie.
-- **Woche:** Quotenkarte mit großer Zahl ("3 von 12"), Label und flachem Tintenbalken auf tiefem Apricot; darunter Habit-Zeilen mit Haarlinien und eine weiße Karte pro Tag.
+- **Woche:** Quotenkarte mit großer Zahl ("3 von 12"), Label und flachem Tintenbalken auf tiefem Apricot; darunter Daily-Zeilen mit Haarlinien und eine weiße Karte pro Tag.
 - **Tag:** beginnt mit der Tagesreflexion, dann Termine (55 % Weiß), Geplantes, Verlaufszeilen und die Arbeitszeit hinter einem halbtransparenten Umschalter.
 
 ### Verlaufszeile
 Nur lesend: statt des antippbaren Rings ein kleiner gefüllter Punkt (1.25rem) in gedämpfter Tinte mit weißem Haken; übersprungen gestrichelt in leiser Tinte. Ein Zustand, kein Bedienelement, daher nie orange.
 
 ### Fortschrittsbalken
-Pillen-Spur in tiefem Apricot (0.625rem in der Quote), Füllung flache Tinte, Breitenwechsel 240ms --ease-out. Gilt für Wochenquote und Elternaufgaben.
+Pillen-Spur in tiefem Apricot (0.625rem in der Quote), Füllung flache Tinte, Breitenwechsel 240ms --ease-out. Gilt für Wochenquote und Quests mit Unter-Quests.
 
 ### Undo-Toast
-Gemeinsame Komponente für Heute und Dump. Tintenfarbene Pille über Tab-Leiste und Plus-Button, weiße Schrift 600, rechts ein weißer Pillen-Button "Rückgängig" in tiefem Orange. Erscheint mit 0.75rem Aufstieg in 240ms.
+Gemeinsame Komponente für Heute und Questlog. Tintenfarbene Pille über Tab-Leiste und Plus-Button, weiße Schrift 600, rechts ein weißer Pillen-Button "Rückgängig" in tiefem Orange. Erscheint mit 0.75rem Aufstieg in 240ms.
 
 ### Einzelkarte: Anmeldung und Boot-Fehler
 Eine ruhige, gehobene weiße Karte mittig auf dem Grund. Anmeldung: Wortmarke (runder Apricot-Hauch mit Tinten-Icon, Name in Title), Headline, gedämpfte Einleitung, Felder, ein einziger voller Primär-Button über die ganze Breite, darunter leise Text-Links. Boot-Fehler: zentriert "Keine Verbindung zum Server" (1.375rem, 800), gedämpfte Erklärung (max. 34ch) und ein Primär-Button zum erneuten Versuch, ohne Rot.

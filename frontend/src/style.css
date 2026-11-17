@@ -115,6 +115,11 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
+/* Views take focus on navigation; that needs no ring. */
+main:focus {
+  outline: none;
+}
+
 #app {
   min-height: 100vh;
 }

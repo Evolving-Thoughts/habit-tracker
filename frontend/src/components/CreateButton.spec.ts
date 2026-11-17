@@ -4,10 +4,10 @@ import CreateButton from "./CreateButton.vue";
 describe("CreateButton", () => {
   it("uses a symmetric vector plus and an accessible button label", () => {
     const wrapper = mount(CreateButton, {
-      props: { label: "Habit erstellen" },
+      props: { label: "Daily erstellen" },
     });
     expect(wrapper.get("button").attributes("aria-label")).toBe(
-      "Habit erstellen",
+      "Daily erstellen",
     );
     expect(wrapper.get("svg").attributes("viewBox")).toBe("0 0 24 24");
     expect(wrapper.get("svg").attributes("aria-hidden")).toBe("true");

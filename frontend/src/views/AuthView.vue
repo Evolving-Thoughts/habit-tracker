@@ -44,7 +44,7 @@ const intro = computed(
   () =>
     ({
       login:
-        "Schön, dass du da bist. Deine Aufgaben und Gewohnheiten, nur für dich.",
+        "Schön, dass du da bist. Deine Quests und Dailies, nur für dich.",
       register:
         "Ein Konto nur für dich. Danach schicken wir dir einen Link zur Bestätigung.",
       forgot:
@@ -116,7 +116,7 @@ function selectAfter(next: typeof mode.value): void {
   <main class="auth-page">
     <section class="auth-card" aria-labelledby="auth-heading">
       <p class="wordmark">
-        <span class="wordmark__mark"><AppIcon name="habits" /></span>
+        <span class="wordmark__mark"><AppIcon name="dailies" /></span>
         Habit Tracker
       </p>
       <h1 id="auth-heading" class="auth-card__title">{{ heading }}</h1>

@@ -23,7 +23,7 @@ onMounted(async () => {
 <template>
   <select :id="id" v-model="choice" name="category">
     <option value="default">
-      {{ inheritsFromParent ? "Wie übergeordnetes Todo" : "Keine" }}
+      {{ inheritsFromParent ? "Wie übergeordnete Quest" : "Keine" }}
     </option>
     <option v-if="inheritsFromParent" :value="null">Keine</option>
     <option

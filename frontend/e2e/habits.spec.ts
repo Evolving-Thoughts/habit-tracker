@@ -10,7 +10,7 @@ import {
 } from "./helpers";
 import { API_URL } from "./environment";
 
-test("Today: create Habit, complete/reopen and skip/reopen one occurrence", async ({
+test("Today: create Daily, complete/reopen and skip/reopen one occurrence", async ({
   page,
   request,
 }) => {
@@ -47,11 +47,11 @@ test("Today: create Habit, complete/reopen and skip/reopen one occurrence", asyn
 });
 
 for (const type of ["fixed_weekdays", "weekly_target"] as const) {
-  test(`Habits: create and persist a ${type} schedule`, async ({
+  test(`Dailies: create and persist a ${type} schedule`, async ({
     page,
     request,
   }) => {
-    await visit(page, "Habits");
+    await visit(page, "Dailies");
     await createHabit(page, "Gitarre spielen", type);
     const habits = await list(request, "habits");
     expect(habits[0].currentSchedule.schedule).toMatchObject(
@@ -60,20 +60,20 @@ for (const type of ["fixed_weekdays", "weekly_target"] as const) {
         : { type, weeklyTarget: 3 },
     );
     await page.reload();
-    await openView(page, "Habits");
+    await openView(page, "Dailies");
     await expect(
       page.getByRole("heading", { name: "Gitarre spielen", exact: true }),
     ).toBeVisible();
   });
 }
 
-test("Habit management: future schedule change, pause/reactivate and delete", async ({
+test("Daily management: future schedule change, pause/reactivate and delete", async ({
   page,
   request,
 }) => {
   const date = await today(request),
     future = daysAfter(date, 7);
-  await visit(page, "Habits");
+  await visit(page, "Dailies");
   await createHabit(page, "Joggen");
   await page
     .getByRole("button", { name: "Joggen bearbeiten", exact: true })
@@ -106,7 +106,7 @@ test("Habit management: future schedule change, pause/reactivate and delete", as
   await expect(
     page.getByRole("heading", { name: "Joggen", exact: true }),
   ).toHaveCount(0);
-  await openView(page, "Habits");
+  await openView(page, "Dailies");
   await page
     .getByRole("button", { name: "Joggen bearbeiten", exact: true })
     .click();
@@ -126,12 +126,12 @@ test("Habit management: future schedule change, pause/reactivate and delete", as
   await expect(page.locator(".create-button")).toBeFocused();
 });
 
-test("future-start Habit is manageable but not due in Today", async ({
+test("future-start Daily is manageable but not due in Today", async ({
   page,
   request,
 }) => {
   const future = daysAfter(await today(request), 7);
-  await visit(page, "Habits");
+  await visit(page, "Dailies");
   await createHabit(page, "Zukunftshabit", "interval", future);
   await expect(
     page.getByRole("heading", { name: "Zukunftshabit", exact: true }),

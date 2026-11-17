@@ -114,14 +114,14 @@ export class WorkLogsService {
       const todo = await manager
         .getRepository(TodoEntity)
         .findOneBy({ id: dto.targetId, userId });
-      if (!todo) throw new NotFoundException('Todo nicht gefunden.');
+      if (!todo) throw new NotFoundException('Quest nicht gefunden.');
       return todo.title;
     }
     const occurrence = await ownedOccurrences(manager, userId, { select: true })
       .andWhere('occurrence.id = :id', { id: dto.targetId })
       .getOne();
     if (!occurrence)
-      throw new NotFoundException('Habit-Ausführung nicht gefunden.');
+      throw new NotFoundException('Daily-Ausführung nicht gefunden.');
     return occurrence.habit.title;
   }
 

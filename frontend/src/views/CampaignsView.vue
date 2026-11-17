@@ -58,7 +58,7 @@ const {
   reload: load,
 } = useLoader(getTodoHierarchy, {
   initial: [] as HierarchyTodo[],
-  fallbackError: "Aufgaben konnten nicht geladen werden.",
+  fallbackError: "Quests konnten nicht geladen werden.",
   refreshOnChange: () =>
     !busy.value && action.value === null && burnupTodo.value === null,
 });
@@ -283,7 +283,7 @@ async function created() {
   await applied();
   action.value = null;
   selected.value = null;
-  success.value = "Aufgabe angelegt.";
+  success.value = "Quest angelegt.";
 }
 async function changed() {
   formBusy.value = false;
@@ -295,7 +295,7 @@ async function changed() {
 function move(todo: HierarchyTodo, target: number | null) {
   return run(
     () => updateTodo(todo.id, { parentId: target }),
-    "Aufgabe verschoben.",
+    "Quest verschoben.",
   );
 }
 function drop(event: DragEvent, target: number | null) {
@@ -335,7 +335,7 @@ async function confirmDelete() {
   // confirm() announces the change itself.
   await run(
     confirmPreviewedDeletion,
-    "Gelöscht. Der Verlauf bleibt erhalten.",
+    "Gelöscht. Das Logbuch bleibt erhalten.",
     {
       notify: false,
     },
@@ -346,13 +346,13 @@ async function confirmDelete() {
 <template>
   <main ref="page" class="page hierarchy">
     <CreateButton
-      label="Neue Aufgabe"
+      label="Neue Kampagne"
       :disabled="busy"
       @click="open('create')"
     />
     <header class="page-header">
-      <h1 class="page-title">Aufgabenbaum</h1>
-      <p class="page-lead">Ziele und ihre Teilaufgaben.</p>
+      <h1 class="page-title">Kampagnen</h1>
+      <p class="page-lead">Kampagnen, Questreihen und ihre Quests.</p>
     </header>
     <div v-if="shownError" class="alert" role="alert">
       <p>{{ shownError }}</p>
@@ -369,7 +369,7 @@ async function confirmDelete() {
     <p v-if="success" class="status-line" role="status">{{ success }}</p>
     <ModalDialog
       v-if="burnupTodo"
-      title="Fortschritt zum Ziel"
+      title="Fortschritt der Kampagne"
       focus-selector="button"
       :return-focus="listFocus.returnFocus"
       @close="burnupTodo = null"
@@ -381,16 +381,16 @@ async function confirmDelete() {
       v-if="loading"
       class="skeleton"
       role="status"
-      aria-label="Aufgaben werden geladen"
+      aria-label="Quests werden geladen"
     >
       <span /><span /><span />
     </div>
     <div v-else-if="!todos.length && !shownError" class="empty-state">
-      <strong>Noch keine Ziele.</strong>
-      <span>Leg mit dem Plus-Button das erste an.</span>
+      <strong>Noch keine Kampagnen.</strong>
+      <span>Leg mit dem Plus-Button die erste an.</span>
     </div>
     <template v-else-if="todos.length">
-      <ul class="tree" aria-label="Aufgabenbaum">
+      <ul class="tree" aria-label="Kampagnen">
         <li
           v-for="{ todo, depth } in rows"
           :key="todo.id"
@@ -432,7 +432,7 @@ async function confirmDelete() {
             class="row__check"
             :aria-checked="checked(todo)"
             :disabled="busy"
-            :aria-label="`${todo.title} als eigene Aufgabe erledigen`"
+            :aria-label="`${todo.title} als eigene Quest erledigen`"
             @click="toggleCompletion(todo)"
           >
             <span class="row__ring">
@@ -453,7 +453,7 @@ async function confirmDelete() {
               </button>
             </h2>
             <span v-if="todo.parentId !== null" class="visually-hidden">
-              Teilaufgabe von „{{ titles.get(todo.parentId) }}“
+              Gehört zu „{{ titles.get(todo.parentId) }}“
             </span>
             <p
               v-if="
@@ -547,10 +547,10 @@ async function confirmDelete() {
                     role="menuitem"
                     class="btn btn--quiet menu__item"
                     :disabled="busy"
-                    :aria-label="`Teilaufgabe zu ${todo.title} hinzufügen`"
+                    :aria-label="`Unter-Quest zu ${todo.title} hinzufügen`"
                     @click="fromMenu(() => open('create', todo))"
                   >
-                    <AppIcon name="child" />Teilaufgabe hinzufügen
+                    <AppIcon name="child" />Unter-Quest hinzufügen
                   </button>
                   <button
                     v-if="todo.parentId === null"
@@ -578,7 +578,7 @@ async function confirmDelete() {
                     role="menuitem"
                     class="btn btn--quiet menu__item menu__item--danger"
                     :disabled="busy"
-                    :aria-label="`${todo.title} mit allen Teilaufgaben löschen`"
+                    :aria-label="`${todo.title} mit allen Unter-Quests löschen`"
                     @click="fromMenu(() => requestDelete(todo))"
                   >
                     <AppIcon name="trash" />Löschen
@@ -597,7 +597,7 @@ async function confirmDelete() {
         @dragleave="dropTarget = undefined"
         @drop="drop($event, null)"
       >
-        Hier ablegen, um die Aufgabe auf die oberste Ebene zu holen.
+        Hier ablegen, um daraus eine eigene Kampagne zu machen.
       </div>
     </template>
     <ModalDialog
@@ -605,13 +605,13 @@ async function confirmDelete() {
       :title="
         action === 'create'
           ? selected
-            ? 'Teilaufgabe hinzufügen'
-            : 'Neue Aufgabe'
+            ? 'Unter-Quest hinzufügen'
+            : 'Neue Kampagne'
           : action === 'move'
-            ? 'Aufgabe verschieben'
+            ? 'Quest verschieben'
             : action === 'delete'
-              ? 'Aufgabe löschen'
-              : 'Aufgabe bearbeiten'
+              ? 'Quest löschen'
+              : 'Quest bearbeiten'
       "
       :busy="busy"
       :return-focus="listFocus.returnFocus"
@@ -643,7 +643,7 @@ async function confirmDelete() {
         <label class="field" for="new-parent"
           >Neuer Platz für „{{ selected?.title }}“
           <select id="new-parent" v-model="parent" :disabled="busy">
-            <option value="">Oberste Ebene</option>
+            <option value="">Eigene Kampagne</option>
             <option
               v-for="todo in parentOptions"
               :key="todo.id"
@@ -654,7 +654,7 @@ async function confirmDelete() {
           </select></label
         >
         <p class="dialog-lead">
-          Alle Teilaufgaben ziehen mit. Termine und Timer bleiben erhalten.
+          Alle Unter-Quests ziehen mit. Termine und Timer bleiben erhalten.
         </p>
         <button class="btn btn--primary" type="submit" :disabled="busy">
           Verschieben

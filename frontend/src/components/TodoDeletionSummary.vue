@@ -9,14 +9,14 @@ const stateLabel = {
 };
 </script>
 <template>
-  <section class="deletion-summary" aria-label="Betroffene Aufgaben und Timer">
+  <section class="deletion-summary" aria-label="Betroffene Quests und Timer">
     <p>
       <strong>{{
         preview.todos.length === 1
-          ? "1 Aufgabe wird gelöscht."
-          : `${preview.todos.length} Aufgaben werden gelöscht.`
+          ? "1 Quest wird gelöscht."
+          : `${preview.todos.length} Quests werden gelöscht.`
       }}</strong>
-      Was schon im Verlauf steht, bleibt erhalten.
+      Was schon im Logbuch steht, bleibt erhalten.
     </p>
     <ul>
       <li v-for="todo in preview.todos" :key="todo.id">

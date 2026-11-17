@@ -44,7 +44,7 @@ export function dayLabel(date: string): string {
 /** Opens a view; on phones the rarer views sit behind Mehr. */
 export async function openView(page: Page, name: string) {
   const navigation = page.getByRole("navigation", { name: "Ansichten" });
-  const target = navigation.getByRole("button", { name, exact: true });
+  const target = navigation.getByRole("link", { name, exact: true });
   await expect(navigation).toBeVisible();
   if (!(await target.isVisible()))
     await navigation.getByRole("button", { name: "Mehr", exact: true }).click();
@@ -72,7 +72,7 @@ export async function openCalendar(
 /** Picks Alle, Todos or Habits in the calendar filter. */
 export async function filterCalendar(
   page: Page,
-  label: "Alle" | "Todos" | "Habits",
+  label: "Alle" | "Quests" | "Dailies",
 ) {
   const menuButton = page
     .locator(".calendar-view")
@@ -94,7 +94,7 @@ export async function showResolved(page: Page) {
 }
 export async function visit(
   page: Page,
-  view: "Heute" | "Todo-Dump" | "Habits",
+  view: "Heute" | "Questlog" | "Dailies",
 ) {
   await page.goto("/");
   await openView(page, view);
@@ -114,7 +114,7 @@ export async function createTodo(
     await dialog.locator('[name="scheduledAt"]').fill(scheduledAt);
   await dialog.locator('[name="duration"]').fill("30");
   await dialog
-    .getByRole("button", { name: "Todo erstellen", exact: true })
+    .getByRole("button", { name: "Quest erstellen", exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
 }
@@ -140,7 +140,7 @@ export async function createHabit(
   if (type === "weekly_target")
     await dialog.locator('[name="weeklyTarget"]').fill("3");
   await dialog
-    .getByRole("button", { name: "Habit erstellen", exact: true })
+    .getByRole("button", { name: "Daily erstellen", exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
 }

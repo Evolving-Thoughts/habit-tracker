@@ -381,7 +381,7 @@ onMounted(loadEntity);
     :aria-labelledby="embedded ? undefined : 'item-editor-heading'"
   >
     <h2 v-if="!embedded" id="item-editor-heading">
-      {{ kind === "todo" ? "Todo" : "Habit" }}
+      {{ kind === "todo" ? "Quest" : "Daily" }}
       bearbeiten
     </h2>
 
@@ -446,7 +446,7 @@ onMounted(loadEntity);
                 aria-describedby="planner-edit-date-hint"
               />
               <small id="planner-edit-date-hint" class="item-editor__hint"
-                >Ohne Zeitpunkt liegt es im Todo-Dump.</small
+                >Ohne Zeitpunkt liegt sie im Questlog.</small
               >
             </div>
 
@@ -518,7 +518,7 @@ onMounted(loadEntity);
                 )
               }}
             </p>
-            <p v-else>Das Habit hat noch keinen aktuell gültigen Zeitplan.</p>
+            <p v-else>Das Daily hat noch keinen aktuell gültigen Zeitplan.</p>
             <template v-if="loadedHabit?.upcomingSchedule">
               <p>
                 Geplant ab
@@ -674,7 +674,7 @@ onMounted(loadEntity);
             @click="requestDeletion"
           >
             <AppIcon name="trash" />
-            {{ kind === "todo" ? "Todo löschen" : "Gesamtes Habit löschen" }}
+            {{ kind === "todo" ? "Quest löschen" : "Gesamtes Daily löschen" }}
           </button>
 
           <template v-else>
@@ -685,7 +685,7 @@ onMounted(loadEntity);
             <p>„{{ title }}“ wirklich löschen?</p>
 
             <p v-if="kind === 'habit'" class="item-editor__hint">
-              Es verschwindet aus Heute. Der Verlauf bleibt erhalten.
+              Es verschwindet aus Heute. Das Logbuch bleibt erhalten.
             </p>
 
             <div class="item-editor__actions">
