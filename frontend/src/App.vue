@@ -73,7 +73,8 @@ function readCalendarReturn(): void {
 }
 readCalendarReturn();
 
-const PRIMARY = VIEWS.filter((view) => view.primary);
+/* Wide screens show some Mehr views as tabs, so those render in both places. */
+const PRIMARY = VIEWS.filter((view) => view.primary || view.tabWhenWide);
 const SECONDARY = VIEWS.filter((view) => !view.primary);
 const moreOpen = ref(false);
 const moreActive = computed(() =>
@@ -140,6 +141,7 @@ onUnmounted(() => {
           :key="view.name"
           :to="{ name: view.name }"
           class="tab-bar__tab"
+          :class="{ 'tab-bar__tab--wide': !view.primary }"
         >
           <AppIcon :name="view.name" />
           <span>{{ view.label }}</span>
@@ -165,6 +167,7 @@ onUnmounted(() => {
             :key="view.name"
             :to="{ name: view.name }"
             class="tab-bar__tab"
+            :class="{ 'tab-bar__tab--narrow': view.tabWhenWide }"
           >
             <AppIcon :name="view.name" />
             <span>{{ view.label }}</span>
@@ -334,6 +337,10 @@ onUnmounted(() => {
   background: rgb(43 29 22 / 18%);
 }
 
+.tab-bar__tab--wide {
+  display: none;
+}
+
 /* Wide screens have room for every view, so nothing hides behind Mehr. */
 @media (min-width: 56rem) {
   .tab-bar {
@@ -357,8 +364,13 @@ onUnmounted(() => {
   }
 
   .tab-bar__more,
-  .tab-bar__scrim {
+  .tab-bar__scrim,
+  .tab-bar__tab--narrow {
     display: none;
+  }
+
+  .tab-bar__tab--wide {
+    display: flex;
   }
 
   .tab-bar__secondary,

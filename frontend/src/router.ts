@@ -10,6 +10,7 @@ import CampaignsView from "./views/CampaignsView.vue";
 import CategoriesView from "./views/CategoriesView.vue";
 import FocusView from "./views/FocusView.vue";
 import HabitsView from "./views/HabitsView.vue";
+import PlanView from "./views/PlanView.vue";
 import QuestlogView from "./views/QuestlogView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import TodayView from "./views/TodayView.vue";
@@ -24,6 +25,8 @@ export type AppView = {
   component: Component;
   /** Primary views are tabs on a phone; the rest sit behind Mehr. */
   primary: boolean;
+  /** Behind Mehr on a phone, but a tab in its own place on wide screens. */
+  tabWhenWide?: boolean;
   /** Fills the screen alone: no navigation and no timer bar around it. */
   immersive?: boolean;
 };
@@ -36,6 +39,14 @@ export const VIEWS: readonly AppView[] = [
     label: "Heute",
     component: TodayView,
     primary: true,
+  },
+  {
+    name: "plan",
+    path: PATHS.plan,
+    label: "Plan",
+    component: PlanView,
+    primary: false,
+    tabWhenWide: true,
   },
   {
     name: "focus",

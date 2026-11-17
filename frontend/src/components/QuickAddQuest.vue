@@ -8,14 +8,19 @@ type OrderedItem = { type: "todo" | "habit"; id: number };
  * One line to put a quest on a day: type a title, press Enter. It joins the
  * end of the day's order, or its head when "Oben" is chosen.
  */
-const props = defineProps<{
-  /** The day the quest is planned for, YYYY-MM-DD. */
-  date: string;
-  /** The day's current order; a quest added on top goes in front of it. */
-  order: OrderedItem[];
-  /** Tells the field apart when a view shows one per day. */
-  label?: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    /** The day the quest is planned for, YYYY-MM-DD. */
+    date: string;
+    /** The day's current order; a quest added on top goes in front of it. */
+    order?: OrderedItem[];
+    /** Names the field when a view shows one per day. */
+    label?: string;
+    /** Offers "Oben | Unten"; without it a quest always joins the end. */
+    choosePlace?: boolean;
+  }>(),
+  { order: () => [], label: "Quest für heute hinzufügen", choosePlace: true },
+);
 const emit = defineEmits<{ created: [] }>();
 
 const title = ref("");
@@ -67,11 +72,16 @@ async function add(): Promise<void> {
         maxlength="200"
         enterkeyhint="done"
         autocomplete="off"
-        :placeholder="label ?? 'Quest hinzufügen …'"
-        :aria-label="label ?? 'Quest für heute hinzufügen'"
+        placeholder="Quest hinzufügen …"
+        :aria-label="label"
         :disabled="busy"
       />
-      <div class="segmented quick-add__place" role="group" aria-label="Einreihen">
+      <div
+        v-if="choosePlace"
+        class="segmented quick-add__place"
+        role="group"
+        aria-label="Einreihen"
+      >
         <button
           type="button"
           :aria-pressed="place === 'top'"

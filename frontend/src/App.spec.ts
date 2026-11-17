@@ -55,8 +55,28 @@ describe("App navigation", () => {
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
-    // Four tabs, Mehr, and four views behind it.
-    expect(wrapper.findAll("nav a, nav button")).toHaveLength(9);
+    // Four tabs and Plan for wide screens, Mehr, and five views behind it.
+    expect(wrapper.findAll("nav a, nav button")).toHaveLength(11);
+  });
+  it("puts Plan after Heute on wide screens and first behind Mehr", async () => {
+    const wrapper = mountApp();
+    await flushPromises();
+    const labels = (selector: string) =>
+      wrapper.findAll(selector).map((link) => link.text());
+    expect(labels(".tab-bar__inner > a")).toEqual([
+      "Heute",
+      "Plan",
+      "Questlog",
+      "Kampagnen",
+      "Kalender",
+    ]);
+    expect(wrapper.get(".tab-bar__inner > a:nth-child(2)").classes()).toContain(
+      "tab-bar__tab--wide",
+    );
+    expect(labels(".tab-bar__secondary a")[0]).toBe("Plan");
+    expect(wrapper.get(".tab-bar__secondary a").classes()).toContain(
+      "tab-bar__tab--narrow",
+    );
   });
   it("opens the dailies and marks only that navigation link current", async () => {
     const wrapper = mountApp();

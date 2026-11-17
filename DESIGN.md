@@ -207,7 +207,7 @@ components:
 
 # Design System: Habit-Tracker
 
-<!-- Aufgenommen aus dem ausgelieferten Code: App-Hülle (Tab-Leiste, Mehr-Menü, Dialoge, Boot-Fehler), Heute, Questlog, Kampagnen, Dailies, Kalender (ersetzt Kalender und Verlauf), Kategorien, Einstellungen und Anmeldung. Alle Ansichten beziehen Farben, Ecken und Abstände aus den Tokens und setzen sich aus den gemeinsamen Bausteinen am Ende von frontend/src/style.css zusammen. -->
+<!-- Aufgenommen aus dem ausgelieferten Code: App-Hülle (Tab-Leiste, Mehr-Menü, Dialoge, Boot-Fehler), Heute, Plan, Questlog, Kampagnen, Dailies, Kalender (ersetzt Kalender und Verlauf), Kategorien, Einstellungen und Anmeldung. Alle Ansichten beziehen Farben, Ecken und Abstände aus den Tokens und setzen sich aus den gemeinsamen Bausteinen am Ende von frontend/src/style.css zusammen. -->
 
 ## Overview
 
@@ -292,7 +292,9 @@ Eine zentrierte Spalte: `min(100% - 2rem, 46rem)`, oben 1.5rem, unten 2rem plus 
 
 Anmeldung und Boot-Fehler sind die Ausnahme: eine einzelne Karte (26–27rem breit) mittig auf dem Grund, ohne Tab-Leiste.
 
-Mobil steht unten eine feste Tab-Leiste (4.25rem plus Safe Area) mit vier Zielen (Heute, Questlog, Kampagnen, Kalender) und "Mehr" (Dailies, Kategorien, Einstellungen), das ein Popover über der Leiste mit Scrim öffnet. Die Ziele sind Links mit eigener Adresse; beim Wechsel springt die Ansicht nach oben und nimmt den Fokus; der Body hält per Polsterung Abstand zur Leiste. Ab 56rem wird die Leiste zur oberen Leiste (3.5rem hoch, Innenbreite 64rem), alle Ziele sichtbar, kein "Mehr". Der Plus-Button sitzt mobil über der Leiste rechts, auf breiten Schirmen neben der Seitenspalte; Questlog, Kampagnen und Dailies legen über denselben Plus-Button an. Unter 32rem werden Karten- und Dialogpolster auf 1rem reduziert. Ab 40rem wird das Aktionsmenü vom unteren Blatt zum Popover am Auslöser.
+Mobil steht unten eine feste Tab-Leiste (4.25rem plus Safe Area) mit vier Zielen (Heute, Questlog, Kampagnen, Kalender) und "Mehr" (Plan, Fokus, Dailies, Kategorien, Einstellungen), das ein Popover über der Leiste mit Scrim öffnet. Die Ziele sind Links mit eigener Adresse; beim Wechsel springt die Ansicht nach oben und nimmt den Fokus; der Body hält per Polsterung Abstand zur Leiste. Ab 56rem wird die Leiste zur oberen Leiste (3.5rem hoch, Innenbreite 64rem), alle Ziele sichtbar, kein "Mehr"; Plan steht dort direkt nach Heute.
+
+Der Plan ist die zweite Ausnahme von der Seitenspalte: Er nutzt bis zu 90rem Breite, damit sieben Tagesspalten (mind. 10.5rem) nebeneinander passen. Reicht die Breite nicht, scrollen die Tage innerhalb des Bretts seitwärts, nie die Seite. Unter 40rem füllt ein Tag 85 % der Breite, der nächste lugt herein, die Spalten rasten ein. Der Plus-Button sitzt mobil über der Leiste rechts, auf breiten Schirmen neben der Seitenspalte; Questlog, Kampagnen und Dailies legen über denselben Plus-Button an. Unter 32rem werden Karten- und Dialogpolster auf 1rem reduziert. Ab 40rem wird das Aktionsmenü vom unteren Blatt zum Popover am Auslöser.
 
 Einträge sind ein Raster aus Zeitspalte (2.75rem), Haken-Spalte (Tap-Breite) und Inhalt; Kalendertermine halten dieselbe Flucht, ohne Haken. In den Kampagnen rückt jede Ebene ein, eine 1px-Apricot-Linie führt zur Elternzeile. Tap-Ziele messen mindestens 2.75rem, große Ziele 3rem, der Primär-Button 3.25rem.
 
@@ -373,6 +375,11 @@ Weiße Karte, die oben haftet: Zustand und Titel links, die gearbeitete Zeit in 
 
 ### Reihenfolge des Tages
 Fokuskarte und die Einträge darunter sind eine sortierbare Liste. Jede Zeile trägt in der Zeitspalte einen Griff aus sechs Punkten in leiser Tinte: ziehen (Maus, Finger, Stift) oder mit Pfeil hoch/runter verschieben. Beim Ziehen bleibt am alten Platz eine 35 % deckende Lücke, die gezogene Zeile hebt der Kartenschatten. Wer an den Kopf rückt, wird zur Fokuskarte. Darüber steht das Schnell-Anlegen: ein Feld mit Segment "Oben | Unten". "Auf morgen" im Kopf der Ansicht verschiebt alles Offene ohne Uhrzeit nach einer Rückfrage.
+
+### Wochenplan-Brett
+Sieben Tagesspalten von Montag bis Sonntag, jede eine flache Fläche in 35 % Weiß mit Kartenecke; heute trägt den 2px-Tintenrahmen des Kalenders und "Heute" in der Überschrift. Kopf jeder Spalte: Wochentag (800) und Datum in gedämpfter Tinte, darunter leise "3 offen · 1 Std. 30 Min." (Label, tabellarisch). Darunter die offenen Einträge in der Reihenfolge des Tages, das Schnell-Anlegen als halbtransparentes Feld ohne Rahmen ("Quest hinzufügen …", Enter legt am Ende an), zuletzt Erledigtes durchgestrichen in gedämpfter Tinte. Vergangene Tage zeigen nur, was geschah, ohne Schnell-Anlegen. Ein leerer Tag sagt ruhig "Noch frei.".
+
+Einträge sind kompakte weiße Zeilen mit Control-Ecke: Titel (700, 0.9375rem) über der ganzen Breite, darunter die Metazeile (Uhrzeit, Soll, "seit 15. Nov." für Liegengebliebenes, Kampagne fett) und rechts der Griff. Der Griff ist die eine Verschiebe-Bedienung: ziehen, mit Pfeil hoch/runter in der Reihenfolge, mit Pfeil links/rechts auf den Nachbartag, antippen öffnet "Verschieben". Ist die Zeile breit genug (Container ab 15rem, also mobil), steht der Griff neben Titel und Metazeile. Dailies liegen in 55 % Weiß, ohne Griff und ohne Aktion, mit Dailies-Icon und "Daily" in der Metazeile. Der Kampagnen-Streifen gilt wie auf Heute. Kopfzeile der Ansicht: der Zeitraum als Seitentitel ("16.–22. Nov."), rechts Vor/Zurück als runde Icon-Buttons und "Diese Woche" als getönte Pille.
 
 ### Kampagnen-Streifen
 Ein Eintrag, der zu einer Kampagne gehört, trägt links einen 5px breiten Streifen in der Marke der Kampagne und nennt sie fett in der Metazeile. Einträge ohne Kampagne bleiben ohne Streifen.

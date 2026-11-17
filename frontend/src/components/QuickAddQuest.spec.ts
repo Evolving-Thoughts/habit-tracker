@@ -79,6 +79,31 @@ describe("QuickAddQuest", () => {
     expect(wrapper.emitted("created")).toHaveLength(1);
   });
 
+  it("names its day and always joins the end when the place is not offered", async () => {
+    const wrapper = mount(QuickAddQuest, {
+      props: {
+        date: "2026-11-19",
+        label: "Quest für Donnerstag, 19. Nov. hinzufügen",
+        choosePlace: false,
+      },
+    });
+    expect(wrapper.find('[aria-label="Einreihen"]').exists()).toBe(false);
+    const field = wrapper.get('input[name="quickTitle"]');
+    expect(field.attributes("aria-label")).toBe(
+      "Quest für Donnerstag, 19. Nov. hinzufügen",
+    );
+    expect(field.attributes("placeholder")).toBe("Quest hinzufügen …");
+
+    await field.setValue("Geschenk kaufen");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(createTodo).toHaveBeenCalledWith(
+      expect.objectContaining({ scheduledDate: "2026-11-19" }),
+    );
+    expect(reorderDay).not.toHaveBeenCalled();
+    expect(wrapper.emitted("created")).toHaveLength(1);
+  });
+
   it("ignores an empty line", async () => {
     const { wrapper, type } = mountField();
     await type("   ");
