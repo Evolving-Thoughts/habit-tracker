@@ -28,6 +28,12 @@ defineProps<{
     | "refresh"
     | "logout"
     | "search"
+    | "code"
+    | "link"
+    | "list"
+    | "list-ordered"
+    | "list-check"
+    | "divider"
     | "close";
 }>();
 </script>
@@ -151,6 +157,31 @@ defineProps<{
     <template v-else-if="name === 'search'">
       <circle cx="11" cy="11" r="6.5" />
       <path d="m20 20-4.4-4.4" />
+    </template>
+    <template v-else-if="name === 'code'">
+      <path d="m8 7-5 5 5 5M16 7l5 5-5 5" />
+    </template>
+    <template v-else-if="name === 'link'">
+      <path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3A4.5 4.5 0 0 0 13 4.6l-1 1" />
+      <path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" />
+    </template>
+    <template v-else-if="name === 'list'">
+      <path d="M9.5 6H20M9.5 12H20M9.5 18H20" />
+      <circle cx="4.5" cy="6" r="1.2" fill="currentColor" />
+      <circle cx="4.5" cy="12" r="1.2" fill="currentColor" />
+      <circle cx="4.5" cy="18" r="1.2" fill="currentColor" />
+    </template>
+    <template v-else-if="name === 'list-ordered'">
+      <path d="M10.5 6H20M10.5 12H20M10.5 18H20" />
+      <path d="M3.5 5 5 4v5M3.5 9h3M3.5 15.2c.3-1.6 3-1.5 3 0 0 1.3-3 1.9-3 3.8h3" />
+    </template>
+    <template v-else-if="name === 'list-check'">
+      <path d="M12.5 7H20M12.5 17H20" />
+      <path d="m3.5 7 2 2 3.5-3.5M3.5 17l2 2L9 15.5" />
+    </template>
+    <template v-else-if="name === 'divider'">
+      <path d="M3 12h18" />
+      <path d="M7 6.5h10M7 17.5h10" stroke-dasharray="0.1 3.2" />
     </template>
     <template v-else>
       <path d="M6 6l12 12M18 6 6 18" />

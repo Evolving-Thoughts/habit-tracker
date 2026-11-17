@@ -7,6 +7,7 @@ import {
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import AppIcon from "../components/AppIcon.vue";
+import QuestNotes from "../components/QuestNotes.vue";
 import { notifyDataChanged } from "../composables/data-sync";
 import { useLoader } from "../composables/useLoader";
 import { useTimer } from "../composables/useTimer";
@@ -295,6 +296,12 @@ function onKeydown(event: KeyboardEvent): void {
         </button>
       </div>
 
+      <QuestNotes
+        v-if="current.type === 'todo'"
+        class="focus-view__notes"
+        :todo-id="current.todoId"
+      />
+
       <dl v-if="upcoming.length || nextAppointment" class="focus-view__ahead">
         <div v-if="upcoming.length">
           <dt>Danach</dt>
@@ -469,6 +476,11 @@ function onKeydown(event: KeyboardEvent): void {
   flex-wrap: wrap;
   gap: var(--space-2);
   justify-content: center;
+}
+
+.focus-view__notes {
+  width: 100%;
+  margin-top: var(--space-5);
 }
 
 .focus-view__ahead {

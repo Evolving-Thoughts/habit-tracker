@@ -28,7 +28,9 @@ Nothing is completed automatically.
   stopwatch runs on stays in view; otherwise it is the head of the day's order, or
   an appointment that is running. "Erledigt" brings up the next one, "Später" puts
   the quest behind the rest of the order and ends its stopwatch. Space
-  starts/pauses, Ctrl+Enter completes, Escape leads back to Heute.
+  starts/pauses, Ctrl+Enter completes, Escape leads back to Heute. A quest
+  shows its notes below the actions (see `quest-notes.md`); while typing there,
+  Space writes a space and the first Escape only leaves the text.
 
 ## Time, devices and forgotten stopwatches
 

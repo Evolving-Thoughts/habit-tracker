@@ -26,6 +26,7 @@ Vier Dinge zusammen, die andere Tracker meist getrennt halten:
 - **Planen nach Tag und Reihenfolge:** Eine Quest hat ihren Tag, nur ein Termin hat eine Uhrzeit. Was heute ansteht, zieht man in die Reihenfolge, in der man es angehen will; Offenes wandert mit einem Schritt auf morgen. Termine stehen in beide Richtungen im eigenen Google Kalender.
 - **Reflexion und Warum:** Quests und Dailies tragen ein persönliches Warum. Ohne eigenes übernehmen sie das der Quest oder Kampagne darüber, und zwar live: Ändert sich das Warum der Kampagne, ändert es sich überall darunter; dazu kommen Tagesreflexion, Wochenquote und Perfect Week je Kategorie.
 - **Zeit erfassen:** Eine Stoppuhr misst die echte Arbeitszeit; die geplante Dauer ist nur ein Soll, das die Stoppuhr nicht anhält. Im Fokus-Modus steht eine einzige Quest im Blick.
+- **Notizen:** Jede Quest hat Notizen als formatierten Text (Überschriften, Listen, Checklisten, Zitate, Code, Links). Sie stehen im Fokus-Modus und im Bearbeiten-Dialog und speichern sich von selbst.
 
 ## Operating Context
 

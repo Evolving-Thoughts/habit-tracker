@@ -14,6 +14,7 @@ import { getCategories } from "../api/categories.api";
 import QuestlogView from "./QuestlogView.vue";
 
 vi.mock("../api/categories.api", () => ({ getCategories: vi.fn() }));
+vi.mock("../components/QuestNotes.vue", () => import("../test/quest-notes-stub"));
 vi.mock("../api/todo-hierarchy.api", () => ({ getDeletionPreview: vi.fn() }));
 vi.mock("../api/day-planner.api", () => ({
   getBacklogTodos: vi.fn(),
@@ -256,7 +257,7 @@ describe("QuestlogView", () => {
     },
   );
 
-  it("prefills the editor with title and duration", async () => {
+  it("prefills the editor with title and duration, and shows the quest's notes", async () => {
     backlogMock.mockResolvedValueOnce([makeTodo()]);
 
     const wrapper = mountView();
@@ -266,6 +267,10 @@ describe("QuestlogView", () => {
     await wrapper
       .get('button[aria-label="NestJS lernen bearbeiten"]')
       .trigger("click");
+
+    expect(wrapper.get("[data-notes]").attributes("data-notes")).toBe(
+      String(makeTodo().id),
+    );
 
     expect(
       wrapper.get<HTMLInputElement>('input[name="editTitle"]').element.value,

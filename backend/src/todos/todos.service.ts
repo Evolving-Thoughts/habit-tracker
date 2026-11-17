@@ -30,6 +30,7 @@ import { TodoEntity } from './entities/todo.entity';
 import { TodoMapper } from './mappers/todo.mapper';
 import { assertGoalAvailable, assertGoalShape, habitGoals } from './habit-goal';
 import { backlogTodos } from './todo-agenda';
+import { cleanNotes, InvalidNotesError, NotesDocument } from './todo-notes';
 import {
   CorruptHierarchyError,
   InvalidPlacementError,
@@ -78,6 +79,41 @@ export class TodosService {
     const todo = await this.todoRepository.findOneBy({ id, userId });
     if (!todo) throw new NotFoundException(`Todo with ID ${id} was not found`);
     return todo;
+  }
+
+  /** The notes of one owned todo; they are loaded only here. */
+  async notes(userId: string, id: number): Promise<NotesDocument | null> {
+    const todo = await this.todoRepository.findOne({
+      select: { id: true, notes: true },
+      where: { id, userId },
+    });
+    if (!todo) throw new NotFoundException(`Todo with ID ${id} was not found`);
+    return todo.notes ?? null;
+  }
+
+  /** Stores the notes reduced to what the editor can show. */
+  setNotes(
+    userId: string,
+    id: number,
+    input: unknown,
+  ): Promise<NotesDocument | null> {
+    let notes: NotesDocument | null;
+    try {
+      notes = cleanNotes(input);
+    } catch (error) {
+      if (error instanceof InvalidNotesError)
+        throw new BadRequestException(error.message);
+      throw error;
+    }
+    return this.unitOfWork.run(userId, async (manager) => {
+      const repository = manager.getRepository(TodoEntity);
+      const todo = await repository.findOneBy({ id, userId });
+      if (!todo)
+        throw new NotFoundException(`Todo with ID ${id} was not found`);
+      todo.notes = notes;
+      await repository.save(todo);
+      return notes;
+    });
   }
 
   /** Every todo with its subtree progress, from one consistent read. */
