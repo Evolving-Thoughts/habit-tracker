@@ -79,7 +79,7 @@ test("Quest timer: direct play, sticky bar, reload, second device, pause/duratio
     plannedDurationMinutes: 35,
   });
 });
-test("switching requires confirmation and completing a Dump Quest persists it in Today", async ({
+test("switching requires confirmation and completing a Questlog Quest persists it in Today", async ({
   page,
   request,
 }) => {

@@ -141,7 +141,7 @@ test("Today: create scheduled Quest, edit, complete/reopen and delete", async ({
   expect(await list(request, "todos")).toEqual([]);
 });
 
-test("scheduling a Dump Quest moves it into Today", async ({
+test("scheduling a Questlog Quest moves it into Today", async ({
   page,
   request,
 }) => {
@@ -181,7 +181,7 @@ test("invalid Quest creation stays open without writing; Escape returns to plus"
   await expect(page.locator(".create-button")).toBeFocused();
 });
 
-test("switching back to Dump before reopen finishes refreshes it after the write", async ({
+test("switching back to Questlog before reopen finishes refreshes it after the write", async ({
   page,
   request,
   context,

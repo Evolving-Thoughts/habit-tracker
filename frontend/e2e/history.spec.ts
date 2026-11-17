@@ -14,7 +14,7 @@ import {
 import { API_URL } from "./environment";
 import type { HistoryResponse } from "../src/types/history";
 
-test("Calendar day: a completed Dump Quest has no invented schedule, persists, and disappears after reopen", async ({
+test("Calendar day: a completed Questlog Quest has no invented schedule, persists, and disappears after reopen", async ({
   page,
   request,
 }) => {
