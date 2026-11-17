@@ -1,13 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
-import { HabitEntity } from '../habits/entities/habit.entity';
-import { HabitScheduleVersionEntity } from '../habits/entities/habit-schedule-version.entity';
-import {
-  forecastSlots,
-  movedSlots,
-  plannedHabits,
-  weeklyTargets,
-} from './history-planning';
+import { loadHabitForecast } from './habit-forecast';
+import { plannedHabits, weeklyTargets } from './history-planning';
 import { DEFAULT_TIME_ZONE } from '../common/date/date-only.utils';
 import { dayOf, weekRange } from '../common/date/local-day';
 import { Clock } from '../common/clock';
@@ -19,6 +13,7 @@ import {
 } from '../todos/todo-agenda';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
+import { resolvedOccurrences } from '../habit-occurrences/resolved-occurrences';
 import { historyRange } from './history-range';
 import { eventsOfDays } from '../calendar/day-events';
 import { CategoryEntity } from '../categories/category.entity';
@@ -66,20 +61,11 @@ export class HistoryService {
       const occurrences =
         filter === 'todos'
           ? []
-          : await manager
-              .getRepository(HabitOccurrenceEntity)
-              .createQueryBuilder('occurrence')
-              .withDeleted()
-              .innerJoinAndSelect('occurrence.habit', 'habit')
-              .where('"habit"."userId" = :userId', { userId })
-              .andWhere(
-                `(
-          ("occurrence"."status" = 'completed' AND "occurrence"."resolvedDate" BETWEEN :startDate AND :endDate)
-          OR ("occurrence"."status" = 'skipped' AND "occurrence"."scheduledDate" BETWEEN :startDate AND :endDate)
-        )`,
-                { startDate, endDate },
-              )
-              .getMany();
+          : await resolvedOccurrences(manager, userId, {
+              firstDay: startDate,
+              lastDay: endDate,
+              withDeleted: true,
+            });
       const items: HistoryItem[] = [
         ...todos.map((todo) => ({
           type: 'todo' as const,
@@ -233,46 +219,16 @@ export class HistoryService {
       }
     }
     if (filter === 'todos') return { items, targets: [] };
-    const habits = await manager
-      .getRepository(HabitEntity)
-      .find({ where: { userId, isActive: true } });
-    if (!habits.length) return { items, targets: [] };
-    const versions = await manager
-      .getRepository(HabitScheduleVersionEntity)
-      .createQueryBuilder('version')
-      .where('"version"."habitId" IN (:...ids)', {
-        ids: habits.map((habit) => habit.id),
-      })
-      .andWhere('"version"."cancelledAt" IS NULL')
-      .orderBy('"version"."effectiveAt"', 'ASC')
-      .addOrderBy('"version"."id"', 'ASC')
-      .getMany();
-    const slots = forecastSlots(versions, dates, today, now);
-    const earliest = slots.reduce(
-      (date, slot) => (slot.scheduledDate < date ? slot.scheduledDate : date),
-      dates[0],
+    const { habits, versions, occurrences, slots } = await loadHabitForecast(
+      manager,
+      userId,
+      dates,
+      today,
+      now,
     );
+    if (!habits.length) return { items, targets: [] };
     // Target progress is scoped to the selected calendar week even in day view.
-    // Clamp its upper boundary at the supported four-digit calendar maximum.
     const { startDate: weekStart, endDate: weekEnd } = weekRange(dates[0]);
-    const occurrences = await manager
-      .getRepository(HabitOccurrenceEntity)
-      .createQueryBuilder('occurrence')
-      .where('"occurrence"."habitId" IN (:...ids)', {
-        ids: habits.map((habit) => habit.id),
-      })
-      .andWhere(
-        '("occurrence"."scheduledDate" BETWEEN :earliest AND :end OR "occurrence"."movedToDate" BETWEEN :first AND :end OR "occurrence"."resolvedDate" BETWEEN :weekStart AND :weekEnd)',
-        {
-          earliest,
-          first: dates[0],
-          end: dates[dates.length - 1],
-          weekStart,
-          weekEnd,
-        },
-      )
-      .getMany();
-    slots.push(...movedSlots(versions, occurrences, slots, dates));
     items.push(
       ...plannedHabits(
         habits,

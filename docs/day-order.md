@@ -44,7 +44,11 @@ The time-based replanner ("Neu planen"), the day-end setting and the per-calenda
 - `PUT /day-planner/order` with `{ items: [{ type: "todo" | "habit", id }] }`
   stores an order: each item takes its index as position. A habit's `id` is its
   occurrence id. All items must be the caller's own, otherwise 404 and nothing
-  is written. It runs in the per-user unit of work.
+  is written. It runs in the per-user unit of work. It orders any day, not only
+  today: a position only counts among the items of the day an item is on. The
+  week plan (`week-plan.md`) sorts every day of its board through it.
+- `GET /day-planner/week?start=<Monday>` answers a whole week in this order;
+  see `week-plan.md`.
 
 ## Google Calendar
 
@@ -65,7 +69,8 @@ the event's Berlin day and time.
   status line announces the new place. The new order shows at once and is
   confirmed, or taken back, by the reload after the write.
 - `QuickAddQuest.vue`: type a title, press Enter, the quest is planned for
-  today, at the end or at the head of the order.
+  today, at the end or at the head of the order. The week plan uses it per day,
+  always at the end.
 - "Auf morgen" moves everything open that only has its day to tomorrow, after
   asking. Appointments and dailies that cannot move stay.
 

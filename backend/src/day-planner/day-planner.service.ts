@@ -34,6 +34,9 @@ import {
   openScheduledTodos,
   placeOpenTodo,
 } from '../todos/todo-agenda';
+import { resolvedOccurrences } from '../habit-occurrences/resolved-occurrences';
+import { loadHabitForecast } from '../history/habit-forecast';
+import { plannedHabits } from '../history/history-planning';
 import { compareInDay } from './day-order';
 import {
   DayPlannerGoalDto,
@@ -42,6 +45,14 @@ import {
   DayPlannerResponseDto,
   DayPlannerTodoItemDto,
 } from './dto/day-planner-response.dto';
+import { WeekPlanResponseDto } from './dto/week-plan.dto';
+import {
+  arrangeWeek,
+  plannedHabitCandidate,
+  resolvedHabitCandidate,
+  todoCandidate,
+  weekDates,
+} from './week-plan';
 
 /** Fields filled after mapping, from lookups across all items. */
 type ContextField =
@@ -140,8 +151,98 @@ export class DayPlannerService {
   }
 
   /**
+   * The week from Monday `start` as a board of days, from one consistent
+   * read that reconciles nothing. Todos follow the todo agenda, habits the
+   * forecast history uses; past days only show what was done.
+   */
+  getWeek(userId: string, start: string): Promise<WeekPlanResponseDto> {
+    const dates = weekDates(start);
+    const firstDay = dates[0];
+    const lastDay = dates[dates.length - 1];
+    const now = this.clock.now();
+    const today = dayOf(now);
+    // Open items only exist from today on; earlier ones are carried to today.
+    const plansAhead = lastDay >= today;
+    return this.db.transaction('REPEATABLE READ', async (manager) => {
+      const ancestry = await loadTodoAncestry(manager, userId, today);
+      const open = plansAhead
+        ? await openScheduledTodos(manager, userId, {
+            firstDay,
+            lastDay,
+            includeOverdue: dates.includes(today),
+          })
+        : [];
+      const completed = await completedTodos(manager, userId, {
+        firstDay,
+        lastDay,
+      });
+      const resolved = await resolvedOccurrences(manager, userId, {
+        firstDay,
+        lastDay,
+      });
+      const forecast = plansAhead
+        ? await loadHabitForecast(manager, userId, dates, today, now)
+        : null;
+      const positions = new Map(
+        (forecast?.occurrences ?? []).map(({ id, dayPosition }) => [
+          id,
+          dayPosition,
+        ]),
+      );
+      const planned = forecast
+        ? plannedHabits(
+            forecast.habits,
+            forecast.slots,
+            forecast.occurrences,
+            today,
+          )
+            // A stable start for runs that were never sorted.
+            .sort((first, second) =>
+              first.title.localeCompare(second.title, 'de'),
+            )
+        : [];
+
+      const candidates = [
+        ...[...open, ...completed].map((todo) =>
+          todoCandidate(todo, today, ancestry.campaignOf(todo)),
+        ),
+        ...planned.map((item) =>
+          plannedHabitCandidate(
+            item,
+            item.id === null ? null : (positions.get(item.id) ?? null),
+            today,
+            ancestry.habitCampaign(item.habitId!),
+          ),
+        ),
+        ...resolved.map((occurrence) =>
+          resolvedHabitCandidate(
+            {
+              ...occurrence,
+              status:
+                occurrence.status === HabitOccurrenceStatus.COMPLETED
+                  ? 'completed'
+                  : 'skipped',
+            },
+            occurrence.habit,
+            effectiveDuration(occurrence, occurrence.habit),
+            ancestry.habitCampaign(occurrence.habitId),
+          ),
+        ),
+      ];
+      return {
+        startDate: firstDay,
+        endDate: lastDay,
+        today,
+        days: arrangeWeek(dates, candidates),
+      };
+    });
+  }
+
+  /**
    * Stores the order the user sorted a day into: every item takes its index
-   * as position. Nothing is written unless all items are the user's own.
+   * as position. It works for any day, because a position only counts among
+   * the items of the day an item is on. Nothing is written unless all items
+   * are the user's own.
    */
   reorder(
     userId: string,
