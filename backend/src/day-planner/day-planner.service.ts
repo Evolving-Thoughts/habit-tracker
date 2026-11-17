@@ -24,6 +24,7 @@ import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurren
 import { lastMovableDate } from '../habits/scheduling/schedule-rules';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { habitGoals } from '../todos/habit-goal';
+import { loadWhySources } from '../todos/why-sources';
 import { WorkLogEntity } from '../work-logs/work-log.entity';
 import { coveredMilliseconds } from '../work-logs/work-time';
 import {
@@ -64,7 +65,7 @@ export class DayPlannerService {
     const categoryName = (id: number | null): string | null =>
       (id !== null && names.get(id)) || null;
 
-    const [parents, habitGoalsByHabit, logs] = await Promise.all([
+    const [parents, habitGoalsByHabit, logs, why] = await Promise.all([
       this.parentsOf(userId, todos),
       this.habitGoalsFor(
         userId,
@@ -72,6 +73,7 @@ export class DayPlannerService {
         today,
       ),
       this.logsOf(userId, today),
+      loadWhySources(this.db.manager, userId, today),
     ]);
     const workedOn = (key: 'todoId' | 'occurrenceId', id: number): number =>
       minutes(coveredMilliseconds(logs.filter((log) => log[key] === id)));
@@ -83,7 +85,7 @@ export class DayPlannerService {
         return {
           ...this.mapTodo(todo, today),
           categoryName: categoryName(todo.categoryId),
-          why: todo.why ?? null,
+          why: why.todoWhy(todo),
           goal: parent
             ? { title: parent, completed: null, target: null, periodEnd: null }
             : null,
@@ -93,7 +95,7 @@ export class DayPlannerService {
       ...occurrences.map((occurrence) => ({
         ...this.mapOccurrence(occurrence, today),
         categoryName: categoryName(occurrence.habit.categoryId),
-        why: occurrence.habit.why ?? null,
+        why: why.habitWhy(occurrence.habit),
         goal: habitGoalsByHabit.get(occurrence.habitId) ?? null,
         workedMinutes: workedOn('occurrenceId', occurrence.id),
       })),

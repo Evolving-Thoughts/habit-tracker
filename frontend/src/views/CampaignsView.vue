@@ -4,6 +4,7 @@ import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import { updateTodo, updateTodoCompletion } from "../api/day-planner.api";
 import { getCategories } from "../api/categories.api";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
+import { whyBelow } from "../utils/why";
 import {
   hierarchyChildren,
   visibleHierarchy,
@@ -630,6 +631,7 @@ async function confirmDelete() {
         <CreateTodoForm
           embedded
           :parent-id="selected?.id ?? null"
+          :parent-why="selected ? whyBelow(selected) : null"
           @busy="formBusy = $event"
           @created="created"
       /></template>

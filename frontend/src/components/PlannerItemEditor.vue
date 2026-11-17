@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useTodoDeletion } from "../composables/useTodoDeletion";
 import TodoDeletionSummary from "./TodoDeletionSummary.vue";
+import WhyField from "./WhyField.vue";
 import TodoGoalFields from "./TodoGoalFields.vue";
 import AppIcon from "./AppIcon.vue";
 
@@ -28,6 +29,7 @@ import type {
 } from "../types/habit";
 import { formatHabitSchedule, WEEKDAY_OPTIONS } from "../utils/habit";
 import type {
+  InheritedWhy,
   TodoGoalInput,
   TodoResponse,
   UpdateTodoInput,
@@ -94,6 +96,7 @@ const categoryId = ref<number | null>(null);
 const why = ref("");
 const originalCategoryId = ref<number | null>(null);
 const originalWhy = ref("");
+const inheritedWhy = ref<InheritedWhy | null>(null);
 
 // Todo-Felder
 const periodStart = ref("");
@@ -124,9 +127,11 @@ const isBusy = computed(() => {
 function fillAssignment(entity: {
   categoryId?: number | null;
   why?: string | null;
+  inheritedWhy?: InheritedWhy | null;
 }): void {
   categoryId.value = originalCategoryId.value = entity.categoryId ?? null;
   why.value = originalWhy.value = entity.why ?? "";
+  inheritedWhy.value = entity.inheritedWhy ?? null;
 }
 
 /** Only what changed, so a plain edit never overwrites these fields. */
@@ -429,10 +434,7 @@ onMounted(loadEntity);
           </select>
         </label>
 
-        <label class="field">
-          Warum · optional
-          <textarea v-model="why" name="why" maxlength="1000" rows="2" />
-        </label>
+        <WhyField id="planner-edit-why" v-model="why" :inherited="inheritedWhy" />
 
         <template v-if="kind === 'todo'">
           <div class="item-editor__row">

@@ -29,6 +29,7 @@ import {
   ScheduleVersionResponse,
 } from '../dto/habit-response.dto';
 import { HabitEntity } from '../entities/habit.entity';
+import { loadWhySources, WhySources } from '../../todos/why-sources';
 import { HabitScheduleVersionEntity } from '../entities/habit-schedule-version.entity';
 import {
   buildVersion,
@@ -98,6 +99,7 @@ export class HabitSchedulingService {
   habitResponse(
     habit: HabitEntity,
     versions: HabitScheduleVersionEntity[],
+    why: WhySources,
     at = this.clock.now(),
     pending?: HabitOccurrenceEntity,
   ): HabitResponseDto {
@@ -112,6 +114,7 @@ export class HabitSchedulingService {
       title: habit.title,
       categoryId: habit.categoryId ?? null,
       why: habit.why ?? null,
+      inheritedWhy: why.forHabit(habit.id),
       isActive: habit.isActive,
       plannedDurationMinutes: habit.plannedDurationMinutes,
       timeOfDay: habit.timeOfDay ?? null,
@@ -153,7 +156,12 @@ export class HabitSchedulingService {
       );
 
       if (identicalUpcoming) {
-        return this.habitResponse(habit, versions, now);
+        return this.habitResponse(
+          habit,
+          versions,
+          await loadWhySources(manager, userId, dayOf(now)),
+          now,
+        );
       }
 
       const repository = manager.getRepository(HabitScheduleVersionEntity);
@@ -184,6 +192,7 @@ export class HabitSchedulingService {
       return this.habitResponse(
         habit,
         await this.getVersions(manager, habitId),
+        await loadWhySources(manager, userId, dayOf(now)),
         now,
       );
     });

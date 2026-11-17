@@ -37,7 +37,14 @@ export type HabitResponse = {
   id: number;
   title: string;
   categoryId: number | null;
+  /** The daily's own reason. */
   why: string | null;
+  /**
+   * What it takes over from the quest counting it today, if it has none.
+   * Same shape as InheritedWhy in ./todo; the contract-checked type files
+   * stay free of imports.
+   */
+  inheritedWhy: { text: string; fromId: number; fromTitle: string } | null;
   isActive: boolean;
   plannedDurationMinutes: number | null;
   timeOfDay: string | null;

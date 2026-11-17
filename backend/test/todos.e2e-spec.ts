@@ -146,6 +146,7 @@ describe('Todos API (e2e)', () => {
         goalHabitId: null,
         goalTarget: null,
         why: null,
+        inheritedWhy: null,
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,

@@ -110,6 +110,29 @@ describe("CreateTodoForm", () => {
     );
   });
 
+  it("inherits the parent's why unless the text is changed", async () => {
+    createTodoMock.mockResolvedValue(response);
+    const parentWhy = { text: "Gesund bleiben", fromId: 4, fromTitle: "Fit" };
+    const wrapper = mount(CreateTodoForm, {
+      props: { parentId: 4, parentWhy },
+    });
+    const why = wrapper.get<HTMLTextAreaElement>('textarea[name="why"]');
+    expect(why.element.value).toBe("Gesund bleiben");
+    await wrapper.get('input[name="title"]').setValue("Laufen");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    // Nothing is copied: the new quest keeps inheriting.
+    expect(createTodoMock.mock.calls[0]![0]).not.toHaveProperty("why");
+
+    await wrapper.get('input[name="title"]').setValue("Schwimmen");
+    await why.setValue("Schulter stärken");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(createTodoMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ parentId: 4, why: "Schulter stärken" }),
+    );
+  });
+
   it("rejects a blank title", async () => {
     const wrapper = mount(CreateTodoForm);
 

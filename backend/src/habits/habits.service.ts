@@ -25,6 +25,7 @@ import {
 import { HabitEntity } from './entities/habit.entity';
 import { HabitScheduleVersionEntity } from './entities/habit-schedule-version.entity';
 import { HabitSchedulingService } from './scheduling/habit-scheduling.service';
+import { loadWhySources } from '../todos/why-sources';
 import { buildVersion, normalizeSchedule } from './scheduling/schedule-rules';
 
 @Injectable()
@@ -61,6 +62,11 @@ export class HabitsService {
         })
       : [];
     const now = this.clock.now();
+    const why = await loadWhySources(
+      this.dataSource.manager,
+      userId,
+      dayOf(now),
+    );
     const result: HabitResponseDto[] = [];
 
     for (const habit of habits) {
@@ -68,6 +74,7 @@ export class HabitsService {
         this.scheduling.habitResponse(
           habit,
           versions.filter((version) => version.habitId === habit.id),
+          why,
           now,
           due.find(
             (item) =>
@@ -98,6 +105,7 @@ export class HabitsService {
       return this.scheduling.habitResponse(
         habit,
         await this.scheduling.getVersions(manager, id),
+        await loadWhySources(manager, userId, dayOf(now)),
         now,
         pending,
       );
@@ -155,7 +163,12 @@ export class HabitsService {
         .getRepository(HabitScheduleVersionEntity)
         .save(buildVersion(habit.id, definition, effectiveAt));
 
-      return this.scheduling.habitResponse(habit, [version], now);
+      return this.scheduling.habitResponse(
+        habit,
+        [version],
+        await loadWhySources(manager, userId, dayOf(now)),
+        now,
+      );
     });
   }
 
@@ -204,6 +217,7 @@ export class HabitsService {
       return this.scheduling.habitResponse(
         habit,
         await this.scheduling.getVersions(manager, id),
+        await loadWhySources(manager, userId, dayOf(now)),
         now,
       );
     });

@@ -102,6 +102,51 @@ describe('Categories and why (e2e)', () => {
     expect((reread.body as Todo).categoryId).toBe(sport.id);
   });
 
+  it('inherits the why live from the nearest ancestor that has one', async () => {
+    type WithWhy = Todo & {
+      inheritedWhy: { text: string; fromId: number; fromTitle: string } | null;
+    };
+    const read = async (id: number): Promise<WithWhy> =>
+      (await request(server).get(`/todos/${id}`).expect(200)).body as WithWhy;
+    const root = await todo({ why: 'Gesund bleiben' });
+    const middle = await todo({ parentId: root.id });
+    const leaf = await todo({ parentId: middle.id });
+
+    expect(await read(root.id)).toMatchObject({ inheritedWhy: null });
+    expect(await read(leaf.id)).toMatchObject({
+      why: null,
+      inheritedWhy: { text: 'Gesund bleiben', fromId: root.id },
+    });
+
+    // Nothing was copied: a changed reason reaches the todos below it.
+    await request(server)
+      .patch(`/todos/${root.id}`)
+      .send({ why: 'Marathon laufen' })
+      .expect(200);
+    expect((await read(leaf.id)).inheritedWhy?.text).toBe('Marathon laufen');
+
+    // An own reason wins, and from there on is what the todos below inherit.
+    await request(server)
+      .patch(`/todos/${middle.id}`)
+      .send({ why: 'Knie schonen' })
+      .expect(200);
+    expect(await read(middle.id)).toMatchObject({
+      why: 'Knie schonen',
+      inheritedWhy: { fromId: root.id },
+    });
+    expect((await read(leaf.id)).inheritedWhy).toMatchObject({
+      text: 'Knie schonen',
+      fromId: middle.id,
+    });
+
+    // Clearing the own reason goes back to inheriting.
+    await request(server)
+      .patch(`/todos/${middle.id}`)
+      .send({ why: '' })
+      .expect(200);
+    expect((await read(leaf.id)).inheritedWhy?.fromId).toBe(root.id);
+  });
+
   it('keeps entries when a category is deleted and frees its name', async () => {
     const { id } = await category('Sport');
     const entry = await todo({ categoryId: id });

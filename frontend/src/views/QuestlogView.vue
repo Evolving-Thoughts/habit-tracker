@@ -18,6 +18,7 @@ import CreateItemDialog from "../components/CreateItemDialog.vue";
 import ModalDialog from "../components/ModalDialog.vue";
 import UndoToast from "../components/UndoToast.vue";
 import type { CreateTodoInput, TodoResponse } from "../types/todo";
+import { shownWhy } from "../utils/why";
 import { categoryMark } from "../utils/category-mark";
 import { buildTodoInput } from "../utils/todo-input";
 
@@ -491,7 +492,9 @@ async function onCreated(): Promise<void> {
                   {{ todo.title }}
                 </button>
               </h3>
-              <p v-if="todo.why" class="dump-item__why">{{ todo.why }}</p>
+              <p v-if="shownWhy(todo)" class="dump-item__why">
+                {{ shownWhy(todo) }}
+              </p>
               <p
                 v-if="categoryOf(todo) || detailsOf(todo).length"
                 class="dump-item__details"

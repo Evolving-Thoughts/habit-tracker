@@ -31,6 +31,7 @@ import {
   HistoryPlannedItem,
   HistoryWeeklyTarget,
 } from './history.dto';
+import { loadWhySources, WhySources } from '../todos/why-sources';
 
 @Injectable()
 export class HistoryService {
@@ -50,6 +51,7 @@ export class HistoryService {
       const categories = await manager
         .getRepository(CategoryEntity)
         .find({ where: { userId }, order: { name: 'ASC' } });
+      const why = await loadWhySources(manager, userId, today);
       const names = new Map(categories.map((item) => [item.id, item.name]));
       const categoryName = (id: number | null): string | null =>
         id === null ? null : (names.get(id) ?? null);
@@ -85,7 +87,7 @@ export class HistoryService {
           habitId: null,
           title: todo.title,
           categoryName: categoryName(todo.categoryId),
-          why: todo.why ?? null,
+          why: why.todoWhy(todo),
           status: 'completed' as const,
           date: dayOf(todo.completedAt!),
           scheduledDate: todo.scheduledAt ? dayOf(todo.scheduledAt) : null,
@@ -99,7 +101,7 @@ export class HistoryService {
           habitId: occurrence.habitId,
           title: occurrence.habit.title,
           categoryName: categoryName(occurrence.habit.categoryId),
-          why: occurrence.habit.why ?? null,
+          why: why.habitWhy(occurrence.habit),
           status: occurrence.status as 'completed' | 'skipped',
           date:
             occurrence.status === HabitOccurrenceStatus.COMPLETED
@@ -129,6 +131,7 @@ export class HistoryService {
         today,
         now,
         categoryName,
+        why,
       );
       const external =
         query.view === 'month'
@@ -199,6 +202,7 @@ export class HistoryService {
     today: string,
     now: Date,
     categoryName: (id: number | null) => string | null,
+    why: WhySources,
   ): Promise<{ items: HistoryPlannedItem[]; targets: HistoryWeeklyTarget[] }> {
     const items: HistoryPlannedItem[] = [];
     if (dates[dates.length - 1] < today) return { items, targets: [] };
@@ -218,7 +222,7 @@ export class HistoryService {
             habitId: null,
             title: todo.title,
             categoryName: categoryName(todo.categoryId),
-            why: todo.why ?? null,
+            why: why.todoWhy(todo),
             date,
             scheduledDate,
             isOverdue,
@@ -270,7 +274,14 @@ export class HistoryService {
       .getMany();
     slots.push(...movedSlots(versions, occurrences, slots, dates));
     items.push(
-      ...plannedHabits(habits, slots, occurrences, today, categoryName),
+      ...plannedHabits(
+        habits,
+        slots,
+        occurrences,
+        today,
+        categoryName,
+        (habit) => why.habitWhy(habit),
+      ),
     );
     items.sort(
       (a, b) =>

@@ -105,6 +105,27 @@ history reader uses `withDeleted()`, so previous completion entries remain visib
 No immutable journal or historical snapshot semantics were added. Already sent
 external push notifications cannot be retracted by deleting their source timer.
 
+## Inherited why
+
+A todo without its own `why` shows the reason of its nearest ancestor that
+states one. A habit without its own shows the reason of the todo whose habit
+goal counts it in a period covering today (or what that todo inherits).
+
+Inheritance is live, not a copy: `todos.why` stays null for an inheriting todo,
+so a changed reason reaches everything below it. The rule is one pure function,
+`inheritedWhy` in `todo-hierarchy.ts`; `why-sources.ts` reads the user's live
+todos once per request (id, parent, reason, title, habit goal) and answers every
+lookup from that.
+
+- `TodoResponseDto` and `HabitResponseDto` carry the own `why` and
+  `inheritedWhy: { text, fromId, fromTitle } | null`, so an editor can show both.
+- Day planner and history items carry one `why`: the reason to show.
+- The frontend's `WhyField` starts with the inherited text. Leaving it unchanged
+  or empty sends no `why` and keeps inheriting; a different text becomes the
+  own reason. `PATCH` with an empty `why` returns to inheriting.
+
+Known limit: an entry below a reasoned ancestor cannot have "no reason at all".
+
 ## Database schema
 
 The app is not in real use yet, so there are no migrations. Development schema

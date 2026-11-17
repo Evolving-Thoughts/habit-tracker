@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { createTodo } from "../api/day-planner.api";
-import type { CreateTodoInput } from "../types/todo";
+import type { CreateTodoInput, InheritedWhy } from "../types/todo";
 import { buildTodoInput } from "../utils/todo-input";
 import CategorySelect, { type CategoryChoice } from "./CategorySelect.vue";
+import WhyField from "./WhyField.vue";
 
-const props = defineProps<{ embedded?: boolean; parentId?: number | null }>();
+const props = defineProps<{
+  embedded?: boolean;
+  parentId?: number | null;
+  /** What the new quest inherits from the quest it is created below. */
+  parentWhy?: InheritedWhy | null;
+}>();
 
 const emit = defineEmits<{
   created: [];
@@ -111,10 +117,7 @@ async function submit(): Promise<void> {
           />
         </label>
 
-        <label class="field">
-          Warum · optional
-          <textarea v-model="why" name="why" maxlength="1000" rows="2" />
-        </label>
+        <WhyField id="todo-why" v-model="why" :inherited="parentWhy" />
 
         <div class="create-todo__row">
           <label class="field">

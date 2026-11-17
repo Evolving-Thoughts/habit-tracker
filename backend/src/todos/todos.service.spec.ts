@@ -5,7 +5,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Repository } from 'typeorm';
-import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import * as timerTarget from '../timers/timer-target';
 import { TodoEntity } from './entities/todo.entity';
@@ -70,6 +69,7 @@ describe('TodosService', () => {
     },
   };
   const manager = { getRepository: () => repository };
+  Object.assign(repository, { manager });
   const chain = jest.mocked(queries.ancestorChain);
   const subtree = jest.mocked(queries.subtree);
 
@@ -94,7 +94,7 @@ describe('TodosService', () => {
     );
     service = new TodosService(
       repository as unknown as Repository<TodoEntity>,
-      { now: () => NOW } as Clock,
+      { now: () => NOW, today: () => '2026-10-02' },
       {
         run: (_userId: string, work: (m: unknown) => unknown) => work(manager),
       } as unknown as UserUnitOfWork,
@@ -223,6 +223,19 @@ describe('TodosService', () => {
       expect(result.map((r) => [r.id, r.progress.completed])).toEqual([
         [1, 1],
         [2, 1],
+      ]);
+    });
+    it('reports the reason a todo inherits, next to its own', async () => {
+      rows = [
+        Object.assign(todo(1), { why: 'Gesund bleiben' }),
+        todo(2, 1),
+        Object.assign(todo(3, 2), { why: 'Eigenes' }),
+      ];
+      const result = await service.hierarchy(USER);
+      expect(result.map((r) => [r.why, r.inheritedWhy?.fromId])).toEqual([
+        ['Gesund bleiben', undefined],
+        [null, 1],
+        ['Eigenes', 1],
       ]);
     });
     it('reports a stored cycle as a server error', async () => {

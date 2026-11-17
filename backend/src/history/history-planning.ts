@@ -86,6 +86,9 @@ export function plannedHabits(
   occurrences: HabitOccurrenceEntity[],
   today: string,
   categoryName: (id: number | null) => string | null = () => null,
+  /** The reason to show: the habit's own unless the caller resolves inheritance. */
+  habitWhy: (habit: HabitEntity) => string | null = (habit) =>
+    habit.why ?? null,
 ): HistoryPlannedItem[] {
   const byId = new Map(habits.map((habit) => [habit.id, habit]));
   const existing = new Map(
@@ -118,7 +121,7 @@ export function plannedHabits(
         habitId: habit.id,
         title: habit.title,
         categoryName: categoryName(habit.categoryId),
-        why: habit.why ?? null,
+        why: habitWhy(habit),
         date: stored?.movedToDate ?? slot.date,
         scheduledDate: slot.scheduledDate,
         isOverdue: (stored?.movedToDate ?? slot.scheduledDate) < today,

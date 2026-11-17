@@ -21,6 +21,38 @@ export interface TodoProgress {
   todoCount: number;
 }
 
+/** What inheriting a reason needs to know about a todo. */
+export interface WhyNode {
+  id: number;
+  parentId?: number | null;
+  why?: string | null;
+  title: string;
+}
+/** A reason taken over from an ancestor, and which one. */
+export type InheritedWhy = { text: string; fromId: number; fromTitle: string };
+
+/**
+ * The reason a todo below `parentId` takes over: that of the nearest
+ * ancestor stating one. Null at the top level, when no ancestor has a reason,
+ * or when the chain leaves the snapshot. Stops on a cycle instead of looping.
+ */
+export function inheritedWhy(
+  nodes: ReadonlyMap<number, WhyNode>,
+  parentId: number | null | undefined,
+): InheritedWhy | null {
+  const seen = new Set<number>();
+  let current = parentId ?? null;
+  while (current !== null && !seen.has(current)) {
+    seen.add(current);
+    const node = nodes.get(current);
+    if (!node) return null;
+    if (node.why)
+      return { text: node.why, fromId: node.id, fromTitle: node.title };
+    current = node.parentId ?? null;
+  }
+  return null;
+}
+
 /** The requested placement is invalid (client error). */
 export class InvalidPlacementError extends Error {}
 /** Stored data contains a cycle (server-side integrity problem). */

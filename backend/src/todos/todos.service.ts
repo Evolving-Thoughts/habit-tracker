@@ -37,6 +37,7 @@ import {
   TodoTree,
 } from './todo-hierarchy';
 import { ancestorChain, subtree } from './todo-hierarchy.queries';
+import { loadWhySources, WhySources } from './why-sources';
 
 type DeletionSnapshot = {
   todos: TodoEntity[];
@@ -52,6 +53,15 @@ export class TodosService {
     private readonly clock: Clock,
     private readonly unitOfWork: UserUnitOfWork,
   ) {}
+
+  /** What the user's todos inherit their reason from, as of now. */
+  whySources(userId: string): Promise<WhySources> {
+    return loadWhySources(
+      this.todoRepository.manager,
+      userId,
+      this.clock.today(),
+    );
+  }
 
   findAll(userId: string): Promise<TodoEntity[]> {
     return this.todoRepository.find({
@@ -75,9 +85,12 @@ export class TodosService {
   async hierarchy(userId: string): Promise<HierarchyTodoResponse[]> {
     const todos = await this.findAll(userId);
     const progress = this.tree(todos).progress();
-    const goals = await habitGoals(this.todoRepository.manager, todos);
+    const [goals, why] = await Promise.all([
+      habitGoals(this.todoRepository.manager, todos),
+      this.whySources(userId),
+    ]);
     return todos.map((todo) => ({
-      ...TodoMapper.toResponseDto(todo),
+      ...TodoMapper.toResponseDto(todo, why),
       progress: progress.get(todo.id)!,
       habitGoal: goals.get(todo.id) ?? null,
     }));

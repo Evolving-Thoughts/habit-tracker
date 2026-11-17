@@ -17,12 +17,18 @@ export type TodoGoalInput = {
 
 export type UpdateTodoInput = Partial<CreateTodoInput> & TodoGoalInput;
 
+/** A reason taken over from the entry above, and which one that is. */
+export type InheritedWhy = { text: string; fromId: number; fromTitle: string };
+
 export type TodoResponse = Required<TodoGoalInput> & {
   id: number;
   /** Parent in the todo hierarchy; null for a root. */
   parentId: number | null;
   categoryId: number | null;
+  /** The quest's own reason. */
   why: string | null;
+  /** What it takes over from a quest above it while it has none. */
+  inheritedWhy: InheritedWhy | null;
   title: string;
   completed: boolean;
   completedAt: string | null;

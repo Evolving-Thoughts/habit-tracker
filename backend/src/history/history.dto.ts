@@ -13,6 +13,7 @@ export type HistoryItem = {
   habitId: number | null;
   title: string;
   categoryName: string | null;
+  /** The reason to show: its own, else the inherited one. */
   why: string | null;
   status: 'completed' | 'skipped';
   date: string;

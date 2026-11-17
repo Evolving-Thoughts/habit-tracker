@@ -89,6 +89,63 @@ test("Tree: add child, collapse, independent completion and reopen, persist", as
   await openView(page, "Kampagnen");
   await expect(row(page, child.id)).toBeVisible();
 });
+test("Why: an Unter-Quest takes over the campaign's reason until it gets its own", async ({
+  page,
+  request,
+}) => {
+  const root = await create(request, "Halbmarathon");
+  await request.patch(`${API_URL}/todos/${root.id}`, {
+    data: { why: "Im März ins Ziel kommen" },
+  });
+  await open(page);
+  await menuAction(
+    page,
+    root.id,
+    "Halbmarathon",
+    "Unter-Quest zu Halbmarathon hinzufügen",
+  );
+  const dialog = page.getByRole("dialog");
+  const why = dialog.getByLabel("Warum · optional");
+  await expect(why).toHaveValue("Im März ins Ziel kommen");
+  await expect(dialog.getByText("Übernommen von „Halbmarathon“")).toBeVisible();
+  await dialog.locator("[name=title]").fill("Laufschuhe kaufen");
+  await dialog
+    .getByRole("button", { name: "Quest erstellen", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+
+  const todos = async () =>
+    (await (await request.get(`${API_URL}/todos`)).json()) as {
+      id: number;
+      title: string;
+      why: string | null;
+      inheritedWhy: { text: string } | null;
+    }[];
+  const child = (await todos()).find((t) => t.title === "Laufschuhe kaufen")!;
+  expect(child.why).toBeNull();
+  expect(child.inheritedWhy?.text).toBe("Im März ins Ziel kommen");
+
+  // The Questlog shows the inherited reason, and follows the campaign live.
+  await request.patch(`${API_URL}/todos/${root.id}`, {
+    data: { why: "Gesund ankommen" },
+  });
+  await openView(page, "Questlog");
+  await expect(page.getByText("Gesund ankommen")).toHaveCount(2);
+
+  // Changing the text gives the Unter-Quest its own reason.
+  await openView(page, "Kampagnen");
+  await row(page, child.id)
+    .getByRole("button", { name: "Laufschuhe kaufen bearbeiten", exact: true })
+    .click();
+  const editor = page.getByRole("dialog");
+  await editor.getByLabel("Warum · optional").fill("Ohne Blasen laufen");
+  await expect(editor.getByText("Eigenes Warum.")).toBeVisible();
+  await editor.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(editor).not.toBeVisible();
+  expect((await todos()).find((t) => t.id === child.id)?.why).toBe(
+    "Ohne Blasen laufen",
+  );
+});
 test("Tree: accessible move to parent and root, edit duration, preserve own schedule", async ({
   page,
   isMobile,
