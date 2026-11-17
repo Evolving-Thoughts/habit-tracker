@@ -2,13 +2,19 @@
 export const TODO_FIELDS = {
   categoryId: null,
   why: null,
+  inheritedWhy: null,
   periodStart: null,
   periodEnd: null,
   goalHabitId: null,
   goalTarget: null,
 };
 
-export const HABIT_FIELDS = { categoryId: null, why: null, timeOfDay: null };
+export const HABIT_FIELDS = {
+  categoryId: null,
+  why: null,
+  inheritedWhy: null,
+  timeOfDay: null,
+};
 
 const PLANNER_CONTEXT = { why: null, goal: null, workedMinutes: 0 };
 

@@ -24,7 +24,7 @@ Vier Dinge zusammen, die andere Tracker meist getrennt halten:
 
 - **Kampagnen und Dailies verbunden:** Quests bilden Hierarchien aus Kampagne, Questreihe und Quest; eine Quest kann ein Daily mit Zeitraum und Sollmenge verlinken, etwa 20 Läufe bis Dezember.
 - **Flexible Tagesplanung:** Quests und Daily-Ausführungen lassen sich verschieben, der Rest des Tages lässt sich mit Vorschau neu planen, Google Kalender ist in beide Richtungen angebunden.
-- **Reflexion und Warum:** Quests und Dailies tragen ein persönliches Warum; dazu kommen Tagesreflexion, Wochenquote und Perfect Week je Kategorie.
+- **Reflexion und Warum:** Quests und Dailies tragen ein persönliches Warum. Ohne eigenes übernehmen sie das der Quest oder Kampagne darüber, und zwar live: Ändert sich das Warum der Kampagne, ändert es sich überall darunter; dazu kommen Tagesreflexion, Wochenquote und Perfect Week je Kategorie.
 - **Zeit erfassen:** Timer und echte Arbeitszeit stehen neben der geplanten Zeit.
 
 ## Operating Context

@@ -166,6 +166,44 @@ describe('Habit goals on todos (e2e)', () => {
     expect((day.body as { workedMinutes: number }).workedMinutes).toBe(0);
   });
 
+  it('lets a habit and a planned todo show the why they inherit', async () => {
+    const habitId = await habit();
+    const id = await todo();
+    await request(server)
+      .patch(`/todos/${id}`)
+      .send({ why: 'Halbmarathon im März' })
+      .expect(200);
+    await setGoal(id, {
+      ...period,
+      goalHabitId: habitId,
+      goalTarget: 20,
+    }).expect(200);
+    await request(server)
+      .post('/todos')
+      .send({
+        title: 'Schuhe kaufen',
+        parentId: id,
+        scheduledAt: new Date().toISOString(),
+      })
+      .expect(201);
+
+    const read = await request(server).get(`/habits/${habitId}`).expect(200);
+    expect(read.body).toMatchObject({
+      why: null,
+      inheritedWhy: { text: 'Halbmarathon im März', fromId: id },
+    });
+    const day = await request(server).get('/day-planner/today').expect(200);
+    const items = (
+      day.body as { items: { title: string; why: string | null }[] }
+    ).items;
+    expect(items.find((item) => item.title === 'Laufen')?.why).toBe(
+      'Halbmarathon im März',
+    );
+    expect(items.find((item) => item.title === 'Schuhe kaufen')?.why).toBe(
+      'Halbmarathon im März',
+    );
+  });
+
   it('refuses a second goal for the same habit in an overlapping period', async () => {
     const habitId = await habit();
     const goal = { ...period, goalHabitId: habitId, goalTarget: 3 };

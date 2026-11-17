@@ -10,6 +10,7 @@ import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
 import type { HabitResponse, HabitScheduleRule } from "../types/habit";
+import { shownWhy } from "../utils/why";
 import { categoryMark } from "../utils/category-mark";
 import { formatDateForGermanDisplay } from "../utils/date";
 import { WEEKDAY_OPTIONS } from "../utils/habit";
@@ -239,7 +240,9 @@ async function onCreated(): Promise<void> {
                     {{ habit.title }}
                   </button>
                 </h3>
-                <p v-if="habit.why" class="habit-card__why">{{ habit.why }}</p>
+                <p v-if="shownWhy(habit)" class="habit-card__why">
+                  {{ shownWhy(habit) }}
+                </p>
                 <p class="habit-card__details">
                   <span v-if="categoryOf(habit)" class="habit-card__category">
                     <i

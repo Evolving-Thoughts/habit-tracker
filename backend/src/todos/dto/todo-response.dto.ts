@@ -1,8 +1,11 @@
+import type { InheritedWhy } from '../todo-hierarchy';
+
 export type TodoResponseDtoProperties = {
   id: number;
   parentId?: number | null;
   categoryId?: number | null;
   why?: string | null;
+  inheritedWhy?: InheritedWhy | null;
   periodStart?: string | null;
   periodEnd?: string | null;
   goalHabitId?: number | null;
@@ -25,7 +28,10 @@ export class TodoResponseDto {
   readonly periodEnd: string | null;
   readonly goalHabitId: number | null;
   readonly goalTarget: number | null;
+  /** The todo's own reason. */
   readonly why: string | null;
+  /** What it takes over from an ancestor while it has none of its own. */
+  readonly inheritedWhy: InheritedWhy | null;
   readonly title: string;
   readonly completed: boolean;
   readonly completedAt: string | null;
@@ -43,6 +49,7 @@ export class TodoResponseDto {
     this.goalHabitId = properties.goalHabitId ?? null;
     this.goalTarget = properties.goalTarget ?? null;
     this.why = properties.why ?? null;
+    this.inheritedWhy = properties.inheritedWhy ?? null;
     this.title = properties.title;
     this.completed = properties.completed;
     this.completedAt = properties.completedAt;

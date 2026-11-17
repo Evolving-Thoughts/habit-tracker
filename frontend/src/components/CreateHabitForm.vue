@@ -8,6 +8,7 @@ import { ref } from "vue";
 import { createHabit } from "../api/day-planner.api";
 import CategorySelect, { type CategoryChoice } from "./CategorySelect.vue";
 import type { CreateHabitInput } from "../types/habit";
+import WhyField from "./WhyField.vue";
 import {
   emptyScheduleDraft,
   positiveInteger,
@@ -107,10 +108,7 @@ async function submit(): Promise<void> {
           Kategorie · optional
           <CategorySelect id="habit-category" v-model="category" />
         </label>
-        <label class="field">
-          Warum · optional
-          <textarea v-model="why" name="why" maxlength="1000" rows="2" />
-        </label>
+        <WhyField id="habit-why" v-model="why" />
         <div class="create-habit__row">
           <div class="field">
             <label for="habit-start-date">Startdatum · optional</label>

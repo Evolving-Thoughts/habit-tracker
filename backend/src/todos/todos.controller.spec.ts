@@ -6,6 +6,7 @@ import { DayReplanService } from './day-replan.service';
 import { GoalSnapshotsService } from './goal-snapshots.service';
 import { TodosController } from './todos.controller';
 import { TodosService } from './todos.service';
+import { WhySources } from './why-sources';
 
 type TodosServiceMock = {
   findAll: jest.MockedFunction<() => Promise<TodoEntity[]>>;
@@ -21,6 +22,8 @@ type TodosServiceMock = {
   >;
 
   remove: jest.MockedFunction<(id: number) => Promise<void>>;
+
+  whySources: jest.MockedFunction<() => Promise<WhySources>>;
 };
 
 describe('TodosController', () => {
@@ -55,6 +58,7 @@ describe('TodosController', () => {
       create: jest.fn(),
       update: jest.fn(),
       remove: jest.fn(),
+      whySources: jest.fn().mockResolvedValue(new WhySources([], '2026-09-18')),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -95,6 +99,7 @@ describe('TodosController', () => {
           goalHabitId: null,
           goalTarget: null,
           why: null,
+          inheritedWhy: null,
           title: 'Learn NestJS',
           completed: false,
           completedAt: null,
@@ -130,6 +135,7 @@ describe('TodosController', () => {
         goalHabitId: null,
         goalTarget: null,
         why: null,
+        inheritedWhy: null,
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
@@ -171,6 +177,7 @@ describe('TodosController', () => {
         goalHabitId: null,
         goalTarget: null,
         why: null,
+        inheritedWhy: null,
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
@@ -206,6 +213,7 @@ describe('TodosController', () => {
         goalHabitId: null,
         goalTarget: null,
         why: null,
+        inheritedWhy: null,
         title: 'Doctor appointment',
         scheduledAt,
         plannedDurationMinutes: 30,
@@ -231,6 +239,7 @@ describe('TodosController', () => {
         goalHabitId: null,
         goalTarget: null,
         why: null,
+        inheritedWhy: null,
         title: 'Doctor appointment',
         completed: false,
         completedAt: null,
@@ -281,6 +290,7 @@ describe('TodosController', () => {
         goalHabitId: null,
         goalTarget: null,
         why: null,
+        inheritedWhy: null,
         title: 'Learn NestJS',
         completed: true,
         completedAt: '2026-09-21T10:30:00.000Z',
@@ -328,6 +338,7 @@ describe('TodosController', () => {
         goalHabitId: null,
         goalTarget: null,
         why: null,
+        inheritedWhy: null,
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
@@ -380,6 +391,7 @@ describe('TodosController', () => {
         goalHabitId: null,
         goalTarget: null,
         why: null,
+        inheritedWhy: null,
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,

@@ -28,6 +28,7 @@ import { CreateTodoDto } from './dto/create-todo.dto';
 import { RescheduleTodoDto } from './dto/reschedule-todo.dto';
 import { TodoResponseDto } from './dto/todo-response.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
+import { TodoEntity } from './entities/todo.entity';
 import { BurnupPoint, GoalSnapshotsService } from './goal-snapshots.service';
 import { TodoMapper } from './mappers/todo.mapper';
 import { TodosService } from './todos.service';
@@ -39,6 +40,15 @@ export class TodosController {
     private readonly goalSnapshots: GoalSnapshotsService,
     private readonly replan: DayReplanService,
   ) {}
+
+  /** Responses carry what each todo inherits, read once per request. */
+  private async respond(
+    userId: string,
+    todos: TodoEntity[],
+  ): Promise<TodoResponseDto[]> {
+    const why = await this.todosService.whySources(userId);
+    return todos.map((todo) => TodoMapper.toResponseDto(todo, why));
+  }
 
   @Get('replan')
   replanPreview(@CurrentUser() user: AuthUser): Promise<ReplanPreviewResponse> {
@@ -67,14 +77,14 @@ export class TodosController {
   async findAll(@CurrentUser() user: AuthUser): Promise<TodoResponseDto[]> {
     const todos = await this.todosService.findAll(user.id);
 
-    return todos.map((todo) => TodoMapper.toResponseDto(todo));
+    return this.respond(user.id, todos);
   }
 
   @Get('backlog')
   async backlog(@CurrentUser() user: AuthUser): Promise<TodoResponseDto[]> {
     const todos = await this.todosService.backlog(user.id);
 
-    return todos.map((todo) => TodoMapper.toResponseDto(todo));
+    return this.respond(user.id, todos);
   }
 
   @Get('hierarchy')
@@ -105,7 +115,7 @@ export class TodosController {
   ): Promise<TodoResponseDto> {
     const todo = await this.todosService.findOne(user.id, id);
 
-    return TodoMapper.toResponseDto(todo);
+    return (await this.respond(user.id, [todo]))[0];
   }
 
   @Post()
@@ -115,7 +125,7 @@ export class TodosController {
   ): Promise<TodoResponseDto> {
     const todo = await this.todosService.create(user.id, createTodoDto);
 
-    return TodoMapper.toResponseDto(todo);
+    return (await this.respond(user.id, [todo]))[0];
   }
 
   @Patch(':id')
@@ -126,7 +136,7 @@ export class TodosController {
   ): Promise<TodoResponseDto> {
     const todo = await this.todosService.update(user.id, id, updateTodoDto);
 
-    return TodoMapper.toResponseDto(todo);
+    return (await this.respond(user.id, [todo]))[0];
   }
 
   @Post(':id/reschedule')
@@ -138,7 +148,7 @@ export class TodosController {
   ): Promise<TodoResponseDto> {
     const todo = await this.todosService.reschedule(user.id, id, dto);
 
-    return TodoMapper.toResponseDto(todo);
+    return (await this.respond(user.id, [todo]))[0];
   }
 
   @Delete(':id')
