@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@fontsource-variable/nunito": "^5.3.0",
+    "sortablejs": "^1.15.7",
     "vue": "^3.5.42",
     "vue-router": "^4.6.5"
   },
@@ -29,6 +30,7 @@
     "@capacitor/core": "^7.6.10",
     "@playwright/test": "1.63.0",
     "@types/node": "^24.13.3",
+    "@types/sortablejs": "^1.15.9",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/test-utils": "^2.5.1",
     "@vue/tsconfig": "^0.9.1",

@@ -19,10 +19,9 @@ function makeTodo(
     title: "NestJS lernen",
     status: "pending",
     scheduledDate: "2026-10-02",
-    scheduledAt: "2026-10-02T08:00:00.000Z",
+    timeOfDay: "10:00",
     completedAt: null,
     plannedDurationMinutes: 30,
-    isFixed: true,
     isOverdue: false,
     timerEligible: true,
     ...overrides,
@@ -63,7 +62,7 @@ describe("PlannerItem", () => {
     expect(wrapper.get(".planner-item__time").text()).toBe("10:00");
     expect(wrapper.text()).toContain("Lernen");
     expect(wrapper.text()).toContain("30 Min.");
-    expect(wrapper.text()).toContain("Fester Termin");
+    expect(wrapper.text()).toContain("Termin");
     // The day is today; repeating it on every row is noise.
     expect(wrapper.text()).not.toContain("02.10.2026");
   });
@@ -85,7 +84,42 @@ describe("PlannerItem", () => {
       },
     });
     expect(wrapper.text()).toContain("45/60 Min.");
-    expect(wrapper.text()).toContain("Gehört zu: Halbmarathon");
+  });
+
+  it("marks the campaign an item works towards", () => {
+    const wrapper = mount(PlannerItem, {
+      props: {
+        item: makeTodo({ campaign: { id: 4, title: "Halbmarathon" } }),
+        isUpdating: false,
+      },
+    });
+    expect(wrapper.get(".planner-item__campaign").text()).toBe("Halbmarathon");
+    expect(wrapper.classes()).toContain("planner-item--campaign");
+    expect(wrapper.attributes("style")).toContain("--campaign-mark");
+
+    const loose = mount(PlannerItem, {
+      props: { item: makeTodo(), isUpdating: false },
+    });
+    expect(loose.classes()).not.toContain("planner-item--campaign");
+  });
+
+  it("offers a grip that also sorts with the arrow keys", async () => {
+    const item = makeTodo({ timeOfDay: null });
+    const wrapper = mount(PlannerItem, {
+      props: { item, isUpdating: false, sortable: true },
+    });
+    const grip = wrapper.get(".sort-handle");
+    expect(grip.attributes("aria-label")).toBe(
+      "NestJS lernen in der Reihenfolge verschieben",
+    );
+    await grip.trigger("keydown", { key: "ArrowUp" });
+    await grip.trigger("keydown", { key: "ArrowDown" });
+    expect(wrapper.emitted("shift")).toEqual([
+      [item, -1],
+      [item, 1],
+    ]);
+    // The grip takes the place of the time column.
+    expect(wrapper.find(".planner-item__time").exists()).toBe(false);
   });
 
   it("shows the original day for carried-over items and hides actions when compact", () => {
@@ -105,7 +139,7 @@ describe("PlannerItem", () => {
     const wrapper = mount(PlannerItem, {
       props: {
         item: makeTodo({
-          scheduledAt: null,
+          timeOfDay: null,
           completedAt: "2026-10-02T18:30:00Z",
           status: "completed",
         }),

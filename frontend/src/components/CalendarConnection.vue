@@ -3,7 +3,6 @@ import { onMounted, ref } from "vue";
 import {
   disconnectCalendar,
   getCalendarStatus,
-  setCalendarBlocksPlanning,
   startCalendarConnection,
   syncCalendar,
   type CalendarStatus,
@@ -40,10 +39,6 @@ async function syncNow(): Promise<void> {
     await syncCalendar();
     notifyDataChanged();
   });
-}
-
-async function setBlocks(id: string, value: boolean): Promise<void> {
-  await run(() => setCalendarBlocksPlanning(id, value));
 }
 
 async function disconnect(): Promise<void> {
@@ -102,29 +97,23 @@ onMounted(() => run(() => Promise.resolve()));
     >
       Für weitere Kalender braucht die App eine neue Berechtigung.
     </p>
-    <fieldset
+    <div
       v-if="status.connected && status.calendars?.length"
       class="calendar-connection__calendars"
     >
-      <legend>
-        Termine aus diesen Kalendern halten beim „Neu planen“ frei
-      </legend>
-      <label
-        v-for="calendar in status.calendars"
-        :key="calendar.id"
-        class="calendar-connection__calendar"
-      >
-        <input
-          type="checkbox"
-          :checked="calendar.blocksPlanning"
-          :disabled="busy"
-          @change="
-            setBlocks(calendar.id, ($event.target as HTMLInputElement).checked)
-          "
-        />
-        <span>{{ calendar.title }}</span>
-      </label>
-    </fieldset>
+      <p class="calendar-connection__legend">
+        Termine aus diesen Kalendern zeigt die App an
+      </p>
+      <ul>
+        <li v-for="calendar in status.calendars" :key="calendar.id">
+          {{ calendar.title }}
+        </li>
+      </ul>
+      <p class="calendar-connection__text">
+        Geschrieben wird nur in den eigenen Kalender „Habit Tracker“: deine
+        festen Termine. In andere Kalender schreibt die App nie.
+      </p>
+    </div>
     <div class="calendar-connection__actions">
       <button
         v-if="!status.connected"
@@ -201,38 +190,31 @@ p.calendar-connection__text {
 
 .calendar-connection__calendars {
   display: grid;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  min-width: 0;
+  gap: var(--space-2);
 }
 
-.calendar-connection__calendars legend {
-  margin-bottom: var(--space-1);
-  padding: 0;
+.calendar-connection__legend {
+  margin: 0;
   color: var(--color-ink-muted);
   font-size: 0.875rem;
   font-weight: 700;
 }
 
-.calendar-connection__calendar {
+.calendar-connection__calendars ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calendar-connection__calendars li {
   display: flex;
-  gap: var(--space-3);
   align-items: center;
   min-height: var(--tap);
   overflow-wrap: anywhere;
-  cursor: pointer;
 }
 
-.calendar-connection__calendar + .calendar-connection__calendar {
+.calendar-connection__calendars li + li {
   border-top: 1px solid var(--color-line);
-}
-
-.calendar-connection__calendar input {
-  flex: none;
-  width: 1.25rem;
-  height: 1.25rem;
-  margin: 0;
 }
 
 .calendar-connection__actions {

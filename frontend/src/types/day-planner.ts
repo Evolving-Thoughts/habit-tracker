@@ -15,6 +15,8 @@ export type DayPlannerGoal = {
 type DayPlannerItemContext = {
   why: string | null;
   goal: DayPlannerGoal | null;
+  /** The campaign the item works towards; null for a loose item. */
+  campaign: { id: number; title: string } | null;
   workedMinutes: number;
 };
 
@@ -25,10 +27,10 @@ export type DayPlannerTodoItem = {
   categoryName: string | null;
   status: TodoStatus;
   scheduledDate: string;
-  scheduledAt: string | null;
+  /** HH:mm of an appointment; null for a quest that only has its day. */
+  timeOfDay: string | null;
   completedAt: string | null;
   plannedDurationMinutes: number | null;
-  isFixed: boolean;
   isOverdue: boolean;
   timerEligible: boolean;
 } & DayPlannerItemContext;
@@ -53,6 +55,7 @@ export type DayPlannerItem = DayPlannerTodoItem | DayPlannerHabitItem;
 
 export type DayPlannerResponse = {
   date: string;
+  /** Appointments and timed dailies by clock, then the order of the day. */
   items: DayPlannerItem[];
   externalEvents: {
     id: number;

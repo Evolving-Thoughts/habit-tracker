@@ -20,11 +20,21 @@ export function getToday(): Promise<DayPlannerResponse> {
   return request<DayPlannerResponse>("/day-planner/today");
 }
 
+/** Stores the order a day was sorted into; habits go by their occurrence. */
+export function reorderDay(
+  items: { type: "todo" | "habit"; id: number }[],
+): Promise<void> {
+  return request<void>("/day-planner/order", {
+    method: "PUT",
+    body: JSON.stringify({ items }),
+  });
+}
+
 export function getTodos(): Promise<TodoResponse[]> {
   return request<TodoResponse[]>("/todos");
 }
 
-/** Open todos without a date (Todo-Dump), filtered by the server's todo agenda. */
+/** Open todos without a day (the Questlog), filtered by the server's todo agenda. */
 export function getBacklogTodos(): Promise<TodoResponse[]> {
   return request<TodoResponse[]>("/todos/backlog");
 }
@@ -56,16 +66,6 @@ export function updateTodoCompletion(
       completed,
     }),
   });
-}
-
-export function updateTodoSchedule(
-  todoId: number,
-  input: {
-    scheduledAt: string;
-    isFixed: boolean;
-  },
-): Promise<TodoResponse> {
-  return updateTodo(todoId, input);
 }
 
 export function rescheduleTodo(

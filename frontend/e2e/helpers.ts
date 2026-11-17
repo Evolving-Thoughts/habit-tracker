@@ -103,15 +103,15 @@ export async function visit(
 export async function createTodo(
   page: Page,
   title: string,
-  scheduledAt?: string,
+  /** YYYY-MM-DD; without it the quest goes to the Questlog. */
+  date?: string,
 ) {
   await page.locator(".create-button").click();
   const dialog = page.getByRole("dialog");
   if (await dialog.locator('[data-test="choose-todo"]').count())
     await dialog.locator('[data-test="choose-todo"]').click();
   await dialog.locator('[name="title"]').fill(title);
-  if (scheduledAt)
-    await dialog.locator('[name="scheduledAt"]').fill(scheduledAt);
+  if (date) await dialog.locator('[name="scheduledDate"]').fill(date);
   await dialog.locator('[name="duration"]').fill("30");
   await dialog
     .getByRole("button", { name: "Quest erstellen", exact: true })

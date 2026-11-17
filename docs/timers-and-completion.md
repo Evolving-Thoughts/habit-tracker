@@ -41,7 +41,7 @@ Minutes: integer 1..10080 (7 days). Habit/occurrence duration columns are nullab
 Completing an unscheduled Todo does **not** invent a planned date:
 
 ```text
-scheduledAt = null
+scheduledDate = null
 completed = true
 completedAt = actual server completion instant (UTC timestamp)
 ```

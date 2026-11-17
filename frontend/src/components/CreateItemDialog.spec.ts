@@ -31,9 +31,9 @@ describe("CreateItemDialog", () => {
       title: "Test",
       completed: false,
       completedAt: null,
-      scheduledAt: null,
+      scheduledDate: null,
+      timeOfDay: null,
       plannedDurationMinutes: null,
-      isFixed: false,
       timerEligible: true,
     });
   });

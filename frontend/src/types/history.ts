@@ -24,7 +24,8 @@ export type HistoryPlannedItem = {
   scheduledDate: string;
   isOverdue: boolean;
   plannedDurationMinutes: number | null;
-  isFixed: boolean;
+  /** HH:mm of an appointment or timed daily; null when only the day is set. */
+  timeOfDay: string | null;
   moveUntil: string | null;
 };
 export type HistoryWeeklyTarget = {

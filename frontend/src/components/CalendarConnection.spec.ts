@@ -4,14 +4,12 @@ import CalendarConnection from "./CalendarConnection.vue";
 import {
   disconnectCalendar,
   getCalendarStatus,
-  setCalendarBlocksPlanning,
   syncCalendar,
 } from "../api/calendar.api";
 
 vi.mock("../api/calendar.api", () => ({
   disconnectCalendar: vi.fn(),
   getCalendarStatus: vi.fn(),
-  setCalendarBlocksPlanning: vi.fn(),
   startCalendarConnection: vi.fn(),
   syncCalendar: vi.fn(),
 }));
@@ -51,19 +49,20 @@ describe("CalendarConnection", () => {
     expect(wrapper.find("button").text()).toBe("Verbinden");
   });
 
-  it("saves per calendar whether it blocks planning", async () => {
+  it("lists the calendars it reads and says where it writes", async () => {
     vi.mocked(getCalendarStatus).mockResolvedValue({
       ...status,
       connected: true,
-      calendars: [
-        { id: "shared", title: "Gemeinsam", primary: false, blocksPlanning: false },
-      ],
+      calendars: [{ id: "shared", title: "Gemeinsam", primary: false }],
     });
     const wrapper = mount(CalendarConnection);
     await flushPromises();
-    await wrapper.get('input[type="checkbox"]').setValue(true);
-    await flushPromises();
-    expect(setCalendarBlocksPlanning).toHaveBeenCalledWith("shared", true);
+    expect(wrapper.get("li").text()).toBe("Gemeinsam");
+    expect(wrapper.text()).toContain(
+      "Geschrieben wird nur in den eigenen Kalender",
+    );
+    // Reading a calendar is no setting any more.
+    expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
   });
 
   it("offers renewing permissions for an older connection", async () => {

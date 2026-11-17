@@ -12,7 +12,8 @@ defineProps<{
     | "settings"
     | "more"
     | "check"
-    | "replan"
+    | "grip"
+    | "tomorrow"
     | "chevron"
     | "chevron-left"
     | "chevron-down"
@@ -87,11 +88,16 @@ defineProps<{
     <template v-else-if="name === 'check'">
       <path d="m5 12.5 4.5 4.5L19 7.5" />
     </template>
-    <template v-else-if="name === 'replan'">
-      <path d="M4 12a8 8 0 0 1 13.7-5.7L20 8.5" />
-      <path d="M20 4v4.5h-4.5" />
-      <path d="M20 12a8 8 0 0 1-13.7 5.7L4 15.5" />
-      <path d="M4 20v-4.5h4.5" />
+    <template v-else-if="name === 'grip'">
+      <circle cx="9" cy="6" r="1.2" fill="currentColor" />
+      <circle cx="15" cy="6" r="1.2" fill="currentColor" />
+      <circle cx="9" cy="12" r="1.2" fill="currentColor" />
+      <circle cx="15" cy="12" r="1.2" fill="currentColor" />
+      <circle cx="9" cy="18" r="1.2" fill="currentColor" />
+      <circle cx="15" cy="18" r="1.2" fill="currentColor" />
+    </template>
+    <template v-else-if="name === 'tomorrow'">
+      <path d="M4 12h13M13 7l5 5-5 5M20.5 5v14" />
     </template>
     <template v-else-if="name === 'chevron'">
       <path d="m9 6 6 6-6 6" />

@@ -4,6 +4,7 @@ import { createTodo } from "../api/day-planner.api";
 import type { CreateTodoInput, InheritedWhy } from "../types/todo";
 import { buildTodoInput } from "../utils/todo-input";
 import CategorySelect, { type CategoryChoice } from "./CategorySelect.vue";
+import PlanFields from "./PlanFields.vue";
 import WhyField from "./WhyField.vue";
 
 const props = defineProps<{
@@ -19,9 +20,9 @@ const emit = defineEmits<{
 }>();
 
 const title = ref("");
-const scheduledAt = ref("");
+const date = ref("");
+const time = ref("");
 const durationMinutes = ref<string | number>("");
-const isFixed = ref(false);
 const category = ref<CategoryChoice>("default");
 const why = ref("");
 
@@ -32,17 +33,17 @@ const successMessage = ref<string | null>(null);
 function buildInput(): CreateTodoInput {
   return buildTodoInput({
     title: title.value,
-    scheduledAt: scheduledAt.value,
+    date: date.value,
+    time: time.value,
     duration: durationMinutes.value,
-    isFixed: isFixed.value,
   });
 }
 
 function resetForm(): void {
   title.value = "";
-  scheduledAt.value = "";
+  date.value = "";
+  time.value = "";
   durationMinutes.value = "";
-  isFixed.value = false;
   category.value = "default";
   why.value = "";
 }
@@ -69,7 +70,7 @@ async function submit(): Promise<void> {
     resetForm();
 
     successMessage.value =
-      input.scheduledAt === null
+      input.scheduledDate === null
         ? "Quest erstellt. Sie liegt im Questlog."
         : "Quest erstellt. Sie steht am geplanten Tag in Heute.";
 
@@ -119,16 +120,9 @@ async function submit(): Promise<void> {
 
         <WhyField id="todo-why" v-model="why" :inherited="parentWhy" />
 
-        <div class="create-todo__row">
-          <label class="field">
-            Zeitpunkt · optional
-            <input
-              v-model="scheduledAt"
-              name="scheduledAt"
-              type="datetime-local"
-            />
-          </label>
+        <PlanFields v-model:date="date" v-model:time="time" id-prefix="todo" />
 
+        <div class="create-todo__row">
           <label class="field">
             Dauer in Minuten · optional
             <input
@@ -141,13 +135,6 @@ async function submit(): Promise<void> {
             />
           </label>
         </div>
-
-        <label class="create-todo__checkbox">
-          <input v-model="isFixed" name="isFixed" type="checkbox" />
-          Fester Termin
-        </label>
-
-        <p class="create-todo__hint">Ohne Zeitpunkt landet sie im Questlog.</p>
 
         <p v-if="errorMessage" class="form-error" role="alert">
           {{ errorMessage }}
@@ -187,20 +174,6 @@ async function submit(): Promise<void> {
   gap: var(--space-4);
 }
 
-.create-todo__checkbox {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-  min-height: var(--tap);
-  font-weight: 600;
-}
-
-.create-todo__checkbox input {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
-.create-todo__hint,
 .create-todo__success {
   margin: 0;
   color: var(--color-ink-muted);

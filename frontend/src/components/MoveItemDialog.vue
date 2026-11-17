@@ -6,7 +6,7 @@ import ModalDialog from "./ModalDialog.vue";
 
 /** What moving needs to know; planner and calendar items both provide it. */
 export type MoveTarget =
-  | { type: "todo"; todoId: number; title: string; isFixed: boolean }
+  | { type: "todo"; todoId: number; title: string; timeOfDay: string | null }
   | {
       type: "habit";
       occurrenceId: number;
@@ -33,7 +33,7 @@ const lastDate = computed(() =>
   props.item.type === "habit" ? props.item.moveUntil : null,
 );
 const isFixed = computed(
-  () => props.item.type === "todo" && props.item.isFixed,
+  () => props.item.type === "todo" && props.item.timeOfDay !== null,
 );
 const blockedByFixed = computed(() => isFixed.value && !confirmFixed.value);
 
@@ -93,7 +93,7 @@ function close(): void {
 
       <label v-if="isFixed" class="move-dialog__confirm">
         <input v-model="confirmFixed" type="checkbox" data-test="move-confirm" />
-        Festen Termin wirklich verschieben
+        Termin wirklich verschieben
       </label>
 
       <div v-if="shortcuts.length" class="move-dialog__shortcuts">

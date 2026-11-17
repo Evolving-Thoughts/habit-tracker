@@ -23,7 +23,7 @@ for (const view of ["Questlog", "Heute", "Dailies"] as const) {
                   title: `Quest ${i}`,
                   plannedDurationMinutes: 30,
                   ...(view === "Heute"
-                    ? { scheduledAt: `${date}T10:00:00Z` }
+                    ? { scheduledDate: date }
                     : {}),
                 },
         },
