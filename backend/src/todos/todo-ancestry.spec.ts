@@ -146,6 +146,13 @@ describe('TodoAncestry', () => {
       expect(looped.campaignOf(at(1, 2))).not.toBeNull();
     });
 
+    it('finds the campaign of a todo by its id, none for a deleted one', () => {
+      const ancestry = sources([node(1, null, null), node(2, 1, null)]);
+      expect(ancestry.todoCampaign(2)?.id).toBe(1);
+      expect(ancestry.todoCampaign(1)?.id).toBe(1);
+      expect(ancestry.todoCampaign(9)).toBeNull();
+    });
+
     it('gives a habit the campaign of the goal counting it today', () => {
       const period = { periodStart: '2026-11-01', periodEnd: '2026-12-31' };
       const ancestry = sources([

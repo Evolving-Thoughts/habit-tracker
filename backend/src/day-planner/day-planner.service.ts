@@ -1,14 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import {
-  Between,
-  DataSource,
-  In,
-  LessThanOrEqual,
-  MoreThanOrEqual,
-} from 'typeorm';
+import { DataSource, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { eventsOfDays } from '../calendar/day-events';
 import { CategoryEntity } from '../categories/category.entity';
-import { dayOf, endOfDay, startOfDay } from '../common/date/local-day';
+import { dayOf } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { ownedOccurrences } from '../habit-occurrences/owned-occurrences';
@@ -27,8 +21,8 @@ import { lastMovableDate } from '../habits/scheduling/schedule-rules';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { habitGoals } from '../todos/habit-goal';
 import { loadTodoAncestry } from '../todos/todo-ancestry';
-import { WorkLogEntity } from '../work-logs/work-log.entity';
-import { coveredMilliseconds } from '../work-logs/work-time';
+import { logsOfDays } from '../work-logs/day-logs';
+import { workedMinutes } from '../work-logs/work-time';
 import {
   completedTodos,
   openScheduledTodos,
@@ -58,9 +52,6 @@ import {
 type ContextField =
   'categoryName' | 'why' | 'goal' | 'campaign' | 'workedMinutes';
 
-const minutes = (milliseconds: number): number =>
-  Math.round(milliseconds / 60_000);
-
 @Injectable()
 export class DayPlannerService {
   constructor(
@@ -89,11 +80,14 @@ export class DayPlannerService {
         occurrences.map((occurrence) => occurrence.habitId),
         today,
       ),
-      this.logsOf(userId, today),
+      logsOfDays(this.db.manager, userId, today),
       loadTodoAncestry(this.db.manager, userId, today),
     ]);
     const workedOn = (key: 'todoId' | 'occurrenceId', id: number): number =>
-      minutes(coveredMilliseconds(logs.filter((log) => log[key] === id)));
+      workedMinutes(
+        logs.filter((log) => log[key] === id),
+        today,
+      );
 
     const entries = [
       ...todos.map((todo) => {
@@ -146,7 +140,7 @@ export class DayPlannerService {
         start: start.toISOString(),
         end: end.toISOString(),
       })),
-      workedMinutes: minutes(coveredMilliseconds(logs)),
+      workedMinutes: workedMinutes(logs, today),
     });
   }
 
@@ -327,19 +321,6 @@ export class DayPlannerService {
       });
     }
     return result;
-  }
-
-  /** Logs belong to the day they started on, as in the work log. */
-  private logsOf(userId: string, today: string): Promise<WorkLogEntity[]> {
-    return this.db.getRepository(WorkLogEntity).find({
-      where: {
-        userId,
-        startedAt: Between(
-          startOfDay(today),
-          new Date(endOfDay(today).getTime() - 1),
-        ),
-      },
-    });
   }
 
   private async findTodosForToday(

@@ -2,20 +2,17 @@ import {
   Body,
   Controller,
   Delete,
-  Get,
   HttpCode,
   HttpStatus,
   Param,
   ParseIntPipe,
   Patch,
   Post,
-  Query,
 } from '@nestjs/common';
 import type { AuthUser } from '../auth/auth.dto';
 import { CurrentUser } from '../auth/auth.guard';
 import {
   CreateWorkLogDto,
-  WorkDayResponse,
   WorkLogResponse,
   WorkLogTimesDto,
 } from './work-log.dto';
@@ -24,14 +21,6 @@ import { WorkLogsService } from './work-logs.service';
 @Controller('work-logs')
 export class WorkLogsController {
   constructor(private readonly logs: WorkLogsService) {}
-
-  @Get()
-  day(
-    @CurrentUser() user: AuthUser,
-    @Query('date') date: string,
-  ): Promise<WorkDayResponse> {
-    return this.logs.day(user.id, date ?? '');
-  }
 
   @Post()
   create(

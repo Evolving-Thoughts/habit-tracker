@@ -84,6 +84,12 @@ export class TodoAncestry {
     return top ? { id: top.id, title: top.title } : null;
   }
 
+  /** The campaign of a todo known only by id; a deleted todo has none. */
+  todoCampaign(todoId: number): Campaign | null {
+    const todo = this.byId.get(todoId);
+    return todo ? this.campaignOf(todo) : null;
+  }
+
   habitCampaign(habitId: number): Campaign | null {
     const goal = this.goalOf(habitId);
     if (!goal) return null;

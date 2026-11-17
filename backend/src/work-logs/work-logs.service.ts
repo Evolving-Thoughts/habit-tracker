@@ -4,25 +4,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, EntityManager, Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { Clock } from '../common/clock';
-import { assertDateOnly } from '../common/date/date-only.utils';
-import { endOfDay, startOfDay } from '../common/date/local-day';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { ownedOccurrences } from '../habit-occurrences/owned-occurrences';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import {
   CreateWorkLogDto,
-  WorkDayResponse,
   WorkLogResponse,
   WorkLogTimesDto,
 } from './work-log.dto';
 import { WorkLogEntity } from './work-log.entity';
-import { coveredMilliseconds } from './work-time';
-
-const MINUTE_MS = 60_000;
-const minutes = (milliseconds: number): number =>
-  Math.round(milliseconds / MINUTE_MS);
+import { lengthInMinutes } from './work-time';
 
 @Injectable()
 export class WorkLogsService {
@@ -32,26 +25,6 @@ export class WorkLogsService {
     private readonly clock: Clock,
     private readonly unitOfWork: UserUnitOfWork,
   ) {}
-
-  /** A log belongs to the day it started on. */
-  async day(userId: string, date: string): Promise<WorkDayResponse> {
-    assertDateOnly(date);
-    const logs = await this.logs.find({
-      where: {
-        userId,
-        startedAt: Between(
-          startOfDay(date),
-          new Date(endOfDay(date).getTime() - 1),
-        ),
-      },
-      order: { startedAt: 'ASC', id: 'ASC' },
-    });
-    return {
-      date,
-      totalMinutes: minutes(coveredMilliseconds(logs)),
-      logs: logs.map((log) => this.response(log)),
-    };
-  }
 
   create(userId: string, dto: CreateWorkLogDto): Promise<WorkLogResponse> {
     const range = this.range(dto);
@@ -131,7 +104,7 @@ export class WorkLogsService {
       title: log.title,
       startedAt: log.startedAt.toISOString(),
       endedAt: log.endedAt.toISOString(),
-      minutes: minutes(log.endedAt.getTime() - log.startedAt.getTime()),
+      minutes: lengthInMinutes(log),
       source: log.source,
     };
   }

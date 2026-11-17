@@ -1,4 +1,6 @@
 import { IsIn, IsOptional, IsString } from 'class-validator';
+import type { Campaign } from '../todos/todo-ancestry';
+import type { WorkLogSource } from '../work-logs/work-log.entity';
 import type { PerfectWeek } from './perfect-week';
 import type { WeekQuota } from './week-quota';
 export class HistoryQueryDto {
@@ -20,6 +22,8 @@ export type HistoryItem = {
   scheduledDate: string | null;
   resolvedAt: string | null;
   plannedDurationMinutes: number | null;
+  /** HH:mm of an appointment or timed habit, as it was planned. */
+  timeOfDay: string | null;
   deleted: boolean;
 };
 export type HistoryPlannedItem = {
@@ -56,6 +60,33 @@ export type HistoryExternalEvent = {
   end: string;
 };
 
+/** One stretch of measured work, at its full length even across midnight. */
+export type HistoryWorkLog = {
+  id: number;
+  title: string;
+  startedAt: string;
+  endedAt: string;
+  minutes: number;
+  source: WorkLogSource;
+  todoId: number | null;
+  occurrenceId: number | null;
+  habitId: number | null;
+  campaign: Campaign | null;
+};
+
+/** A campaign's part of a day's work; `campaign: null` is work without one. */
+export type HistoryWorkShare = { campaign: Campaign | null; minutes: number };
+
+/** The Logbuch of a day: what was measured, cut to the day. */
+export type HistoryDayWork = {
+  /** Overlapping stretches count once; see work-time.ts. */
+  minutes: number;
+  /** Day and week: the minutes by campaign, adding up to `minutes`. */
+  campaigns?: HistoryWorkShare[];
+  /** Day and week: every stretch that covers part of the day. */
+  logs?: HistoryWorkLog[];
+};
+
 export type HistoryResponse = {
   today: string;
   timeZone: string;
@@ -70,7 +101,8 @@ export type HistoryResponse = {
     date: string;
     items: HistoryItem[];
     planned?: HistoryPlannedItem[];
-    /** Month view: read-only events of the main Google calendar. */
+    /** Day and month view: read-only events of the read Google calendars. */
     external?: HistoryExternalEvent[];
+    work: HistoryDayWork;
   }[];
 };

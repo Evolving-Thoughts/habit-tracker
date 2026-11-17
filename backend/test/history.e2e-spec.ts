@@ -19,6 +19,7 @@ import { HabitOccurrenceStatus as Status } from '../src/habit-occurrences/enums/
 import { HabitScheduleType } from '../src/habits/enums/habit-schedule-type.enum';
 import { MissedOccurrencePolicy } from '../src/habits/enums/missed-occurrence-policy.enum';
 import { CategoryEntity } from '../src/categories/category.entity';
+import { WorkLogEntity } from '../src/work-logs/work-log.entity';
 import { HistoryResponse } from '../src/history/history.dto';
 import { addDays as addHistoryDays } from '../src/common/date/local-day';
 import { historyRange } from '../src/history/history-range';
@@ -109,7 +110,15 @@ describe('History API (e2e)', () => {
   it('defaults to the current Berlin day and includes an empty day', async () => {
     const body = await get('');
     expect(body.today).toBe(getCurrentDateInTimeZone());
-    expect(body.days).toEqual([{ date: body.today, items: [], planned: [] }]);
+    expect(body.days).toEqual([
+      {
+        date: body.today,
+        items: [],
+        planned: [],
+        external: [],
+        work: { minutes: 0, campaigns: [], logs: [] },
+      },
+    ]);
     expect(body.timeZone).toBe('Europe/Berlin');
   });
   it.each([
@@ -645,5 +654,78 @@ describe('History API (e2e)', () => {
       (await get(`date=${addHistoryDays(date, -1)}`)).weeklyTargets,
     ).toEqual([]);
     await get('date=9999-12-30');
+  });
+  it('shows the Logbuch per day with campaigns, splits midnight and keeps other users out', async () => {
+    const campaign = await todo({
+      title: 'Buch',
+      completed: false,
+      completedAt: null,
+    });
+    const chapter = await todo({
+      title: 'Kapitel',
+      parentId: campaign.id,
+      completed: false,
+      completedAt: null,
+    });
+    const run = await occurrence();
+    const log = (
+      todoId: number | null,
+      startedAt: string,
+      endedAt: string,
+      overrides: Partial<WorkLogEntity> = {},
+    ) =>
+      db.getRepository(WorkLogEntity).save({
+        userId: TEST_USER,
+        todoId,
+        occurrenceId: todoId === null ? run.id : null,
+        title: todoId === null ? 'Joggen' : 'Kapitel',
+        startedAt: new Date(startedAt),
+        endedAt: new Date(endedAt),
+        source: 'timer' as const,
+        ...overrides,
+      });
+    // 23:00 to 01:00 Berlin time (CEST): an hour on each day.
+    await log(chapter.id, '2026-10-06T21:00:00Z', '2026-10-06T23:00:00Z');
+    await log(chapter.id, '2026-10-07T08:00:00Z', '2026-10-07T08:30:00Z');
+    // Overlaps the stretch before: its time counts once.
+    await log(null, '2026-10-07T08:15:00Z', '2026-10-07T08:45:00Z');
+    await log(chapter.id, '2026-10-07T09:00:00Z', '2026-10-07T09:10:00Z', {
+      userId: OTHER,
+      title: 'Fremd',
+    });
+
+    const day = (await get()).days[0];
+    expect(day.work.minutes).toBe(60 + 45);
+    expect(day.work.campaigns).toEqual([
+      { campaign: { id: campaign.id, title: 'Buch' }, minutes: 90 },
+      { campaign: null, minutes: 15 },
+    ]);
+    expect(day.work.logs).toEqual([
+      expect.objectContaining({
+        title: 'Kapitel',
+        minutes: 120,
+        todoId: chapter.id,
+        campaign: { id: campaign.id, title: 'Buch' },
+      }),
+      expect.objectContaining({ minutes: 30 }),
+      expect.objectContaining({
+        title: 'Joggen',
+        occurrenceId: run.id,
+        habitId: run.habitId,
+        campaign: null,
+      }),
+    ]);
+
+    const week = await get('date=2026-10-07&view=week');
+    expect(week.days.map(({ work }) => work.minutes)).toEqual([
+      0, 60, 105, 0, 0, 0, 0,
+    ]);
+    const month = await get('date=2026-10-07&view=month');
+    expect(month.days[6].work).toEqual({ minutes: 105 });
+    expect(month.days[5].work).toEqual({ minutes: 60 });
+
+    const habits = (await get('date=2026-10-07&filter=habits')).days[0];
+    expect(habits.work.minutes).toBe(30);
+    expect(habits.work.logs?.map((item) => item.title)).toEqual(['Joggen']);
   });
 });

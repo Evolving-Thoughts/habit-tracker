@@ -26,10 +26,3 @@ export type WorkLogResponse = {
   minutes: number;
   source: WorkLogSource;
 };
-
-export type WorkDayResponse = {
-  date: string;
-  /** Overlapping entries count once. */
-  totalMinutes: number;
-  logs: WorkLogResponse[];
-};
