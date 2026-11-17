@@ -2,6 +2,7 @@
 import { useTodoDeletion } from "../composables/useTodoDeletion";
 import TodoDeletionSummary from "./TodoDeletionSummary.vue";
 import TodoGoalFields from "./TodoGoalFields.vue";
+import AppIcon from "./AppIcon.vue";
 
 import {
   TIMER_DURATION_MESSAGE,
@@ -18,7 +19,6 @@ import {
   updateHabit,
   updateTodo,
 } from "../api/day-planner.api";
-import type { HabitScheduleType } from "../types/day-planner";
 import type {
   ChangeHabitScheduleInput,
   HabitResponse,
@@ -117,21 +117,9 @@ const effectiveFrom = ref(getCurrentDateInTimeZone());
 const today = computed(() => getCurrentDateInTimeZone());
 const schedule = ref(emptyScheduleDraft());
 
-
-const scheduleLabels: Record<HabitScheduleType, string> = {
-  interval: "Intervall",
-  fixed_weekdays: "Feste Wochentage",
-  weekly_target: "Häufigkeit pro Woche",
-};
-
-const scheduleLabel = computed(() => {
-  return scheduleLabels[schedule.value.type];
-});
-
 const isBusy = computed(() => {
   return isLoading.value || isSaving.value;
 });
-
 
 function fillAssignment(entity: {
   categoryId?: number | null;
@@ -142,7 +130,10 @@ function fillAssignment(entity: {
 }
 
 /** Only what changed, so a plain edit never overwrites these fields. */
-function assignmentChanges(): { categoryId?: number | null; why?: string | null } {
+function assignmentChanges(): {
+  categoryId?: number | null;
+  why?: string | null;
+} {
   const value = why.value.trim();
   return {
     ...(categoryId.value !== originalCategoryId.value
@@ -276,11 +267,7 @@ function buildHabitInput(): UpdateHabitInput {
   if (isActive.value !== loadedHabit.value?.isActive)
     input.isActive = isActive.value;
   const minutes = String(duration.value).trim()
-    ? positiveInteger(
-        duration.value,
-        TIMER_DURATION_MESSAGE,
-        TIMER_MAX_MINUTES,
-      )
+    ? positiveInteger(duration.value, TIMER_DURATION_MESSAGE, TIMER_MAX_MINUTES)
     : null;
   if (minutes !== (loadedHabit.value?.plannedDurationMinutes ?? null))
     input.plannedDurationMinutes = minutes;
@@ -378,13 +365,19 @@ async function remove(): Promise<void> {
   }
 }
 
+function retryLoad(): void {
+  errorMessage.value = null;
+  isLoading.value = true;
+  void loadEntity();
+}
+
 onMounted(loadEntity);
 </script>
 
 <template>
   <section
     class="item-editor"
-    :class="{ 'item-editor--embedded': embedded }"
+    :class="{ card: !embedded }"
     :aria-labelledby="embedded ? undefined : 'item-editor-heading'"
   >
     <h2 v-if="!embedded" id="item-editor-heading">
@@ -392,61 +385,87 @@ onMounted(loadEntity);
       bearbeiten
     </h2>
 
-    <p v-if="isLoading">Eintrag wird geladen …</p>
+    <div
+      v-if="isLoading"
+      class="skeleton item-editor__skeleton"
+      role="status"
+      aria-label="Eintrag wird geladen"
+    >
+      <span />
+      <span />
+      <span />
+    </div>
 
-    <p v-if="errorMessage" role="alert">
-      {{ errorMessage }}
-    </p>
+    <div v-if="!hasLoaded && !isLoading" class="alert">
+      <p v-if="errorMessage" role="alert">{{ errorMessage }}</p>
+      <div class="item-editor__actions">
+        <button class="btn btn--ground" type="button" @click="retryLoad">
+          Erneut versuchen
+        </button>
+        <button class="btn btn--ground" type="button" @click="emit('close')">
+          Schließen
+        </button>
+      </div>
+    </div>
 
     <form v-if="hasLoaded" novalidate @submit.prevent="save">
       <fieldset :disabled="isBusy">
-        <label for="planner-edit-title">Titel</label>
-        <input
-          id="planner-edit-title"
-          v-model="title"
-          name="title"
-          maxlength="200"
-          required
-        />
+        <label class="field">
+          Titel
+          <input v-model="title" name="title" maxlength="200" required />
+        </label>
 
-        <label for="planner-edit-category">Kategorie · optional</label>
-        <select
-          id="planner-edit-category"
-          v-model="categoryId"
-          name="category"
-        >
-          <option :value="null">Keine</option>
-          <option
-            v-for="category in categories"
-            :key="category.id"
-            :value="category.id"
-          >
-            {{ category.name }}
-          </option>
-        </select>
+        <label class="field">
+          Kategorie · optional
+          <select v-model="categoryId" name="category">
+            <option :value="null">Keine</option>
+            <option
+              v-for="category in categories"
+              :key="category.id"
+              :value="category.id"
+            >
+              {{ category.name }}
+            </option>
+          </select>
+        </label>
 
-        <label for="planner-edit-why">Warum · optional</label>
-        <textarea
-          id="planner-edit-why"
-          v-model="why"
-          name="why"
-          maxlength="1000"
-          rows="2"
-        />
+        <label class="field">
+          Warum · optional
+          <textarea v-model="why" name="why" maxlength="1000" rows="2" />
+        </label>
 
         <template v-if="kind === 'todo'">
-          <label for="planner-edit-date"> Zeitpunkt · optional </label>
-          <input
-            id="planner-edit-date"
-            v-model="scheduledAt"
-            name="scheduledAt"
-            type="datetime-local"
-          />
+          <div class="item-editor__row">
+            <div class="field">
+              <label for="planner-edit-date">Zeitpunkt · optional</label>
+              <input
+                id="planner-edit-date"
+                v-model="scheduledAt"
+                name="scheduledAt"
+                type="datetime-local"
+                aria-describedby="planner-edit-date-hint"
+              />
+              <small id="planner-edit-date-hint" class="item-editor__hint"
+                >Ohne Zeitpunkt liegt es im Todo-Dump.</small
+              >
+            </div>
 
-          <small>
-            Deutsche Zeit (Europe/Berlin). Ohne Zeitpunkt landet das Todo im
-            Dump.
-          </small>
+            <label class="field">
+              Dauer in Minuten · optional
+              <input
+                v-model="duration"
+                name="duration"
+                type="number"
+                min="1"
+                step="1"
+              />
+            </label>
+          </div>
+
+          <label class="item-editor__checkbox">
+            <input v-model="isFixed" name="isFixed" type="checkbox" />
+            Fester Termin
+          </label>
 
           <TodoGoalFields
             v-model:period-start="periodStart"
@@ -454,59 +473,45 @@ onMounted(loadEntity);
             v-model:habit-id="goalHabitId"
             v-model:target="goalTarget"
           />
-
-          <label for="planner-edit-duration">
-            Dauer in Minuten · optional
-          </label>
-          <input
-            id="planner-edit-duration"
-            v-model="duration"
-            name="duration"
-            type="number"
-            min="1"
-            step="1"
-          />
-
-          <label class="item-editor__checkbox">
-            <input v-model="isFixed" name="isFixed" type="checkbox" />
-            Fester Termin
-          </label>
         </template>
 
         <template v-else>
-          <label for="habit-edit-time">Uhrzeit · optional</label
-          ><input
-            id="habit-edit-time"
-            v-model="timeOfDay"
-            name="timeOfDay"
-            type="time"
-          />
-          <label for="habit-edit-duration"
-            >Standarddauer in Minuten · optional</label
-          ><input
-            id="habit-edit-duration"
-            v-model="duration"
-            name="duration"
-            type="number"
-            min="1"
-            :max="TIMER_MAX_MINUTES"
-            step="1"
-          /><small
-            >Die Standarddauer gilt für Ausführungen ohne eigene Dauer. Eine
-            Timeränderung gilt nur für die konkrete Ausführung.</small
-          >
+          <div class="item-editor__row">
+            <label class="field">
+              Uhrzeit · optional
+              <input v-model="timeOfDay" name="timeOfDay" type="time" />
+            </label>
+            <div class="field">
+              <label for="habit-edit-duration"
+                >Dauer in Minuten · optional</label
+              >
+              <input
+                id="habit-edit-duration"
+                v-model="duration"
+                name="duration"
+                type="number"
+                min="1"
+                :max="TIMER_MAX_MINUTES"
+                step="1"
+                aria-describedby="habit-edit-duration-hint"
+              />
+              <small id="habit-edit-duration-hint" class="item-editor__hint"
+                >Gilt für jeden Tag ohne eigene Dauer.</small
+              >
+            </div>
+          </div>
+
           <label class="item-editor__checkbox">
             <input v-model="isActive" name="isActive" type="checkbox" />
-            Habit aktiv
+            Aktiv: erscheint an fälligen Tagen in Heute
           </label>
 
           <div class="item-editor__notice" data-test="schedule-summary">
             <p v-if="loadedHabit?.currentSchedule">
-              Aktueller Zeitplan:
+              Jetzt:
               <strong>{{
                 describeSchedule(loadedHabit.currentSchedule)
-              }}</strong>
-              · seit
+              }}</strong>, seit
               {{
                 formatDateForGermanDisplay(
                   loadedHabit.currentSchedule.effectiveFrom,
@@ -527,6 +532,7 @@ onMounted(loadEntity);
                 }}</strong>
               </p>
               <button
+                class="btn btn--ground"
                 type="button"
                 data-test="edit-upcoming"
                 @click="editUpcomingSchedule"
@@ -544,50 +550,40 @@ onMounted(loadEntity);
             />
             Zeitplan ändern
           </label>
-          <small
-            >Nur Titel und Aktivität zu ändern lässt aktuelle und geplante
-            Zeitpläne unverändert.</small
+
+          <fieldset
+            v-if="changeSchedule"
+            class="item-editor__schedule"
+            data-test="schedule-fields"
           >
-
-          <fieldset v-if="changeSchedule" data-test="schedule-fields">
-            <legend>Neuer Zeitplan</legend>
-            <label for="planner-edit-effective-from">Gültig ab</label>
-            <input
-              id="planner-edit-effective-from"
-              v-model="effectiveFrom"
-              name="effectiveFrom"
-              type="date"
-              :min="today"
-              required
-            />
-            <small
-              >Standard: heute (Europe/Berlin). Heute wirkt die Änderung ab dem
-              Speichern; ein zukünftiger Tag ab 00:00 Uhr.
-              <template v-if="isValidIsoDate(effectiveFrom)"
-                >Gewählt:
-                {{ formatDateForGermanDisplay(effectiveFrom) }}.</template
+            <legend class="visually-hidden">Neuer Zeitplan</legend>
+            <div class="field">
+              <label for="planner-edit-effective-from">Gültig ab</label>
+              <input
+                id="planner-edit-effective-from"
+                v-model="effectiveFrom"
+                name="effectiveFrom"
+                type="date"
+                :min="today"
+                required
+                aria-describedby="planner-edit-effective-hint"
+              />
+              <small id="planner-edit-effective-hint" class="item-editor__hint"
+                >Heute gilt es sofort, ein späterer Tag ab Mitternacht.</small
               >
-            </small>
+            </div>
 
-            <p class="item-editor__schedule-label">
-              Habit-Art: <strong>{{ scheduleLabel }}</strong>
-            </p>
-
-            <label for="planner-edit-schedule-type">
-              Habit-Art auswählen
+            <label class="field">
+              Wie oft?
+              <select v-model="schedule.type" name="scheduleType">
+                <option value="interval">Alle paar Tage</option>
+                <option value="fixed_weekdays">An festen Wochentagen</option>
+                <option value="weekly_target">Ein paarmal pro Woche</option>
+              </select>
             </label>
-            <select
-              id="planner-edit-schedule-type"
-              v-model="schedule.type"
-              name="scheduleType"
-            >
-              <option value="interval">Intervall</option>
-              <option value="fixed_weekdays">Feste Wochentage</option>
-              <option value="weekly_target">Häufigkeit pro Woche</option>
-            </select>
 
-            <template v-if="schedule.type === 'interval'">
-              <label for="planner-edit-interval"> Alle wie viele Tage? </label>
+            <div v-if="schedule.type === 'interval'" class="field">
+              <label for="planner-edit-interval">Alle wie viele Tage?</label>
               <input
                 id="planner-edit-interval"
                 v-model="schedule.intervalDays"
@@ -595,16 +591,18 @@ onMounted(loadEntity);
                 type="number"
                 min="1"
                 step="1"
+                aria-describedby="planner-edit-interval-hint"
               />
-
-              <small> 1 = täglich, 2 = alle zwei Tage. </small>
-            </template>
+              <small id="planner-edit-interval-hint" class="item-editor__hint"
+                >1 heißt täglich.</small
+              >
+            </div>
 
             <fieldset
               v-else-if="schedule.type === 'fixed_weekdays'"
               class="item-editor__weekdays"
             >
-              <legend>Ausführungstage</legend>
+              <legend>An welchen Tagen?</legend>
 
               <label
                 v-for="option in WEEKDAY_OPTIONS"
@@ -621,10 +619,8 @@ onMounted(loadEntity);
               </label>
             </fieldset>
 
-            <template v-else>
-              <label for="planner-edit-weekly-target">
-                Wie oft pro Woche?
-              </label>
+            <div v-else class="field">
+              <label for="planner-edit-weekly-target">Wie oft pro Woche?</label>
               <input
                 id="planner-edit-weekly-target"
                 v-model="schedule.weeklyTarget"
@@ -633,54 +629,51 @@ onMounted(loadEntity);
                 min="1"
                 max="7"
                 step="1"
+                aria-describedby="planner-edit-weekly-hint"
               />
-
-              <small>
-                Ohne festgelegte Wochentage. Die Woche beginnt am Montag.
-              </small>
-            </template>
-
-            <template v-if="schedule.type !== 'weekly_target'">
-              <label for="planner-edit-policy">
-                Verhalten bei verpassten Terminen
-              </label>
-              <select
-                id="planner-edit-policy"
-                v-model="schedule.missedPolicy"
-                name="missedPolicy"
+              <small id="planner-edit-weekly-hint" class="item-editor__hint"
+                >Die Woche läuft von Montag bis Sonntag.</small
               >
-                <option value="carry_over">Übertragen</option>
+            </div>
+
+            <label v-if="schedule.type !== 'weekly_target'" class="field">
+              Wenn du einen Tag verpasst
+              <select v-model="schedule.missedPolicy" name="missedPolicy">
+                <option value="carry_over">Später nachholen</option>
                 <option value="skip">Verfallen lassen</option>
               </select>
-            </template>
-            <small v-else
-              >Wochenziele zählen Erledigungen von Montag bis Sonntag. Eine
-              verpasste tägliche Chance wird nicht übertragen.</small
-            >
+            </label>
+
             <p class="item-editor__notice">
-              Die Änderung ersetzt einen eventuell bereits geplanten zukünftigen
-              Zeitplan. Historische Erledigungen und übersprungene Ausführungen
-              bleiben erhalten. Noch offene Ausführungen des abgelösten
-              Zeitplans werden vom Backend abgeglichen.
+              Ersetzt einen schon geplanten Zeitplan. Erledigtes bleibt
+              erhalten.
             </p>
           </fieldset>
         </template>
 
+        <p v-if="errorMessage" class="form-error" role="alert">
+          {{ errorMessage }}
+        </p>
+
         <div class="item-editor__actions">
-          <button type="submit">
+          <button class="btn btn--primary" type="submit">
             {{ isSaving ? "Bitte warten …" : "Speichern" }}
           </button>
 
-          <button type="button" @click="emit('close')">Abbrechen</button>
+          <button class="btn" type="button" @click="emit('close')">
+            Abbrechen
+          </button>
         </div>
 
         <div class="item-editor__delete">
           <button
             v-if="!confirmDeletion"
+            class="btn btn--quiet"
             type="button"
             data-test="request-delete"
             @click="requestDeletion"
           >
+            <AppIcon name="trash" />
             {{ kind === "todo" ? "Todo löschen" : "Gesamtes Habit löschen" }}
           </button>
 
@@ -691,17 +684,22 @@ onMounted(loadEntity);
             />
             <p>„{{ title }}“ wirklich löschen?</p>
 
-            <p v-if="kind === 'habit'">
-              Das Habit verschwindet aus dem Tagesplan. Seine bisherigen
-              Ausführungen bleiben für die Historie gespeichert.
+            <p v-if="kind === 'habit'" class="item-editor__hint">
+              Es verschwindet aus Heute. Der Verlauf bleibt erhalten.
             </p>
 
             <div class="item-editor__actions">
-              <button type="button" data-test="confirm-delete" @click="remove">
+              <button
+                class="btn btn--danger"
+                type="button"
+                data-test="confirm-delete"
+                @click="remove"
+              >
                 Ja, löschen
               </button>
 
               <button
+                class="btn"
                 type="button"
                 @click="
                   confirmDeletion = false;
@@ -715,122 +713,149 @@ onMounted(loadEntity);
         </div>
       </fieldset>
     </form>
-
-    <button
-      v-if="!hasLoaded && !isLoading"
-      type="button"
-      @click="emit('close')"
-    >
-      Schließen
-    </button>
   </section>
 </template>
 
 <style scoped>
-.item-editor.item-editor--embedded {
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-.item-editor {
-  margin: 1.5rem 0;
-  padding: 1rem;
-  border: 1px solid #ccd2dc;
-  border-radius: 0.875rem;
-  background: #ffffff;
-}
-
 .item-editor h2 {
-  margin: 0 0 1rem;
+  margin: 0 0 var(--space-4);
   font-size: 1.125rem;
+  font-weight: 800;
 }
 
 .item-editor fieldset {
   display: grid;
-  gap: 0.75rem;
+  gap: var(--space-4);
   min-width: 0;
-  padding: 0;
   margin: 0;
+  padding: 0;
   border: 0;
 }
 
-.item-editor input:not([type="checkbox"]),
-.item-editor select {
-  width: 100%;
-  min-width: 0;
-  padding: 0.7rem;
-  border: 1px solid #bfc7d4;
-  border-radius: 0.5rem;
-  font: inherit;
+.item-editor__skeleton > span {
+  height: 3rem;
 }
 
-.item-editor__checkbox,
+.item-editor__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.item-editor__checkbox {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: var(--tap);
+  font-weight: 600;
+}
+
+.item-editor__checkbox input {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
 .item-editor__actions {
   display: flex;
   flex-wrap: wrap;
+  gap: var(--space-3);
   align-items: center;
-  gap: 0.75rem;
 }
 
-.item-editor button {
-  padding: 0.65rem 0.9rem;
-  border: 1px solid #ccd2dc;
-  border-radius: 0.5rem;
-  background: #ffffff;
-  cursor: pointer;
-}
-
-.item-editor button:disabled {
-  opacity: 0.5;
-  cursor: wait;
-}
-
-.item-editor small {
+.item-editor__hint {
+  margin: 0;
+  color: var(--color-ink-muted);
   font-size: 0.875rem;
-  color: #697386;
-  line-height: 1.5;
+  font-weight: 400;
 }
 
-.item-editor__schedule-label {
-  margin: 0.5rem 0 0;
+/* Info: a calm panel in deep apricot with ink text. */
+.item-editor__notice {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-ground-deep);
+  color: var(--color-ink);
+}
+
+.item-editor__notice p {
+  margin: 0;
+}
+
+.item-editor .item-editor__schedule {
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--color-line);
 }
 
 .item-editor .item-editor__weekdays {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: var(--space-2);
+  padding: 0;
+  border: 0;
 }
 
 .item-editor__weekdays legend {
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--space-2);
+  padding: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
 }
 
 .item-editor__weekday {
-  display: flex;
+  display: inline-flex;
+  gap: var(--space-2);
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid #d9dde5;
-  border-radius: 0.5rem;
+  min-height: var(--tap);
+  padding: 0 var(--space-4) 0 var(--space-3);
+  border: 1.5px solid var(--color-line);
+  border-radius: var(--radius-pill);
+  color: var(--color-ink-muted);
+  font-weight: 700;
+  cursor: pointer;
 }
 
-.item-editor__notice {
-  padding: 0.75rem;
-  border-radius: 0.5rem;
-  background: #f2f4f8;
-  color: #59657a;
-  font-size: 0.875rem;
-  line-height: 1.5;
+.item-editor__weekday:has(input:checked) {
+  border-color: var(--color-ink);
+  color: var(--color-ink);
 }
 
-.item-editor [role="alert"],
-.item-editor__delete button {
-  color: #b42318;
+.item-editor__weekday input {
+  width: 1.125rem;
+  height: 1.125rem;
 }
 
 .item-editor__delete {
-  margin-top: 0.75rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e5e7eb;
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-line);
+}
+
+.item-editor__delete p {
+  margin: 0;
+}
+
+/* ModalDialog tints every button; destructive ones keep the danger tint. */
+.item-editor button.btn--danger:not(:disabled) {
+  background: var(--color-danger-tint);
+  color: var(--color-danger);
+}
+
+/* On the deep panel and the alert, side actions sit on white. */
+.item-editor button.btn--ground:not(:disabled) {
+  background: var(--color-surface);
+}
+
+@media (max-width: 32rem) {
+  .item-editor__row {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

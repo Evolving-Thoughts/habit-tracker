@@ -1,5 +1,13 @@
 import { test, expect } from "./fixtures";
-import { createHabit, daysAfter, today, visit, list } from "./helpers";
+import {
+  createHabit,
+  daysAfter,
+  today,
+  visit,
+  list,
+  openView,
+  showResolved,
+} from "./helpers";
 import { API_URL } from "./environment";
 
 test("Today: create Habit, complete/reopen and skip/reopen one occurrence", async ({
@@ -11,18 +19,17 @@ test("Today: create Habit, complete/reopen and skip/reopen one occurrence", asyn
   await page
     .getByRole("button", { name: "Joggen erledigen", exact: true })
     .click();
-  await expect(
-    page.getByRole("button", { name: "Joggen wieder öffnen", exact: true }),
-  ).toBeVisible();
+  await showResolved(page);
   await page
     .getByRole("button", { name: "Joggen wieder öffnen", exact: true })
     .click();
-  const row = page
-    .locator(".planner-item")
-    .filter({
-      has: page.getByRole("heading", { name: "Joggen", exact: true }),
-    });
-  await row.getByRole("button", { name: "Überspringen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Joggen überspringen", exact: true })
+    .click();
+  await showResolved(page);
+  const row = page.locator("#resolved-list .planner-item").filter({
+    has: page.getByRole("heading", { name: "Joggen", exact: true }),
+  });
   await expect(row).toContainText("Übersprungen");
   const habits = await list(request, "habits");
   const history = await request.get(
@@ -53,10 +60,7 @@ for (const type of ["fixed_weekdays", "weekly_target"] as const) {
         : { type, weeklyTarget: 3 },
     );
     await page.reload();
-    await page
-      .getByRole("navigation")
-      .getByRole("button", { name: "Habits", exact: true })
-      .click();
+    await openView(page, "Habits");
     await expect(
       page.getByRole("heading", { name: "Gitarre spielen", exact: true }),
     ).toBeVisible();
@@ -98,17 +102,11 @@ test("Habit management: future schedule change, pause/reactivate and delete", as
   await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await expect(page.locator('[data-group="paused"]')).toContainText("Joggen");
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Heute", exact: true })
-    .click();
+  await openView(page, "Heute");
   await expect(
     page.getByRole("heading", { name: "Joggen", exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Habits", exact: true })
-    .click();
+  await openView(page, "Habits");
   await page
     .getByRole("button", { name: "Joggen bearbeiten", exact: true })
     .click();
@@ -150,10 +148,7 @@ test("future-start Habit is manageable but not due in Today", async ({
   expect(
     (await list(request, "habits"))[0].upcomingSchedule.schedule,
   ).toMatchObject({ type: "weekly_target", weeklyTarget: 4 });
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Heute", exact: true })
-    .click();
+  await openView(page, "Heute");
   await expect(
     page.getByRole("heading", { name: "Zukunftshabit", exact: true }),
   ).toHaveCount(0);

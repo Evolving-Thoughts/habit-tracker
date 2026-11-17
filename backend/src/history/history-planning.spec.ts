@@ -207,6 +207,24 @@ describe('Read-only weekly forecasts', () => {
       isOverdue: true,
     });
   });
+  it('carries the category name and the why of the habit', () => {
+    const slots = forecastSlots([version()], dates, today, now);
+    const named = Object.assign(new HabitEntity(), {
+      ...habit,
+      categoryId: 4,
+      why: 'F�r ruhige Abende',
+    });
+    const names = new Map([[4, 'Musik']]);
+    expect(
+      plannedHabits([named], slots, [], today, (id) =>
+        id === null ? null : (names.get(id) ?? null),
+      )[0],
+    ).toMatchObject({ categoryName: 'Musik', why: 'F�r ruhige Abende' });
+    expect(plannedHabits([habit], slots, [], today)[0]).toMatchObject({
+      categoryName: null,
+      why: null,
+    });
+  });
   it('keeps interval calendar spacing through both Berlin DST transitions', () => {
     for (const [anchor, last] of [
       ['2026-03-23', '2026-03-29'],

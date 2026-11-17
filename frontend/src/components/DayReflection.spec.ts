@@ -32,9 +32,11 @@ describe("DayReflection", () => {
     const wrapper = await render();
     const area = wrapper.find("textarea");
     expect((area.element as HTMLTextAreaElement).value).toBe("Alt");
-    expect(wrapper.find("button").attributes("disabled")).toBeDefined();
+    // Nothing to save yet: no disabled pill, just no button.
+    expect(wrapper.find("button").exists()).toBe(false);
 
     await area.setValue("Neu");
+    expect(wrapper.get("button.btn--primary").text()).toBe("Speichern");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
@@ -53,6 +55,19 @@ describe("DayReflection", () => {
     expect(
       (wrapper.find("textarea").element as HTMLTextAreaElement).value,
     ).toBe("Gestern");
+  });
+
+  it("explains a lost connection while saving", async () => {
+    vi.mocked(saveReflection).mockRejectedValueOnce(
+      new TypeError("Failed to fetch"),
+    );
+    const wrapper = await render();
+    await wrapper.find("textarea").setValue("Wichtig");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').text()).toContain(
+      "Keine Verbindung zum Server",
+    );
   });
 
   it("keeps the text and shows the error when saving fails", async () => {

@@ -43,9 +43,12 @@ const habit: DayPlannerHabitItem = {
   timerEligible: true,
 };
 
-function render(item: DayPlannerTodoItem | DayPlannerHabitItem) {
+function render(
+  item: DayPlannerTodoItem | DayPlannerHabitItem,
+  offerToday = false,
+) {
   return mount(MoveItemDialog, {
-    props: { item, today: "2026-10-30", returnFocus: () => null },
+    props: { item, today: "2026-10-30", offerToday, returnFocus: () => null },
     global: { stubs: { ModalDialog: { template: "<div><slot /></div>" } } },
   });
 }
@@ -60,6 +63,16 @@ describe("MoveItemDialog", () => {
     await button(wrapper, "Nächster Montag")!.trigger("click");
     expect(rescheduleTodo).toHaveBeenCalledWith(1, "2026-11-02", false);
     await vi.waitFor(() => expect(wrapper.emitted("moved")).toBeTruthy());
+  });
+
+  it("brings a carried-over item back to today in one tap", async () => {
+    const wrapper = render({ ...todo, isOverdue: true }, true);
+    await button(wrapper, "Heute")!.trigger("click");
+    expect(rescheduleTodo).toHaveBeenCalledWith(1, "2026-10-30", false);
+  });
+
+  it("offers today only for carried-over items", () => {
+    expect(button(render(todo), "Heute")).toBeUndefined();
   });
 
   it("needs a confirmation for a fixed todo", async () => {

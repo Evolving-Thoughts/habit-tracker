@@ -32,29 +32,53 @@ onMounted(() =>
 
 <template>
   <div class="day-end-setting">
-    <label>
-      Tagesende
-      <input v-model="dayEnd" type="time" :disabled="busy" @change="save" />
+    <label class="day-end-setting__row">
+      <span>Mein Tag endet um</span>
+      <input
+        v-model="dayEnd"
+        class="input day-end-setting__time"
+        type="time"
+        :disabled="busy"
+        @change="save"
+      />
     </label>
-    <p>Was „Neu planen“ bis dahin nicht unterbringt, rutscht auf morgen.</p>
-    <p v-if="error" role="alert">{{ error }}</p>
+    <p class="day-end-setting__hint">
+      Was „Neu planen“ bis dahin nicht unterbringt, rutscht auf morgen.
+    </p>
+    <p v-if="error" class="form-error" role="alert">{{ error }}</p>
   </div>
 </template>
 
 <style scoped>
 .day-end-setting {
   display: grid;
-  gap: 0.5rem;
-  font-size: 0.875rem;
+  gap: var(--space-2);
 }
 
 .day-end-setting p {
   margin: 0;
 }
 
-.day-end-setting label {
+.day-end-setting__row {
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
   align-items: center;
-  gap: 0.5rem;
+  font-weight: 700;
+}
+
+.day-end-setting__time {
+  width: 7.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.day-end-setting__time:disabled {
+  color: var(--color-ink-soft);
+}
+
+.day-end-setting__hint {
+  max-width: 60ch;
+  color: var(--color-ink-muted);
+  text-wrap: pretty;
 }
 </style>

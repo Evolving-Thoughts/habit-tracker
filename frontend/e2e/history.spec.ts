@@ -1,20 +1,20 @@
 import { test, expect } from "./fixtures";
-import { createTodo, today, visit, daysAfter } from "./helpers";
+import {
+  createTodo,
+  today,
+  visit,
+  daysAfter,
+  openView,
+  showResolved,
+  openCalendar,
+  filterCalendar,
+  shortDate,
+  dayLabel,
+} from "./helpers";
 import { API_URL } from "./environment";
 import type { HistoryResponse } from "../src/types/history";
 
-async function history(page: import("@playwright/test").Page) {
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Verlauf", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "Verlauf", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByRole("status")).toHaveCount(0);
-}
-
-test("History: a completed Dump Todo has no invented schedule, persists, and disappears after reopen", async ({
+test("Calendar day: a completed Dump Todo has no invented schedule, persists, and disappears after reopen", async ({
   page,
   request,
 }) => {
@@ -27,7 +27,7 @@ test("History: a completed Dump Todo has no invented schedule, persists, and dis
   await expect(
     page.getByRole("heading", { name: "Ideen sammeln", exact: true }),
   ).toHaveCount(0);
-  await history(page);
+  await openCalendar(page, "Tag");
   const card = page
     .locator(".history-item")
     .filter({ hasText: "Ideen sammeln" });
@@ -38,24 +38,24 @@ test("History: a completed Dump Todo has no invented schedule, persists, and dis
   await expect(page.locator('[name="historyDate"]')).toHaveValue(date);
   await expect(card.getByRole("button")).toHaveCount(0);
   await page.reload();
-  await history(page);
+  await openCalendar(page, "Tag");
   await expect(card).toBeVisible();
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Heute", exact: true })
-    .click();
+  await openView(page, "Heute");
+  await showResolved(page);
   await page
     .getByRole("button", { name: "Ideen sammeln wieder öffnen", exact: true })
     .click();
   await expect(
     page.getByRole("heading", { name: "Ideen sammeln", exact: true }),
   ).toHaveCount(0);
-  await history(page);
+  await openCalendar(page, "Tag");
   await expect(card).toHaveCount(0);
-  await expect(page.locator(".empty")).toContainText("keine Einträge");
+  await expect(page.locator(".empty-state")).toContainText(
+    "Für diesen Zeitraum gibt es nichts.",
+  );
 });
 
-test("History: automatic skips stay on planned days; completed and deleted Habits remain in the read-only history", async ({
+test("Calendar day: automatic skips stay on planned days; completed and deleted Habits remain in the read-only history", async ({
   page,
   request,
 }) => {
@@ -97,7 +97,7 @@ test("History: automatic skips stay on planned days; completed and deleted Habit
     ).status(),
   ).toBe(204);
   await page.goto("/");
-  await history(page);
+  await openCalendar(page, "Tag");
   await expect(
     page
       .getByRole("region", { name: "Erledigt", exact: true })
@@ -107,23 +107,23 @@ test("History: automatic skips stay on planned days; completed and deleted Habit
   await page.locator('[name="historyDate"]').fill(earlier);
   const skips = page.getByRole("region", { name: "Übersprungen", exact: true });
   await expect(skips.getByText("Joggen", { exact: true })).toBeVisible();
-  await expect(skips).toContainText(
-    `Geplant für ${earlier.split("-").reverse().join(".")}`,
-  );
+  // A skip stays on its planned day, so no extra "Geplant für" line.
+  await expect(skips).toContainText("Übersprungen");
+  await expect(skips).not.toContainText("Geplant für");
   const before = await request.get(
     `${API_URL}/history?date=${earlier}&view=week`,
   );
   await page.getByRole("button", { name: "Woche", exact: true }).click();
-  await expect(page.locator("details.week-day")).toHaveCount(7);
-  await page.locator('[name="historyFilter"]').selectOption("todos");
-  await expect(page.locator(".empty")).toBeVisible();
+  await expect(page.locator(".week-day")).toHaveCount(7);
+  await filterCalendar(page, "Todos");
+  await expect(page.locator(".empty-state")).toBeVisible();
   const after = await request.get(
     `${API_URL}/history?date=${earlier}&view=week`,
   );
   expect(await after.json()).toEqual(await before.json());
 });
 
-test("History: Monday-first weekly navigation, filters, expandable days and soft-deleted Todos", async ({
+test("Calendar: month opens a day, Monday-first week rows, filters and soft-deleted Todos", async ({
   page,
   request,
 }) => {
@@ -154,34 +154,50 @@ test("History: Monday-first weekly navigation, filters, expandable days and soft
     ).status(),
   ).toBe(204);
   await page.goto("/");
-  await history(page);
+  const view = await openCalendar(page);
+  // Monat is the default, with today selected.
+  const cell = view.locator(`.month-day[data-date="${date}"]`);
+  await expect(cell).toHaveAttribute("aria-pressed", "true");
+  await expect(cell).toHaveAttribute("aria-label", /1 erledigt/);
+  await expect(view.locator(".selected-day .history-item")).toContainText(
+    "Abgeschlossener Artikel",
+  );
+  await view
+    .getByRole("button", { name: `Tag öffnen: ${dayLabel(date)}`, exact: true })
+    .click();
+  await expect(
+    view.getByRole("button", { name: "Tag", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".history-item")).toContainText("Gelöscht");
   await expect(page.locator(".history-item")).toContainText("Geplant für");
-  await page.getByRole("button", { name: "Woche", exact: true }).click();
-  await expect(page.locator("details.week-day")).toHaveCount(7);
-  await expect(page.locator("summary").first()).toContainText("Montag");
-  await expect(page.locator("summary").last()).toContainText("Sonntag");
-  const day = page.locator(`details[data-date="${date}"]`);
-  await day.locator("summary").click();
-  await expect(day).toContainText("1 Todo erledigt");
+  await view.getByRole("button", { name: "Woche", exact: true }).click();
+  await expect(page.locator(".week-day")).toHaveCount(7);
+  await expect(page.locator(".week-day").first()).toContainText("Montag");
+  await expect(page.locator(".week-day").last()).toContainText("Sonntag");
+  const day = page.locator(`.week-day[data-date="${date}"]`);
+  await expect(day).toContainText("1 erledigt");
+  await page
+    .getByRole("button", { name: `${dayLabel(date)} öffnen`, exact: true })
+    .click();
   await expect(
-    day.getByRole("heading", { name: "Abgeschlossener Artikel", exact: true }),
-  ).toBeVisible();
-  await day.getByRole("button", { name: "Tag öffnen", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Tag", exact: true }),
+    view.getByRole("button", { name: "Tag", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator('[name="historyDate"]')).toHaveValue(date);
-  await page.getByRole("button", { name: "Vorheriger Zeitraum" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Abgeschlossener Artikel", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Voriger Zeitraum" }).click();
   await expect(page.locator('[name="historyDate"]')).toHaveValue(
     daysAfter(date, -1),
   );
-  await expect(page.locator(".empty")).toBeVisible();
-  await page.getByRole("button", { name: "Heute", exact: true }).last().click();
+  await expect(page.locator(".empty-state")).toBeVisible();
+  await view.getByRole("button", { name: "Heute", exact: true }).click();
   await expect(page.locator(".history-item")).toBeVisible();
-  await page.locator('[name="historyFilter"]').selectOption("habits");
-  await expect(page.locator(".empty")).toContainText("für diesen Filter");
-  await page.locator('[name="historyFilter"]').selectOption("todos");
+  await filterCalendar(page, "Habits");
+  await expect(page.locator(".empty-state")).toContainText(
+    "Gezeigt werden nur Habits.",
+  );
+  await filterCalendar(page, "Todos");
   await expect(page.locator(".history-item")).toBeVisible();
   const api = await request.get(`${API_URL}/history?date=${date}`);
   expect(
@@ -189,7 +205,7 @@ test("History: Monday-first weekly navigation, filters, expandable days and soft
   ).toBe(daysAfter(date, -2));
 });
 
-test("History: error retry and logout do not retain private results", async ({
+test("Calendar: error retry and logout do not retain private results", async ({
   page,
   context,
 }) => {
@@ -201,7 +217,7 @@ test("History: error retry and logout do not retain private results", async ({
       body: JSON.stringify({ message: "Verlauf nicht erreichbar" }),
     }),
   );
-  await history(page);
+  await openCalendar(page);
   await expect(page.getByRole("alert")).toContainText(
     "Verlauf nicht erreichbar",
   );
@@ -209,19 +225,16 @@ test("History: error retry and logout do not retain private results", async ({
   await page
     .getByRole("button", { name: "Erneut versuchen", exact: true })
     .click();
-  await expect(page.locator(".empty")).toBeVisible();
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Einstellungen", exact: true })
-    .click();
+  await expect(page.locator(".month-day")).not.toHaveCount(0);
+  await openView(page, "Einstellungen");
   await page.getByRole("button", { name: "Abmelden", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Willkommen zurück" }),
   ).toBeVisible();
-  await expect(page.locator(".history-view")).toHaveCount(0);
+  await expect(page.locator(".calendar-view")).toHaveCount(0);
 });
 
-test("History week: open plans, overdue Todos and weekly targets stay read-only", async ({
+test("Calendar week: open plans, overdue Todos and weekly targets stay calm", async ({
   page,
   request,
 }) => {
@@ -252,13 +265,17 @@ test("History week: open plans, overdue Todos and weekly targets stay read-only"
   const stored = await request.get(`${API_URL}/habits`);
   const habits = (await stored.json()) as { id: number }[];
   await page.goto("/");
-  await history(page);
-  await expect(
-    page.getByRole("region", { name: "Offen / geplant", exact: true }),
-  ).toContainText("Tägliche Gitarre");
-  await expect(
-    page.getByRole("region", { name: "Wochenziele", exact: true }),
-  ).toContainText("Noch 3 von 3 Ausführungen");
+  const view = await openCalendar(page, "Tag");
+  const planned = page.getByRole("region", {
+    name: "Offen / geplant",
+    exact: true,
+  });
+  const targets = page.getByRole("region", {
+    name: "Wochenziele",
+    exact: true,
+  });
+  await expect(planned).toContainText("Tägliche Gitarre");
+  await expect(targets).toContainText("Noch 3 von 3");
   const before = await Promise.all(
     habits.map(async (h) => {
       const result = await request.get(`${API_URL}/habits/${h.id}/occurrences`);
@@ -266,42 +283,51 @@ test("History week: open plans, overdue Todos and weekly targets stay read-only"
       return result.json() as Promise<unknown>;
     }),
   );
-  await page.getByRole("button", { name: "Woche", exact: true }).click();
-  const day = page.locator(`details[data-date="${date}"]`);
-  await expect(day.locator("summary")).toContainText("3 offen / geplant");
-  await day.locator("summary").click();
-  const planned = day.getByRole("region", {
-    name: "Offen / geplant",
-    exact: true,
-  });
-  await expect(planned).toContainText(
-    `überfällig seit ${overdueDate.split("-").reverse().join(".")}`,
-  );
-  await expect(planned).toContainText("Tägliche Gitarre");
-  await expect(planned.getByRole("button")).toHaveCount(0);
-  const targets = page.getByRole("region", {
-    name: "Wochenziele",
-    exact: true,
-  });
+  await view.getByRole("button", { name: "Woche", exact: true }).click();
+  const day = page.locator(`.week-day[data-date="${date}"]`);
+  await expect(day).toContainText("3 offen");
   await expect(targets).toContainText("Leseziel");
-  await expect(targets).toContainText("Noch 3 von 3 Ausführungen");
-  await expect(page.locator(".empty")).toHaveCount(0);
+  await expect(targets).toContainText("Noch 3 von 3 · 0 erledigt");
+  await expect(targets).not.toContainText("Gültig");
+  await day.click();
+  await expect(planned).toContainText(
+    `noch offen seit ${shortDate(overdueDate)}`,
+  );
+  await expect(planned).not.toContainText("überfällig");
+  await expect(planned).toContainText("Tägliche Gitarre");
+  // Open plans can be moved here, but never ticked off.
+  await expect(planned.getByRole("button", { name: /erledigen$/ })).toHaveCount(
+    0,
+  );
+  await expect(
+    planned.getByRole("button", {
+      name: "Überfälliger Artikel verschieben",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.locator(".empty-state")).toHaveCount(0);
   await expect(page.locator("body")).toHaveJSProperty(
     "scrollWidth",
     await page.locator("body").evaluate((el) => el.clientWidth),
   );
   await page.screenshot({
+    path: test.info().outputPath("day-open-plans.png"),
+    fullPage: true,
+  });
+  await view.getByRole("button", { name: "Woche", exact: true }).click();
+  await page.screenshot({
     path: test.info().outputPath("week-open-plans.png"),
     fullPage: true,
   });
-  await page.locator('[name="historyFilter"]').selectOption("todos");
+  await filterCalendar(page, "Todos");
   await expect(targets).toHaveCount(0);
-  await expect(day.locator("summary")).toContainText("2 offen / geplant");
-  await page.locator('[name="historyFilter"]').selectOption("habits");
-  await expect(day.locator("summary")).toContainText("1 offen / geplant");
+  await expect(day).toContainText("2 offen");
+  await filterCalendar(page, "Habits");
+  await expect(day).toContainText("1 offen");
   await expect(targets).toBeVisible();
   await page.locator('[name="historyDate"]').fill(daysAfter(date, -14));
-  await expect(page.locator(".planned-item")).toHaveCount(0);
+  await expect(page.locator(".week-day")).toHaveCount(0);
+  await expect(page.locator(".empty-state")).toBeVisible();
   await expect(targets).toHaveCount(0);
   const after = await Promise.all(
     habits.map(
@@ -314,7 +340,7 @@ test("History week: open plans, overdue Todos and weekly targets stay read-only"
   expect(after).toEqual(before);
 });
 
-test("History forecast: future date placement, schedule change, pause and deletion", async ({
+test("Calendar forecast: future date placement, schedule change, pause and deletion", async ({
   page,
   request,
 }) => {
@@ -370,10 +396,9 @@ test("History forecast: future date placement, schedule change, pause and deleti
     ).status(),
   ).toBe(201);
   await page.goto("/");
-  await history(page);
+  const view = await openCalendar(page, "Woche");
   await page.locator('[name="historyDate"]').fill(monday);
-  await page.getByRole("button", { name: "Woche", exact: true }).click();
-  await expect(page.locator("details.week-day")).toHaveCount(7);
+  await expect(page.locator(".week-day")).toHaveCount(7);
   const expected = [
     ["Wechselnder Rhythmus"],
     ["Geplanter Artikel", "Wechselnder Rhythmus"],
@@ -383,26 +408,41 @@ test("History forecast: future date placement, schedule change, pause and deleti
     [],
     ["Wechselnder Rhythmus"],
   ];
-  for (let index = 0; index < 7; index++) {
-    const day = page.locator(`details[data-date="${dates[index]}"]`);
-    await day.locator("summary").click();
-    await expect(day.locator(".planned-item strong")).toHaveText(
-      expected[index]!,
+  for (let index = 0; index < 7; index++)
+    await expect(
+      page.locator(`.week-day[data-date="${dates[index]}"]`),
+    ).toContainText(
+      expected[index]!.length
+        ? `${expected[index]!.length} offen`
+        : "Nichts geplant",
     );
+  await page
+    .getByRole("button", { name: `${dayLabel(monday)} öffnen`, exact: true })
+    .click();
+  for (let index = 0; index < 7; index++) {
+    await expect(page.locator('[name="historyDate"]')).toHaveValue(
+      dates[index]!,
+    );
+    await expect(page.locator(".planned-item h3")).toHaveText(expected[index]!);
+    if (expected[index]!.length)
+      await expect(
+        page
+          .locator(".planned-item")
+          .filter({ hasText: "Wechselnder Rhythmus" }),
+      ).toContainText("voraussichtlich");
+    await expect(view).not.toContainText("Pausierter Rhythmus");
+    await expect(view).not.toContainText("Gelöschter Rhythmus");
+    if (index < 6)
+      await page.getByRole("button", { name: "Nächster Zeitraum" }).click();
   }
-  await expect(page.locator(".week-days")).not.toContainText(
-    "Pausierter Rhythmus",
-  );
-  await expect(page.locator(".week-days")).not.toContainText(
-    "Gelöschter Rhythmus",
-  );
-  await page.locator('[name="historyFilter"]').selectOption("todos");
-  await expect(page.locator(".planned-item strong")).toHaveText([
+  await page.locator('[name="historyDate"]').fill(dates[1]!);
+  await filterCalendar(page, "Todos");
+  await expect(page.locator(".planned-item h3")).toHaveText([
     "Geplanter Artikel",
   ]);
 });
 
-test("History day: date placement, filters, overdue plans and completion refresh", async ({
+test("Calendar day: date placement, filters, overdue plans and completion refresh", async ({
   page,
   request,
 }) => {
@@ -433,43 +473,45 @@ test("History day: date placement, filters, overdue plans and completion refresh
   expect(created.status()).toBe(201);
   const habit = (await created.json()) as { id: number };
   await page.goto("/");
-  await history(page);
+  await openCalendar(page, "Tag");
   const planned = page.getByRole("region", {
     name: "Offen / geplant",
     exact: true,
   });
-  await expect(planned.locator(".planned-item strong")).toHaveText([
+  await expect(planned.locator(".planned-item h3")).toHaveText([
     "Überfälliges Todo",
     "Täglicher Habit",
   ]);
-  await expect(planned).toContainText(
-    `überfällig seit ${old.split("-").reverse().join(".")}`,
+  await expect(planned).toContainText(`noch offen seit ${shortDate(old)}`);
+  await expect(planned.getByRole("button", { name: /erledigen$/ })).toHaveCount(
+    0,
   );
-  await expect(planned.getByRole("button")).toHaveCount(0);
   const before = (await (
     await request.get(`${API_URL}/habits/${habit.id}/occurrences`)
   ).json()) as unknown;
   await page.locator('[name="historyDate"]').fill(tomorrow);
-  await expect(planned.locator(".planned-item strong")).toHaveText([
+  await expect(planned.locator(".planned-item h3")).toHaveText([
     "Morgiger Termin",
     "Täglicher Habit",
   ]);
-  await expect(planned).not.toContainText("überfällig");
-  await page.locator('[name="historyFilter"]').selectOption("todos");
-  await expect(planned.locator(".planned-item strong")).toHaveText([
+  await expect(planned).not.toContainText("noch offen seit");
+  // Future days have no reflection or time logging.
+  await expect(page.locator("form.day-reflection")).toHaveCount(0);
+  await filterCalendar(page, "Todos");
+  await expect(planned.locator(".planned-item h3")).toHaveText([
     "Morgiger Termin",
   ]);
-  await page.locator('[name="historyFilter"]').selectOption("habits");
-  await expect(planned.locator(".planned-item strong")).toHaveText([
+  await filterCalendar(page, "Habits");
+  await expect(planned.locator(".planned-item h3")).toHaveText([
     "Täglicher Habit",
   ]);
-  await expect(page.locator(".empty")).toHaveCount(0);
+  await expect(page.locator(".empty-state")).toHaveCount(0);
   expect(
     await (
       await request.get(`${API_URL}/habits/${habit.id}/occurrences`)
     ).json(),
   ).toEqual(before);
-  await page.locator('[name="historyFilter"]').selectOption("all");
+  await filterCalendar(page, "Alle");
   await page.locator('[name="historyDate"]').fill(date);
   expect(
     (
@@ -478,10 +520,10 @@ test("History day: date placement, filters, overdue plans and completion refresh
       })
     ).status(),
   ).toBe(200);
-  await page
-    .getByRole("button", { name: "Aktualisieren", exact: true })
-    .click();
-  await expect(planned.locator(".planned-item strong")).toHaveText([
+  // There is no refresh button: opening the view again loads fresh data.
+  await openView(page, "Heute");
+  await openCalendar(page, "Tag");
+  await expect(planned.locator(".planned-item h3")).toHaveText([
     "Täglicher Habit",
   ]);
   await expect(
@@ -493,5 +535,49 @@ test("History day: date placement, filters, overdue plans and completion refresh
   });
   await page.locator('[name="historyDate"]').fill(daysAfter(date, -14));
   await expect(planned).toHaveCount(0);
-  await expect(page.locator(".empty")).toBeVisible();
+  await expect(page.locator(".empty-state")).toBeVisible();
+});
+
+test("Calendar day: reflection saves only after a change and time is logged behind a disclosure", async ({
+  page,
+  request,
+}) => {
+  const date = await today(request);
+  expect(
+    (
+      await request.post(`${API_URL}/todos`, {
+        data: { title: "Schreibzeit", scheduledAt: `${date}T10:00:00Z` },
+      })
+    ).status(),
+  ).toBe(201);
+  await page.goto("/");
+  const view = await openCalendar(page, "Tag");
+  const reflection = view.locator("form.day-reflection");
+  await expect(
+    reflection.getByRole("button", { name: "Speichern", exact: true }),
+  ).toHaveCount(0);
+  await reflection.getByLabel("Reflexion").fill("Ruhiger Tag");
+  await reflection
+    .getByRole("button", { name: "Speichern", exact: true })
+    .click();
+  await expect(reflection.getByRole("status")).toHaveText("Gespeichert");
+  await page.reload();
+  await openCalendar(page, "Tag");
+  await expect(reflection.getByLabel("Reflexion")).toHaveValue("Ruhiger Tag");
+
+  const toggle = view.getByRole("button", {
+    name: "Zeit nachtragen",
+    exact: true,
+  });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  const logs = view.getByRole("region", { name: "Arbeitszeit", exact: true });
+  await logs.locator('[name="target"]').selectOption({ label: "Schreibzeit" });
+  // Early in the day, so the end is never in the future.
+  await logs.locator('[name="from"]').fill("00:00");
+  await logs.locator('[name="to"]').fill("00:01");
+  await logs.getByRole("button", { name: "Nachtragen", exact: true }).click();
+  await expect(logs).toContainText("Schreibzeit");
+  await expect(logs).toContainText("1 Min.");
 });

@@ -8,7 +8,7 @@ web
 
 ## Users
 
-Der Projektinhaber und wenige Bekannte. Sie planen damit ihren eigenen Alltag: Aufgaben, Gewohnheiten und längerfristige Ziele. Später ist eine öffentliche Nutzung möglich, aber nicht beschlossen; eine offene Registrierung gibt es nicht.
+Der Projektinhaber und wenige Bekannte. Sie planen damit ihren eigenen Alltag: Aufgaben, Gewohnheiten und längerfristige Ziele. Später ist eine öffentliche Nutzung möglich, aber nicht beschlossen. Registrieren kann sich jede Person mit bestätigter E-Mail-Adresse; die Anmeldung bietet es als Nebenweg an.
 
 Die App ist zugleich ein Lernprojekt für sauberes TypeScript und Architekturentscheidungen.
 

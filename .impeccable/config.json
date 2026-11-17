@@ -1,0 +1,62 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/model-pick.html"
+        ],
+        "createdAt": "2026-11-12T10:16:26.997Z",
+        "reason": "Claude: 3px Jetzt-Linie ohne eigenen Text, Label sitzt absolut positioniert darüber"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/challenger-warm.html"
+        ],
+        "createdAt": "2026-11-12T10:16:27.850Z",
+        "reason": "Claude: warmer getönter Grund ist die Systemgrammatik der vorgeschlagenen Katalogwelt warm-consumer-app-surface"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/assigned.html"
+        ],
+        "createdAt": "2026-11-12T12:36:30.831Z",
+        "reason": "Claude: abgeschlossene Entwurfsrunde, Skizzen anderer Gestaltungswelten, nicht Teil des ausgelieferten Systems"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/model-pick.html"
+        ],
+        "createdAt": "2026-11-12T12:36:31.690Z",
+        "reason": "Claude: abgeschlossene Entwurfsrunde, Skizzen anderer Gestaltungswelten, nicht Teil des ausgelieferten Systems"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/challenger-warm.html"
+        ],
+        "createdAt": "2026-11-12T12:36:32.548Z",
+        "reason": "Claude: abgeschlossene Entwurfsrunde, Skizzen anderer Gestaltungswelten, nicht Teil des ausgelieferten Systems"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/canon.html"
+        ],
+        "createdAt": "2026-11-12T12:36:33.387Z",
+        "reason": "Claude: abgeschlossene Entwurfsrunde, Skizzen anderer Gestaltungswelten, nicht Teil des ausgelieferten Systems"
+      }
+    ]
+  }
+}

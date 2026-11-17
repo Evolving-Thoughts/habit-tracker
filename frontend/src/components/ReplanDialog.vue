@@ -9,7 +9,11 @@ import {
 import { formatTimeForGermanDisplay } from "../utils/date";
 import ModalDialog from "./ModalDialog.vue";
 
-defineProps<{ returnFocus: () => HTMLElement | null }>();
+defineProps<{
+  returnFocus: () => HTMLElement | null;
+  /** Open items from earlier days; replanning only covers today. */
+  carriedOver?: number;
+}>();
 const emit = defineEmits<{ close: []; applied: []; busy: [value: boolean] }>();
 
 const preview = ref<ReplanPreview | null>(null);
@@ -80,7 +84,7 @@ onMounted(load);
       <p v-if="error" class="replan__error" role="alert">{{ error }}</p>
       <template v-if="preview">
         <p v-if="!preview.changes.length" role="status">
-          Der Tag passt. Es gibt nichts zu verschieben.
+          Der Rest von heute passt in die verbleibende Zeit.
         </p>
         <ul v-else>
           <li v-for="change in preview.changes" :key="change.todoId">
@@ -96,11 +100,20 @@ onMounted(load);
             </span>
           </li>
         </ul>
+        <p v-if="carriedOver" class="replan__note">
+          {{
+            carriedOver === 1
+              ? "1 Eintrag von früher ist nicht enthalten."
+              : `${carriedOver} Einträge von früher sind nicht enthalten.`
+          }}
+          Du findest sie unter Nachholen.
+        </p>
       </template>
       <div class="replan__actions">
         <button type="button" :disabled="busy" @click="close">Abbrechen</button>
         <button
           type="button"
+          data-primary
           :disabled="busy || !preview?.changes.length"
           @click="apply"
         >
@@ -137,25 +150,15 @@ onMounted(load);
 .replan li {
   display: grid;
   gap: 0.125rem;
-  padding: 0.625rem;
-  border: 1px solid #d9dde5;
-  border-radius: 0.625rem;
+  padding: var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--color-action-tint);
   overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 
-.replan input,
-.replan button {
-  min-height: 2.75rem;
-  padding: 0 0.625rem;
-  border: 1px solid #d9dde5;
-  border-radius: 0.625rem;
-  background: #ffffff;
-  color: #182033;
-  font: inherit;
-}
-
-.replan button {
-  cursor: pointer;
+.replan__note {
+  color: var(--color-ink-muted);
 }
 
 .replan__actions {
@@ -166,6 +169,6 @@ onMounted(load);
 }
 
 .replan__error {
-  color: #b42318;
+  color: var(--color-danger);
 }
 </style>

@@ -18,6 +18,7 @@ import { HabitOccurrenceEntity } from '../src/habit-occurrences/entities/habit-o
 import { HabitOccurrenceStatus as Status } from '../src/habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitScheduleType } from '../src/habits/enums/habit-schedule-type.enum';
 import { MissedOccurrencePolicy } from '../src/habits/enums/missed-occurrence-policy.enum';
+import { CategoryEntity } from '../src/categories/category.entity';
 import { HistoryResponse } from '../src/history/history.dto';
 import { addDays as addHistoryDays } from '../src/common/date/local-day';
 import { historyRange } from '../src/history/history-range';
@@ -265,6 +266,29 @@ describe('History API (e2e)', () => {
         (item) => item.type,
       ),
     ).toEqual(['habit']);
+  });
+  it('names the category and the why of resolved Todos and Habits', async () => {
+    const category = await db
+      .getRepository(CategoryEntity)
+      .save({ userId: TEST_USER, name: 'Gesundheit' });
+    await todo({ categoryId: category.id, why: 'Kopf frei' });
+    await occurrence({}, { categoryId: category.id, why: 'Fit bleiben' });
+    await todo({ title: 'Ohne' });
+    const items = (await get()).days[0].items;
+    expect(
+      items.find((item) => item.type === 'todo' && item.title === 'Artikel'),
+    ).toMatchObject({
+      categoryName: 'Gesundheit',
+      why: 'Kopf frei',
+    });
+    expect(items.find((item) => item.type === 'habit')).toMatchObject({
+      categoryName: 'Gesundheit',
+      why: 'Fit bleiben',
+    });
+    expect(items.find((item) => item.title === 'Ohne')).toMatchObject({
+      categoryName: null,
+      why: null,
+    });
   });
   it('returns year-crossing weeks', async () => {
     const body = await get('date=2027-01-01&view=week');

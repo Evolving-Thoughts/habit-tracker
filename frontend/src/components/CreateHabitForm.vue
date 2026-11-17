@@ -86,16 +86,15 @@ async function submit(): Promise<void> {
 <template>
   <section
     class="create-habit"
-    :class="{ 'create-habit--embedded': embedded }"
+    :class="{ card: !embedded }"
     :aria-labelledby="embedded ? undefined : 'create-habit-heading'"
   >
     <h2 v-if="!embedded" id="create-habit-heading">Neues Habit</h2>
     <form novalidate @submit.prevent="submit">
       <fieldset :disabled="isSubmitting">
-        <div class="create-habit__field">
-          <label for="habit-title">Titel</label>
+        <label class="field">
+          Titel
           <input
-            id="habit-title"
             v-model="title"
             name="title"
             type="text"
@@ -103,52 +102,38 @@ async function submit(): Promise<void> {
             required
             placeholder="Welche Gewohnheit möchtest du aufbauen?"
           />
-        </div>
-        <div class="create-habit__field">
-          <label for="habit-category">Kategorie · optional</label>
+        </label>
+        <label class="field">
+          Kategorie · optional
           <CategorySelect id="habit-category" v-model="category" />
-        </div>
-        <div class="create-habit__field">
-          <label for="habit-why">Warum · optional</label>
-          <textarea
-            id="habit-why"
-            v-model="why"
-            name="why"
-            maxlength="1000"
-            rows="2"
-          />
-        </div>
-        <div class="create-habit__field">
-          <label for="habit-start-date">Startdatum · optional</label>
-          <input
-            id="habit-start-date"
-            v-model="startDate"
-            name="startDate"
-            type="date"
-          />
-          <small
-            >Ohne Datum: heute in Europe/Berlin ({{
-              formatDateForGermanDisplay(today)
-            }}).
-            <template v-if="isValidIsoDate(startDate)"
-              >Gewählt: {{ formatDateForGermanDisplay(startDate) }}.</template
+        </label>
+        <label class="field">
+          Warum · optional
+          <textarea v-model="why" name="why" maxlength="1000" rows="2" />
+        </label>
+        <div class="create-habit__row">
+          <div class="field">
+            <label for="habit-start-date">Startdatum · optional</label>
+            <input
+              id="habit-start-date"
+              v-model="startDate"
+              name="startDate"
+              type="date"
+              aria-describedby="habit-start-hint"
+            />
+            <small id="habit-start-hint" class="create-habit__hint"
+              >Ohne Datum ab heute,
+              {{ formatDateForGermanDisplay(today) }}.</small
             >
-          </small>
+          </div>
+          <label class="field">
+            Uhrzeit · optional
+            <input v-model="timeOfDay" name="timeOfDay" type="time" />
+          </label>
         </div>
-        <div class="create-habit__field">
-          <label for="habit-time">Uhrzeit · optional</label
-          ><input
-            id="habit-time"
-            v-model="timeOfDay"
-            name="timeOfDay"
-            type="time"
-          /><small
-            >Mit Uhrzeit und Dauer plant „Neu planen“ um das Habit herum.</small
-          >
-        </div>
-        <div class="create-habit__field">
-          <label for="habit-duration">Standarddauer in Minuten · optional</label
-          ><input
+        <div class="field">
+          <label for="habit-duration">Dauer in Minuten · optional</label>
+          <input
             id="habit-duration"
             v-model="duration"
             name="duration"
@@ -156,24 +141,21 @@ async function submit(): Promise<void> {
             min="1"
             :max="TIMER_MAX_MINUTES"
             step="1"
-          /><small
-            >Mit einer Dauer kannst du fällige Ausführungen direkt per Timer
-            starten.</small
+            aria-describedby="habit-duration-hint"
+          />
+          <small id="habit-duration-hint" class="create-habit__hint"
+            >Mit einer Dauer kannst du den Timer starten.</small
           >
         </div>
-        <div class="create-habit__field">
-          <label for="habit-schedule-type">Habit-Art</label>
-          <select
-            id="habit-schedule-type"
-            v-model="schedule.type"
-            name="scheduleType"
-          >
-            <option value="interval">Intervall</option>
-            <option value="fixed_weekdays">Feste Wochentage</option>
-            <option value="weekly_target">Häufigkeit pro Woche</option>
+        <label class="field">
+          Wie oft?
+          <select v-model="schedule.type" name="scheduleType">
+            <option value="interval">Alle paar Tage</option>
+            <option value="fixed_weekdays">An festen Wochentagen</option>
+            <option value="weekly_target">Ein paarmal pro Woche</option>
           </select>
-        </div>
-        <div v-if="schedule.type === 'interval'" class="create-habit__field">
+        </label>
+        <div v-if="schedule.type === 'interval'" class="field">
           <label for="habit-interval-days">Alle wie viele Tage?</label>
           <input
             id="habit-interval-days"
@@ -182,15 +164,22 @@ async function submit(): Promise<void> {
             type="number"
             min="1"
             step="1"
+            aria-describedby="habit-interval-hint"
           />
-          <small>1 = täglich, 2 = alle zwei Tage.</small>
+          <small id="habit-interval-hint" class="create-habit__hint"
+            >1 heißt täglich.</small
+          >
         </div>
         <fieldset
           v-else-if="schedule.type === 'fixed_weekdays'"
           class="create-habit__weekdays"
         >
-          <legend>Ausführungstage</legend>
-          <label v-for="option in WEEKDAY_OPTIONS" :key="option.value">
+          <legend>An welchen Tagen?</legend>
+          <label
+            v-for="option in WEEKDAY_OPTIONS"
+            :key="option.value"
+            class="create-habit__weekday"
+          >
             <input
               v-model="schedule.weekdays"
               type="checkbox"
@@ -200,7 +189,7 @@ async function submit(): Promise<void> {
             {{ option.label }}
           </label>
         </fieldset>
-        <div v-else class="create-habit__field">
+        <div v-else class="field">
           <label for="habit-weekly-target">Wie oft pro Woche?</label>
           <input
             id="habit-weekly-target"
@@ -210,137 +199,92 @@ async function submit(): Promise<void> {
             min="1"
             max="7"
             step="1"
+            aria-describedby="habit-weekly-hint"
           />
-          <small>Ohne feste Wochentage. Die Woche beginnt am Montag.</small>
+          <small id="habit-weekly-hint" class="create-habit__hint"
+            >Die Woche beginnt am Montag.</small
+          >
         </div>
-        <div
-          v-if="schedule.type !== 'weekly_target'"
-          class="create-habit__field"
-        >
-          <label for="habit-missed-policy"
-            >Verhalten bei verpassten Terminen</label
-          >
-          <select
-            id="habit-missed-policy"
-            v-model="schedule.missedPolicy"
-            name="missedPolicy"
-          >
-            <option value="carry_over">Übertragen</option>
+        <label v-if="schedule.type !== 'weekly_target'" class="field">
+          Wenn du einen Tag verpasst
+          <select v-model="schedule.missedPolicy" name="missedPolicy">
+            <option value="carry_over">Später nachholen</option>
             <option value="skip">Verfallen lassen</option>
           </select>
-        </div>
-        <p class="create-habit__hint">
-          Das Habit erscheint ab seinem Startdatum an fälligen Tagen in „Heute“.
-          Seinen Zeitplan kannst du später bearbeiten.
+        </label>
+        <p v-if="errorMessage" class="form-error" role="alert">
+          {{ errorMessage }}
         </p>
-        <button type="submit">
+        <button class="btn btn--primary create-habit__submit" type="submit">
           {{ isSubmitting ? "Wird erstellt …" : "Habit erstellen" }}
         </button>
       </fieldset>
     </form>
-    <p v-if="errorMessage" class="create-habit__error" role="alert">
-      {{ errorMessage }}
-    </p>
   </section>
 </template>
 
 <style scoped>
-.create-habit {
-  padding: 1rem;
-  border: 1px solid #d9dde5;
-  border-radius: 0.875rem;
-  background: #fff;
-}
-.create-habit.create-habit--embedded {
-  padding: 0;
-  border: 0;
-}
 .create-habit h2 {
-  margin: 0 0 1rem;
+  margin: 0 0 var(--space-4);
   font-size: 1.125rem;
+  font-weight: 800;
 }
 .create-habit fieldset {
   display: grid;
-  gap: 1rem;
+  gap: var(--space-4);
+  min-width: 0;
   margin: 0;
   padding: 0;
-  min-width: 0;
   border: 0;
 }
-.create-habit__field {
+.create-habit__row {
   display: grid;
-  gap: 0.375rem;
-  min-width: 0;
-}
-.create-habit__field > label {
-  color: #39445a;
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-.create-habit textarea,
-.create-habit input:not([type="checkbox"]),
-.create-habit select {
-  width: 100%;
-  min-width: 0;
-  min-height: 2.75rem;
-  padding: 0.7rem;
-  border: 1px solid #bfc7d4;
-  border-radius: 0.5rem;
-  background: #fff;
-  color: #182033;
-  font: inherit;
-}
-.create-habit small,
-.create-habit__hint {
-  color: #59657a;
-  font-size: 0.875rem;
-  line-height: 1.5;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
 }
 .create-habit__hint {
-  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 400;
 }
 .create-habit .create-habit__weekdays {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 .create-habit__weekdays legend {
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--space-2);
+  padding: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
 }
-.create-habit__weekdays label {
-  display: flex;
+.create-habit__weekday {
+  display: inline-flex;
+  gap: var(--space-2);
   align-items: center;
-  gap: 0.5rem;
-  min-height: 2.75rem;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid #d9dde5;
-  border-radius: 0.5rem;
-}
-.create-habit button {
-  min-height: 2.75rem;
-  justify-self: start;
-  padding: 0.7rem 1rem;
-  border: 0;
-  border-radius: 0.5rem;
-  background: #2457c5;
-  color: #fff;
-  font: inherit;
+  min-height: var(--tap);
+  padding: 0 var(--space-4) 0 var(--space-3);
+  border: 1.5px solid var(--color-line);
+  border-radius: var(--radius-pill);
+  color: var(--color-ink-muted);
+  font-weight: 700;
   cursor: pointer;
 }
-.create-habit fieldset:disabled {
-  opacity: 0.65;
+.create-habit__weekday:has(input:checked) {
+  border-color: var(--color-ink);
+  color: var(--color-ink);
 }
-.create-habit fieldset:disabled button {
-  cursor: wait;
+.create-habit__weekday input {
+  width: 1.125rem;
+  height: 1.125rem;
 }
-.create-habit__error {
-  margin: 1rem 0 0;
-  color: #b42318;
-  font-size: 0.875rem;
-  line-height: 1.5;
+.create-habit__submit {
+  justify-self: start;
 }
-.create-habit select:focus-visible {
-  outline: 3px solid rgb(53 103 220 / 30%);
-  outline-offset: 2px;
+@media (max-width: 32rem) {
+  .create-habit__row {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

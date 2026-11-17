@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import AppIcon from "./AppIcon.vue";
 import CreateHabitForm from "./CreateHabitForm.vue";
 import CreateTodoForm from "./CreateTodoForm.vue";
 import ModalDialog from "./ModalDialog.vue";
@@ -38,30 +39,33 @@ function created(kind: "todo" | "habit"): void {
         Eine einzelne Aufgabe oder eine wiederkehrende Gewohnheit.
       </p>
       <div class="create-dialog__choices">
-        <button type="button" data-test="choose-todo" @click="step = 'todo'">
-          <span class="create-dialog__choice-icon" aria-hidden="true">✓</span>
+        <button
+          class="create-dialog__choice"
+          type="button"
+          data-test="choose-todo"
+          @click="step = 'todo'"
+        >
+          <span class="create-dialog__choice-icon" aria-hidden="true"
+            ><AppIcon name="check"
+          /></span>
           <span
             ><strong>Todo</strong><small>Eine Aufgabe erledigen</small></span
           >
-          <span aria-hidden="true">→</span>
+          <AppIcon name="chevron" class="create-dialog__chevron" />
         </button>
-        <button type="button" data-test="choose-habit" @click="step = 'habit'">
+        <button
+          class="create-dialog__choice"
+          type="button"
+          data-test="choose-habit"
+          @click="step = 'habit'"
+        >
           <span class="create-dialog__choice-icon" aria-hidden="true"
-            ><svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M20 7v5h-5" />
-              <path d="M20 12a8 8 0 1 0-2.3 5.7" /></svg
-          ></span>
+            ><AppIcon name="habits"
+          /></span>
           <span
             ><strong>Habit</strong><small>Regelmäßig dranbleiben</small></span
           >
-          <span aria-hidden="true">→</span>
+          <AppIcon name="chevron" class="create-dialog__chevron" />
         </button>
       </div>
     </template>
@@ -80,58 +84,57 @@ function created(kind: "todo" | "habit"): void {
     <footer class="create-dialog__footer">
       <button
         v-if="mode === 'choose' && step !== 'choose'"
+        class="btn"
         type="button"
         :disabled="busy"
         @click="step = 'choose'"
       >
         Zurück zur Auswahl
       </button>
-      <button type="button" :disabled="busy" @click="close">Abbrechen</button>
+      <button class="btn" type="button" :disabled="busy" @click="close">
+        Abbrechen
+      </button>
     </footer>
   </ModalDialog>
 </template>
 
 <style scoped>
 .create-dialog__intro {
-  margin: 0 0 1.25rem;
-  color: #59657a;
-  font-size: 0.875rem;
-  line-height: 1.5;
+  margin: 0 0 var(--space-4);
+  color: var(--color-ink-muted);
 }
 .create-dialog__choices {
   display: grid;
-  gap: 0.75rem;
+  gap: var(--space-2);
 }
-.create-dialog__choices button {
+/* Choice rows: a calm ground-deep panel, not a second button colour. */
+.create-dialog__choices .create-dialog__choice {
   display: flex;
+  gap: var(--space-4);
   align-items: center;
-  gap: 1rem;
   width: 100%;
-  min-height: 5rem;
-  padding: 1rem;
-  border: 1px solid #ccd2dc;
-  border-radius: 0.625rem;
-  background: #fff;
-  color: #182033;
+  min-height: 4.5rem;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--color-ground-deep);
+  color: var(--color-ink);
   text-align: left;
-  font: inherit;
-  cursor: pointer;
+  transition: transform 420ms var(--spring);
 }
-.create-dialog__choices button:hover {
-  border-color: #2457c5;
-  background: #f5f8ff;
+.create-dialog__choices .create-dialog__choice:active {
+  transform: var(--press);
+  transition-duration: 90ms;
 }
 .create-dialog__choice-icon {
   display: grid;
-  flex: 0 0 2.5rem;
-  height: 2.5rem;
+  flex: 0 0 var(--tap);
+  height: var(--tap);
   place-items: center;
-  border-radius: 0.5rem;
-  background: #eaf0fc;
-  color: #2457c5;
-  font-size: 1.5rem;
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-action-strong);
 }
-.create-dialog__choices button > span:nth-child(2) {
+.create-dialog__choice > span:nth-child(2) {
   flex: 1;
   min-width: 0;
 }
@@ -139,40 +142,26 @@ function created(kind: "todo" | "habit"): void {
 .create-dialog__choices small {
   display: block;
 }
+.create-dialog__choices strong {
+  font-size: 1.0625rem;
+  font-weight: 800;
+}
 .create-dialog__choices small {
-  margin-top: 0.25rem;
-  color: #59657a;
+  margin-top: 0.125rem;
+  color: var(--color-ink-muted);
   font-size: 0.875rem;
+  font-weight: 600;
+}
+.create-dialog__chevron {
+  color: var(--color-ink-muted);
 }
 .create-dialog__footer {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: var(--space-3);
   justify-content: flex-end;
-  margin-top: 1.25rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e5e7eb;
-}
-.create-dialog__footer button {
-  min-height: 2.75rem;
-  padding: 0.6rem 0.9rem;
-  border: 1px solid #ccd2dc;
-  border-radius: 0.5rem;
-  background: #fff;
-  color: #39445a;
-  font: inherit;
-  cursor: pointer;
-}
-.create-dialog button:disabled {
-  opacity: 0.5;
-  cursor: wait;
-}
-.create-dialog button:focus-visible {
-  outline: 3px solid rgb(53 103 220 / 30%);
-  outline-offset: 2px;
-}
-.create-dialog__choice-icon svg {
-  width: 1.5rem;
-  height: 1.5rem;
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-line);
 }
 </style>

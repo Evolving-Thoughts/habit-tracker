@@ -10,8 +10,10 @@ import {
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import type { TodoResponse } from "../types/todo";
+import { getCategories } from "../api/categories.api";
 import TodoDumpView from "./TodoDumpView.vue";
 
+vi.mock("../api/categories.api", () => ({ getCategories: vi.fn() }));
 vi.mock("../api/todo-hierarchy.api", () => ({ getDeletionPreview: vi.fn() }));
 vi.mock("../api/day-planner.api", () => ({
   getBacklogTodos: vi.fn(),
@@ -66,6 +68,7 @@ describe("TodoDumpView", () => {
     });
 
     backlogMock.mockResolvedValue([]);
+    vi.mocked(getCategories).mockResolvedValue([]);
     completionMock.mockResolvedValue(undefined);
     updateTodoMock.mockResolvedValue(makeTodo());
     deleteTodoMock.mockResolvedValue(undefined);
@@ -92,7 +95,100 @@ describe("TodoDumpView", () => {
       .trigger("click");
     await flushPromises();
     expect(wrapper.findAll("[data-todo-id]")).toHaveLength(0);
-    expect(wrapper.text()).toContain("Heute unter Abgeschlossen");
+    expect(wrapper.get(".undo-toast").text()).toContain(
+      "„NestJS lernen“ erledigt",
+    );
+  });
+
+  it("folds ticked todos under a disclosure and can reopen them", async () => {
+    backlogMock
+      .mockResolvedValueOnce([makeTodo()])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([makeTodo()]);
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper
+      .get('button[aria-label="NestJS lernen erledigen"]')
+      .trigger("click");
+    await flushPromises();
+    const toggle = wrapper.get(".dump-done__toggle");
+    expect(toggle.text()).toBe("1 erledigt");
+    expect(toggle.attributes("aria-expanded")).toBe("false");
+    await toggle.trigger("click");
+    expect(toggle.attributes("aria-expanded")).toBe("true");
+    await wrapper
+      .get('#dump-done-list button[aria-label="NestJS lernen wieder öffnen"]')
+      .trigger("click");
+    await flushPromises();
+    expect(completionMock).toHaveBeenLastCalledWith(1, false);
+    expect(wrapper.find(".dump-done__toggle").exists()).toBe(false);
+    expect(wrapper.findAll("[data-todo-id]")).toHaveLength(1);
+  });
+
+  it("takes a tick back from the undo toast", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    backlogMock
+      .mockResolvedValueOnce([makeTodo()])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([makeTodo()]);
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper
+      .get('button[aria-label="NestJS lernen erledigen"]')
+      .trigger("click");
+    await flushPromises();
+    await wrapper.get(".undo-toast button").trigger("click");
+    await flushPromises();
+    expect(completionMock).toHaveBeenLastCalledWith(1, false);
+    expect(wrapper.find(".undo-toast button").exists()).toBe(false);
+    expect(wrapper.find(".dump-done__toggle").exists()).toBe(false);
+    expect(wrapper.findAll("[data-todo-id]")).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it("hides the undo toast after five seconds", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    backlogMock.mockResolvedValueOnce([makeTodo()]).mockResolvedValueOnce([]);
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper
+      .get('button[aria-label="NestJS lernen erledigen"]')
+      .trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".undo-toast button").exists()).toBe(true);
+    vi.advanceTimersByTime(5000);
+    await flushPromises();
+    expect(wrapper.find(".undo-toast button").exists()).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("shows category, duration and why without repeating the type", async () => {
+    vi.mocked(getCategories).mockResolvedValue([{ id: 4, name: "Lernen" }]);
+    backlogMock.mockResolvedValueOnce([
+      makeTodo({ categoryId: 4, why: "Für das neue Projekt" }),
+    ]);
+    const wrapper = mountView();
+    await flushPromises();
+    expect(wrapper.get(".dump-item__why").text()).toBe("Für das neue Projekt");
+    expect(wrapper.get(".dump-item__details").text()).toBe("Lernen30 Min.");
+    expect(wrapper.get(".dump-item").text()).not.toContain("Todo");
+    expect(
+      wrapper
+        .get('h3[aria-label="NestJS lernen"] button[data-edit-button]')
+        .attributes("aria-label"),
+    ).toBe("NestJS lernen bearbeiten");
+  });
+
+  it("offers a retry when loading fails", async () => {
+    backlogMock
+      .mockRejectedValueOnce(new Error("Backend nicht erreichbar"))
+      .mockResolvedValueOnce([makeTodo()]);
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.get(".alert button").trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".alert").exists()).toBe(false);
+    expect(wrapper.findAll("[data-todo-id]")).toHaveLength(1);
   });
 
   it("keeps the latest refreshed state when an older initial read settles later", async () => {
@@ -109,7 +205,7 @@ describe("TodoDumpView", () => {
     window.dispatchEvent(new Event("timer-data-changed"));
     await flushPromises();
     expect(wrapper.findAll("[data-todo-id]")).toHaveLength(1);
-    expect(wrapper.text()).not.toContain("Todos werden geladen");
+    expect(wrapper.find(".skeleton").exists()).toBe(false);
     finishOld([makeTodo({ completed: true })]);
     await flushPromises();
     expect(wrapper.findAll("[data-todo-id]")).toHaveLength(1);
@@ -475,6 +571,7 @@ describe("TodoDumpView creation flow", () => {
       timers: [],
     });
     backlogMock.mockResolvedValue([]);
+    vi.mocked(getCategories).mockResolvedValue([]);
     vi.mocked(createTodo).mockResolvedValue(makeTodo());
   });
   it("opens the Todo form directly without a Habit choice", async () => {

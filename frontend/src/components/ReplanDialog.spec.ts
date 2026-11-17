@@ -24,9 +24,9 @@ const preview = {
   ],
 };
 
-async function render() {
+async function render(extra: { carriedOver?: number } = {}) {
   const wrapper = mount(ReplanDialog, {
-    props: { returnFocus: () => null },
+    props: { returnFocus: () => null, ...extra },
     global: { stubs: { ModalDialog: { template: "<div><slot /></div>" } } },
   });
   await flushPromises();
@@ -68,8 +68,14 @@ describe("ReplanDialog", () => {
   it("has nothing to apply on a fitting day", async () => {
     vi.mocked(getReplan).mockResolvedValue({ ...preview, changes: [] });
     const wrapper = await render();
-    expect(wrapper.text()).toContain("Der Tag passt");
+    expect(wrapper.text()).toContain("passt in die verbleibende Zeit");
     expect(button(wrapper, "Übernehmen").attributes("disabled")).toBeDefined();
+  });
+
+  it("says which carried-over items the preview leaves out", async () => {
+    vi.mocked(getReplan).mockResolvedValue({ ...preview, changes: [] });
+    const wrapper = await render({ carriedOver: 3 });
+    expect(wrapper.text()).toContain("3 Einträge von früher sind nicht enthalten");
   });
 
   it("shows a stale preview error", async () => {

@@ -85,6 +85,7 @@ export function plannedHabits(
   slots: ForecastSlot[],
   occurrences: HabitOccurrenceEntity[],
   today: string,
+  categoryName: (id: number | null) => string | null = () => null,
 ): HistoryPlannedItem[] {
   const byId = new Map(habits.map((habit) => [habit.id, habit]));
   const existing = new Map(
@@ -116,6 +117,8 @@ export function plannedHabits(
         id: stored?.id ?? null,
         habitId: habit.id,
         title: habit.title,
+        categoryName: categoryName(habit.categoryId),
+        why: habit.why ?? null,
         date: stored?.movedToDate ?? slot.date,
         scheduledDate: slot.scheduledDate,
         isOverdue: (stored?.movedToDate ?? slot.scheduledDate) < today,

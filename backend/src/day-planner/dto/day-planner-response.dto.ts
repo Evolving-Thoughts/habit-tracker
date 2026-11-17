@@ -3,6 +3,23 @@ import { HabitScheduleType } from '../../habits/enums/habit-schedule-type.enum';
 
 export type DayPlannerTodoStatus = 'pending' | 'completed';
 
+/** The goal an item serves: a todo's parent, or the goal counting a habit. */
+export type DayPlannerGoalDto = {
+  title: string;
+  /** Habit goals only: completed runs, target and the period's last day. */
+  completed: number | null;
+  target: number | null;
+  periodEnd: string | null;
+};
+
+/** What every planned item carries beside its own fields. */
+type DayPlannerItemContext = {
+  why: string | null;
+  goal: DayPlannerGoalDto | null;
+  /** Minutes logged on this item today. */
+  workedMinutes: number;
+};
+
 export type DayPlannerTodoItemDto = {
   type: 'todo';
   todoId: number;
@@ -16,7 +33,7 @@ export type DayPlannerTodoItemDto = {
   isFixed: boolean;
   isOverdue: boolean;
   timerEligible: boolean;
-};
+} & DayPlannerItemContext;
 
 export type DayPlannerHabitItemDto = {
   type: 'habit';
@@ -33,7 +50,7 @@ export type DayPlannerHabitItemDto = {
   scheduleType: HabitScheduleType;
   isOverdue: boolean;
   timerEligible: boolean;
-};
+} & DayPlannerItemContext;
 
 export type DayPlannerItemDto = DayPlannerTodoItemDto | DayPlannerHabitItemDto;
 
@@ -49,14 +66,18 @@ export class DayPlannerResponseDto {
   readonly items: DayPlannerItemDto[];
   /** Read-only events of the main Google calendar. */
   readonly externalEvents: DayPlannerExternalEventDto[];
+  /** All time logged today; overlapping logs count once. */
+  readonly workedMinutes: number;
 
   constructor(properties: {
     date: string;
     items: DayPlannerItemDto[];
     externalEvents?: DayPlannerExternalEventDto[];
+    workedMinutes?: number;
   }) {
     this.date = properties.date;
     this.items = properties.items;
     this.externalEvents = properties.externalEvents ?? [];
+    this.workedMinutes = properties.workedMinutes ?? 0;
   }
 }

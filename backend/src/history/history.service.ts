@@ -47,6 +47,12 @@ export class HistoryService {
     const filter = query.filter ?? 'all';
     // Read-only snapshot: opening history never reconciles or generates occurrences.
     return this.db.transaction('REPEATABLE READ', async (manager) => {
+      const categories = await manager
+        .getRepository(CategoryEntity)
+        .find({ where: { userId }, order: { name: 'ASC' } });
+      const names = new Map(categories.map((item) => [item.id, item.name]));
+      const categoryName = (id: number | null): string | null =>
+        id === null ? null : (names.get(id) ?? null);
       const todos =
         filter === 'habits'
           ? []
@@ -78,6 +84,8 @@ export class HistoryService {
           id: todo.id,
           habitId: null,
           title: todo.title,
+          categoryName: categoryName(todo.categoryId),
+          why: todo.why ?? null,
           status: 'completed' as const,
           date: dayOf(todo.completedAt!),
           scheduledDate: todo.scheduledAt ? dayOf(todo.scheduledAt) : null,
@@ -90,6 +98,8 @@ export class HistoryService {
           id: occurrence.id,
           habitId: occurrence.habitId,
           title: occurrence.habit.title,
+          categoryName: categoryName(occurrence.habit.categoryId),
+          why: occurrence.habit.why ?? null,
           status: occurrence.status as 'completed' | 'skipped',
           date:
             occurrence.status === HabitOccurrenceStatus.COMPLETED
@@ -118,6 +128,7 @@ export class HistoryService {
         dates,
         today,
         now,
+        categoryName,
       );
       const external =
         query.view === 'month'
@@ -126,19 +137,14 @@ export class HistoryService {
       return {
         ...(query.view === 'week' && filter === 'all'
           ? {
-              perfectWeek: perfectWeek(
-                await manager
-                  .getRepository(CategoryEntity)
-                  .find({ where: { userId }, order: { name: 'ASC' } }),
-                [
-                  ...todos.map((todo) => todo.categoryId),
-                  ...occurrences
-                    .filter(
-                      (item) => item.status === HabitOccurrenceStatus.COMPLETED,
-                    )
-                    .map((item) => item.habit.categoryId),
-                ],
-              ),
+              perfectWeek: perfectWeek(categories, [
+                ...todos.map((todo) => todo.categoryId),
+                ...occurrences
+                  .filter(
+                    (item) => item.status === HabitOccurrenceStatus.COMPLETED,
+                  )
+                  .map((item) => item.habit.categoryId),
+              ]),
             }
           : {}),
         weeklyTargets: planning.targets,
@@ -192,6 +198,7 @@ export class HistoryService {
     dates: string[],
     today: string,
     now: Date,
+    categoryName: (id: number | null) => string | null,
   ): Promise<{ items: HistoryPlannedItem[]; targets: HistoryWeeklyTarget[] }> {
     const items: HistoryPlannedItem[] = [];
     if (dates[dates.length - 1] < today) return { items, targets: [] };
@@ -210,6 +217,8 @@ export class HistoryService {
             id: todo.id,
             habitId: null,
             title: todo.title,
+            categoryName: categoryName(todo.categoryId),
+            why: todo.why ?? null,
             date,
             scheduledDate,
             isOverdue,
@@ -260,7 +269,9 @@ export class HistoryService {
       )
       .getMany();
     slots.push(...movedSlots(versions, occurrences, slots, dates));
-    items.push(...plannedHabits(habits, slots, occurrences, today));
+    items.push(
+      ...plannedHabits(habits, slots, occurrences, today, categoryName),
+    );
     items.sort(
       (a, b) =>
         a.scheduledDate.localeCompare(b.scheduledDate) ||

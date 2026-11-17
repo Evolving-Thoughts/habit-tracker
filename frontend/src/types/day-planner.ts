@@ -4,6 +4,20 @@ export type HabitOccurrenceStatus = "pending" | "completed" | "skipped";
 
 export type HabitScheduleType = "interval" | "fixed_weekdays" | "weekly_target";
 
+/** The goal an item serves: a todo's parent, or the goal counting a habit. */
+export type DayPlannerGoal = {
+  title: string;
+  completed: number | null;
+  target: number | null;
+  periodEnd: string | null;
+};
+
+type DayPlannerItemContext = {
+  why: string | null;
+  goal: DayPlannerGoal | null;
+  workedMinutes: number;
+};
+
 export type DayPlannerTodoItem = {
   type: "todo";
   todoId: number;
@@ -17,7 +31,7 @@ export type DayPlannerTodoItem = {
   isFixed: boolean;
   isOverdue: boolean;
   timerEligible: boolean;
-};
+} & DayPlannerItemContext;
 
 export type DayPlannerHabitItem = {
   type: "habit";
@@ -33,7 +47,7 @@ export type DayPlannerHabitItem = {
   scheduleType: HabitScheduleType;
   isOverdue: boolean;
   timerEligible: boolean;
-};
+} & DayPlannerItemContext;
 
 export type DayPlannerItem = DayPlannerTodoItem | DayPlannerHabitItem;
 
@@ -46,4 +60,5 @@ export type DayPlannerResponse = {
     start: string;
     end: string;
   }[];
+  workedMinutes: number;
 };

@@ -17,6 +17,8 @@ export type MoveTarget =
 const props = defineProps<{
   item: MoveTarget;
   today: string;
+  /** Items from earlier days may come back to today in one tap. */
+  offerToday?: boolean;
   returnFocus: () => HTMLElement | null;
 }>();
 const emit = defineEmits<{ close: []; moved: []; busy: [value: boolean] }>();
@@ -43,6 +45,7 @@ function allowed(date: string): boolean {
 
 const shortcuts = computed(() =>
   [
+    ...(props.offerToday ? [{ label: "Heute", date: props.today }] : []),
     { label: "Morgen", date: addDays(props.today, 1) },
     { label: "Nächster Montag", date: addDays(weekStart(props.today), 7) },
   ].filter((shortcut) => allowed(shortcut.date)),
@@ -144,12 +147,11 @@ function close(): void {
 }
 
 .move-dialog__title {
-  color: #182033;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .move-dialog__hint {
-  color: #697386;
+  color: var(--color-ink-muted);
   font-size: 0.875rem;
 }
 
@@ -175,31 +177,7 @@ function close(): void {
   gap: 0.25rem;
 }
 
-.move-dialog button {
-  min-height: 2.75rem;
-  padding: 0 0.875rem;
-  border: 1px solid #d9dde5;
-  border-radius: 0.625rem;
-  background: #ffffff;
-  color: #182033;
-  font: inherit;
-  cursor: pointer;
-}
-
-.move-dialog button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.move-dialog input[type="date"] {
-  min-height: 2.75rem;
-  padding: 0 0.625rem;
-  border: 1px solid #d9dde5;
-  border-radius: 0.625rem;
-  font: inherit;
-}
-
 .move-dialog__error {
-  color: #b42318;
+  color: var(--color-danger);
 }
 </style>

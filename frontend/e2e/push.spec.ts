@@ -1,3 +1,4 @@
+import { openView } from "./helpers";
 import { test, expect } from "./fixtures";
 // Real Service Worker/IndexedDB/API. Permission and the external provider
 // subscription are simulated: headless CI never calls real FCM or sends a push.
@@ -47,10 +48,7 @@ test("push setting persists explicit opt-out and rebinds opted-in devices after 
   await context.grantPermissions(["notifications"]);
   await mockBrowserSubscription(page);
   await page.goto("/");
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Einstellungen", exact: true })
-    .click();
+  await openView(page, "Einstellungen");
   const toggle = page.getByRole("switch");
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   await toggle.click();
@@ -63,22 +61,14 @@ test("push setting persists explicit opt-out and rebinds opted-in devices after 
     .getByLabel("Passwort", { exact: true })
     .fill("only-for-browser-tests");
   await page.getByRole("button", { name: "Anmelden", exact: true }).click();
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Einstellungen", exact: true })
-    .click();
+  await openView(page, "Einstellungen");
   await expect(toggle).toHaveAttribute("aria-checked", "true");
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   await page.reload();
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Einstellungen", exact: true })
-    .click();
+  await openView(page, "Einstellungen");
   await expect(toggle).toHaveAttribute("aria-checked", "false");
-  await expect(
-    page.getByText(/ohne Aufgaben- oder Habit-Titel/),
-  ).toBeVisible();
+  await expect(page.getByText(/ohne Aufgaben- oder Habit-Titel/)).toBeVisible();
 });
 test("blocked push permission has an actionable hint and never forces a prompt", async ({
   page,
@@ -87,10 +77,7 @@ test("blocked push permission has an actionable hint and never forces a prompt",
     Object.defineProperty(Notification, "permission", { get: () => "denied" }),
   );
   await page.goto("/");
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Einstellungen", exact: true })
-    .click();
+  await openView(page, "Einstellungen");
   await expect(page.getByText(/Website-Einstellungen/)).toBeVisible();
   await expect(page.getByRole("switch")).toHaveCount(0);
 });

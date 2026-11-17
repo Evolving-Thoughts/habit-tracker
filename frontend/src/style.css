@@ -1,16 +1,77 @@
+@import "@fontsource-variable/nunito";
+
 :root {
-  color: #182033;
-  background: #f5f6f8;
+  /* Ground and surfaces: a warm apricot field with white cards. */
+  --color-ground: #fde4d0;
+  --color-ground-deep: #f9d3b5;
+  --color-surface: #ffffff;
+  --color-line: #f1cfb4;
+
+  /* Ink is warm, never grey. */
+  --color-ink: #2b1d16;
+  --color-ink-muted: #6b4d3d;
+  --color-ink-soft: #8f6a55;
+
+  /* The one action colour, reserved for what can be tapped. */
+  --color-action: #c2410c;
+  --color-action-strong: #9a330a;
+  --color-action-tint: #fff1e8;
+  --color-action-tint-hover: #ffe2cf;
+  --color-on-action: #ffffff;
+
+  --color-success: #2e7d4f;
+  --color-danger: #b42318;
+  --color-danger-tint: #fff0ec;
+
+  --radius-card: 1.375rem;
+  --radius-control: 0.875rem;
+  --radius-pill: 999px;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+
+  --tap: 2.75rem;
+  --tap-large: 3rem;
+  --tab-bar-height: 4.25rem;
+  --page-width: 46rem;
+
+  --shadow-card: 0 1px 2px rgb(107 50 18 / 6%), 0 6px 18px rgb(107 50 18 / 7%);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* A light spring: overshoots a touch on release, then settles. */
+  --spring: linear(
+    0,
+    0.25 7%,
+    0.69 18%,
+    1.03 30%,
+    1.12 38%,
+    1.07 48%,
+    0.99 60%,
+    1.01 75%,
+    1
+  );
+  --press: scale(0.97);
+
+  color: var(--color-ink);
+  background: var(--color-ground);
   font-family:
-    Inter,
-    ui-sans-serif,
+    "Nunito Variable",
+    ui-rounded,
     system-ui,
     -apple-system,
-    BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
+  font-size: 1rem;
+  line-height: 1.45;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
+  accent-color: var(--color-action);
+  caret-color: var(--color-action);
+  scrollbar-color: var(--color-ink-soft) var(--color-ground);
 }
 
 * {
@@ -28,17 +89,352 @@ body {
   margin: 0;
 }
 
+::selection {
+  background: #fbc79f;
+  color: var(--color-ink);
+}
+
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
+a {
+  color: var(--color-action-strong);
+  text-underline-offset: 0.2em;
+}
+
 button:focus-visible,
-input:focus-visible {
-  outline: 3px solid rgb(53 103 220 / 30%);
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 3px solid var(--color-action-strong);
   outline-offset: 2px;
 }
 
 #app {
   min-height: 100vh;
+}
+
+/* Keep page content clear of the fixed tab bar. */
+body:has(.tab-bar) {
+  padding-bottom: calc(
+    var(--tab-bar-height) + env(safe-area-inset-bottom, 0px)
+  );
+}
+
+@media (min-width: 56rem) {
+  body:has(.tab-bar) {
+    padding-top: 3.5rem;
+    padding-bottom: 0;
+  }
+}
+
+/*
+ * Shared building blocks for every view. Views compose these instead of
+ * restyling buttons and fields one by one, so the system stays one system.
+ */
+
+/* Page column and header. */
+.page {
+  width: min(100% - 2rem, var(--page-width));
+  margin: 0 auto;
+  padding: var(--space-5) 0 calc(var(--space-6) + 4rem);
+  color: var(--color-ink);
+}
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-5);
+}
+
+.page-title {
+  margin: 0;
+  font-size: clamp(1.75rem, 6vw, 2.25rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.page-lead {
+  flex-basis: 100%;
+  max-width: 60ch;
+  margin: 0;
+  color: var(--color-ink-muted);
+}
+
+.section-title {
+  margin: var(--space-6) 0 var(--space-3);
+  font-size: 1.125rem;
+  font-weight: 800;
+}
+
+.count {
+  color: var(--color-ink-muted);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Buttons: one primary per context, every side action a tinted pill. */
+.btn {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap);
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-action-tint);
+  color: var(--color-action-strong);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    transform 420ms var(--spring),
+    background-color 160ms var(--ease-out);
+}
+
+.btn :where(svg) {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: none;
+}
+
+.btn:active:not(:disabled) {
+  transform: var(--press);
+  transition-duration: 90ms;
+}
+
+.btn:disabled {
+  background: transparent;
+  color: var(--color-ink-soft);
+  cursor: progress;
+}
+
+.btn--primary {
+  background: var(--color-action);
+  color: var(--color-on-action);
+  font-weight: 800;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--color-action-strong);
+}
+
+/* Not available yet (e.g. an empty field): quiet, not a brown button. */
+.btn--primary:disabled {
+  background: var(--color-action-tint);
+  color: var(--color-ink-soft);
+  cursor: not-allowed;
+}
+
+.btn--primary[aria-busy="true"]:disabled {
+  cursor: progress;
+}
+
+.btn--ground {
+  background: var(--color-surface);
+}
+
+.btn--quiet {
+  background: transparent;
+  color: var(--color-ink-muted);
+}
+
+.btn--quiet:hover:not(:disabled) {
+  background: var(--color-action-tint);
+  color: var(--color-action-strong);
+}
+
+.btn--danger {
+  background: var(--color-danger-tint);
+  color: var(--color-danger);
+}
+
+.btn--icon {
+  width: var(--tap);
+  padding: 0;
+}
+
+.btn--link {
+  min-height: var(--tap);
+  padding: 0 var(--space-2);
+  background: transparent;
+  color: var(--color-action-strong);
+  text-decoration: underline;
+  text-decoration-color: var(--color-line);
+  text-underline-offset: 0.2em;
+}
+
+/* Fields. */
+.field {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.input,
+.field :where(input:not([type="checkbox"], [type="radio"]), select, textarea) {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border: 1.5px solid var(--color-line);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.field :where(textarea),
+textarea.input {
+  padding: var(--space-3);
+  line-height: 1.45;
+  resize: vertical;
+}
+
+/* Segmented choice: the chosen option is ink on white, not a second colour. */
+.segmented {
+  display: inline-flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--color-ground-deep);
+}
+
+.segmented > button {
+  min-height: calc(var(--tap) - 0.5rem);
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-ink-muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.segmented > button[aria-pressed="true"] {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: 0 1px 2px rgb(107 50 18 / 12%);
+}
+
+/* Filter chips. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  min-height: var(--tap);
+  padding: 0 var(--space-4);
+  border: 1.5px solid var(--color-line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-ink-muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chip[aria-pressed="true"] {
+  border-color: var(--color-ink);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+/* Cards: white, soft corners, no border. */
+.card {
+  padding: var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+/* Calm states. */
+.empty-state {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: center;
+  padding: var(--space-6) var(--space-5);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-ink-muted);
+  text-align: center;
+}
+
+.empty-state strong {
+  color: var(--color-ink);
+  font-size: 1.125rem;
+  font-weight: 800;
+}
+
+.alert {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+  padding: var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--color-danger-tint);
+  color: var(--color-ink);
+}
+
+.alert > p {
+  margin: 0;
+}
+
+.form-error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.skeleton {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.skeleton > span {
+  display: block;
+  height: 4.25rem;
+  border-radius: var(--radius-card);
+  background: rgb(255 255 255 / 55%);
+  animation: skeleton-breathe 1.6s var(--ease-out) infinite alternate;
+}
+
+@keyframes skeleton-breathe {
+  to {
+    opacity: 0.5;
+  }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }
