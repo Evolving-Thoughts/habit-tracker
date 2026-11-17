@@ -32,6 +32,7 @@ vi.mock("../api/day-planner.api", () => ({
   deleteTodo: vi.fn(),
   deleteHabit: vi.fn(),
 }));
+vi.mock("./QuestNotes.vue", () => import("../test/quest-notes-stub"));
 enableAutoUnmount(afterEach);
 afterEach(() => vi.useRealTimers());
 
@@ -129,6 +130,16 @@ describe("PlannerItemEditor", () => {
     });
     expect(changeHabitSchedule).not.toHaveBeenCalled();
   });
+  it("offers notes for a quest, not for a daily", async () => {
+    const quest = mount(PlannerItemEditor, {
+      props: { kind: "todo", entityId: 1 },
+    });
+    const daily = mountHabitEditor();
+    await flushPromises();
+    expect(quest.get("[data-notes]").attributes("data-notes")).toBe("1");
+    expect(daily.find("[data-notes]").exists()).toBe(false);
+  });
+
   it("saves a todo and keeps the day it is planned for", async () => {
     const wrapper = mount(PlannerItemEditor, {
       props: { kind: "todo", entityId: 1 },

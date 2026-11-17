@@ -2,6 +2,7 @@
 import { useTodoDeletion } from "../composables/useTodoDeletion";
 import TodoDeletionSummary from "./TodoDeletionSummary.vue";
 import PlanFields from "./PlanFields.vue";
+import QuestNotes from "./QuestNotes.vue";
 import WhyField from "./WhyField.vue";
 import TodoGoalFields from "./TodoGoalFields.vue";
 import AppIcon from "./AppIcon.vue";
@@ -449,6 +450,8 @@ onMounted(loadEntity);
             v-model:habit-id="goalHabitId"
             v-model:target="goalTarget"
           />
+
+          <QuestNotes :todo-id="entityId" />
         </template>
 
         <template v-else>

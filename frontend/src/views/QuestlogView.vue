@@ -20,6 +20,7 @@ import UndoToast from "../components/UndoToast.vue";
 import type { CreateTodoInput, TodoResponse } from "../types/todo";
 import { shownWhy } from "../utils/why";
 import PlanFields from "../components/PlanFields.vue";
+import QuestNotes from "../components/QuestNotes.vue";
 import { categoryMark } from "../utils/category-mark";
 import { buildTodoInput } from "../utils/todo-input";
 
@@ -324,6 +325,8 @@ async function onCreated(): Promise<void> {
                 />
               </label>
             </div>
+
+            <QuestNotes :todo-id="selectedTodo.id" />
 
             <p v-if="errorMessage" class="form-error" role="alert">
               {{ errorMessage }}
