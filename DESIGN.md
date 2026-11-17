@@ -365,6 +365,12 @@ Ein Menü "Aktionen für …" pro Zeile statt verstreuter Buttons. Unter 40rem e
 ### Fokuskarte (Signature)
 Die eine große Karte oben auf Heute: Titel als Headline, Warum-Satz in Body Large, Metazeile mit Kategoriemarke, Uhrzeit, Minuten und Zielstand, darunter "Erledigt" (Primär), Timer (runder getönter Icon-Button) und getönte Nebenaktionen. Sie zeigt, was jetzt dran ist: den Kopf der Reihenfolge oder einen gerade laufenden Termin. Rechts in der Aktionszeile sitzt ein leiser Griff.
 
+### Fokus-Ansicht
+Eine Quest allein auf dem Grund, mittig, ohne Tab-Leiste und ohne Timerleiste: Kampagnen-Pille (weiß, mit Marke), Titel als Headline, Warum-Satz gedämpft, darunter die Stoppuhr als größte Schrift der App (800, clamp 4–7rem, Tabellenziffern; solange sie nicht läuft in leiser Tinte). Darunter Zustand ("Bereit", "Läuft", "Pausiert", "Soll erreicht") mit Soll und heute schon gearbeiteter Zeit, dann genau eine Primäraktion (Starten, Pausieren, Weiter) neben "Erledigt", leise darunter "Später" und "Überspringen". Unter einer Haarlinie nennt eine kleine Liste nur, was danach kommt und wann der nächste Termin ist. Oben links führt ein Link zurück zu Heute.
+
+### Timerleiste
+Weiße Karte, die oben haftet: Zustand und Titel links, die gearbeitete Zeit in Tinte mit "von n Min." darunter, rechts runde getönte Icon-Buttons (Pause/Weiter, Soll ändern, Erledigen, Beenden). Sie zählt hoch; ist das Soll erreicht, sagt eine ruhige Zeile, dass die Stoppuhr weiterläuft.
+
 ### Reihenfolge des Tages
 Fokuskarte und die Einträge darunter sind eine sortierbare Liste. Jede Zeile trägt in der Zeitspalte einen Griff aus sechs Punkten in leiser Tinte: ziehen (Maus, Finger, Stift) oder mit Pfeil hoch/runter verschieben. Beim Ziehen bleibt am alten Platz eine 35 % deckende Lücke, die gezogene Zeile hebt der Kartenschatten. Wer an den Kopf rückt, wird zur Fokuskarte. Darüber steht das Schnell-Anlegen: ein Feld mit Segment "Oben | Unten". "Auf morgen" im Kopf der Ansicht verschiebt alles Offene ohne Uhrzeit nach einer Rückfrage.
 

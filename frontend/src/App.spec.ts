@@ -20,6 +20,7 @@ function mountApp() {
       stubs: {
         TodayView: { template: '<main data-view="today">Today</main>' },
         QuestlogView: { template: '<main data-view="dump">Dump</main>' },
+        FocusView: { template: '<main data-view="focus">Focus</main>' },
         CalendarView: {
           template: '<main data-view="calendar">Calendar</main>',
         },
@@ -54,8 +55,8 @@ describe("App navigation", () => {
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
-    // Four tabs, Mehr, and three views behind it.
-    expect(wrapper.findAll("nav a, nav button")).toHaveLength(8);
+    // Four tabs, Mehr, and four views behind it.
+    expect(wrapper.findAll("nav a, nav button")).toHaveLength(9);
   });
   it("opens the dailies and marks only that navigation link current", async () => {
     const wrapper = mountApp();
@@ -69,6 +70,13 @@ describe("App navigation", () => {
         .filter((link) => link.attributes("aria-current") === "page")
         .map((link) => link.text()),
     ).toEqual(["Dailies"]);
+  });
+  it("shows the focus view alone, without the navigation around it", async () => {
+    const wrapper = mountApp();
+    await flushPromises();
+    await open(wrapper, "Fokus");
+    expect(wrapper.find('[data-view="focus"]').exists()).toBe(true);
+    expect(wrapper.find("nav").exists()).toBe(false);
   });
   it("sets the browser title and moves focus into the opened view", async () => {
     const wrapper = mount(App, {

@@ -4,7 +4,7 @@ import {
   getCurrentTimer,
   startTimer,
   timerAction,
-  changeTimerDuration,
+  changeTimerTarget,
   type TimerResponse,
 } from "../api/timers.api";
 import { ApiError } from "../api/http";
@@ -12,10 +12,12 @@ vi.mock("../api/timers.api", () => ({
   getCurrentTimer: vi.fn(),
   startTimer: vi.fn(),
   timerAction: vi.fn(),
-  changeTimerDuration: vi.fn(),
+  changeTimerTarget: vi.fn(),
 }));
 const response = (
-  state: "running" | "paused" | "finished" = "running",
+  state: "running" | "paused" = "running",
+  elapsedMilliseconds = 30_000,
+  targetMinutes: number | null = 2,
 ): TimerResponse => ({
   serverNow: "2026-10-03T10:00:00Z",
   timer: {
@@ -24,45 +26,63 @@ const response = (
     targetId: 1,
     title: "Schreiben",
     state,
-    durationMinutes: 2,
-    remainingMilliseconds: 120000,
-    endsAt: state === "running" ? "2026-10-03T10:02:00Z" : null,
-    finishedAt: null,
+    elapsedMilliseconds,
+    targetMinutes,
+    targetReachedAt: null,
   },
 });
-const target = {
-  kind: "todo" as const,
-  targetId: 1,
-  title: "Schreiben",
-  durationMinutes: 2,
-};
+const target = { kind: "todo" as const, targetId: 1, title: "Schreiben" };
 beforeEach(() => {
   vi.resetAllMocks();
   vi.spyOn(performance, "now").mockReturnValue(1000);
   vi.mocked(getCurrentTimer).mockResolvedValue(response());
   vi.mocked(startTimer).mockResolvedValue(response());
   vi.mocked(timerAction).mockResolvedValue(response("paused"));
-  vi.mocked(changeTimerDuration).mockResolvedValue(response("paused"));
+  vi.mocked(changeTimerTarget).mockResolvedValue(response("paused"));
 });
 afterEach(() => vi.restoreAllMocks());
 describe("synced Timer controller", () => {
-  it("calculates remaining time from server time and a monotonic anchor, independent of device date", async () => {
+  it("counts up from the server's time worked on a monotonic anchor, independent of device date", async () => {
     const c = createTimerController();
     await c.refresh();
-    expect(c.remaining.value).toBe(120000);
+    expect(c.elapsed.value).toBe(30_000);
     vi.spyOn(Date, "now").mockReturnValue(0);
-    vi.mocked(performance.now).mockReturnValue(31000);
+    vi.mocked(performance.now).mockReturnValue(31_000);
     c.pulse();
-    expect(c.remaining.value).toBe(90000);
+    expect(c.elapsed.value).toBe(60_000);
     c.dispose();
   });
-  it("keeps a paused timer fixed through time passing", async () => {
+  it("keeps a paused stopwatch fixed through time passing", async () => {
     vi.mocked(getCurrentTimer).mockResolvedValue(response("paused"));
     const c = createTimerController();
     await c.refresh();
-    vi.mocked(performance.now).mockReturnValue(999999);
+    vi.mocked(performance.now).mockReturnValue(999_999);
     c.pulse();
-    expect(c.remaining.value).toBe(120000);
+    expect(c.elapsed.value).toBe(30_000);
+    c.dispose();
+  });
+  it("reaches the target at its minute and keeps counting past it", async () => {
+    const c = createTimerController();
+    await c.refresh();
+    expect(c.reached.value).toBe(false);
+    vi.mocked(performance.now).mockReturnValue(90_999);
+    c.pulse();
+    expect(c.reached.value).toBe(false);
+    vi.mocked(performance.now).mockReturnValue(91_000);
+    c.pulse();
+    expect(c.reached.value).toBe(true);
+    vi.mocked(performance.now).mockReturnValue(601_000);
+    c.pulse();
+    expect(c.elapsed.value).toBe(630_000);
+    c.dispose();
+  });
+  it("never reaches a target that does not exist", async () => {
+    vi.mocked(getCurrentTimer).mockResolvedValue(
+      response("running", 86_400_000, null),
+    );
+    const c = createTimerController();
+    await c.refresh();
+    expect(c.reached.value).toBe(false);
     c.dispose();
   });
   it("prevents duplicate start submissions and ignores a stale read after mutation", async () => {
@@ -102,12 +122,12 @@ describe("synced Timer controller", () => {
     const c = createTimerController();
     await c.refresh();
     expect(await c.action("stop", "old-id")).toBe(false);
-    expect(await c.duration(3, "old-id")).toBe(false);
+    expect(await c.setTarget(3, "old-id")).toBe(false);
     expect(timerAction).not.toHaveBeenCalled();
-    expect(changeTimerDuration).not.toHaveBeenCalled();
+    expect(changeTimerTarget).not.toHaveBeenCalled();
     c.dispose();
   });
-  it("localizes fetch failures while retaining the last known deadline", async () => {
+  it("localizes fetch failures while retaining the last known time", async () => {
     const c = createTimerController();
     await c.refresh();
     vi.mocked(getCurrentTimer).mockRejectedValue(
@@ -116,9 +136,10 @@ describe("synced Timer controller", () => {
     await c.refresh();
     expect(c.error.value).toContain("Prüfe deine Verbindung");
     expect(c.timer.value?.id).toBe("timer-1");
+    expect(c.elapsed.value).toBe(30_000);
     c.dispose();
   });
-  it("reports an offline synchronization error without discarding the saved deadline", async () => {
+  it("reports an offline synchronization error without discarding the stopwatch", async () => {
     const c = createTimerController();
     await c.refresh();
     vi.mocked(getCurrentTimer).mockRejectedValue(new Error("Offline"));
@@ -139,15 +160,15 @@ describe("synced Timer controller", () => {
     await read;
     expect(c.timer.value).toBeNull();
   });
-  it("sends server actions and duration writes then notifies views", async () => {
+  it("sends server actions and target writes then notifies views", async () => {
     const event = vi.fn();
     window.addEventListener("timer-data-changed", event);
     const c = createTimerController();
     await c.start(target);
     await c.action("pause");
-    await c.duration(3);
+    await c.setTarget(3);
     expect(timerAction).toHaveBeenCalledWith("timer-1", "pause");
-    expect(changeTimerDuration).toHaveBeenCalledWith("timer-1", 3);
+    expect(changeTimerTarget).toHaveBeenCalledWith("timer-1", 3);
     expect(event).toHaveBeenCalledTimes(2);
     c.dispose();
     window.removeEventListener("timer-data-changed", event);

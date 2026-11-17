@@ -260,16 +260,10 @@ async function onCreated(): Promise<void> {
                 </p>
               </div>
               <ItemPlayButton
-                v-if="
-                  habit.plannedDurationMinutes || habit.timerDurationMinutes
-                "
                 class="habit-card__play"
                 kind="occurrence"
                 :target-id="habit.timerOccurrenceId"
                 :title="habit.title"
-                :duration="
-                  habit.timerDurationMinutes ?? habit.plannedDurationMinutes
-                "
                 :eligible="habit.isActive && habit.timerOccurrenceId !== null"
                 :disabled="isBusy"
               />

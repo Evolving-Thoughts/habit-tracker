@@ -118,11 +118,7 @@ function progressText(todo: HierarchyTodo) {
 // Timer entry in the menu follows the same rules as ItemPlayButton.
 function timerActive(todo: HierarchyTodo) {
   const current = timer?.timer.value;
-  return (
-    current?.kind === "todo" &&
-    current.targetId === todo.id &&
-    current.state !== "finished"
-  );
+  return current?.kind === "todo" && current.targetId === todo.id;
 }
 function timerLabel(todo: HierarchyTodo) {
   return timerActive(todo)
@@ -141,13 +137,8 @@ function timerDisabled(todo: HierarchyTodo) {
 }
 function startTimer(todo: HierarchyTodo) {
   closeMenu();
-  if (timer && todo.plannedDurationMinutes)
-    void timer.start({
-      kind: "todo",
-      targetId: todo.id,
-      title: todo.title,
-      durationMinutes: todo.plannedDurationMinutes,
-    });
+  if (timer)
+    void timer.start({ kind: "todo", targetId: todo.id, title: todo.title });
 }
 
 function menuItems() {
@@ -522,10 +513,6 @@ async function confirmDelete() {
                   @keydown="moveMenuFocus"
                 >
                   <button
-                    v-if="
-                      todo.plannedDurationMinutes &&
-                      todo.plannedDurationMinutes > 0
-                    "
                     type="button"
                     role="menuitem"
                     class="btn btn--quiet menu__item"

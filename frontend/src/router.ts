@@ -8,19 +8,14 @@ import {
 import CalendarView from "./views/CalendarView.vue";
 import CampaignsView from "./views/CampaignsView.vue";
 import CategoriesView from "./views/CategoriesView.vue";
+import FocusView from "./views/FocusView.vue";
 import HabitsView from "./views/HabitsView.vue";
 import QuestlogView from "./views/QuestlogView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import TodayView from "./views/TodayView.vue";
+import { PATHS, type ViewName } from "./routes";
 
-export type ViewName =
-  | "today"
-  | "questlog"
-  | "campaigns"
-  | "calendar"
-  | "dailies"
-  | "categories"
-  | "settings";
+export type { ViewName };
 
 export type AppView = {
   name: ViewName;
@@ -29,55 +24,65 @@ export type AppView = {
   component: Component;
   /** Primary views are tabs on a phone; the rest sit behind Mehr. */
   primary: boolean;
+  /** Fills the screen alone: no navigation and no timer bar around it. */
+  immersive?: boolean;
 };
 
 /** Every view of the app, in navigation order. */
 export const VIEWS: readonly AppView[] = [
   {
     name: "today",
-    path: "/heute",
+    path: PATHS.today,
     label: "Heute",
     component: TodayView,
     primary: true,
   },
   {
+    name: "focus",
+    path: PATHS.focus,
+    label: "Fokus",
+    component: FocusView,
+    primary: false,
+    immersive: true,
+  },
+  {
     name: "questlog",
-    path: "/questlog",
+    path: PATHS.questlog,
     label: "Questlog",
     component: QuestlogView,
     primary: true,
   },
   {
     name: "campaigns",
-    path: "/kampagnen",
+    path: PATHS.campaigns,
     label: "Kampagnen",
     component: CampaignsView,
     primary: true,
   },
   {
     name: "calendar",
-    path: "/kalender",
+    path: PATHS.calendar,
     label: "Kalender",
     component: CalendarView,
     primary: true,
   },
   {
     name: "dailies",
-    path: "/dailies",
+    path: PATHS.dailies,
     label: "Dailies",
     component: HabitsView,
     primary: false,
   },
   {
     name: "categories",
-    path: "/kategorien",
+    path: PATHS.categories,
     label: "Kategorien",
     component: CategoriesView,
     primary: false,
   },
   {
     name: "settings",
-    path: "/einstellungen",
+    path: PATHS.settings,
     label: "Einstellungen",
     component: SettingsView,
     primary: false,
@@ -92,6 +97,8 @@ declare module "vue-router" {
   interface RouteMeta {
     /** Shown in the browser title. */
     title?: string;
+    /** The view fills the screen alone. */
+    immersive?: boolean;
     /** Set on the routes an email link lands on. */
     authLink?: AuthLink["kind"];
   }
@@ -103,11 +110,11 @@ export function createAppRouter(
   const router = createRouter({
     history,
     routes: [
-      ...VIEWS.map(({ name, path, label, component }) => ({
+      ...VIEWS.map(({ name, path, label, component, immersive }) => ({
         name,
         path,
         component,
-        meta: { title: label },
+        meta: { title: label, immersive },
       })),
       // Email links keep their token in the fragment ("#verify=<token>"), so it
       // never reaches a server log. App.vue takes it and leaves the route.

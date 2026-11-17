@@ -12,60 +12,45 @@ import {
   updateTodoCompletion,
   updateOccurrenceStatus,
 } from "../api/day-planner.api";
+import { formatStopwatch } from "../utils/stopwatch";
 import TimerIconButton from "./TimerIconButton.vue";
 import ModalDialog from "./ModalDialog.vue";
+
+/**
+ * Holds the one stopwatch of the signed-in user for everything below it and
+ * shows it in a bar that stays in view. A view that shows the stopwatch large
+ * itself hides the bar; the dialogs stay available either way.
+ */
+defineProps<{ hideBar?: boolean }>();
+
 useDevicePushRestore();
 const controller = createTimerController();
 provide(timerKey, controller);
-const { timer, remaining, error, busy, switching } = controller;
-const stopping = ref(false);
-const stoppingId = ref<string>();
+const { timer, elapsed, reached, error, busy, switching } = controller;
 const editingId = ref<string>();
 const editing = ref(false);
 const completing = ref(false);
 const minutes = ref<string | number>("");
-const durationError = ref("");
+const targetError = ref("");
+// A dialog about one stopwatch closes when another one takes its place.
 watch(
-  () => [timer.value?.id, timer.value?.state],
-  (current, previous) => {
-    if (previous && current[0] !== previous[0]) {
-      stopping.value = false;
-      editing.value = false;
-    }
-    if (!timer.value) {
-      stopping.value = false;
-      editing.value = false;
-    }
-    if (timer.value?.state !== "paused") editing.value = false;
-  },
+  () => timer.value?.id,
+  () => (editing.value = false),
 );
-const display = computed(() => {
-  const seconds = Math.ceil(remaining.value / 1000);
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  return `${h ? `${h}:` : ""}${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-});
-function openStop(): void {
-  stoppingId.value = timer.value?.id;
-  stopping.value = true;
-}
-function openDuration(): void {
+const display = computed(() => formatStopwatch(elapsed.value));
+function openTarget(): void {
   editingId.value = timer.value?.id;
-  minutes.value = timer.value?.durationMinutes ?? "";
-  durationError.value = "";
+  minutes.value = timer.value?.targetMinutes ?? "";
+  targetError.value = "";
   editing.value = true;
 }
-async function saveDuration(): Promise<void> {
+async function saveTarget(): Promise<void> {
   const value = Number(minutes.value);
   if (!isValidTimerDuration(value)) {
-    durationError.value = TIMER_DURATION_MESSAGE;
+    targetError.value = TIMER_DURATION_MESSAGE;
     return;
   }
-  if (await controller.duration(value, editingId.value)) editing.value = false;
-}
-async function stop(): Promise<void> {
-  if (await controller.action("stop", stoppingId.value)) stopping.value = false;
+  if (await controller.setTarget(value, editingId.value)) editing.value = false;
 }
 async function replace(): Promise<void> {
   const choice = switching.value;
@@ -110,26 +95,33 @@ onUnmounted(() => {
 });
 </script>
 <template>
-  <aside v-if="timer || error" class="timer-bar" aria-label="Aktueller Timer">
+  <aside
+    v-if="(timer || error) && !hideBar"
+    class="timer-bar"
+    aria-label="Aktueller Timer"
+  >
     <div v-if="timer" class="timer-bar__row">
       <div class="timer-bar__text">
         <small>{{
           timer.state === "paused"
             ? "Pausiert"
-            : timer.state === "finished" || remaining === 0
-              ? "Zeit abgelaufen"
-              : "Timer läuft"
+            : reached
+              ? "Soll erreicht"
+              : "Stoppuhr läuft"
         }}</small><strong>{{ timer.title }}</strong>
       </div>
-      <span class="timer-bar__time" aria-label="Verbleibende Zeit">{{
-        display
-      }}</span>
+      <span class="timer-bar__time">
+        <span aria-label="Gearbeitete Zeit">{{ display }}</span>
+        <small v-if="timer.targetMinutes !== null" class="timer-bar__target">
+          von {{ timer.targetMinutes }} Min.
+        </small>
+      </span>
       <div class="timer-bar__controls">
         <TimerIconButton
           v-if="timer.state === 'running'"
           icon="pause"
           label="Timer pausieren"
-          :disabled="busy || remaining === 0"
+          :disabled="busy"
           @click="controller.action('pause')"
         />
         <TimerIconButton
@@ -140,14 +132,12 @@ onUnmounted(() => {
           @click="controller.action('resume')"
         />
         <TimerIconButton
-          v-if="timer.state === 'paused'"
           icon="edit"
-          label="Timerdauer ändern"
+          label="Soll ändern"
           :disabled="busy"
-          @click="openDuration"
+          @click="openTarget"
         />
         <TimerIconButton
-          v-if="timer.state === 'finished'"
           icon="check"
           :label="`${timer.title} erledigen`"
           :disabled="busy || completing"
@@ -155,13 +145,9 @@ onUnmounted(() => {
         />
         <TimerIconButton
           icon="stop"
-          :label="
-            timer.state === 'finished' ? 'Timer schließen' : 'Timer stoppen'
-          "
+          label="Timer beenden"
           :disabled="busy || completing"
-          @click="
-            timer.state === 'finished' ? controller.action('stop') : openStop()
-          "
+          @click="controller.action('stop')"
         />
       </div>
     </div>
@@ -171,29 +157,11 @@ onUnmounted(() => {
         Erneut synchronisieren
       </button>
     </p>
-    <p v-if="timer?.state === 'finished'" class="timer-bar__hint" role="status">
-      Zeit abgelaufen. Noch nicht als erledigt markiert.
+    <p v-if="timer && reached" class="timer-bar__hint" role="status">
+      Soll erreicht. Die Stoppuhr läuft weiter, bis du pausierst oder beendest.
     </p>
   </aside>
   <slot />
-  <ModalDialog
-    v-if="stopping"
-    title="Timer stoppen?"
-    :busy="busy"
-    focus-selector="[data-confirm-stop]"
-    @close="stopping = false"
-  >
-    <p>
-      Der Timer wird beendet. Die gespeicherte Dauer bleibt erhalten; die
-      Quest bleibt offen.
-    </p>
-    <div class="timer-dialog-actions">
-      <button data-confirm-stop type="button" @click="stop">
-        Timer stoppen</button
-      ><button type="button" @click="stopping = false">Abbrechen</button>
-    </div>
-    <p v-if="error" role="alert">{{ error }}</p>
-  </ModalDialog>
   <ModalDialog
     v-if="switching"
     title="Anderen Timer starten?"
@@ -203,7 +171,7 @@ onUnmounted(() => {
   >
     <p>
       Den bisherigen Timer beenden und „{{ switching.target.title }}“ starten?
-      Die bisherige Quest bleibt offen.
+      Die bisher gearbeitete Zeit bleibt im Logbuch, die Quest bleibt offen.
     </p>
     <div class="timer-dialog-actions">
       <button data-confirm-switch type="button" @click="replace">
@@ -214,13 +182,13 @@ onUnmounted(() => {
   </ModalDialog>
   <ModalDialog
     v-if="editing"
-    title="Timerdauer ändern"
+    title="Soll ändern"
     :busy="busy"
     focus-selector='[name="timerMinutes"]'
     @close="editing = false"
   >
-    <form novalidate @submit.prevent="saveDuration">
-      <label for="timer-minutes">Gesamtdauer in Minuten</label
+    <form novalidate @submit.prevent="saveTarget">
+      <label for="timer-minutes">Geplante Minuten</label
       ><input
         id="timer-minutes"
         v-model="minutes"
@@ -232,7 +200,7 @@ onUnmounted(() => {
         :disabled="busy"
       />
       <p>
-        Bereits gelaufene Zeit bleibt angerechnet. Gespeichert
+        Die gearbeitete Zeit bleibt, wie sie ist. Gespeichert
         {{
           timer?.kind === "todo"
             ? "an der Quest"
@@ -240,13 +208,13 @@ onUnmounted(() => {
         }}.
       </p>
       <div class="timer-dialog-actions">
-        <button type="submit" :disabled="busy">Dauer speichern</button
+        <button type="submit" :disabled="busy">Soll speichern</button
         ><button type="button" :disabled="busy" @click="editing = false">
           Abbrechen
         </button>
       </div>
-      <p v-if="durationError || error" role="alert">
-        {{ durationError || error }}
+      <p v-if="targetError || error" role="alert">
+        {{ targetError || error }}
       </p>
     </form>
   </ModalDialog>
@@ -288,10 +256,18 @@ onUnmounted(() => {
   font-size: 1rem;
 }
 .timer-bar__time {
+  display: grid;
+  justify-items: end;
   font-size: 1.75rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
-  color: var(--color-action-strong);
+  line-height: 1.1;
+  color: var(--color-ink);
+}
+.timer-bar__target {
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 .timer-bar__controls {
   display: flex;

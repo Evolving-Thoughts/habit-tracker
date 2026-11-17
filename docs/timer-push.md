@@ -1,12 +1,12 @@
 # Timer-Push auf Android testen
 
-Timer-Ende kann jetzt auch bei geschlossener PWA oder gesperrtem Bildschirm gemeldet werden. **Web Push ist kein präziser Android-Wecker**: Netzwerk, Doze, Chrome, Android-Benachrichtigungseinstellungen und der Push-Anbieter können die Zustellung verzögern oder verhindern. Wenige Sekunden sind ein Testziel, keine Zusicherung.
+Das Erreichen des Solls einer Stoppuhr kann auch bei geschlossener PWA oder gesperrtem Bildschirm gemeldet werden. Eine Stoppuhr ohne geplante Dauer meldet nichts. **Web Push ist kein präziser Android-Wecker**: Netzwerk, Doze, Chrome, Android-Benachrichtigungseinstellungen und der Push-Anbieter können die Zustellung verzögern oder verhindern. Wenige Sekunden sind ein Testziel, keine Zusicherung.
 
 ## Verhalten
 
 - Ein Timer pro Nutzer wie bisher. Todos und konkrete Habit-Ausführungen werden unterstützt.
 - Meldungen an alle **angemeldeten Geräte/Browser mit ausdrücklich aktiviertem Push**. Andere Nutzer erhalten keine Meldung.
-- Nachricht immer neutral: **„Dein Timer ist abgelaufen“**, dazu „Öffne die App, um fortzufahren.“ Keine Aufgaben-/Habit-Titel, E-Mails oder Nutzerinformationen im Payload.
+- Nachricht immer neutral: **„Du hast dein Soll erreicht“**, dazu „Öffne die App, um fortzufahren.“ Keine Aufgaben-/Habit-Titel, E-Mails oder Nutzerinformationen im Payload.
 - Antippen öffnet die App oder fokussiert ein bereits offenes App-Fenster, ohne dessen Formular zu verwerfen. Es markiert nichts als erledigt.
 - Opt-in ist pro Origin und Browserprofil. Keine automatische Berechtigungsanfrage bei Login/Seitenaufruf.
 - Nach Logout wird die Session samt Gerätezuordnung und ausstehenden Lieferungen serverseitig entfernt. Die Browser-Erlaubnis und lokale Opt-in-Einstellung bleiben bestehen. Bei erneutem Login wird ein weiterhin aktiviertes Gerät ohne erneuten Prompt zugeordnet.

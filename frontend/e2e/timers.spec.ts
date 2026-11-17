@@ -14,7 +14,7 @@ const read = async (request: import("@playwright/test").APIRequestContext) => {
   expect(r.ok()).toBeTruthy();
   return (await r.json()) as TimerResponse;
 };
-test("Quest timer: direct play, sticky bar, reload, second device, pause/duration/resume/confirmed stop", async ({
+test("Quest timer: direct play, sticky bar, reload, second device, pause/target/resume/stop", async ({
   page,
   request,
   context,
@@ -26,8 +26,8 @@ test("Quest timer: direct play, sticky bar, reload, second device, pause/duratio
     .getByRole("button", { name: "Timer für Schreiben starten", exact: true })
     .click();
   const bar = page.getByRole("complementary", { name: "Aktueller Timer" });
-  await expect(bar).toContainText("Timer läuft");
-  expect((await read(request)).timer?.durationMinutes).toBe(30);
+  await expect(bar).toContainText("Stoppuhr läuft");
+  expect((await read(request)).timer?.targetMinutes).toBe(30);
   await page.reload();
   await expect(bar).toContainText("Schreiben");
   await openView(page, "Dailies");
@@ -46,26 +46,22 @@ test("Quest timer: direct play, sticky bar, reload, second device, pause/duratio
   await expect(bar).toContainText("Pausiert");
   await expect(device.getByRole("complementary")).toContainText("Pausiert");
   await page
-    .getByRole("button", { name: "Timerdauer ändern", exact: true })
+    .getByRole("button", { name: "Soll ändern", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Gesamtdauer in Minuten").fill("35");
+  await dialog.getByLabel("Geplante Minuten").fill("35");
   await dialog
-    .getByRole("button", { name: "Dauer speichern", exact: true })
+    .getByRole("button", { name: "Soll speichern", exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
-  expect((await read(request)).timer?.durationMinutes).toBe(35);
+  expect((await read(request)).timer?.targetMinutes).toBe(35);
   await page
     .getByRole("button", { name: "Timer fortsetzen", exact: true })
     .click();
-  await expect(bar).toContainText("Timer läuft");
+  await expect(bar).toContainText("Stoppuhr läuft");
+  // Ending needs no confirmation: the time worked is in the logbook.
   await page
-    .getByRole("button", { name: "Timer stoppen", exact: true })
-    .click();
-  await expect(dialog).toBeVisible();
-  expect((await read(request)).timer?.state).toBe("running");
-  await dialog
-    .getByRole("button", { name: "Timer stoppen", exact: true })
+    .getByRole("button", { name: "Timer beenden", exact: true })
     .click();
   await expect(bar).toHaveCount(0);
   await expect(device.getByRole("complementary")).toHaveCount(0);
@@ -118,7 +114,9 @@ test("switching requires confirmation and completing a Questlog Quest persists i
     .click();
   await expect(dialog).not.toBeVisible();
   await expect(page.getByRole("complementary")).toContainText("Zweite Quest");
+  // The bar completes what its stopwatch runs on, from any view.
   await page
+    .getByRole("complementary", { name: "Aktueller Timer" })
     .getByRole("button", { name: "Zweite Quest erledigen", exact: true })
     .click();
   await expect(
@@ -181,13 +179,13 @@ test("Daily play availability and occurrence-only timer duration", async ({
     .getByRole("button", { name: "Timer pausieren", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Timerdauer ändern", exact: true })
+    .getByRole("button", { name: "Soll ändern", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("nur an dieser Daily-Ausführung");
-  await dialog.getByLabel("Gesamtdauer in Minuten").fill("7");
+  await dialog.getByLabel("Geplante Minuten").fill("7");
   await dialog
-    .getByRole("button", { name: "Dauer speichern", exact: true })
+    .getByRole("button", { name: "Soll speichern", exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
   const habits = (await (await request.get(`${API_URL}/habits`)).json()) as {
@@ -234,7 +232,7 @@ test("timer bar remains visible during long scrolling and icons have symmetric 4
   ).toBe(true);
 });
 
-test("a remote replacement closes an old local stop confirmation", async ({
+test("a remote replacement closes an old local target dialog", async ({
   page,
   request,
 }) => {
@@ -251,9 +249,7 @@ test("a remote replacement closes an old local stop confirmation", async ({
   // authoritative response to render before reading its replacement ID.
   await expect(page.getByRole("complementary")).toContainText("Erster Timer");
   const old = (await read(request)).timer!;
-  await page
-    .getByRole("button", { name: "Timer stoppen", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Soll ändern", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   const todos = (await (await request.get(`${API_URL}/todos`)).json()) as {
     id: number;

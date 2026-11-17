@@ -64,7 +64,7 @@ async function setup(
     },
   });
   const payload = {
-    type: "timer-finished",
+    type: "timer-target-reached",
     timerId: id,
     deliveryId: id,
     subscriptionId: id,
@@ -84,7 +84,7 @@ test("shows only the hardcoded neutral message, with safe root data and a dedupl
   const result = await setup();
   await result.push();
   assert.equal(result.shown.length, 1);
-  assert.equal(result.shown[0][0], "Dein Timer ist abgelaufen");
+  assert.equal(result.shown[0][0], "Du hast dein Soll erreicht");
   assert.ok(!JSON.stringify(result.shown).includes("Never expose"));
   assert.equal(result.shown[0][1].renotify, false);
   assert.equal(result.shown[0][1].data.url, "/");

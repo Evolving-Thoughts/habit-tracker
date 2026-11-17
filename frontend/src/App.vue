@@ -132,8 +132,8 @@ onUnmounted(() => {
     "
     @link-cleared="clearLink"
   />
-  <TimerProvider v-else :key="user.id">
-    <nav class="tab-bar" aria-label="Ansichten">
+  <TimerProvider v-else :key="user.id" :hide-bar="route.meta.immersive">
+    <nav v-if="!route.meta.immersive" class="tab-bar" aria-label="Ansichten">
       <div class="tab-bar__inner">
         <RouterLink
           v-for="view in PRIMARY"

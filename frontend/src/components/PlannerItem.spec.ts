@@ -275,8 +275,8 @@ describe("PlannerItem", () => {
 
     const buttons = wrapper.findAll("button");
 
-    // Abhaken, Überspringen und Bearbeiten.
-    expect(buttons).toHaveLength(3);
+    // Abhaken, Bearbeiten, Timer und Überspringen.
+    expect(buttons).toHaveLength(4);
 
     for (const button of buttons) {
       expect(button.element.disabled).toBe(true);
