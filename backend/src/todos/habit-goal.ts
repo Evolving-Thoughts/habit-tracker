@@ -35,10 +35,10 @@ export function assertGoalShape(todo: Goal): void {
     throw new BadRequestException('Der Zeitraum endet vor seinem Start.');
   if ((todo.goalHabitId === null) !== (todo.goalTarget === null))
     throw new BadRequestException(
-      'Ein Habit-Ziel braucht Habit und Sollmenge.',
+      'Ein Daily-Ziel braucht Daily und Sollmenge.',
     );
   if (todo.goalHabitId !== null && todo.periodStart === null)
-    throw new BadRequestException('Ein Habit-Ziel braucht einen Zeitraum.');
+    throw new BadRequestException('Ein Daily-Ziel braucht einen Zeitraum.');
 }
 
 /** A habit counts for one goal per period, so nothing is counted twice. */
@@ -63,7 +63,7 @@ export async function assertGoalAvailable(
   );
   if (overlaps)
     throw new ConflictException(
-      'Dieses Habit zählt in dem Zeitraum schon für ein anderes Ziel.',
+      'Dieses Daily zählt in dem Zeitraum schon für ein anderes Ziel.',
     );
 }
 

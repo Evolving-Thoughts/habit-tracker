@@ -190,7 +190,7 @@ async function skipHabit(item: DayPlannerHabitItem): Promise<void> {
     () => updateOccurrenceStatus(item.occurrenceId, "skipped"),
     {
       key: getItemKey(item),
-      fallbackError: "Das Habit konnte nicht übersprungen werden.",
+      fallbackError: "Das Daily konnte nicht übersprungen werden.",
     },
   );
 }
@@ -302,8 +302,8 @@ function openCreation(): void {
 async function onCreated(kind: "todo" | "habit"): Promise<void> {
   creationMessage.value =
     kind === "todo"
-      ? "Todo erstellt. Ohne Zeitpunkt findest du es im Todo-Dump."
-      : "Habit erstellt. Es erscheint ab seinem Startdatum an fälligen Tagen.";
+      ? "Quest erstellt. Ohne Zeitpunkt findest du sie im Questlog."
+      : "Daily erstellt. Es erscheint ab seinem Startdatum an fälligen Tagen.";
   await writes.applied();
   creationOpen.value = false;
 }

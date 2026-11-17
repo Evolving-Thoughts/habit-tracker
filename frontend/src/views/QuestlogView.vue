@@ -76,7 +76,7 @@ const {
   reload: loadTodos,
 } = useLoader(loadDump, {
   initial: [] as TodoResponse[],
-  fallbackError: "Die Todos konnten nicht geladen werden.",
+  fallbackError: "Die Quests konnten nicht geladen werden.",
   refreshOnChange: () =>
     !(isSaving.value || selectedTodo.value || creationOpen.value),
 });
@@ -137,7 +137,7 @@ async function toggleTodo(todo: TodoResponse): Promise<void> {
   successMessage.value = null;
   const completing = !todo.completed;
   const written = await write(() => updateTodoCompletion(todo.id, completing), {
-    fallbackError: "Das Todo konnte nicht aktualisiert werden.",
+    fallbackError: "Die Quest konnte nicht aktualisiert werden.",
   });
   if (!written) return;
   forgetDone(todo.id);
@@ -228,7 +228,7 @@ async function saveTodo(): Promise<void> {
     successMessage.value =
       input.scheduledAt === null
         ? "Änderungen gespeichert."
-        : "Eingeplant. Das Todo steht jetzt in Heute.";
+        : "Eingeplant. Die Quest steht jetzt in Heute.";
     closeEditing();
   }
 }
@@ -242,12 +242,12 @@ async function removeSelectedTodo(): Promise<void> {
   const removedId = selectedTodo.value.id;
   if (
     await write(confirmPreviewedDeletion, {
-      fallbackError: "Das Todo konnte nicht gelöscht werden.",
+      fallbackError: "Die Quest konnte nicht gelöscht werden.",
       notify: null,
     })
   ) {
     forgetDone(removedId);
-    successMessage.value = "Todo gelöscht.";
+    successMessage.value = "Quest gelöscht.";
     closeEditing();
   }
 }
@@ -258,21 +258,21 @@ function openCreation(): void {
   creationOpen.value = true;
 }
 async function onCreated(): Promise<void> {
-  successMessage.value = "Todo erstellt.";
+  successMessage.value = "Quest erstellt.";
   await applied();
   creationOpen.value = false;
 }
 </script>
 
 <template>
-  <main ref="page" class="page todo-dump">
+  <main ref="page" class="page questlog">
     <CreateButton
-      label="Todo erstellen"
+      label="Quest erstellen"
       :disabled="isBusy || selectedTodo !== null"
       @click="openCreation"
     />
     <header class="page-header">
-      <h1 class="page-title">Todo-Dump</h1>
+      <h1 class="page-title">Questlog</h1>
       <p class="page-lead">Alles, was noch keinen Tag hat.</p>
     </header>
 
@@ -286,7 +286,7 @@ async function onCreated(): Promise<void> {
     <ModalDialog
       v-if="selectedTodo"
       class="dump-edit-dialog"
-      title="Todo bearbeiten"
+      title="Quest bearbeiten"
       :busy="isSaving"
       :return-focus="listFocus.returnFocus"
       focus-selector='input[name="editTitle"]'
@@ -334,7 +334,7 @@ async function onCreated(): Promise<void> {
             </label>
 
             <p class="todo-editor__hint">
-              Mit Zeitpunkt wandert das Todo nach Heute.
+              Mit Zeitpunkt wandert die Quest nach Heute.
             </p>
 
             <p v-if="errorMessage" class="form-error" role="alert">
@@ -360,7 +360,7 @@ async function onCreated(): Promise<void> {
                 @click="requestDeletion"
               >
                 <AppIcon name="trash" />
-                Todo löschen
+                Quest löschen
               </button>
 
               <template v-else>
@@ -396,7 +396,7 @@ async function onCreated(): Promise<void> {
       </section>
     </ModalDialog>
 
-    <div v-if="errorMessage && !selectedTodo" class="alert todo-dump__alert">
+    <div v-if="errorMessage && !selectedTodo" class="alert questlog__alert">
       <p role="alert">{{ errorMessage }}</p>
       <button
         class="btn btn--ground"
@@ -408,7 +408,7 @@ async function onCreated(): Promise<void> {
       </button>
     </div>
 
-    <p v-if="successMessage" class="todo-dump__status" role="status">
+    <p v-if="successMessage" class="questlog__status" role="status">
       {{ successMessage }}
     </p>
 
@@ -416,7 +416,7 @@ async function onCreated(): Promise<void> {
       v-if="isLoading"
       class="skeleton"
       role="status"
-      aria-label="Todos werden geladen"
+      aria-label="Quests werden geladen"
     >
       <span />
       <span />
@@ -426,9 +426,9 @@ async function onCreated(): Promise<void> {
     <template v-else>
       <div
         v-if="todos.length === 0 && !errorMessage"
-        class="empty-state todo-dump__empty"
+        class="empty-state questlog__empty"
       >
-        <strong>Dein Todo-Dump ist leer.</strong>
+        <strong>Dein Questlog ist leer.</strong>
         <span>Tippe auf Plus, um etwas abzulegen.</span>
       </div>
 
@@ -449,7 +449,7 @@ async function onCreated(): Promise<void> {
           v-if="list.items.length"
           :id="list.key === 'done' ? 'dump-done-list' : undefined"
           class="dump-list"
-          :aria-label="list.key === 'done' ? 'Erledigt' : 'Offene Todos'"
+          :aria-label="list.key === 'done' ? 'Erledigt' : 'Offene Quests'"
         >
           <li
             v-for="todo in list.items"
@@ -528,12 +528,12 @@ async function onCreated(): Promise<void> {
 </template>
 
 <style scoped>
-.todo-dump__alert,
-.todo-dump__empty {
+.questlog__alert,
+.questlog__empty {
   margin-bottom: var(--space-4);
 }
 
-.todo-dump__status {
+.questlog__status {
   margin: 0 0 var(--space-4);
   color: var(--color-ink-muted);
   font-weight: 600;

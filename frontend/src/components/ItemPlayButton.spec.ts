@@ -8,7 +8,7 @@ describe("Item timer play", () => {
       props: {
         kind: "todo",
         targetId: 1,
-        title: "Todo",
+        title: "Quest",
         duration: null,
         eligible: true,
       },
@@ -22,7 +22,7 @@ describe("Item timer play", () => {
       props: {
         kind: "todo",
         targetId: 1,
-        title: "Todo",
+        title: "Quest",
         duration: 5,
         eligible: true,
       },
@@ -32,22 +32,22 @@ describe("Item timer play", () => {
     expect(start).toHaveBeenCalledWith({
       kind: "todo",
       targetId: 1,
-      title: "Todo",
+      title: "Quest",
       durationMinutes: 5,
     });
     expect(w.get("svg").attributes("aria-hidden")).toBe("true");
     expect(w.get("button").attributes("aria-label")).toBe(
-      "Timer für Todo starten",
+      "Timer für Quest starten",
     );
     c.dispose();
   });
-  it("disables a future Habit and prevents duplicate starts of own active timer", async () => {
+  it("disables a future Daily and prevents duplicate starts of own active timer", async () => {
     const c = createTimerController();
     c.timer.value = {
       id: "a",
       kind: "occurrence",
       targetId: 1,
-      title: "Habit",
+      title: "Daily",
       state: "paused",
       durationMinutes: 5,
       remainingMilliseconds: 1,
@@ -58,7 +58,7 @@ describe("Item timer play", () => {
       props: {
         kind: "occurrence",
         targetId: null,
-        title: "Habit",
+        title: "Daily",
         duration: 5,
         eligible: false,
       },

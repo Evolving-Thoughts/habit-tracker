@@ -9,15 +9,15 @@ import {
 } from "./helpers";
 import { API_URL } from "./environment";
 
-test("Todo-Dump: create, persist, rename, complete/reopen and confirmed delete", async ({
+test("Questlog: create, persist, rename, complete/reopen and confirmed delete", async ({
   page,
   request,
   isMobile,
 }) => {
-  await visit(page, "Todo-Dump");
+  await visit(page, "Questlog");
   await createTodo(page, "NestJS lernen");
   await page.reload();
-  await openView(page, "Todo-Dump");
+  await openView(page, "Questlog");
   await expect(
     page.getByRole("heading", { name: "NestJS lernen", exact: true }),
   ).toBeVisible();
@@ -79,7 +79,7 @@ test("Todo-Dump: create, persist, rename, complete/reopen and confirmed delete",
   await expect(
     page.getByRole("heading", { name: "TypeScript lernen", exact: true }),
   ).toHaveCount(0);
-  await openView(page, "Todo-Dump");
+  await openView(page, "Questlog");
   await page
     .getByRole("button", { name: "TypeScript lernen bearbeiten", exact: true })
     .click();
@@ -96,7 +96,7 @@ test("Todo-Dump: create, persist, rename, complete/reopen and confirmed delete",
   expect(await list(request, "todos")).toEqual([]);
 });
 
-test("Today: create scheduled Todo, edit, complete/reopen and delete", async ({
+test("Today: create scheduled Quest, edit, complete/reopen and delete", async ({
   page,
   request,
 }) => {
@@ -141,38 +141,38 @@ test("Today: create scheduled Todo, edit, complete/reopen and delete", async ({
   expect(await list(request, "todos")).toEqual([]);
 });
 
-test("scheduling a Dump Todo moves it into Today", async ({
+test("scheduling a Questlog Quest moves it into Today", async ({
   page,
   request,
 }) => {
   const date = await today(request);
-  await visit(page, "Todo-Dump");
-  await createTodo(page, "Geplantes Todo");
+  await visit(page, "Questlog");
+  await createTodo(page, "Geplantes Quest");
   await page
-    .getByRole("button", { name: "Geplantes Todo bearbeiten", exact: true })
+    .getByRole("button", { name: "Geplantes Quest bearbeiten", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
   await dialog.locator('[name="editScheduledAt"]').fill(`${date}T10:00`);
   await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Geplantes Todo", exact: true }),
+    page.getByRole("heading", { name: "Geplantes Quest", exact: true }),
   ).toHaveCount(0);
   await openView(page, "Heute");
   await expect(
-    page.getByRole("heading", { name: "Geplantes Todo", exact: true }),
+    page.getByRole("heading", { name: "Geplantes Quest", exact: true }),
   ).toBeVisible();
 });
 
-test("invalid Todo creation stays open without writing; Escape returns to plus", async ({
+test("invalid Quest creation stays open without writing; Escape returns to plus", async ({
   page,
   request,
 }) => {
-  await visit(page, "Todo-Dump");
+  await visit(page, "Questlog");
   await page.locator(".create-button").click();
   const dialog = page.getByRole("dialog");
   await dialog
-    .getByRole("button", { name: "Todo erstellen", exact: true })
+    .getByRole("button", { name: "Quest erstellen", exact: true })
     .click();
   await expect(dialog.getByRole("alert")).toBeVisible();
   expect(await list(request, "todos")).toEqual([]);
@@ -181,13 +181,13 @@ test("invalid Todo creation stays open without writing; Escape returns to plus",
   await expect(page.locator(".create-button")).toBeFocused();
 });
 
-test("switching back to Dump before reopen finishes refreshes it after the write", async ({
+test("switching back to Questlog before reopen finishes refreshes it after the write", async ({
   page,
   request,
   context,
 }) => {
   const created = await request.post(`${API_URL}/todos`, {
-    data: { title: "Verzögertes Todo" },
+    data: { title: "Verzögertes Quest" },
   });
   expect(created.status()).toBe(201);
   const todo = (await created.json()) as { id: number };
@@ -223,20 +223,20 @@ test("switching back to Dump before reopen finishes refreshes it after the write
   try {
     await page
       .getByRole("button", {
-        name: "Verzögertes Todo wieder öffnen",
+        name: "Verzögertes Quest wieder öffnen",
         exact: true,
       })
       .click();
     await started;
-    await openView(page, "Todo-Dump");
+    await openView(page, "Questlog");
     // Prove that the newly mounted Dump first reads the old completed state.
     await expect(
-      page.getByText("Dein Todo-Dump ist leer.", { exact: true }),
+      page.getByText("Dein Questlog ist leer.", { exact: true }),
     ).toBeVisible();
     release();
     await expect(
       page.getByRole("button", {
-        name: "Verzögertes Todo bearbeiten",
+        name: "Verzögertes Quest bearbeiten",
         exact: true,
       }),
     ).toBeVisible();

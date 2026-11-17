@@ -17,7 +17,7 @@ const todo = (
   ...PLANNER_TODO_FIELDS,
   type: "todo",
   todoId: 1,
-  title: "Todo",
+  title: "Quest",
   status: "pending",
   scheduledDate: "2026-10-02",
   scheduledAt: null,
@@ -35,7 +35,7 @@ const habit = (
   type: "habit",
   occurrenceId: 1,
   habitId: 1,
-  title: "Habit",
+  title: "Daily",
   status: "pending",
   scheduledDate: "2026-10-02",
   plannedDurationMinutes: null,
@@ -102,7 +102,7 @@ describe("arrangeToday", () => {
       ),
       at(8),
     );
-    expect(agenda.focus?.title).toBe("Todo");
+    expect(agenda.focus?.title).toBe("Quest");
     expect(agenda.next).toMatchObject({ kind: "event", time: "11:00" });
     expect(agenda.anytime).toEqual([anytime]);
   });

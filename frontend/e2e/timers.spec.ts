@@ -14,13 +14,13 @@ const read = async (request: import("@playwright/test").APIRequestContext) => {
   expect(r.ok()).toBeTruthy();
   return (await r.json()) as TimerResponse;
 };
-test("Todo timer: direct play, sticky bar, reload, second device, pause/duration/resume/confirmed stop", async ({
+test("Quest timer: direct play, sticky bar, reload, second device, pause/duration/resume/confirmed stop", async ({
   page,
   request,
   context,
   browser,
 }) => {
-  await visit(page, "Todo-Dump");
+  await visit(page, "Questlog");
   await createTodo(page, "Schreiben");
   await page
     .getByRole("button", { name: "Timer für Schreiben starten", exact: true })
@@ -30,7 +30,7 @@ test("Todo timer: direct play, sticky bar, reload, second device, pause/duration
   expect((await read(request)).timer?.durationMinutes).toBe(30);
   await page.reload();
   await expect(bar).toContainText("Schreiben");
-  await openView(page, "Habits");
+  await openView(page, "Dailies");
   await expect(bar).toBeVisible();
   const other = await browser.newContext({
     storageState: await context.storageState(),
@@ -79,26 +79,26 @@ test("Todo timer: direct play, sticky bar, reload, second device, pause/duration
     plannedDurationMinutes: 35,
   });
 });
-test("switching requires confirmation and completing a Dump Todo persists it in Today", async ({
+test("switching requires confirmation and completing a Questlog Quest persists it in Today", async ({
   page,
   request,
 }) => {
-  await visit(page, "Todo-Dump");
-  await createTodo(page, "Erste Aufgabe");
-  await createTodo(page, "Zweite Aufgabe");
+  await visit(page, "Questlog");
+  await createTodo(page, "Erste Quest");
+  await createTodo(page, "Zweite Quest");
   await page
     .getByRole("button", {
-      name: "Timer für Erste Aufgabe starten",
+      name: "Timer für Erste Quest starten",
       exact: true,
     })
     .click();
   await expect(
     page.getByRole("complementary", { name: "Aktueller Timer" }),
-  ).toContainText("Erste Aufgabe");
+  ).toContainText("Erste Quest");
   const old = (await read(request)).timer!.id;
   await page
     .getByRole("button", {
-      name: "Timer für Zweite Aufgabe starten",
+      name: "Timer für Zweite Quest starten",
       exact: true,
     })
     .click();
@@ -109,7 +109,7 @@ test("switching requires confirmation and completing a Dump Todo persists it in 
   expect((await read(request)).timer?.id).toBe(old);
   await page
     .getByRole("button", {
-      name: "Timer für Zweite Aufgabe starten",
+      name: "Timer für Zweite Quest starten",
       exact: true,
     })
     .click();
@@ -117,35 +117,35 @@ test("switching requires confirmation and completing a Dump Todo persists it in 
     .getByRole("button", { name: "Timer wechseln", exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
-  await expect(page.getByRole("complementary")).toContainText("Zweite Aufgabe");
+  await expect(page.getByRole("complementary")).toContainText("Zweite Quest");
   await page
-    .getByRole("button", { name: "Zweite Aufgabe erledigen", exact: true })
+    .getByRole("button", { name: "Zweite Quest erledigen", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Zweite Aufgabe", exact: true }),
+    page.getByRole("heading", { name: "Zweite Quest", exact: true }),
   ).toHaveCount(0);
   await expect(page.getByRole("complementary")).toHaveCount(0);
   await openView(page, "Heute");
   await showResolved(page);
   await expect(
-    page.getByRole("heading", { name: "Zweite Aufgabe", exact: true }),
+    page.getByRole("heading", { name: "Zweite Quest", exact: true }),
   ).toBeVisible();
   await page.reload();
   await showResolved(page);
   await expect(
-    page.getByRole("heading", { name: "Zweite Aufgabe", exact: true }),
+    page.getByRole("heading", { name: "Zweite Quest", exact: true }),
   ).toBeVisible();
   const rows = (await (await request.get(`${API_URL}/todos`)).json()) as {
     title: string;
     completedAt: string | null;
     scheduledAt: string | null;
   }[];
-  expect(rows.find((t) => t.title === "Zweite Aufgabe")).toMatchObject({
+  expect(rows.find((t) => t.title === "Zweite Quest")).toMatchObject({
     scheduledAt: null,
     completedAt: expect.any(String),
   });
 });
-test("Habit play availability and occurrence-only timer duration", async ({
+test("Daily play availability and occurrence-only timer duration", async ({
   page,
   request,
 }) => {
@@ -167,7 +167,7 @@ test("Habit play availability and occurrence-only timer duration", async ({
       ).ok(),
     ).toBeTruthy();
   }
-  await visit(page, "Habits");
+  await visit(page, "Dailies");
   await expect(
     page.getByRole("button", {
       name: "Timer für Zukünftig: keine offene fällige Ausführung",
@@ -184,7 +184,7 @@ test("Habit play availability and occurrence-only timer duration", async ({
     .getByRole("button", { name: "Timerdauer ändern", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog).toContainText("nur an dieser Habit-Ausführung");
+  await expect(dialog).toContainText("nur an dieser Daily-Ausführung");
   await dialog.getByLabel("Gesamtdauer in Minuten").fill("7");
   await dialog
     .getByRole("button", { name: "Dauer speichern", exact: true })
@@ -206,11 +206,11 @@ test("timer bar remains visible during long scrolling and icons have symmetric 4
 }) => {
   for (let i = 0; i < 18; i++)
     await request.post(`${API_URL}/todos`, {
-      data: { title: `Aufgabe ${i}`, plannedDurationMinutes: 5 },
+      data: { title: `Quest ${i}`, plannedDurationMinutes: 5 },
     });
-  await visit(page, "Todo-Dump");
+  await visit(page, "Questlog");
   await page
-    .getByRole("button", { name: "Timer für Aufgabe 0 starten", exact: true })
+    .getByRole("button", { name: "Timer für Quest 0 starten", exact: true })
     .click();
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   const bar = page.getByRole("complementary");
@@ -238,7 +238,7 @@ test("a remote replacement closes an old local stop confirmation", async ({
   page,
   request,
 }) => {
-  await visit(page, "Todo-Dump");
+  await visit(page, "Questlog");
   await createTodo(page, "Erster Timer");
   await createTodo(page, "Zweiter Timer");
   await page

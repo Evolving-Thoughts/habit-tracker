@@ -14,12 +14,12 @@ import {
 import { API_URL } from "./environment";
 import type { HistoryResponse } from "../src/types/history";
 
-test("Calendar day: a completed Dump Todo has no invented schedule, persists, and disappears after reopen", async ({
+test("Calendar day: a completed Questlog Quest has no invented schedule, persists, and disappears after reopen", async ({
   page,
   request,
 }) => {
   const date = await today(request);
-  await visit(page, "Todo-Dump");
+  await visit(page, "Questlog");
   await createTodo(page, "Ideen sammeln");
   await page
     .getByRole("button", { name: "Ideen sammeln erledigen", exact: true })
@@ -32,7 +32,7 @@ test("Calendar day: a completed Dump Todo has no invented schedule, persists, an
     .locator(".history-item")
     .filter({ hasText: "Ideen sammeln" });
   await expect(card).toBeVisible();
-  await expect(card).toContainText("Aus dem Todo-Dump");
+  await expect(card).toContainText("Aus dem Questlog");
   await expect(card).toContainText("Erledigt um");
   await expect(card).not.toContainText("Geplant für");
   await expect(page.locator('[name="historyDate"]')).toHaveValue(date);
@@ -55,7 +55,7 @@ test("Calendar day: a completed Dump Todo has no invented schedule, persists, an
   );
 });
 
-test("Calendar day: automatic skips stay on planned days; completed and deleted Habits remain in the read-only history", async ({
+test("Calendar day: automatic skips stay on planned days; completed and deleted Dailies remain in the read-only history", async ({
   page,
   request,
 }) => {
@@ -115,7 +115,7 @@ test("Calendar day: automatic skips stay on planned days; completed and deleted 
   );
   await page.getByRole("button", { name: "Woche", exact: true }).click();
   await expect(page.locator(".week-day")).toHaveCount(7);
-  await filterCalendar(page, "Todos");
+  await filterCalendar(page, "Quests");
   await expect(page.locator(".empty-state")).toBeVisible();
   const after = await request.get(
     `${API_URL}/history?date=${earlier}&view=week`,
@@ -123,7 +123,7 @@ test("Calendar day: automatic skips stay on planned days; completed and deleted 
   expect(await after.json()).toEqual(await before.json());
 });
 
-test("Calendar: month opens a day, Monday-first week rows, filters and soft-deleted Todos", async ({
+test("Calendar: month opens a day, Monday-first week rows, filters and soft-deleted Quests", async ({
   page,
   request,
 }) => {
@@ -193,11 +193,11 @@ test("Calendar: month opens a day, Monday-first week rows, filters and soft-dele
   await expect(page.locator(".empty-state")).toBeVisible();
   await view.getByRole("button", { name: "Heute", exact: true }).click();
   await expect(page.locator(".history-item")).toBeVisible();
-  await filterCalendar(page, "Habits");
+  await filterCalendar(page, "Dailies");
   await expect(page.locator(".empty-state")).toContainText(
-    "Gezeigt werden nur Habits.",
+    "Gezeigt werden nur Dailies.",
   );
-  await filterCalendar(page, "Todos");
+  await filterCalendar(page, "Quests");
   await expect(page.locator(".history-item")).toBeVisible();
   const api = await request.get(`${API_URL}/history?date=${date}`);
   expect(
@@ -234,7 +234,7 @@ test("Calendar: error retry and logout do not retain private results", async ({
   await expect(page.locator(".calendar-view")).toHaveCount(0);
 });
 
-test("Calendar week: open plans, overdue Todos and weekly targets stay calm", async ({
+test("Calendar week: open plans, overdue Quests and weekly targets stay calm", async ({
   page,
   request,
 }) => {
@@ -319,10 +319,10 @@ test("Calendar week: open plans, overdue Todos and weekly targets stay calm", as
     path: test.info().outputPath("week-open-plans.png"),
     fullPage: true,
   });
-  await filterCalendar(page, "Todos");
+  await filterCalendar(page, "Quests");
   await expect(targets).toHaveCount(0);
   await expect(day).toContainText("2 offen");
-  await filterCalendar(page, "Habits");
+  await filterCalendar(page, "Dailies");
   await expect(day).toContainText("1 offen");
   await expect(targets).toBeVisible();
   await page.locator('[name="historyDate"]').fill(daysAfter(date, -14));
@@ -436,7 +436,7 @@ test("Calendar forecast: future date placement, schedule change, pause and delet
       await page.getByRole("button", { name: "Nächster Zeitraum" }).click();
   }
   await page.locator('[name="historyDate"]').fill(dates[1]!);
-  await filterCalendar(page, "Todos");
+  await filterCalendar(page, "Quests");
   await expect(page.locator(".planned-item h3")).toHaveText([
     "Geplanter Artikel",
   ]);
@@ -450,7 +450,7 @@ test("Calendar day: date placement, filters, overdue plans and completion refres
   const tomorrow = daysAfter(date, 1);
   const old = daysAfter(date, -10);
   const response = await request.post(`${API_URL}/todos`, {
-    data: { title: "Überfälliges Todo", scheduledAt: `${old}T10:00:00Z` },
+    data: { title: "Überfälliges Quest", scheduledAt: `${old}T10:00:00Z` },
   });
   expect(response.status()).toBe(201);
   const todo = (await response.json()) as { id: number };
@@ -466,7 +466,7 @@ test("Calendar day: date placement, filters, overdue plans and completion refres
   ).toBe(201);
   const created = await request.post(`${API_URL}/habits`, {
     data: {
-      title: "Täglicher Habit",
+      title: "Täglicher Daily",
       schedule: { type: "interval", intervalDays: 1 },
     },
   });
@@ -479,8 +479,8 @@ test("Calendar day: date placement, filters, overdue plans and completion refres
     exact: true,
   });
   await expect(planned.locator(".planned-item h3")).toHaveText([
-    "Überfälliges Todo",
-    "Täglicher Habit",
+    "Überfälliges Quest",
+    "Täglicher Daily",
   ]);
   await expect(planned).toContainText(`noch offen seit ${shortDate(old)}`);
   await expect(planned.getByRole("button", { name: /erledigen$/ })).toHaveCount(
@@ -492,18 +492,18 @@ test("Calendar day: date placement, filters, overdue plans and completion refres
   await page.locator('[name="historyDate"]').fill(tomorrow);
   await expect(planned.locator(".planned-item h3")).toHaveText([
     "Morgiger Termin",
-    "Täglicher Habit",
+    "Täglicher Daily",
   ]);
   await expect(planned).not.toContainText("noch offen seit");
   // Future days have no reflection or time logging.
   await expect(page.locator("form.day-reflection")).toHaveCount(0);
-  await filterCalendar(page, "Todos");
+  await filterCalendar(page, "Quests");
   await expect(planned.locator(".planned-item h3")).toHaveText([
     "Morgiger Termin",
   ]);
-  await filterCalendar(page, "Habits");
+  await filterCalendar(page, "Dailies");
   await expect(planned.locator(".planned-item h3")).toHaveText([
-    "Täglicher Habit",
+    "Täglicher Daily",
   ]);
   await expect(page.locator(".empty-state")).toHaveCount(0);
   expect(
@@ -524,11 +524,11 @@ test("Calendar day: date placement, filters, overdue plans and completion refres
   await openView(page, "Heute");
   await openCalendar(page, "Tag");
   await expect(planned.locator(".planned-item h3")).toHaveText([
-    "Täglicher Habit",
+    "Täglicher Daily",
   ]);
   await expect(
     page.getByRole("region", { name: "Erledigt", exact: true }),
-  ).toContainText("Überfälliges Todo");
+  ).toContainText("Überfälliges Quest");
   await page.screenshot({
     path: test.info().outputPath("day-open-plans.png"),
     fullPage: true,

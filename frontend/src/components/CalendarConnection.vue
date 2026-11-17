@@ -48,7 +48,7 @@ async function setBlocks(id: string, value: boolean): Promise<void> {
 
 async function disconnect(): Promise<void> {
   const confirmed = window.confirm(
-    "Verbindung trennen? Termine bleiben in Google, Todos bleiben in der App.",
+    "Verbindung trennen? Termine bleiben in Google, Quests bleiben in der App.",
   );
   if (confirmed) await run(disconnectCalendar);
 }
@@ -85,7 +85,7 @@ onMounted(() => run(() => Promise.resolve()));
       Google hat den Zugriff beendet. Bitte neu verbinden.
     </p>
     <p v-else class="calendar-connection__text">
-      Verbinde deinen Google Kalender, damit deine Termine neben deinen Aufgaben
+      Verbinde deinen Google Kalender, damit deine Termine neben deinen Quests
       stehen.
     </p>
     <p

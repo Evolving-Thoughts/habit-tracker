@@ -57,7 +57,7 @@ describe("CreateTodoForm", () => {
       wrapper.get<HTMLInputElement>('input[name="title"]').element.value,
     ).toBe("");
 
-    expect(wrapper.get('[role="status"]').text()).toContain("Todo-Dump");
+    expect(wrapper.get('[role="status"]').text()).toContain("Questlog");
   });
 
   it("converts a local scheduled time to ISO", async () => {

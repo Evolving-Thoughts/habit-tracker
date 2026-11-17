@@ -11,7 +11,7 @@ import {
 } from "../api/day-planner.api";
 import type { TodoResponse } from "../types/todo";
 import { getCategories } from "../api/categories.api";
-import TodoDumpView from "./TodoDumpView.vue";
+import QuestlogView from "./QuestlogView.vue";
 
 vi.mock("../api/categories.api", () => ({ getCategories: vi.fn() }));
 vi.mock("../api/todo-hierarchy.api", () => ({ getDeletionPreview: vi.fn() }));
@@ -47,7 +47,7 @@ function makeTodo(overrides: Partial<TodoResponse> = {}): TodoResponse {
 }
 
 function mountView() {
-  return mount(TodoDumpView, {
+  return mount(QuestlogView, {
     global: {
       stubs: {
         CreateTodoForm: true,
@@ -56,7 +56,7 @@ function mountView() {
   });
 }
 
-describe("TodoDumpView", () => {
+describe("QuestlogView", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(getDeletionPreview).mockResolvedValue({
@@ -171,7 +171,7 @@ describe("TodoDumpView", () => {
     await flushPromises();
     expect(wrapper.get(".dump-item__why").text()).toBe("Für das neue Projekt");
     expect(wrapper.get(".dump-item__details").text()).toBe("Lernen30 Min.");
-    expect(wrapper.get(".dump-item").text()).not.toContain("Todo");
+    expect(wrapper.get(".dump-item").text()).not.toContain("Quest");
     expect(
       wrapper
         .get('h3[aria-label="NestJS lernen"] button[data-edit-button]')
@@ -215,7 +215,7 @@ describe("TodoDumpView", () => {
 
     await flushPromises();
 
-    expect(wrapper.text()).toContain("Dein Todo-Dump ist leer.");
+    expect(wrapper.text()).toContain("Dein Questlog ist leer.");
   });
 
   it("shows a loading error without an empty-state message", async () => {
@@ -229,7 +229,7 @@ describe("TodoDumpView", () => {
       "Backend nicht erreichbar",
     );
 
-    expect(wrapper.text()).not.toContain("Dein Todo-Dump ist leer.");
+    expect(wrapper.text()).not.toContain("Dein Questlog ist leer.");
   });
 
   it.each([[false, true, "erledigen"]] as const)(
@@ -499,7 +499,7 @@ describe("TodoDumpView", () => {
 
     expect(wrapper.find('[data-test="editing-form"]').exists()).toBe(false);
 
-    expect(wrapper.get('[role="status"]').text()).toBe("Todo gelöscht.");
+    expect(wrapper.get('[role="status"]').text()).toBe("Quest gelöscht.");
   });
 
   it("cancels deletion without removing the todo", async () => {
@@ -560,7 +560,7 @@ describe("TodoDumpView", () => {
   });
 });
 
-describe("TodoDumpView creation flow", () => {
+describe("QuestlogView creation flow", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(getDeletionPreview).mockResolvedValue({
@@ -574,19 +574,19 @@ describe("TodoDumpView creation flow", () => {
     vi.mocked(getCategories).mockResolvedValue([]);
     vi.mocked(createTodo).mockResolvedValue(makeTodo());
   });
-  it("opens the Todo form directly without a Habit choice", async () => {
-    const wrapper = mount(TodoDumpView);
+  it("opens the Quest form directly without a Daily choice", async () => {
+    const wrapper = mount(QuestlogView);
     await flushPromises();
     expect(wrapper.find(".create-todo").exists()).toBe(false);
-    await wrapper.get('button[aria-label="Todo erstellen"]').trigger("click");
+    await wrapper.get('button[aria-label="Quest erstellen"]').trigger("click");
     expect(wrapper.find("dialog .create-todo").exists()).toBe(true);
     expect(wrapper.find('[data-test="choose-habit"]').exists()).toBe(false);
   });
-  it("closes on creation, reloads the dump and shows the created Todo", async () => {
+  it("closes on creation, reloads the dump and shows the created Quest", async () => {
     backlogMock.mockResolvedValueOnce([]).mockResolvedValueOnce([makeTodo()]);
-    const wrapper = mount(TodoDumpView);
+    const wrapper = mount(QuestlogView);
     await flushPromises();
-    await wrapper.get('button[aria-label="Todo erstellen"]').trigger("click");
+    await wrapper.get('button[aria-label="Quest erstellen"]').trigger("click");
     await wrapper.get('dialog input[name="title"]').setValue("NestJS lernen");
     await wrapper.get("dialog form").trigger("submit");
     await flushPromises();
@@ -599,12 +599,12 @@ describe("TodoDumpView creation flow", () => {
     expect(wrapper.find("dialog").exists()).toBe(false);
     expect(backlogMock).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain("NestJS lernen");
-    expect(wrapper.get('[role="status"]').text()).toContain("Todo erstellt");
+    expect(wrapper.get('[role="status"]').text()).toContain("Quest erstellt");
   });
   it("cancels without creating or reloading", async () => {
-    const wrapper = mount(TodoDumpView);
+    const wrapper = mount(QuestlogView);
     await flushPromises();
-    await wrapper.get('button[aria-label="Todo erstellen"]').trigger("click");
+    await wrapper.get('button[aria-label="Quest erstellen"]').trigger("click");
     await wrapper.get(".modal-dialog__close").trigger("click");
     expect(wrapper.find("dialog").exists()).toBe(false);
     expect(createTodo).not.toHaveBeenCalled();
@@ -613,7 +613,7 @@ describe("TodoDumpView creation flow", () => {
 
   it("opens a focused modal and returns to the row on cancel", async () => {
     backlogMock.mockResolvedValueOnce([makeTodo()]);
-    const wrapper = mount(TodoDumpView, { attachTo: document.body });
+    const wrapper = mount(QuestlogView, { attachTo: document.body });
     await flushPromises();
     const button = wrapper.get<HTMLButtonElement>("[data-edit-button]");
     button.element.focus();
@@ -634,10 +634,10 @@ describe("TodoDumpView creation flow", () => {
     backlogMock
       .mockResolvedValueOnce([
         makeTodo(),
-        makeTodo({ id: 2, title: "Zweites Todo" }),
+        makeTodo({ id: 2, title: "Zweites Quest" }),
       ])
-      .mockResolvedValueOnce([makeTodo({ id: 2, title: "Zweites Todo" })]);
-    const wrapper = mount(TodoDumpView, { attachTo: document.body });
+      .mockResolvedValueOnce([makeTodo({ id: 2, title: "Zweites Quest" })]);
+    const wrapper = mount(QuestlogView, { attachTo: document.body });
     await flushPromises();
     await wrapper.get('[data-todo-id="1"] [data-edit-button]').trigger("click");
     await flushPromises();

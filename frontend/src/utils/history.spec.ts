@@ -45,7 +45,7 @@ it("counts a day and names only the non-zero counts", () => {
     type: "todo" as const,
     id: 1,
     habitId: null,
-    title: "Todo",
+    title: "Quest",
     categoryName: null,
     why: null,
     status: "completed" as const,

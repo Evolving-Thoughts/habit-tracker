@@ -86,7 +86,7 @@ describe("HabitsView", () => {
     );
     const wrapper = mount(HabitsView);
     expect(
-      wrapper.find('.skeleton[aria-label="Habits werden geladen"]').exists(),
+      wrapper.find('.skeleton[aria-label="Dailies werden geladen"]').exists(),
     ).toBe(true);
     expect(
       wrapper.get<HTMLButtonElement>(".create-button").element.disabled,
@@ -95,7 +95,7 @@ describe("HabitsView", () => {
     await flushPromises();
     expect(wrapper.find(".skeleton").exists()).toBe(false);
   });
-  it("refreshes on target changes only when no Habit editor is open", async () => {
+  it("refreshes on target changes only when no Daily editor is open", async () => {
     vi.mocked(getHabits).mockResolvedValue([habit()]);
     const wrapper = mount(HabitsView);
     await flushPromises();
@@ -119,7 +119,7 @@ describe("HabitsView", () => {
   it("shows an empty state with no persistent creation form", async () => {
     const wrapper = mount(HabitsView);
     await flushPromises();
-    expect(wrapper.text()).toContain("Du hast noch keine Habits.");
+    expect(wrapper.text()).toContain("Du hast noch keine Dailies.");
     expect(wrapper.find("dialog").exists()).toBe(false);
     expect(wrapper.find("form").exists()).toBe(false);
   });
@@ -237,7 +237,7 @@ describe("HabitsView", () => {
     expect(wrapper.get('[role="alert"]').text()).toBe(
       "Backend nicht erreichbar",
     );
-    expect(wrapper.text()).not.toContain("Du hast noch keine Habits.");
+    expect(wrapper.text()).not.toContain("Du hast noch keine Dailies.");
   });
   it("preserves loaded habits when a refresh fails", async () => {
     vi.mocked(getHabits)
@@ -252,7 +252,7 @@ describe("HabitsView", () => {
     );
     expect(wrapper.find('[data-habit-id="10"]').exists()).toBe(true);
   });
-  it("opens the Habit form directly and reloads after future habit creation", async () => {
+  it("opens the Daily form directly and reloads after future habit creation", async () => {
     const future = habit({
       currentSchedule: null,
       upcomingSchedule: version(
@@ -269,7 +269,7 @@ describe("HabitsView", () => {
       .mockResolvedValueOnce([future]);
     const wrapper = mount(HabitsView);
     await flushPromises();
-    await wrapper.get('button[aria-label="Habit erstellen"]').trigger("click");
+    await wrapper.get('button[aria-label="Daily erstellen"]').trigger("click");
     expect(wrapper.find(".create-habit").exists()).toBe(true);
     expect(wrapper.find('[data-test="choose-todo"]').exists()).toBe(false);
     await wrapper.get('dialog input[name="title"]').setValue("Joggen");
@@ -288,7 +288,7 @@ describe("HabitsView", () => {
     expect(wrapper.find("dialog").exists()).toBe(false);
     expect(getHabits).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain("Ab 10.10.: Täglich");
-    expect(wrapper.get('[role="status"]').text()).toBe("Habit erstellt.");
+    expect(wrapper.get('[role="status"]').text()).toBe("Daily erstellt.");
   });
   it("cancels creation without reloading", async () => {
     const wrapper = mount(HabitsView);
@@ -368,7 +368,7 @@ describe("HabitsView", () => {
     await flushPromises();
     expect(deleteHabit).toHaveBeenCalledWith(10);
     expect(wrapper.find('[data-habit-id="10"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain("Du hast noch keine Habits.");
+    expect(wrapper.text()).toContain("Du hast noch keine Dailies.");
   });
   it("keeps the editor and list when saving fails", async () => {
     vi.mocked(getHabits).mockResolvedValue([habit()]);

@@ -64,15 +64,15 @@ async function submit(): Promise<void> {
 
     successMessage.value =
       input.scheduledAt === null
-        ? "Todo erstellt. Es liegt im Todo-Dump."
-        : "Todo erstellt. Es steht am geplanten Tag in Heute.";
+        ? "Quest erstellt. Sie liegt im Questlog."
+        : "Quest erstellt. Sie steht am geplanten Tag in Heute.";
 
     emit("created");
   } catch (error: unknown) {
     errorMessage.value =
       error instanceof Error
         ? error.message
-        : "Das Todo konnte nicht erstellt werden.";
+        : "Die Quest konnte nicht erstellt werden.";
   } finally {
     isSubmitting.value = false;
     emit("busy", false);
@@ -86,7 +86,7 @@ async function submit(): Promise<void> {
     :class="{ card: !embedded }"
     :aria-labelledby="embedded ? undefined : 'create-todo-heading'"
   >
-    <h2 v-if="!embedded" id="create-todo-heading">Neues Todo</h2>
+    <h2 v-if="!embedded" id="create-todo-heading">Neue Quest</h2>
 
     <form novalidate @submit.prevent="submit">
       <fieldset :disabled="isSubmitting">
@@ -144,14 +144,14 @@ async function submit(): Promise<void> {
           Fester Termin
         </label>
 
-        <p class="create-todo__hint">Ohne Zeitpunkt landet es im Todo-Dump.</p>
+        <p class="create-todo__hint">Ohne Zeitpunkt landet sie im Questlog.</p>
 
         <p v-if="errorMessage" class="form-error" role="alert">
           {{ errorMessage }}
         </p>
 
         <button class="btn btn--primary create-todo__submit" type="submit">
-          {{ isSubmitting ? "Wird gespeichert …" : "Todo erstellen" }}
+          {{ isSubmitting ? "Wird gespeichert …" : "Quest erstellen" }}
         </button>
       </fieldset>
     </form>

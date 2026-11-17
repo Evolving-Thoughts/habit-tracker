@@ -186,13 +186,13 @@ export class TodosService {
         throw new NotFoundException(`Todo with ID ${id} was not found`);
       if (todo.completed)
         throw new ConflictException(
-          'Erledigte Todos können nicht verschoben werden.',
+          'Erledigte Quests können nicht verschoben werden.',
         );
       if (!todo.scheduledAt)
-        throw new BadRequestException('Das Todo hat noch keinen Termin.');
+        throw new BadRequestException('Die Quest hat noch keinen Termin.');
       if (dto.date < this.clock.today())
         throw new BadRequestException(
-          'Todos können nicht in die Vergangenheit verschoben werden.',
+          'Quests können nicht in die Vergangenheit verschoben werden.',
         );
       if (todo.isFixed && !dto.confirmFixed)
         throw new ConflictException(
@@ -200,7 +200,7 @@ export class TodosService {
         );
       if (await hasOpenTimer(manager, userId, { todoId: id }))
         throw new ConflictException(
-          'Beende zuerst den Timer, bevor du das Todo verschiebst.',
+          'Beende zuerst den Timer, bevor du die Quest verschiebst.',
         );
       todo.scheduledAt = atSameWallClock(todo.scheduledAt, dto.date);
       return repository.save(todo);

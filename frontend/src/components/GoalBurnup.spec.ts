@@ -40,7 +40,7 @@ describe("GoalBurnup", () => {
   it("shows done and total scope with its growth", async () => {
     const wrapper = await render();
     expect(wrapper.findAll("polyline")).toHaveLength(2);
-    expect(wrapper.text()).toContain("1 von 4 Aufgaben erledigt, 3 noch offen");
+    expect(wrapper.text()).toContain("1 von 4 Quests erledigt, 3 noch offen");
     expect(wrapper.text()).toContain("Gesamtumfang");
   });
 

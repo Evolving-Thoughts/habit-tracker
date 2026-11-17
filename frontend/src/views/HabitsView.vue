@@ -45,7 +45,7 @@ const {
   reload: loadHabits,
 } = useLoader(loadAll, {
   initial: [] as HabitResponse[],
-  fallbackError: "Die Habits konnten nicht geladen werden.",
+  fallbackError: "Die Dailies konnten nicht geladen werden.",
   refreshOnChange: () => editingId.value === null && !creationOpen.value,
 });
 const { applied } = useWrites(loadHabits, errorMessage);
@@ -133,7 +133,7 @@ async function onEditorChanged(): Promise<void> {
   closeEditing();
 }
 async function onCreated(): Promise<void> {
-  successMessage.value = "Habit erstellt.";
+  successMessage.value = "Daily erstellt.";
   await applied();
   creationOpen.value = false;
 }
@@ -142,12 +142,12 @@ async function onCreated(): Promise<void> {
 <template>
   <main ref="page" class="page habits-view">
     <CreateButton
-      label="Habit erstellen"
+      label="Daily erstellen"
       :disabled="isBusy || editingId !== null"
       @click="openCreation"
     />
     <header class="page-header">
-      <h1 class="page-title">Habits</h1>
+      <h1 class="page-title">Dailies</h1>
       <p class="page-lead">Was du regelmäßig tun willst, und wie oft.</p>
     </header>
 
@@ -186,7 +186,7 @@ async function onCreated(): Promise<void> {
       v-if="isLoading"
       class="skeleton"
       role="status"
-      aria-label="Habits werden geladen"
+      aria-label="Dailies werden geladen"
     >
       <span />
       <span />
@@ -196,8 +196,8 @@ async function onCreated(): Promise<void> {
       v-else-if="hasLoaded && habits.length === 0 && !errorMessage"
       class="empty-state"
     >
-      <strong>Du hast noch keine Habits.</strong>
-      <span>Tippe auf Plus, um deine erste Gewohnheit anzulegen.</span>
+      <strong>Du hast noch keine Dailies.</strong>
+      <span>Tippe auf Plus, um dein erstes Daily anzulegen.</span>
     </div>
     <template v-else-if="habits.length > 0">
       <template v-for="group in groups" :key="group.key">
@@ -213,7 +213,7 @@ async function onCreated(): Promise<void> {
               <span class="count">{{ group.items.length }}</span>
             </h2>
             <p class="habit-group__hint">
-              Pausierte Habits stehen nicht in Heute.
+              Pausierte Dailies stehen nicht in Heute.
             </p>
           </template>
           <ul class="habit-group__items">

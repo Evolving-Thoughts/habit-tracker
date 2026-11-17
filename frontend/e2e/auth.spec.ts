@@ -28,7 +28,8 @@ test("register, verify through SMTP email, login, reload, logout", async ({
   await expect(
     page.getByRole("heading", { name: "E-Mail bestätigen" }),
   ).toBeVisible();
-  expect(new URL(page.url()).hash).toBe("");
+  // The token is gone from the address; only the view route remains.
+  expect(new URL(page.url()).hash).toBe("#/heute");
   await page
     .getByRole("button", { name: "E-Mail bestätigen", exact: true })
     .click();

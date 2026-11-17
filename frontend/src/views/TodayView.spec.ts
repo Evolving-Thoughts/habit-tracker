@@ -159,21 +159,21 @@ describe("TodayView", () => {
     getTodayMock.mockResolvedValueOnce(
       makePlanner([
         makeTodo({
-          title: "Überfälliges Todo",
+          title: "Überfälliges Quest",
           scheduledDate: "2026-10-01",
           scheduledAt: "2026-10-01T08:00:00.000Z",
           isOverdue: true,
         }),
-        makeHabit({ title: "Offenes Habit" }),
+        makeHabit({ title: "Offenes Daily" }),
         makeTodo({
           todoId: 2,
-          title: "Erledigtes Todo",
+          title: "Erledigtes Quest",
           status: "completed",
           completedAt: "2026-10-02T10:00:00.000Z",
         }),
         makeHabit({
           occurrenceId: 21,
-          title: "Übersprungenes Habit",
+          title: "Übersprungenes Daily",
           status: "skipped",
         }),
       ]),
@@ -182,16 +182,16 @@ describe("TodayView", () => {
     const wrapper = mount(TodayView);
     await flushPromises();
 
-    expect(wrapper.get(".focus").text()).toContain("Offenes Habit");
+    expect(wrapper.get(".focus").text()).toContain("Offenes Daily");
     expect(wrapper.get(".today-view__progress").text()).toBe(
       "2 von 3 erledigt",
     );
     const catchUp = wrapper.get(".catch-up__toggle");
     expect(catchUp.text()).toContain("1 Eintrag von früher");
-    expect(wrapper.text()).not.toContain("Überfälliges Todo");
+    expect(wrapper.text()).not.toContain("Überfälliges Quest");
     await catchUp.trigger("click");
     expect(wrapper.get(".catch-up__body").text()).toContain(
-      "Überfälliges Todo",
+      "Überfälliges Quest",
     );
 
     const resolved = wrapper.get(".resolved__toggle");
@@ -563,7 +563,7 @@ describe("TodayView creation flow", () => {
       expect(wrapper.find("dialog").exists()).toBe(false);
       expect(getTodayMock).toHaveBeenCalledTimes(2);
       expect(wrapper.get('[role="status"]').text()).toContain(
-        kind === "todo" ? "Todo erstellt" : "Habit erstellt",
+        kind === "todo" ? "Quest erstellt" : "Daily erstellt",
       );
     },
   );
@@ -602,7 +602,7 @@ describe("TodayView creation flow", () => {
     expect(createTodo).not.toHaveBeenCalled();
   });
 
-  it("opens a Habit editor in a modal and restores focus on close", async () => {
+  it("opens a Daily editor in a modal and restores focus on close", async () => {
     getTodayMock.mockResolvedValueOnce(makePlanner([makeHabit()]));
     vi.mocked(getHabit).mockResolvedValue({
     ...HABIT_FIELDS,
@@ -622,7 +622,7 @@ describe("TodayView creation flow", () => {
     await button.trigger("click");
     await flushPromises();
     expect(wrapper.get("dialog").attributes("aria-label")).toBe(
-      "Habit bearbeiten",
+      "Daily bearbeiten",
     );
     expect(document.activeElement).toBe(
       wrapper.get('dialog input[name="title"]').element,

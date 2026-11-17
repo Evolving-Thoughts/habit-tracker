@@ -4,7 +4,9 @@ vi.mock("./api/auth.api", () => ({
 }));
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createMemoryHistory } from "vue-router";
 import App from "./App.vue";
+import { createAppRouter } from "./router";
 import { getMe, logout } from "./api/auth.api";
 beforeEach(() => {
   vi.mocked(getMe).mockResolvedValue({ id: "user-a", email: "a@example.test" });
@@ -14,16 +16,17 @@ enableAutoUnmount(afterEach);
 function mountApp() {
   return mount(App, {
     global: {
+      plugins: [createAppRouter(createMemoryHistory())],
       stubs: {
         TodayView: { template: '<main data-view="today">Today</main>' },
-        TodoDumpView: { template: '<main data-view="dump">Dump</main>' },
+        QuestlogView: { template: '<main data-view="dump">Dump</main>' },
         CalendarView: {
           template: '<main data-view="calendar">Calendar</main>',
         },
-        TodoHierarchyView: {
+        CampaignsView: {
           template: '<main data-view="hierarchy">Tree</main>',
         },
-        HabitsView: { template: '<main data-view="habits">Habits</main>' },
+        HabitsView: { template: '<main data-view="habits">Dailies</main>' },
         SettingsView: {
           emits: ["signOut"],
           template:
@@ -35,11 +38,16 @@ function mountApp() {
 }
 function tab(wrapper: ReturnType<typeof mountApp>, name: string) {
   return wrapper
-    .findAll("nav button")
+    .findAll("nav a, nav button")
     .find(
       (button) =>
         (button.attributes("aria-label") ?? button.text().trim()) === name,
     )!;
+}
+/** Follows a navigation link and waits for the view to change. */
+async function open(wrapper: ReturnType<typeof mountApp>, name: string) {
+  await tab(wrapper, name).trigger("click");
+  await flushPromises();
 }
 describe("App navigation", () => {
   it("starts with Today and offers the views", async () => {
@@ -47,26 +55,46 @@ describe("App navigation", () => {
     await flushPromises();
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
     // Four tabs, Mehr, and three views behind it.
-    expect(wrapper.findAll("nav button")).toHaveLength(8);
+    expect(wrapper.findAll("nav a, nav button")).toHaveLength(8);
   });
-  it("opens the habit overview and marks only that navigation button active", async () => {
+  it("opens the dailies and marks only that navigation link current", async () => {
     const wrapper = mountApp();
     await flushPromises();
-    await tab(wrapper, "Habits").trigger("click");
+    await open(wrapper, "Dailies");
     expect(wrapper.find('[data-view="habits"]').exists()).toBe(true);
     expect(wrapper.find('[data-view="today"]').exists()).toBe(false);
     expect(
       wrapper
-        .findAll("nav button")
-        .slice(0, 4)
-        .map((button) => button.attributes("aria-current")),
-    ).toEqual([undefined, undefined, "page", undefined]);
+        .findAll("nav a")
+        .filter((link) => link.attributes("aria-current") === "page")
+        .map((link) => link.text()),
+    ).toEqual(["Dailies"]);
+  });
+  it("sets the browser title and moves focus into the opened view", async () => {
+    const wrapper = mount(App, {
+      attachTo: document.body,
+      global: { plugins: [createAppRouter(createMemoryHistory())] },
+    });
+    await flushPromises();
+    await open(wrapper, "Einstellungen");
+    expect(document.title).toBe("Einstellungen · Habit Tracker");
+    expect(document.activeElement?.tagName).toBe("MAIN");
+  });
+  it("takes the token of an email link and drops it from the address", async () => {
+    vi.mocked(getMe).mockResolvedValueOnce(null);
+    const router = createAppRouter(createMemoryHistory());
+    await router.push("/reset=abc_DEF-123");
+    const wrapper = mount(App, { global: { plugins: [router] } });
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe("today");
+    expect(wrapper.text()).toContain("Neues Passwort");
   });
   it("opens the settings from the navigation", async () => {
     const wrapper = mountApp();
     await flushPromises();
     const button = tab(wrapper, "Einstellungen");
     await button.trigger("click");
+  await flushPromises();
     expect(wrapper.find('[data-view="settings"]').exists()).toBe(true);
     expect(button.attributes("aria-current")).toBe("page");
     expect(
@@ -80,13 +108,13 @@ describe("App navigation", () => {
     expect(wrapper.find('[data-view="settings"]').exists()).toBe(true);
     expect(window.location.search).toBe("");
   });
-  it("can move from Habits to Todo-Dump and back to Today", async () => {
+  it("can move from Dailies to Questlog and back to Today", async () => {
     const wrapper = mountApp();
     await flushPromises();
-    await tab(wrapper, "Habits").trigger("click");
-    await tab(wrapper, "Todo-Dump").trigger("click");
+    await open(wrapper, "Dailies");
+    await open(wrapper, "Questlog");
     expect(wrapper.find('[data-view="dump"]').exists()).toBe(true);
-    await tab(wrapper, "Heute").trigger("click");
+    await open(wrapper, "Heute");
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
   });
 });
@@ -94,8 +122,9 @@ describe("App navigation", () => {
 it("opens the task hierarchy", async () => {
   const wrapper = mountApp();
   await flushPromises();
-  const button = tab(wrapper, "Aufgabenbaum");
+  const button = tab(wrapper, "Kampagnen");
   await button.trigger("click");
+  await flushPromises();
   expect(wrapper.find('[data-view="hierarchy"]').exists()).toBe(true);
   expect(button.attributes("aria-current")).toBe("page");
 });
@@ -105,7 +134,7 @@ describe("Calendar navigation", () => {
     const wrapper = mountApp();
     await flushPromises();
     expect(tab(wrapper, "Verlauf")).toBeUndefined();
-    await tab(wrapper, "Kalender").trigger("click");
+    await open(wrapper, "Kalender");
     expect(wrapper.find('[data-view="calendar"]').exists()).toBe(true);
     expect(tab(wrapper, "Kalender").attributes("aria-current")).toBe("page");
   });
@@ -117,7 +146,7 @@ describe("Calendar navigation", () => {
     expect(more.attributes("aria-expanded")).toBe("false");
     await more.trigger("click");
     expect(more.attributes("aria-expanded")).toBe("true");
-    await tab(wrapper, "Aufgabenbaum").trigger("click");
+    await open(wrapper, "Kampagnen");
     expect(more.attributes("aria-expanded")).toBe("false");
   });
 });
@@ -167,7 +196,7 @@ describe("App authentication boundary", () => {
   it("logs out without retaining the previous view", async () => {
     const wrapper = mountApp();
     await flushPromises();
-    await tab(wrapper, "Einstellungen").trigger("click");
+    await open(wrapper, "Einstellungen");
     await wrapper.get('[data-test="sign-out"]').trigger("click");
     await flushPromises();
     expect(logout).toHaveBeenCalled();

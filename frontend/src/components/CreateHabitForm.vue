@@ -75,7 +75,7 @@ async function submit(): Promise<void> {
     errorMessage.value =
       error instanceof Error
         ? error.message
-        : "Das Habit konnte nicht erstellt werden.";
+        : "Das Daily konnte nicht erstellt werden.";
   } finally {
     isSubmitting.value = false;
     emit("busy", false);
@@ -89,7 +89,7 @@ async function submit(): Promise<void> {
     :class="{ card: !embedded }"
     :aria-labelledby="embedded ? undefined : 'create-habit-heading'"
   >
-    <h2 v-if="!embedded" id="create-habit-heading">Neues Habit</h2>
+    <h2 v-if="!embedded" id="create-habit-heading">Neues Daily</h2>
     <form novalidate @submit.prevent="submit">
       <fieldset :disabled="isSubmitting">
         <label class="field">
@@ -100,7 +100,7 @@ async function submit(): Promise<void> {
             type="text"
             maxlength="200"
             required
-            placeholder="Welche Gewohnheit möchtest du aufbauen?"
+            placeholder="Welches Daily möchtest du aufbauen?"
           />
         </label>
         <label class="field">
@@ -216,7 +216,7 @@ async function submit(): Promise<void> {
           {{ errorMessage }}
         </p>
         <button class="btn btn--primary create-habit__submit" type="submit">
-          {{ isSubmitting ? "Wird erstellt …" : "Habit erstellen" }}
+          {{ isSubmitting ? "Wird erstellt …" : "Daily erstellen" }}
         </button>
       </fieldset>
     </form>

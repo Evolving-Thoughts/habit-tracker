@@ -90,15 +90,15 @@ export class TimersService {
         where: { id, userId },
         lock: { mode: 'pessimistic_write' },
       });
-      if (!todo) throw new NotFoundException('Todo nicht gefunden.');
+      if (!todo) throw new NotFoundException('Quest nicht gefunden.');
       if (!isTodoTimerEligible(todo))
-        throw new ConflictException('Erledigte Todos zuerst wieder öffnen.');
+        throw new ConflictException('Erledigte Quests zuerst wieder öffnen.');
       return todo;
     }
     const first = await ownedOccurrences(manager, userId)
       .andWhere('occurrence.id = :id', { id })
       .getOne();
-    if (!first) throw new NotFoundException('Habit-Ausführung nicht gefunden.');
+    if (!first) throw new NotFoundException('Daily-Ausführung nicht gefunden.');
     const habit = await this.scheduling.lockHabit(
       userId,
       manager,
@@ -109,7 +109,7 @@ export class TimersService {
       id,
     });
     if (!isOccurrenceTimerEligible(occurrence, habit, dayOf(now)))
-      throw new ConflictException('Keine offene fällige Habit-Ausführung.');
+      throw new ConflictException('Keine offene fällige Daily-Ausführung.');
     occurrence.habit = habit;
     return occurrence;
   }

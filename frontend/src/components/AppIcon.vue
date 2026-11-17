@@ -3,10 +3,10 @@
 defineProps<{
   name:
     | "today"
-    | "todo-dump"
-    | "habits"
+    | "questlog"
+    | "dailies"
     | "calendar"
-    | "hierarchy"
+    | "campaigns"
     | "categories"
     | "history"
     | "settings"
@@ -48,10 +48,10 @@ defineProps<{
         d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"
       />
     </template>
-    <template v-else-if="name === 'todo-dump'">
+    <template v-else-if="name === 'questlog'">
       <path d="M4 7h16M4 12h16M4 17h10" />
     </template>
-    <template v-else-if="name === 'habits'">
+    <template v-else-if="name === 'dailies'">
       <path d="M20 12a8 8 0 1 1-2.3-5.6" />
       <path d="M20 4v4h-4" />
       <path d="m9 12 2 2 4-4" />
@@ -60,7 +60,7 @@ defineProps<{
       <rect x="3.5" y="5" width="17" height="15" rx="3" />
       <path d="M3.5 10h17M8 3v4M16 3v4" />
     </template>
-    <template v-else-if="name === 'hierarchy'">
+    <template v-else-if="name === 'campaigns'">
       <rect x="9" y="3" width="6" height="5" rx="1.5" />
       <rect x="3" y="16" width="6" height="5" rx="1.5" />
       <rect x="15" y="16" width="6" height="5" rx="1.5" />

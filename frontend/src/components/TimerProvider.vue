@@ -185,7 +185,7 @@ onUnmounted(() => {
   >
     <p>
       Der Timer wird beendet. Die gespeicherte Dauer bleibt erhalten; die
-      Aufgabe bleibt offen.
+      Quest bleibt offen.
     </p>
     <div class="timer-dialog-actions">
       <button data-confirm-stop type="button" @click="stop">
@@ -203,7 +203,7 @@ onUnmounted(() => {
   >
     <p>
       Den bisherigen Timer beenden und „{{ switching.target.title }}“ starten?
-      Die bisherige Aufgabe bleibt offen.
+      Die bisherige Quest bleibt offen.
     </p>
     <div class="timer-dialog-actions">
       <button data-confirm-switch type="button" @click="replace">
@@ -235,8 +235,8 @@ onUnmounted(() => {
         Bereits gelaufene Zeit bleibt angerechnet. Gespeichert
         {{
           timer?.kind === "todo"
-            ? "am Todo"
-            : "nur an dieser Habit-Ausführung, nicht am gesamten Habit"
+            ? "an der Quest"
+            : "nur an dieser Daily-Ausführung, nicht am gesamten Daily"
         }}.
       </p>
       <div class="timer-dialog-actions">

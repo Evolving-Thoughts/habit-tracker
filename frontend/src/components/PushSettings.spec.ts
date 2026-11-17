@@ -47,7 +47,7 @@ describe("Push settings", () => {
   it("starts disabled, explains neutral per-device messages and activates only after a click", async () => {
     const wrapper = await open();
     expect(enablePush).not.toHaveBeenCalled();
-    expect(wrapper.text()).toContain("ohne Aufgaben- oder Habit-Titel");
+    expect(wrapper.text()).toContain("ohne Quest- oder Daily-Titel");
     expect(wrapper.get('[role="switch"]').attributes("aria-checked")).toBe(
       "false",
     );

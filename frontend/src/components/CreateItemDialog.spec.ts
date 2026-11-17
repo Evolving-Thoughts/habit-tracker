@@ -56,7 +56,7 @@ describe("CreateItemDialog", () => {
       expect(wrapper.find('[data-test="choose-todo"]').exists()).toBe(true);
     },
   );
-  it("opens the Todo-Dump directly in Todo mode without habit choice", async () => {
+  it("opens the Questlog directly in Quest mode without habit choice", async () => {
     const wrapper = mount(CreateItemDialog, { props: { mode: "todo" } });
     await flushPromises();
     expect(wrapper.find(".create-todo").exists()).toBe(true);
@@ -136,7 +136,7 @@ describe("CreateItemDialog", () => {
   });
 });
 
-it("opens Habit management directly in Habit mode without a Todo choice", async () => {
+it("opens Daily management directly in Daily mode without a Quest choice", async () => {
   const wrapper = mount(CreateItemDialog, { props: { mode: "habit" } });
   await flushPromises();
   expect(wrapper.find(".create-habit").exists()).toBe(true);

@@ -45,8 +45,8 @@ const MODES: { value: Mode; label: string }[] = [
 ];
 const FILTERS: { value: HistoryFilter; label: string }[] = [
   { value: "all", label: "Alle" },
-  { value: "todos", label: "Todos" },
-  { value: "habits", label: "Habits" },
+  { value: "todos", label: "Quests" },
+  { value: "habits", label: "Dailies" },
 ];
 
 const mode = ref<Mode>("month");
@@ -573,7 +573,7 @@ function onMoved(): void {
             <p class="quota__value">
               {{ quota.completed }} von {{ quota.total }}
             </p>
-            <p id="quota-label" class="quota__label">Habits diese Woche</p>
+            <p id="quota-label" class="quota__label">Dailies diese Woche</p>
             <div
               class="quota__bar"
               role="progressbar"

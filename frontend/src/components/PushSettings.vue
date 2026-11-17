@@ -96,8 +96,8 @@ onUnmounted(() => {
       </button>
     </div>
     <p class="push-settings__text">
-      Meldet auf diesem Gerät, wenn ein Timer abläuft, ohne Aufgaben- oder
-      Habit-Titel.
+      Meldet auf diesem Gerät, wenn ein Timer abläuft, ohne Quest- oder
+      Daily-Titel.
     </p>
     <p class="visually-hidden" role="status">
       {{

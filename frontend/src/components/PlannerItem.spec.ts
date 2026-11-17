@@ -85,7 +85,7 @@ describe("PlannerItem", () => {
       },
     });
     expect(wrapper.text()).toContain("45/60 Min.");
-    expect(wrapper.text()).toContain("Ziel: Halbmarathon");
+    expect(wrapper.text()).toContain("Gehört zu: Halbmarathon");
   });
 
   it("shows the original day for carried-over items and hides actions when compact", () => {
@@ -101,7 +101,7 @@ describe("PlannerItem", () => {
     expect(wrapper.find(".planner-item__skip-button").exists()).toBe(false);
   });
 
-  it("offers no Play for a completed Todo", () => {
+  it("offers no Play for a completed Quest", () => {
     const wrapper = mount(PlannerItem, {
       props: {
         item: makeTodo({

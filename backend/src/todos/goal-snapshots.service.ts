@@ -75,9 +75,7 @@ export class GoalSnapshotsService implements OnModuleInit, OnModuleDestroy {
     const todo = await this.todos.findOneBy({ id, userId });
     if (!todo) throw new NotFoundException(`Todo with ID ${id} was not found`);
     if (todo.parentId !== null)
-      throw new BadRequestException(
-        'Burnup gibt es nur für Todos ohne übergeordnetes Todo.',
-      );
+      throw new BadRequestException('Den Burn-up gibt es nur für Kampagnen.');
     await this.record(userId);
     const rows = await this.snapshots.find({
       where: { userId, rootTodoId: id },

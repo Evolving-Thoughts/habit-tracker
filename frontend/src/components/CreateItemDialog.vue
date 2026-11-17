@@ -15,8 +15,8 @@ const heading = computed(() =>
   step.value === "choose"
     ? "Was möchtest du erstellen?"
     : step.value === "todo"
-      ? "Neues Todo"
-      : "Neues Habit",
+      ? "Neue Quest"
+      : "Neues Daily",
 );
 function close(): void {
   if (!busy.value) emit("close");
@@ -36,7 +36,7 @@ function created(kind: "todo" | "habit"): void {
   >
     <template v-if="step === 'choose'">
       <p class="create-dialog__intro">
-        Eine einzelne Aufgabe oder eine wiederkehrende Gewohnheit.
+        Eine einzelne Quest oder ein wiederkehrendes Daily.
       </p>
       <div class="create-dialog__choices">
         <button
@@ -49,7 +49,7 @@ function created(kind: "todo" | "habit"): void {
             ><AppIcon name="check"
           /></span>
           <span
-            ><strong>Todo</strong><small>Eine Aufgabe erledigen</small></span
+            ><strong>Quest</strong><small>Einmal erledigen</small></span
           >
           <AppIcon name="chevron" class="create-dialog__chevron" />
         </button>
@@ -60,10 +60,10 @@ function created(kind: "todo" | "habit"): void {
           @click="step = 'habit'"
         >
           <span class="create-dialog__choice-icon" aria-hidden="true"
-            ><AppIcon name="habits"
+            ><AppIcon name="dailies"
           /></span>
           <span
-            ><strong>Habit</strong><small>Regelmäßig dranbleiben</small></span
+            ><strong>Daily</strong><small>Regelmäßig dranbleiben</small></span
           >
           <AppIcon name="chevron" class="create-dialog__chevron" />
         </button>

@@ -16,9 +16,9 @@ const create = async (
 };
 const open = async (page: Page) => {
   await page.goto("/");
-  await openView(page, "Aufgabenbaum");
+  await openView(page, "Kampagnen");
   await expect(
-    page.getByRole("heading", { name: "Aufgabenbaum", exact: true }),
+    page.getByRole("heading", { name: "Kampagnen", exact: true }),
   ).toBeVisible();
 };
 const row = (page: Page, id: number) => page.locator(`[data-todo-id="${id}"]`);
@@ -45,13 +45,13 @@ test("Tree: add child, collapse, independent completion and reopen, persist", as
     page,
     root.id,
     "Lernprojekt abschließen",
-    "Teilaufgabe zu Lernprojekt abschließen hinzufügen",
+    "Unter-Quest zu Lernprojekt abschließen hinzufügen",
   );
   const dialog = page.getByRole("dialog");
   await dialog.locator("[name=title]").fill("Oberfläche entwickeln");
   await dialog.locator("[name=duration]").fill("90");
   await dialog
-    .getByRole("button", { name: "Todo erstellen", exact: true })
+    .getByRole("button", { name: "Quest erstellen", exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
   await expect(
@@ -86,7 +86,7 @@ test("Tree: add child, collapse, independent completion and reopen, persist", as
     .click();
   await expect(row(page, child.id)).toBeVisible();
   await page.reload();
-  await openView(page, "Aufgabenbaum");
+  await openView(page, "Kampagnen");
   await expect(row(page, child.id)).toBeVisible();
 });
 test("Tree: accessible move to parent and root, edit duration, preserve own schedule", async ({
@@ -145,7 +145,7 @@ test("Tree: review paused timer, cancel deletion, reject stale preview then conf
     page,
     root.id,
     "Lernprojekt",
-    "Lernprojekt mit allen Teilaufgaben löschen",
+    "Lernprojekt mit allen Unter-Quests löschen",
   );
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("Komponenten ausprobieren");
@@ -158,7 +158,7 @@ test("Tree: review paused timer, cancel deletion, reject stale preview then conf
     page,
     root.id,
     "Lernprojekt",
-    "Lernprojekt mit allen Teilaufgaben löschen",
+    "Lernprojekt mit allen Unter-Quests löschen",
   );
   await expect(dialog).toBeVisible();
   await create(request, "Neu hinzugefügt", root.id);
@@ -177,7 +177,7 @@ test("Tree: review paused timer, cancel deletion, reject stale preview then conf
     page,
     root.id,
     "Lernprojekt",
-    "Lernprojekt mit allen Teilaufgaben löschen",
+    "Lernprojekt mit allen Unter-Quests löschen",
   );
   await expect(dialog).toContainText("Neu hinzugefügt");
   await dialog
@@ -185,10 +185,10 @@ test("Tree: review paused timer, cancel deletion, reject stale preview then conf
     .click();
   await expect(dialog).not.toBeVisible();
   await expect(
-    page.getByText("Noch keine Ziele.", { exact: false }),
+    page.getByText("Noch keine Kampagnen.", { exact: false }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Neue Aufgabe", exact: true }),
+    page.getByRole("button", { name: "Neue Kampagne", exact: true }),
   ).toBeFocused();
 });
 test("Tree: drag subtree between parents; invalid cycle is rejected", async ({

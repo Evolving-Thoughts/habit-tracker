@@ -113,7 +113,7 @@ describe("PlannerItemEditor", () => {
     vi.mocked(deleteHabit).mockResolvedValue(undefined);
   });
 
-  it("updates or clears a Habit default duration without changing its schedule", async () => {
+  it("updates or clears a Daily default duration without changing its schedule", async () => {
     vi.mocked(getHabit).mockResolvedValue(
       makeHabit({ plannedDurationMinutes: 10 }),
     );
