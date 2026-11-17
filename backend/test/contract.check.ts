@@ -3,6 +3,7 @@
  * fails `npm run check:contract` instead of the app. Types only; nothing runs.
  */
 import type { DayPlannerResponseDto } from '../src/day-planner/dto/day-planner-response.dto';
+import type { WeekPlanResponseDto } from '../src/day-planner/dto/week-plan.dto';
 import type { CreateHabitDto } from '../src/habits/dto/create-habit.dto';
 import type { HabitResponseDto } from '../src/habits/dto/habit-response.dto';
 import type { UpdateHabitDto } from '../src/habits/dto/update-habit.dto';
@@ -13,6 +14,7 @@ import type { TodoResponseDto } from '../src/todos/dto/todo-response.dto';
 import type { UpdateTodoDto } from '../src/todos/dto/update-todo.dto';
 import type { WorkDayResponse } from '../src/work-logs/work-log.dto';
 import type { DayPlannerResponse } from '../../frontend/src/types/day-planner';
+import type { WeekPlanResponse } from '../../frontend/src/types/week-plan';
 import type {
   CreateHabitInput,
   HabitResponse,
@@ -50,6 +52,7 @@ export type Contract = [
   Assert<Reads<TodoResponseDto, TodoResponse>>,
   Assert<Reads<HabitResponseDto, HabitResponse>>,
   Assert<Reads<DayPlannerResponseDto, DayPlannerResponse>>,
+  Assert<Reads<WeekPlanResponseDto, WeekPlanResponse>>,
   Assert<Reads<HistoryResponseDto, HistoryResponse>>,
   Assert<Reads<TimerResponseDto, TimerResponse>>,
   Assert<Reads<WorkDayResponse, WorkDay>>,

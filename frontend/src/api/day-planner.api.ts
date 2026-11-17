@@ -13,6 +13,7 @@ import type {
   TodoResponse,
   UpdateTodoInput,
 } from "../types/todo";
+import type { WeekPlanResponse } from "../types/week-plan";
 
 import { request } from "./http";
 
@@ -20,7 +21,16 @@ export function getToday(): Promise<DayPlannerResponse> {
   return request<DayPlannerResponse>("/day-planner/today");
 }
 
-/** Stores the order a day was sorted into; habits go by their occurrence. */
+/** The week from Monday `start` as a board of days. */
+export function getWeekPlan(
+  start: string,
+  signal?: AbortSignal,
+): Promise<WeekPlanResponse> {
+  const params = new URLSearchParams({ start });
+  return request<WeekPlanResponse>(`/day-planner/week?${params}`, { signal });
+}
+
+/** Stores the order any day was sorted into; habits go by their occurrence. */
 export function reorderDay(
   items: { type: "todo" | "habit"; id: number }[],
 ): Promise<void> {

@@ -53,6 +53,9 @@ describe('Habit domain and day planner (e2e)', () => {
       throw new Error('Refusing to delete non-test data');
     }
 
+    // Work logs do not hang on a todo, so a log another suite left behind
+    // would count as time worked today.
+    await dataSource.query('DELETE FROM work_logs');
     await dataSource.query('DELETE FROM timers');
     await dataSource.transaction(async (manager) => {
       await manager

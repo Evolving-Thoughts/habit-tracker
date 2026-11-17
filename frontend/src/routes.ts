@@ -4,6 +4,7 @@
  */
 export const PATHS = {
   today: "/heute",
+  plan: "/plan",
   focus: "/fokus",
   questlog: "/questlog",
   campaigns: "/kampagnen",

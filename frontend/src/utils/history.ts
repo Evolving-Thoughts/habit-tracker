@@ -49,10 +49,14 @@ export function shortDate(date: string): string {
   return `${day(date)}. ${SHORT_MONTHS[monthIndex(date)]}`;
 }
 
+/** "Donnerstag" */
+export function weekdayName(date: string): string {
+  return WEEKDAYS[new Date(`${date}T12:00:00Z`).getUTCDay()]!;
+}
+
 /** "Donnerstag, 12. Nov." */
 export function dayLabel(date: string): string {
-  const weekday = WEEKDAYS[new Date(`${date}T12:00:00Z`).getUTCDay()];
-  return `${weekday}, ${shortDate(date)}`;
+  return `${weekdayName(date)}, ${shortDate(date)}`;
 }
 
 /** "12. November", for screen-reader labels of calendar cells. */

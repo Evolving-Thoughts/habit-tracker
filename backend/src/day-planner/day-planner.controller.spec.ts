@@ -4,9 +4,13 @@ import { HabitScheduleType } from '../habits/enums/habit-schedule-type.enum';
 import { DayPlannerController } from './day-planner.controller';
 import { DayPlannerService } from './day-planner.service';
 import { DayPlannerResponseDto } from './dto/day-planner-response.dto';
+import { WeekPlanResponseDto } from './dto/week-plan.dto';
 
 type DayPlannerServiceMock = {
   getToday: jest.MockedFunction<() => Promise<DayPlannerResponseDto>>;
+  getWeek: jest.MockedFunction<
+    (userId: string, start: string) => Promise<WeekPlanResponseDto>
+  >;
 };
 
 describe('DayPlannerController', () => {
@@ -16,6 +20,7 @@ describe('DayPlannerController', () => {
   beforeEach(async () => {
     serviceMock = {
       getToday: jest.fn(),
+      getWeek: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -98,6 +103,32 @@ describe('DayPlannerController', () => {
           email: 'test@example.test',
         }),
       ).resolves.toEqual(response);
+    });
+  });
+
+  describe('getWeek', () => {
+    it('answers the week of the caller from its Monday', async () => {
+      const response = {
+        startDate: '2026-11-16',
+        endDate: '2026-11-22',
+        today: '2026-11-17',
+        days: [],
+      };
+      serviceMock.getWeek.mockResolvedValue(response);
+
+      await expect(
+        controller.getWeek(
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            email: 'test@example.test',
+          },
+          { start: '2026-11-16' },
+        ),
+      ).resolves.toEqual(response);
+      expect(serviceMock.getWeek).toHaveBeenCalledWith(
+        '11111111-1111-4111-8111-111111111111',
+        '2026-11-16',
+      );
     });
   });
 });

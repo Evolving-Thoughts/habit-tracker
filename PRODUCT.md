@@ -36,7 +36,7 @@ Oberflächensprache ist Deutsch.
 
 ## Capabilities and Constraints
 
-- Ansichten: Heute, Fokus-Modus, Questlog, Kampagnen, Kalender (Monat, Woche, Tag), Dailies, Kategorien, Einstellungen. Jede hat eine eigene Adresse (`#/heute`, `#/questlog`, …), sodass Zurück und Neuladen funktionieren.
+- Ansichten: Heute, Plan (die Woche als Brett aus sieben Tagen), Fokus-Modus, Questlog, Kampagnen, Kalender (Monat, Woche, Tag), Dailies, Kategorien, Einstellungen. Jede hat eine eigene Adresse (`#/heute`, `#/plan`, `#/questlog`, …), sodass Zurück und Neuladen funktionieren; der Plan hält auch die gezeigte Woche in der Adresse.
 - Fachbegriffe: siehe Glossar. Daily und Ausführung (einzelner Lauf eines Dailys) sind zu unterscheiden.
 - Technik: Vue 3, NestJS, PostgreSQL; Android über Capacitor als Hülle um die Web-App.
 - Offen: ob und wann die App öffentlich wird.

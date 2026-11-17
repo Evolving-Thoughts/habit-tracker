@@ -35,6 +35,13 @@ export const PLANNER_HABIT_FIELDS = {
   ...PLANNER_CONTEXT,
 };
 
+export const WEEK_ENTRY_FIELDS = {
+  timeOfDay: null,
+  plannedDurationMinutes: null,
+  campaign: null,
+  isOverdue: false,
+};
+
 const HISTORY_CONTEXT = { categoryName: null, why: null };
 
 export const HISTORY_ITEM_FIELDS = HISTORY_CONTEXT;

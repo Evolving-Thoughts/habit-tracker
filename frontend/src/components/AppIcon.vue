@@ -3,6 +3,7 @@
 defineProps<{
   name:
     | "today"
+    | "plan"
     | "focus"
     | "questlog"
     | "dailies"
@@ -71,6 +72,10 @@ defineProps<{
     <template v-else-if="name === 'calendar'">
       <rect x="3.5" y="5" width="17" height="15" rx="3" />
       <path d="M3.5 10h17M8 3v4M16 3v4" />
+    </template>
+    <template v-else-if="name === 'plan'">
+      <rect x="3" y="4" width="18" height="16" rx="3" />
+      <path d="M9 4v16M15 4v16M5.5 8.5h1M11.5 8.5h1M17.5 8.5h1M11.5 12h1" />
     </template>
     <template v-else-if="name === 'campaigns'">
       <rect x="9" y="3" width="6" height="5" rx="1.5" />
