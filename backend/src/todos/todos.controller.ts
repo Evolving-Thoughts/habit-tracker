@@ -11,15 +11,8 @@ import {
   ParseIntPipe,
   Patch,
   Post,
-  Put,
 } from '@nestjs/common';
-import { DayReplanService } from './day-replan.service';
 import { DeleteTodoDto } from './dto/delete-todo.dto';
-import {
-  ApplyReplanDto,
-  PlanningSettingsDto,
-  ReplanPreviewResponse,
-} from './dto/replan.dto';
 import {
   DeletionPreviewResponse,
   HierarchyTodoResponse,
@@ -38,7 +31,6 @@ export class TodosController {
   constructor(
     private readonly todosService: TodosService,
     private readonly goalSnapshots: GoalSnapshotsService,
-    private readonly replan: DayReplanService,
   ) {}
 
   /** Responses carry what each todo inherits, read once per request. */
@@ -46,31 +38,8 @@ export class TodosController {
     userId: string,
     todos: TodoEntity[],
   ): Promise<TodoResponseDto[]> {
-    const why = await this.todosService.whySources(userId);
-    return todos.map((todo) => TodoMapper.toResponseDto(todo, why));
-  }
-
-  @Get('replan')
-  replanPreview(@CurrentUser() user: AuthUser): Promise<ReplanPreviewResponse> {
-    return this.replan.preview(user.id);
-  }
-
-  @Post('replan')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  applyReplan(
-    @CurrentUser() user: AuthUser,
-    @Body() dto: ApplyReplanDto,
-  ): Promise<void> {
-    return this.replan.apply(user.id, dto.confirmationToken);
-  }
-
-  @Put('replan/day-end')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  setDayEnd(
-    @CurrentUser() user: AuthUser,
-    @Body() dto: PlanningSettingsDto,
-  ): Promise<void> {
-    return this.replan.dayEnd(user.id, dto.dayEnd);
+    const ancestry = await this.todosService.ancestry(userId);
+    return todos.map((todo) => TodoMapper.toResponseDto(todo, ancestry));
   }
 
   @Get()

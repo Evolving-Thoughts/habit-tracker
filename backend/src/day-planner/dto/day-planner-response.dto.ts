@@ -17,6 +17,8 @@ type DayPlannerItemContext = {
   /** The reason to show: the item's own, else the inherited one. */
   why: string | null;
   goal: DayPlannerGoalDto | null;
+  /** The campaign the item works towards; null for a loose item. */
+  campaign: { id: number; title: string } | null;
   /** Minutes logged on this item today. */
   workedMinutes: number;
 };
@@ -28,10 +30,10 @@ export type DayPlannerTodoItemDto = {
   categoryName: string | null;
   status: DayPlannerTodoStatus;
   scheduledDate: string;
-  scheduledAt: string | null;
+  /** HH:mm of an appointment; null for a todo that only has its day. */
+  timeOfDay: string | null;
   completedAt: string | null;
   plannedDurationMinutes: number | null;
-  isFixed: boolean;
   isOverdue: boolean;
   timerEligible: boolean;
 } & DayPlannerItemContext;
@@ -64,6 +66,10 @@ export type DayPlannerExternalEventDto = {
 
 export class DayPlannerResponseDto {
   readonly date: string;
+  /**
+   * Appointments and timed habits by clock, then everything else in the
+   * order of the day (see day-order.ts).
+   */
   readonly items: DayPlannerItemDto[];
   /** Read-only events of the main Google calendar. */
   readonly externalEvents: DayPlannerExternalEventDto[];

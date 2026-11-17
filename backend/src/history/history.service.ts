@@ -31,7 +31,7 @@ import {
   HistoryPlannedItem,
   HistoryWeeklyTarget,
 } from './history.dto';
-import { loadWhySources, WhySources } from '../todos/why-sources';
+import { loadTodoAncestry, TodoAncestry } from '../todos/todo-ancestry';
 
 @Injectable()
 export class HistoryService {
@@ -51,7 +51,7 @@ export class HistoryService {
       const categories = await manager
         .getRepository(CategoryEntity)
         .find({ where: { userId }, order: { name: 'ASC' } });
-      const why = await loadWhySources(manager, userId, today);
+      const ancestry = await loadTodoAncestry(manager, userId, today);
       const names = new Map(categories.map((item) => [item.id, item.name]));
       const categoryName = (id: number | null): string | null =>
         id === null ? null : (names.get(id) ?? null);
@@ -87,10 +87,10 @@ export class HistoryService {
           habitId: null,
           title: todo.title,
           categoryName: categoryName(todo.categoryId),
-          why: why.todoWhy(todo),
+          why: ancestry.todoWhy(todo),
           status: 'completed' as const,
           date: dayOf(todo.completedAt!),
-          scheduledDate: todo.scheduledAt ? dayOf(todo.scheduledAt) : null,
+          scheduledDate: todo.scheduledDate ?? null,
           resolvedAt: todo.completedAt!.toISOString(),
           plannedDurationMinutes: todo.plannedDurationMinutes,
           deleted: todo.deletedAt !== null,
@@ -101,7 +101,7 @@ export class HistoryService {
           habitId: occurrence.habitId,
           title: occurrence.habit.title,
           categoryName: categoryName(occurrence.habit.categoryId),
-          why: why.habitWhy(occurrence.habit),
+          why: ancestry.habitWhy(occurrence.habit),
           status: occurrence.status as 'completed' | 'skipped',
           date:
             occurrence.status === HabitOccurrenceStatus.COMPLETED
@@ -131,7 +131,7 @@ export class HistoryService {
         today,
         now,
         categoryName,
-        why,
+        ancestry,
       );
       const external =
         query.view === 'month'
@@ -202,7 +202,7 @@ export class HistoryService {
     today: string,
     now: Date,
     categoryName: (id: number | null) => string | null,
-    why: WhySources,
+    ancestry: TodoAncestry,
   ): Promise<{ items: HistoryPlannedItem[]; targets: HistoryWeeklyTarget[] }> {
     const items: HistoryPlannedItem[] = [];
     if (dates[dates.length - 1] < today) return { items, targets: [] };
@@ -222,12 +222,12 @@ export class HistoryService {
             habitId: null,
             title: todo.title,
             categoryName: categoryName(todo.categoryId),
-            why: why.todoWhy(todo),
+            why: ancestry.todoWhy(todo),
             date,
             scheduledDate,
             isOverdue,
             plannedDurationMinutes: todo.plannedDurationMinutes,
-            isFixed: todo.isFixed,
+            timeOfDay: todo.timeOfDay ?? null,
             moveUntil: null,
           });
       }
@@ -280,7 +280,7 @@ export class HistoryService {
         occurrences,
         today,
         categoryName,
-        (habit) => why.habitWhy(habit),
+        (habit) => ancestry.habitWhy(habit),
       ),
     );
     items.sort(

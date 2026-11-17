@@ -11,7 +11,6 @@ import { EntityManager, Repository } from 'typeorm';
 import { assertOwnedCategory, normalizeWhy } from '../categories/assignment';
 import { Clock } from '../common/clock';
 import { assertDateOnly } from '../common/date/date-only.utils';
-import { atSameWallClock } from '../common/date/local-day';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import {
   discardTimersOfTodos,
@@ -37,7 +36,7 @@ import {
   TodoTree,
 } from './todo-hierarchy';
 import { ancestorChain, subtree } from './todo-hierarchy.queries';
-import { loadWhySources, WhySources } from './why-sources';
+import { loadTodoAncestry, TodoAncestry } from './todo-ancestry';
 
 type DeletionSnapshot = {
   todos: TodoEntity[];
@@ -55,8 +54,8 @@ export class TodosService {
   ) {}
 
   /** What the user's todos inherit their reason from, as of now. */
-  whySources(userId: string): Promise<WhySources> {
-    return loadWhySources(
+  ancestry(userId: string): Promise<TodoAncestry> {
+    return loadTodoAncestry(
       this.todoRepository.manager,
       userId,
       this.clock.today(),
@@ -85,21 +84,21 @@ export class TodosService {
   async hierarchy(userId: string): Promise<HierarchyTodoResponse[]> {
     const todos = await this.findAll(userId);
     const progress = this.tree(todos).progress();
-    const [goals, why] = await Promise.all([
+    const [goals, ancestry] = await Promise.all([
       habitGoals(this.todoRepository.manager, todos),
-      this.whySources(userId),
+      this.ancestry(userId),
     ]);
     return todos.map((todo) => ({
-      ...TodoMapper.toResponseDto(todo, why),
+      ...TodoMapper.toResponseDto(todo, ancestry),
       progress: progress.get(todo.id)!,
       habitGoal: goals.get(todo.id) ?? null,
     }));
   }
 
   async create(userId: string, dto: CreateTodoDto): Promise<TodoEntity> {
-    const scheduledAt = dto.scheduledAt ? new Date(dto.scheduledAt) : null;
-    const isFixed = dto.isFixed ?? false;
-    this.validateScheduling(isFixed, scheduledAt);
+    const scheduledDate = dto.scheduledDate ?? null;
+    const timeOfDay = dto.timeOfDay ?? null;
+    this.validatePlan(scheduledDate, timeOfDay);
     const parentId = dto.parentId ?? null;
     return this.unitOfWork.run(userId, async (manager) => {
       await this.assertCanPlace(manager, userId, null, parentId);
@@ -118,9 +117,9 @@ export class TodosService {
           title: dto.title,
           completed: false,
           completedAt: null,
-          scheduledAt,
+          scheduledDate,
+          timeOfDay,
           plannedDurationMinutes: dto.plannedDurationMinutes ?? null,
-          isFixed,
         }),
       );
     });
@@ -159,19 +158,21 @@ export class TodosService {
       });
       await assertGoalAvailable(manager, userId, todo);
       if (dto.title !== undefined) todo.title = dto.title;
-      if (dto.scheduledAt !== undefined)
-        todo.scheduledAt =
-          dto.scheduledAt === null ? null : new Date(dto.scheduledAt);
+      if (
+        dto.scheduledDate !== undefined &&
+        dto.scheduledDate !== todo.scheduledDate
+      )
+        this.moveToDay(todo, dto.scheduledDate);
+      if (dto.timeOfDay !== undefined) todo.timeOfDay = dto.timeOfDay;
       if (dto.plannedDurationMinutes !== undefined)
         todo.plannedDurationMinutes = dto.plannedDurationMinutes;
-      if (dto.isFixed !== undefined) todo.isFixed = dto.isFixed;
       if (dto.completed !== undefined) {
         todo.completed = dto.completed;
         // A repeated completion keeps the original timestamp.
         if (dto.completed) todo.completedAt ??= this.clock.now();
         else todo.completedAt = null;
       }
-      this.validateScheduling(todo.isFixed, todo.scheduledAt);
+      this.validatePlan(todo.scheduledDate, todo.timeOfDay);
       const saved = await repository.save(todo);
       // A completed todo is no timer target any more.
       if (todo.completed)
@@ -185,7 +186,7 @@ export class TodosService {
     });
   }
 
-  /** Moves an open todo to another day; time and duration stay. */
+  /** Moves an open todo to another day; an appointment keeps its time. */
   async reschedule(
     userId: string,
     id: number,
@@ -201,13 +202,13 @@ export class TodosService {
         throw new ConflictException(
           'Erledigte Quests können nicht verschoben werden.',
         );
-      if (!todo.scheduledAt)
+      if (!todo.scheduledDate)
         throw new BadRequestException('Die Quest hat noch keinen Termin.');
       if (dto.date < this.clock.today())
         throw new BadRequestException(
           'Quests können nicht in die Vergangenheit verschoben werden.',
         );
-      if (todo.isFixed && !dto.confirmFixed)
+      if (todo.timeOfDay && !dto.confirmFixed)
         throw new ConflictException(
           'Feste Termine müssen ausdrücklich bestätigt werden.',
         );
@@ -215,7 +216,7 @@ export class TodosService {
         throw new ConflictException(
           'Beende zuerst den Timer, bevor du die Quest verschiebst.',
         );
-      todo.scheduledAt = atSameWallClock(todo.scheduledAt, dto.date);
+      if (todo.scheduledDate !== dto.date) this.moveToDay(todo, dto.date);
       return repository.save(todo);
     });
   }
@@ -341,8 +342,22 @@ export class TodosService {
     }
   }
 
-  private validateScheduling(isFixed: boolean, scheduledAt: Date | null): void {
-    if (isFixed && scheduledAt === null)
-      throw new BadRequestException('A fixed todo requires a scheduled date');
+  /**
+   * Another day has its own order, so the todo joins it at the end. Back in
+   * the backlog there is no day an appointment could be on.
+   */
+  private moveToDay(todo: TodoEntity, date: string | null): void {
+    todo.scheduledDate = date;
+    todo.dayPosition = null;
+    if (date === null) todo.timeOfDay = null;
+  }
+
+  private validatePlan(
+    scheduledDate: string | null,
+    timeOfDay: string | null,
+  ): void {
+    if (scheduledDate !== null) assertDateOnly(scheduledDate);
+    else if (timeOfDay !== null)
+      throw new BadRequestException('An appointment needs a day');
   }
 }

@@ -125,7 +125,7 @@ export function plannedHabits(
         date: stored?.movedToDate ?? slot.date,
         scheduledDate: slot.scheduledDate,
         isOverdue: (stored?.movedToDate ?? slot.scheduledDate) < today,
-        isFixed: false,
+        timeOfDay: habit.timeOfDay ?? null,
         moveUntil: stored
           ? lastMovableDate(slot.version, slot.scheduledDate)
           : null,

@@ -1,11 +1,14 @@
 import { EntityManager, IsNull } from 'typeorm';
-import { dayOf, endOfDay, startOfDay } from '../common/date/local-day';
+import { endOfDay, startOfDay } from '../common/date/local-day';
 import { TodoEntity } from './entities/todo.entity';
 
 /**
  * Todo agenda: the one definition of when a todo is planned, overdue,
- * completed on a day, or in the unscheduled backlog (Todo-Dump). Today,
- * history and the Dump all read through here, so they cannot disagree.
+ * completed on a day, or in the unscheduled backlog (the Questlog). Today,
+ * history and the backlog all read through here, so they cannot disagree.
+ *
+ * A planned todo has its day. Only an appointment also has a time of day;
+ * everything else is worked through in the order of its day.
  */
 export type AgendaPlacement = {
   /** Day the todo was scheduled for. */
@@ -17,11 +20,11 @@ export type AgendaPlacement = {
 
 /** Where an open scheduled todo appears relative to `today`. */
 export function placeOpenTodo(
-  todo: { scheduledAt: Date | null; completed: boolean },
+  todo: { scheduledDate: string | null; completed: boolean },
   today: string,
 ): AgendaPlacement {
-  if (!todo.scheduledAt) throw new Error('Expected a scheduled todo');
-  const scheduledDate = dayOf(todo.scheduledAt);
+  if (!todo.scheduledDate) throw new Error('Expected a scheduled todo');
+  const { scheduledDate } = todo;
   const isOverdue = !todo.completed && scheduledDate < today;
   return { scheduledDate, date: isOverdue ? today : scheduledDate, isOverdue };
 }
@@ -40,12 +43,13 @@ export function openScheduledTodos(
     .createQueryBuilder('todo')
     .where('"todo"."userId" = :userId', { userId })
     .andWhere('"todo"."completed" = false')
-    .andWhere('"todo"."scheduledAt" < :end', { end: endOfDay(range.lastDay) })
-    .andWhere('("todo"."scheduledAt" >= :start OR :overdue = true)', {
-      start: startOfDay(range.firstDay),
+    .andWhere('"todo"."scheduledDate" <= :lastDay', { lastDay: range.lastDay })
+    .andWhere('("todo"."scheduledDate" >= :firstDay OR :overdue = true)', {
+      firstDay: range.firstDay,
       overdue: range.includeOverdue,
     })
-    .orderBy('"todo"."scheduledAt"', 'ASC')
+    .orderBy('"todo"."scheduledDate"', 'ASC')
+    .addOrderBy('"todo"."dayPosition"', 'ASC', 'NULLS LAST')
     .addOrderBy('"todo"."id"', 'ASC')
     .getMany();
 }
@@ -70,13 +74,13 @@ export function completedTodos(
     .getMany();
 }
 
-/** Open todos without a date: the Todo-Dump. */
+/** Open todos without a day: the Questlog. */
 export function backlogTodos(
   manager: EntityManager,
   userId: string,
 ): Promise<TodoEntity[]> {
   return manager.getRepository(TodoEntity).find({
-    where: { userId, completed: false, scheduledAt: IsNull() },
+    where: { userId, completed: false, scheduledDate: IsNull() },
     order: { id: 'ASC' },
   });
 }

@@ -63,6 +63,10 @@ export class HabitOccurrenceEntity {
   @Column({ type: 'date', nullable: true })
   movedToDate!: string | null;
 
+  /** Place in the order of its day, set by sorting; null sorts last. */
+  @Column({ type: 'integer', nullable: true })
+  dayPosition!: number | null;
+
   @Column({
     type: 'enum',
     enum: HabitOccurrenceStatus,

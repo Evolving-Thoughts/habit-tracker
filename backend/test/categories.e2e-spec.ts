@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { UserEntity } from '../src/auth/auth.entities';
 import { CategoryEntity } from '../src/categories/category.entity';
+import { dayOf } from '../src/common/date/local-day';
 import { configureApp } from '../src/configure-app';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
 import { authenticatedRequest as request, seedAuth } from './auth-fixture';
@@ -207,7 +208,7 @@ describe('Categories and why (e2e)', () => {
     const { id } = await category('Sport');
     await todo({
       categoryId: id,
-      scheduledAt: new Date().toISOString(),
+      scheduledDate: dayOf(new Date()),
     });
     const planner = await request(server).get('/day-planner/today').expect(200);
     expect((planner.body as { items: unknown[] }).items[0]).toMatchObject({

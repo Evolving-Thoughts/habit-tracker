@@ -65,7 +65,7 @@ describe('History API (e2e)', () => {
       title: 'Artikel',
       completed: true,
       completedAt: new Date('2026-10-07T12:00:00Z'),
-      scheduledAt: null,
+      scheduledDate: null,
       plannedDurationMinutes: 30,
       ...overrides,
     });
@@ -130,7 +130,7 @@ describe('History API (e2e)', () => {
     const dump = await todo();
     const scheduled = await todo({
       title: 'Termin',
-      scheduledAt: new Date('2026-10-05T08:00:00Z'),
+      scheduledDate: '2026-10-05',
     });
     const body = await get();
     expect(body.days[0].items.map((item) => item.id).sort()).toEqual(
@@ -372,19 +372,19 @@ describe('History API (e2e)', () => {
       title: 'Overdue',
       completed: false,
       completedAt: null,
-      scheduledAt: midnightInTimeZone(earlier),
+      scheduledDate: earlier,
     });
     await todo({
       title: 'Today',
       completed: false,
       completedAt: null,
-      scheduledAt: midnightInTimeZone(date),
+      scheduledDate: date,
     });
     await todo({
       title: 'Future',
       completed: false,
       completedAt: null,
-      scheduledAt: midnightInTimeZone(future[2]),
+      scheduledDate: future[2],
     });
     await todo({ title: 'Dump', completed: false, completedAt: null });
     await todo({
@@ -392,13 +392,13 @@ describe('History API (e2e)', () => {
       userId: OTHER,
       completed: false,
       completedAt: null,
-      scheduledAt: midnightInTimeZone(earlier),
+      scheduledDate: earlier,
     });
     const deleted = await todo({
       title: 'Deleted',
       completed: false,
       completedAt: null,
-      scheduledAt: midnightInTimeZone(date),
+      scheduledDate: date,
     });
     await db.getRepository(TodoEntity).softDelete(deleted.id);
     const current = await get(`date=${date}&view=week`);

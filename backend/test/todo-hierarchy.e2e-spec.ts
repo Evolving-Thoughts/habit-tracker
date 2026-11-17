@@ -96,8 +96,8 @@ describe('Todo hierarchy T2/T3 PostgreSQL API', () => {
   it('preserves parent completion, schedule, fixation, duration and paused timer when adding a child', async () => {
     const root = await create('Root', null, 60);
     await patch(root.id, {
-      scheduledAt: '2026-01-01T10:00:00Z',
-      isFixed: true,
+      scheduledDate: '2026-01-01',
+      timeOfDay: '11:00',
     });
     const start = await request(server)
       .post('/timers')
@@ -122,9 +122,9 @@ describe('Todo hierarchy T2/T3 PostgreSQL API', () => {
     expect((await tree()).find((t) => t.id === root.id)).toMatchObject({
       completed: true,
       completedAt: doneAt,
-      isFixed: true,
       plannedDurationMinutes: 60,
-      scheduledAt: '2026-01-01T10:00:00.000Z',
+      scheduledDate: '2026-01-01',
+      timeOfDay: '11:00',
     });
   });
   it('moves the entire subtree without changing completion of old or new ancestors', async () => {

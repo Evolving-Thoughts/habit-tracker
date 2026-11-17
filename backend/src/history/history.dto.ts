@@ -34,8 +34,8 @@ export type HistoryPlannedItem = {
   scheduledDate: string;
   isOverdue: boolean;
   plannedDurationMinutes: number | null;
-  /** Fixed todos only move after a confirmation. */
-  isFixed: boolean;
+  /** HH:mm of an appointment or timed habit; an appointment only moves after a confirmation. */
+  timeOfDay: string | null;
   /** Last day a stored occurrence can be moved to; null for a forecast or todo. */
   moveUntil: string | null;
 };

@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { randomToken, tokenHash } from '../auth/auth.crypto';
 import { Clock } from '../common/clock';
@@ -25,7 +21,6 @@ export type ReadCalendar = {
   id: string;
   title: string;
   primary: boolean;
-  blocksPlanning: boolean;
 };
 
 export type CalendarStatus = {
@@ -65,25 +60,13 @@ export class CalendarService {
               where: { userId },
               order: { primary: 'DESC', title: 'ASC' },
             })
-          ).map(({ calendarId, title, primary, blocksPlanning }) => ({
+          ).map(({ calendarId, title, primary }) => ({
             id: calendarId,
             title,
             primary,
-            blocksPlanning,
           }))
         : [],
     };
-  }
-
-  async setBlocksPlanning(
-    userId: string,
-    calendarId: string,
-    blocksPlanning: boolean,
-  ): Promise<void> {
-    const { affected } = await this.db
-      .getRepository(ExternalCalendarEntity)
-      .update({ userId, calendarId }, { blocksPlanning });
-    if (!affected) throw new NotFoundException();
   }
 
   async connectUrl(userId: string): Promise<string> {

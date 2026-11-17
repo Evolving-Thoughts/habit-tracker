@@ -13,9 +13,9 @@ export type TodoResponseDtoProperties = {
   title: string;
   completed: boolean;
   completedAt: string | null;
-  scheduledAt: string | null;
+  scheduledDate: string | null;
+  timeOfDay: string | null;
   plannedDurationMinutes: number | null;
-  isFixed: boolean;
   /** Whether a timer may be started for this todo (see timer-target). */
   timerEligible: boolean;
 };
@@ -35,9 +35,11 @@ export class TodoResponseDto {
   readonly title: string;
   readonly completed: boolean;
   readonly completedAt: string | null;
-  readonly scheduledAt: string | null;
+  /** The planned day; null while the todo is in the backlog. */
+  readonly scheduledDate: string | null;
+  /** HH:mm of an appointment; null for a todo that only has its day. */
+  readonly timeOfDay: string | null;
   readonly plannedDurationMinutes: number | null;
-  readonly isFixed: boolean;
   readonly timerEligible: boolean;
 
   constructor(properties: TodoResponseDtoProperties) {
@@ -53,9 +55,9 @@ export class TodoResponseDto {
     this.title = properties.title;
     this.completed = properties.completed;
     this.completedAt = properties.completedAt;
-    this.scheduledAt = properties.scheduledAt;
+    this.scheduledDate = properties.scheduledDate;
+    this.timeOfDay = properties.timeOfDay;
     this.plannedDurationMinutes = properties.plannedDurationMinutes;
-    this.isFixed = properties.isFixed;
     this.timerEligible = properties.timerEligible;
   }
 }

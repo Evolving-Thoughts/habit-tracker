@@ -9,7 +9,6 @@ import type { UpdateHabitDto } from '../src/habits/dto/update-habit.dto';
 import type { HistoryResponse as HistoryResponseDto } from '../src/history/history.dto';
 import type { TimerResponse as TimerResponseDto } from '../src/timers/timers.service';
 import type { CreateTodoDto } from '../src/todos/dto/create-todo.dto';
-import type { ReplanPreviewResponse } from '../src/todos/dto/replan.dto';
 import type { TodoResponseDto } from '../src/todos/dto/todo-response.dto';
 import type { UpdateTodoDto } from '../src/todos/dto/update-todo.dto';
 import type { WorkDayResponse } from '../src/work-logs/work-log.dto';
@@ -20,7 +19,6 @@ import type {
   UpdateHabitInput,
 } from '../../frontend/src/types/habit';
 import type { HistoryResponse } from '../../frontend/src/types/history';
-import type { ReplanPreview } from '../../frontend/src/types/replan';
 import type { TimerResponse } from '../../frontend/src/types/timer';
 import type {
   CreateTodoInput,
@@ -55,7 +53,6 @@ export type Contract = [
   Assert<Reads<HistoryResponseDto, HistoryResponse>>,
   Assert<Reads<TimerResponseDto, TimerResponse>>,
   Assert<Reads<WorkDayResponse, WorkDay>>,
-  Assert<Reads<ReplanPreviewResponse, ReplanPreview>>,
   Assert<Sends<CreateTodoInput, CreateTodoDto>>,
   Assert<Sends<UpdateTodoInput, UpdateTodoDto>>,
   Assert<Sends<CreateHabitInput, CreateHabitDto>>,

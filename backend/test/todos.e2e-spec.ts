@@ -19,9 +19,9 @@ type TodoResponseBody = {
   title: string;
   completed: boolean;
   completedAt: string | null;
-  scheduledAt: string | null;
+  scheduledDate: string | null;
+  timeOfDay: string | null;
   plannedDurationMinutes: number | null;
-  isFixed: boolean;
 };
 
 type ErrorResponseBody = {
@@ -67,15 +67,18 @@ describe('Todos API (e2e)', () => {
 
   describe('POST /todos/:id/reschedule', () => {
     const tomorrow = addDays(dayOf(new Date()), 1);
-    const scheduled = async (isFixed = false): Promise<TodoResponseBody> =>
+    const today = dayOf(new Date());
+    const scheduled = async (
+      timeOfDay: string | null = null,
+    ): Promise<TodoResponseBody> =>
       (
         await request(httpServer)
           .post('/todos')
           .send({
             title: 'Saugen',
-            scheduledAt: new Date(Date.now() + 3600000).toISOString(),
+            scheduledDate: today,
+            timeOfDay,
             plannedDurationMinutes: 30,
-            isFixed,
           })
           .expect(201)
       ).body as TodoResponseBody;
@@ -85,22 +88,36 @@ describe('Todos API (e2e)', () => {
     it('changes only the day', async () => {
       const todo = await scheduled();
       const response = await move(todo.id, { date: tomorrow }).expect(200);
-      const moved = response.body as TodoResponseBody;
-      const clock = (iso: string | null): string =>
-        new Intl.DateTimeFormat('de-DE', {
-          timeZone: 'Europe/Berlin',
-          timeStyle: 'short',
-        }).format(new Date(iso!));
-
-      expect(dayOf(new Date(moved.scheduledAt!))).toBe(tomorrow);
-      expect(clock(moved.scheduledAt)).toBe(clock(todo.scheduledAt));
-      expect(moved.plannedDurationMinutes).toBe(30);
+      expect(response.body).toMatchObject({
+        scheduledDate: tomorrow,
+        timeOfDay: null,
+        plannedDurationMinutes: 30,
+      });
     });
 
-    it('moves a fixed todo only with confirmation', async () => {
-      const todo = await scheduled(true);
+    it('joins the new day at the end of its order', async () => {
+      const todo = await scheduled();
+      await request(httpServer)
+        .put('/day-planner/order')
+        .send({ items: [{ type: 'todo', id: todo.id }] })
+        .expect(204);
+      const stored = () => todoRepository.findOneByOrFail({ id: todo.id });
+      expect((await stored()).dayPosition).toBe(0);
+      await move(todo.id, { date: tomorrow }).expect(200);
+      expect((await stored()).dayPosition).toBeNull();
+    });
+
+    it('moves an appointment only with confirmation and keeps its time', async () => {
+      const todo = await scheduled('09:30');
       await move(todo.id, { date: tomorrow }).expect(409);
-      await move(todo.id, { date: tomorrow, confirmFixed: true }).expect(200);
+      const moved = await move(todo.id, {
+        date: tomorrow,
+        confirmFixed: true,
+      }).expect(200);
+      expect(moved.body).toMatchObject({
+        scheduledDate: tomorrow,
+        timeOfDay: '09:30',
+      });
     });
 
     it('refuses while a timer is open', async () => {
@@ -150,9 +167,9 @@ describe('Todos API (e2e)', () => {
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
-        scheduledAt: null,
+        scheduledDate: null,
+        timeOfDay: null,
         plannedDurationMinutes: null,
-        isFixed: false,
         timerEligible: true,
       });
 
@@ -165,14 +182,14 @@ describe('Todos API (e2e)', () => {
       expect(persistedTodo?.completedAt).toBeNull();
     });
 
-    it('creates a scheduled fixed todo', async () => {
+    it('creates an appointment', async () => {
       const response = await request(httpServer)
         .post('/todos')
         .send({
           title: 'Doctor appointment',
-          scheduledAt: '2026-09-20T10:00:00.000Z',
+          scheduledDate: '2026-09-20',
+          timeOfDay: '12:00',
           plannedDurationMinutes: 30,
-          isFixed: true,
         })
         .expect(201);
 
@@ -182,24 +199,24 @@ describe('Todos API (e2e)', () => {
       expect(body.title).toBe('Doctor appointment');
       expect(body.completed).toBe(false);
       expect(body.completedAt).toBeNull();
-      expect(body.scheduledAt).toBe('2026-09-20T10:00:00.000Z');
+      expect(body.scheduledDate).toBe('2026-09-20');
+      expect(body.timeOfDay).toBe('12:00');
       expect(body.plannedDurationMinutes).toBe(30);
-      expect(body.isFixed).toBe(true);
     });
 
-    it('rejects a fixed todo without a date', async () => {
+    it('rejects an appointment without a day', async () => {
       const response = await request(httpServer)
         .post('/todos')
         .send({
           title: 'Doctor appointment',
-          isFixed: true,
+          timeOfDay: '12:00',
         })
         .expect(400);
 
       const body = response.body as ErrorResponseBody;
 
       expect(body.statusCode).toBe(400);
-      expect(body.message).toBe('A fixed todo requires a scheduled date');
+      expect(body.message).toBe('An appointment needs a day');
 
       expect(await todoRepository.count()).toBe(0);
     });
@@ -247,7 +264,7 @@ describe('Todos API (e2e)', () => {
         .patch(`/todos/${createdTodo.id}`)
         .send({
           completed: true,
-          scheduledAt: '2026-09-21T08:00:00.000Z',
+          scheduledDate: '2026-09-21',
           plannedDurationMinutes: 60,
         })
         .expect(200);
@@ -256,7 +273,7 @@ describe('Todos API (e2e)', () => {
 
       expect(completedTodo.completed).toBe(true);
       expect(completedTodo.completedAt).not.toBeNull();
-      expect(completedTodo.scheduledAt).toBe('2026-09-21T08:00:00.000Z');
+      expect(completedTodo.scheduledDate).toBe('2026-09-21');
       expect(completedTodo.plannedDurationMinutes).toBe(60);
 
       expect(Number.isNaN(Date.parse(completedTodo.completedAt ?? ''))).toBe(
@@ -329,9 +346,9 @@ describe('Todos API (e2e)', () => {
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
-        scheduledAt: null,
+        scheduledDate: null,
+        timeOfDay: null,
         plannedDurationMinutes: null,
-        isFixed: false,
       });
 
       const savedTodo = await todoRepository.save(todo);
@@ -353,9 +370,8 @@ describe('Todos API (e2e)', () => {
         title: 'Learn NestJS',
         completed: true,
         completedAt: new Date(),
-        scheduledAt: new Date('2026-09-21T08:00:00.000Z'),
+        scheduledDate: '2026-09-21',
         plannedDurationMinutes: 60,
-        isFixed: false,
       });
 
       const savedTodo = await todoRepository.save(todo);
@@ -364,7 +380,7 @@ describe('Todos API (e2e)', () => {
         .patch(`/todos/${savedTodo.id}`)
         .send({
           completed: false,
-          scheduledAt: null,
+          scheduledDate: null,
           plannedDurationMinutes: null,
         })
         .expect(200);
@@ -373,73 +389,83 @@ describe('Todos API (e2e)', () => {
 
       expect(body.completed).toBe(false);
       expect(body.completedAt).toBeNull();
-      expect(body.scheduledAt).toBeNull();
+      expect(body.scheduledDate).toBeNull();
       expect(body.plannedDurationMinutes).toBeNull();
     });
 
-    it('rejects removing the date from a fixed todo', async () => {
-      const todo = todoRepository.create({
-        userId: TEST_USER,
-        title: 'Doctor appointment',
-        completed: false,
-        completedAt: null,
-        scheduledAt: new Date('2026-09-21T08:00:00.000Z'),
-        plannedDurationMinutes: 30,
-        isFixed: true,
-      });
-
-      const savedTodo = await todoRepository.save(todo);
-
-      const response = await request(httpServer)
-        .patch(`/todos/${savedTodo.id}`)
-        .send({
-          scheduledAt: null,
-        })
-        .expect(400);
-
-      const body = response.body as ErrorResponseBody;
-
-      expect(body.statusCode).toBe(400);
-      expect(body.message).toBe('A fixed todo requires a scheduled date');
-    });
-
-    it('allows removing a date when the todo becomes flexible', async () => {
-      const todo = todoRepository.create({
-        userId: TEST_USER,
-        title: 'Doctor appointment',
-        completed: false,
-        completedAt: null,
-        scheduledAt: new Date('2026-09-21T08:00:00.000Z'),
-        plannedDurationMinutes: 30,
-        isFixed: true,
-      });
-
-      const savedTodo = await todoRepository.save(todo);
+    it('puts an appointment back into the backlog without its time', async () => {
+      const savedTodo = await todoRepository.save(
+        todoRepository.create({
+          userId: TEST_USER,
+          title: 'Doctor appointment',
+          completed: false,
+          completedAt: null,
+          scheduledDate: '2026-09-21',
+          timeOfDay: '10:00',
+          dayPosition: 2,
+          plannedDurationMinutes: 30,
+        }),
+      );
 
       const response = await request(httpServer)
         .patch(`/todos/${savedTodo.id}`)
-        .send({
-          scheduledAt: null,
-          isFixed: false,
-        })
+        .send({ scheduledDate: null })
         .expect(200);
 
-      const body = response.body as TodoResponseBody;
+      expect(response.body).toMatchObject({
+        scheduledDate: null,
+        timeOfDay: null,
+      });
+      expect(
+        (await todoRepository.findOneByOrFail({ id: savedTodo.id }))
+          .dayPosition,
+      ).toBeNull();
+    });
 
-      expect(body.scheduledAt).toBeNull();
-      expect(body.isFixed).toBe(false);
+    it('turns an appointment into a todo of its day by clearing the time', async () => {
+      const savedTodo = await todoRepository.save(
+        todoRepository.create({
+          userId: TEST_USER,
+          title: 'Doctor appointment',
+          completed: false,
+          completedAt: null,
+          scheduledDate: '2026-09-21',
+          timeOfDay: '10:00',
+          plannedDurationMinutes: 30,
+        }),
+      );
+
+      const response = await request(httpServer)
+        .patch(`/todos/${savedTodo.id}`)
+        .send({ timeOfDay: null })
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        scheduledDate: '2026-09-21',
+        timeOfDay: null,
+      });
+    });
+
+    it('rejects malformed days and times', async () => {
+      for (const body of [
+        { title: 'x', scheduledDate: '2026-09-21T08:00:00.000Z' },
+        { title: 'x', scheduledDate: '2026-02-31' },
+        { title: 'x', scheduledDate: '2026-09-21', timeOfDay: '24:00' },
+        { title: 'x', scheduledAt: '2026-09-21T08:00:00.000Z' },
+      ])
+        await request(httpServer).post('/todos').send(body).expect(400);
     });
   });
 
   describe('GET /todos/backlog', () => {
-    it('returns only open todos without a date (Todo-Dump)', async () => {
+    it('returns only open todos without a day (Questlog)', async () => {
       const create = async (body: object) =>
         (
           (await request(httpServer).post('/todos').send(body).expect(201))
             .body as TodoResponseDto
         ).id;
       const open = await create({ title: 'Offen' });
-      await create({ title: 'Geplant', scheduledAt: '2026-10-02T08:00:00Z' });
+      await create({ title: 'Geplant', scheduledDate: '2026-10-02' });
       const done = await create({ title: 'Erledigt' });
       await request(httpServer)
         .patch(`/todos/${done}`)

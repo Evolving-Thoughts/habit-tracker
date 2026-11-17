@@ -1,6 +1,7 @@
 import { DataSource } from 'typeorm';
 import { ENTITY_FILES } from '../src/database/data-source';
 import { databaseOptions } from '../src/database/database.options';
+import { Baseline1793522450873 } from '../src/database/migrations/1793522450873-Baseline';
 
 const MIGRATION_DB = 'habit_tracker_migration_test';
 
@@ -42,32 +43,67 @@ describe('Migrations (e2e)', () => {
     expect(await remainingChanges()).toEqual([]);
   });
 
-  it('adopts a synchronized database and keeps its data', async () => {
-    await db.synchronize();
+  it('adopts a database from before migrations and converts its data', async () => {
+    // Such a database has the baseline schema but no record of a migration.
+    const before = new DataSource({
+      ...options,
+      database: MIGRATION_DB,
+      migrations: [Baseline1793522450873],
+    });
+    await before.initialize();
+    await before.runMigrations();
+    await before.query('DELETE FROM migrations');
+    await before.destroy();
+
     const [{ id }] = await db.query<{ id: string }[]>(
       `INSERT INTO users (email, "passwordHash") VALUES ('a@example.test', 'x')
        RETURNING id`,
     );
     const [{ id: root }] = await db.query<{ id: number }[]>(
-      `INSERT INTO todos ("userId", title) VALUES ($1, 'Wurzel') RETURNING id`,
+      `INSERT INTO todos ("userId", title, "scheduledAt", "isFixed")
+       VALUES ($1, 'Termin', '2026-03-10T09:30:00Z', true) RETURNING id`,
       [id],
     );
     await db.query(
-      `INSERT INTO todos ("userId", title, "parentId") VALUES ($1, 'Kind', $2)`,
+      `INSERT INTO todos ("userId", title, "parentId", "scheduledAt")
+       VALUES ($1, 'Spät am Abend', $2, '2026-03-10T23:30:00Z'),
+              ($1, 'Ohne Tag', $2, NULL)`,
       [id, root],
     );
 
     const applied = await db.runMigrations();
 
-    expect(applied).toHaveLength(2);
+    expect(applied).toHaveLength(3);
     expect(await remainingChanges()).toEqual([]);
     expect(
-      await db.query<{ title: string; parentId: number | null }[]>(
-        `SELECT title, "parentId" FROM todos ORDER BY id`,
+      await db.query(
+        `SELECT title, "parentId", "scheduledDate"::text, "timeOfDay", "dayPosition"
+         FROM todos ORDER BY id`,
       ),
     ).toEqual([
-      { title: 'Wurzel', parentId: null },
-      { title: 'Kind', parentId: root },
+      // An appointment keeps its Berlin wall clock.
+      {
+        title: 'Termin',
+        parentId: null,
+        scheduledDate: '2026-03-10',
+        timeOfDay: '10:30',
+        dayPosition: null,
+      },
+      // A flexible todo keeps only its Berlin day.
+      {
+        title: 'Spät am Abend',
+        parentId: root,
+        scheduledDate: '2026-03-11',
+        timeOfDay: null,
+        dayPosition: null,
+      },
+      {
+        title: 'Ohne Tag',
+        parentId: root,
+        scheduledDate: null,
+        timeOfDay: null,
+        dayPosition: null,
+      },
     ]);
   });
 });

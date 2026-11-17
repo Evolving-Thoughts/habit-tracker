@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   Between,
   DataSource,
@@ -10,6 +10,8 @@ import { eventsOfDays } from '../calendar/day-events';
 import { CategoryEntity } from '../categories/category.entity';
 import { dayOf, endOfDay, startOfDay } from '../common/date/local-day';
 import { Clock } from '../common/clock';
+import { UserUnitOfWork } from '../common/user-unit-of-work';
+import { ownedOccurrences } from '../habit-occurrences/owned-occurrences';
 import {
   effectiveDuration,
   isOccurrenceTimerEligible,
@@ -24,7 +26,7 @@ import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurren
 import { lastMovableDate } from '../habits/scheduling/schedule-rules';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { habitGoals } from '../todos/habit-goal';
-import { loadWhySources } from '../todos/why-sources';
+import { loadTodoAncestry } from '../todos/todo-ancestry';
 import { WorkLogEntity } from '../work-logs/work-log.entity';
 import { coveredMilliseconds } from '../work-logs/work-time';
 import {
@@ -32,15 +34,18 @@ import {
   openScheduledTodos,
   placeOpenTodo,
 } from '../todos/todo-agenda';
+import { compareInDay } from './day-order';
 import {
   DayPlannerGoalDto,
   DayPlannerHabitItemDto,
+  DayPlannerItemDto,
   DayPlannerResponseDto,
   DayPlannerTodoItemDto,
 } from './dto/day-planner-response.dto';
 
 /** Fields filled after mapping, from lookups across all items. */
-type ContextField = 'categoryName' | 'why' | 'goal' | 'workedMinutes';
+type ContextField =
+  'categoryName' | 'why' | 'goal' | 'campaign' | 'workedMinutes';
 
 const minutes = (milliseconds: number): number =>
   Math.round(milliseconds / 60_000);
@@ -51,6 +56,7 @@ export class DayPlannerService {
     private readonly db: DataSource,
     private readonly scheduling: HabitSchedulingService,
     private readonly clock: Clock,
+    private readonly unitOfWork: UserUnitOfWork,
   ) {}
 
   async getToday(userId: string): Promise<DayPlannerResponseDto> {
@@ -65,7 +71,7 @@ export class DayPlannerService {
     const categoryName = (id: number | null): string | null =>
       (id !== null && names.get(id)) || null;
 
-    const [parents, habitGoalsByHabit, logs, why] = await Promise.all([
+    const [parents, habitGoalsByHabit, logs, ancestry] = await Promise.all([
       this.parentsOf(userId, todos),
       this.habitGoalsFor(
         userId,
@@ -73,59 +79,47 @@ export class DayPlannerService {
         today,
       ),
       this.logsOf(userId, today),
-      loadWhySources(this.db.manager, userId, today),
+      loadTodoAncestry(this.db.manager, userId, today),
     ]);
     const workedOn = (key: 'todoId' | 'occurrenceId', id: number): number =>
       minutes(coveredMilliseconds(logs.filter((log) => log[key] === id)));
 
-    const items = [
+    const entries = [
       ...todos.map((todo) => {
         const parent =
           todo.parentId === null ? undefined : parents.get(todo.parentId);
-        return {
+        const item: DayPlannerItemDto = {
           ...this.mapTodo(todo, today),
           categoryName: categoryName(todo.categoryId),
-          why: why.todoWhy(todo),
+          why: ancestry.todoWhy(todo),
           goal: parent
             ? { title: parent, completed: null, target: null, periodEnd: null }
             : null,
+          campaign: ancestry.campaignOf(todo),
           workedMinutes: workedOn('todoId', todo.id),
         };
+        return { item, id: todo.id, dayPosition: todo.dayPosition };
       }),
-      ...occurrences.map((occurrence) => ({
-        ...this.mapOccurrence(occurrence, today),
-        categoryName: categoryName(occurrence.habit.categoryId),
-        why: why.habitWhy(occurrence.habit),
-        goal: habitGoalsByHabit.get(occurrence.habitId) ?? null,
-        workedMinutes: workedOn('occurrenceId', occurrence.id),
-      })),
+      ...occurrences.map((occurrence) => {
+        const item: DayPlannerItemDto = {
+          ...this.mapOccurrence(occurrence, today),
+          categoryName: categoryName(occurrence.habit.categoryId),
+          why: ancestry.habitWhy(occurrence.habit),
+          goal: habitGoalsByHabit.get(occurrence.habitId) ?? null,
+          campaign: ancestry.habitCampaign(occurrence.habitId),
+          workedMinutes: workedOn('occurrenceId', occurrence.id),
+        };
+        return { item, id: occurrence.id, dayPosition: occurrence.dayPosition };
+      }),
     ];
-
-    items.sort((first, second) => {
-      const dateComparison = first.scheduledDate.localeCompare(
-        second.scheduledDate,
-      );
-
-      if (dateComparison !== 0) {
-        return dateComparison;
-      }
-
-      const firstTime =
-        first.type === 'todo'
-          ? (first.scheduledAt ??
-            first.completedAt ??
-            `${first.scheduledDate}T00:00:00Z`)
-          : `${first.scheduledDate}T00:00:00.000Z`;
-
-      const secondTime =
-        second.type === 'todo'
-          ? (second.scheduledAt ??
-            second.completedAt ??
-            `${second.scheduledDate}T00:00:00Z`)
-          : `${second.scheduledDate}T00:00:00.000Z`;
-
-      return firstTime.localeCompare(secondTime);
-    });
+    const items = entries
+      .sort((first, second) =>
+        compareInDay(
+          { ...first, ...first.item },
+          { ...second, ...second.item },
+        ),
+      )
+      .map(({ item }) => item);
 
     const externalEvents = await eventsOfDays(
       this.db.manager,
@@ -142,6 +136,45 @@ export class DayPlannerService {
         end: end.toISOString(),
       })),
       workedMinutes: minutes(coveredMilliseconds(logs)),
+    });
+  }
+
+  /**
+   * Stores the order the user sorted a day into: every item takes its index
+   * as position. Nothing is written unless all items are the user's own.
+   */
+  reorder(
+    userId: string,
+    items: { type: 'todo' | 'habit'; id: number }[],
+  ): Promise<void> {
+    const idsOf = (type: 'todo' | 'habit'): number[] => [
+      ...new Set(
+        items.filter((item) => item.type === type).map(({ id }) => id),
+      ),
+    ];
+    const todoIds = idsOf('todo');
+    const occurrenceIds = idsOf('habit');
+    return this.unitOfWork.run(userId, async (manager) => {
+      const [todos, occurrences] = await Promise.all([
+        todoIds.length
+          ? manager
+              .getRepository(TodoEntity)
+              .countBy({ userId, id: In(todoIds) })
+          : 0,
+        occurrenceIds.length
+          ? ownedOccurrences(manager, userId)
+              .andWhere('"occurrence"."id" IN (:...occurrenceIds)', {
+                occurrenceIds,
+              })
+              .getCount()
+          : 0,
+      ]);
+      if (todos !== todoIds.length || occurrences !== occurrenceIds.length)
+        throw new NotFoundException('An item to sort was not found');
+      for (const [dayPosition, { type, id }] of items.entries())
+        await manager
+          .getRepository(type === 'todo' ? TodoEntity : HabitOccurrenceEntity)
+          .update({ id }, { dayPosition });
     });
   }
 
@@ -229,11 +262,11 @@ export class DayPlannerService {
   ): Omit<DayPlannerTodoItemDto, ContextField> {
     // Open todos follow the agenda; completed ones stay on their own day.
     const placement = todo.completed ? null : placeOpenTodo(todo, today);
-    const displayInstant = todo.scheduledAt ?? todo.completedAt;
-    if (!displayInstant)
-      throw new Error('Expected a planned or completed todo');
-
-    const scheduledDate = placement?.scheduledDate ?? dayOf(displayInstant);
+    const scheduledDate =
+      placement?.scheduledDate ??
+      todo.scheduledDate ??
+      (todo.completedAt ? dayOf(todo.completedAt) : null);
+    if (!scheduledDate) throw new Error('Expected a planned or completed todo');
 
     return {
       type: 'todo',
@@ -241,10 +274,9 @@ export class DayPlannerService {
       title: todo.title,
       status: todo.completed ? 'completed' : 'pending',
       scheduledDate,
-      scheduledAt: todo.scheduledAt?.toISOString() ?? null,
+      timeOfDay: todo.timeOfDay ?? null,
       completedAt: todo.completedAt?.toISOString() ?? null,
       plannedDurationMinutes: todo.plannedDurationMinutes,
-      isFixed: todo.isFixed,
       isOverdue: placement?.isOverdue ?? false,
       timerEligible: isTodoTimerEligible(todo),
     };
