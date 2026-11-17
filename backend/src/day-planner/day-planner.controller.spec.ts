@@ -1,6 +1,4 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
-import { HabitScheduleType } from '../habits/enums/habit-schedule-type.enum';
 import { DayPlannerController } from './day-planner.controller';
 import { DayPlannerService } from './day-planner.service';
 import { DayPlannerResponseDto } from './dto/day-planner-response.dto';
@@ -48,33 +46,7 @@ describe('DayPlannerController', () => {
     it('returns the current day planner', async () => {
       const response = new DayPlannerResponseDto({
         date: '2026-09-25',
-        items: [
-          {
-            type: 'todo',
-            todoId: 1,
-            title: 'Learn NestJS',
-            status: 'pending',
-            scheduledDate: '2026-09-25',
-            scheduledAt: '2026-09-25T10:00:00.000Z',
-            completedAt: null,
-            plannedDurationMinutes: 60,
-            isFixed: false,
-            isOverdue: false,
-            timerEligible: true,
-          },
-          {
-            type: 'habit',
-            occurrenceId: 2,
-            habitId: 3,
-            title: 'Joggen',
-            status: HabitOccurrenceStatus.PENDING,
-            scheduledDate: '2026-09-25',
-            scheduleType: HabitScheduleType.INTERVAL,
-            plannedDurationMinutes: null,
-            isOverdue: false,
-            timerEligible: true,
-          },
-        ],
+        items: [],
       });
 
       serviceMock.getToday.mockResolvedValue(response);

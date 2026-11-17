@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import type { Server } from 'node:http';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
+import { dayOf } from '../src/common/date/local-day';
 import { configureApp } from '../src/configure-app';
 import {
   authenticatedRequest as request,
@@ -238,7 +239,8 @@ describe('Todo hierarchy T2/T3 PostgreSQL API', () => {
       .findOne({ where: { id: child.id }, withDeleted: true });
     expect(retained?.deletedAt).toBeInstanceOf(Date);
     expect(retained?.completedAt?.toISOString()).toBe(completion);
-    const date = completion!.slice(0, 10);
+    // The history sorts by the app's calendar day, not the UTC date.
+    const date = dayOf(new Date(completion!));
     const history = await request(server)
       .get(`/history?date=${date}&view=day`)
       .expect(200);
