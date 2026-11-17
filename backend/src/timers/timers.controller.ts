@@ -48,6 +48,6 @@ export class TimersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ChangeTimerDurationDto,
   ): Promise<TimerResponse> {
-    return this.service.action(user.id, id, 'pause', dto.durationMinutes);
+    return this.service.setTarget(user.id, id, dto.durationMinutes);
   }
 }

@@ -217,7 +217,6 @@ describe('Habit domain and day planner (e2e)', () => {
         .send({
           kind: 'occurrence',
           targetId: occurrence.id,
-          durationMinutes: 10,
         })
         .expect(201);
 

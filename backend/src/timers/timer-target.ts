@@ -1,24 +1,17 @@
 import { Brackets, EntityManager } from 'typeorm';
 import { occurrenceDueDate } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { WorkLogEntity } from '../work-logs/work-log.entity';
+import { MAX_SEGMENT_MS } from './timer-math';
 import { TimerEntity } from './timer.entity';
 
 /**
- * Timer targets: which todo or habit occurrence may carry a timer, how long
- * it runs by default, and what happens to a timer when its target stops
- * being eligible. Pure rules plus one write; no Nest dependencies, so todos,
+ * Timer targets: which todo or habit occurrence may carry a stopwatch, what
+ * its planned minutes are, and what happens to a stopwatch when its target
+ * stops being eligible. Pure rules plus one write; no Nest dependencies, so todos,
  * habits, day planner and history can all use it without module cycles.
  */
 export const TIMER_MIN_MINUTES = 1;
 export const TIMER_MAX_MINUTES = 10080;
-
-export function isValidTimerDuration(minutes: unknown): minutes is number {
-  return (
-    Number.isInteger(minutes) &&
-    (minutes as number) >= TIMER_MIN_MINUTES &&
-    (minutes as number) <= TIMER_MAX_MINUTES
-  );
-}
 
 /** A todo can carry a timer while it is open. */
 export function isTodoTimerEligible(todo: { completed: boolean }): boolean {
@@ -50,7 +43,10 @@ export function effectiveDuration(
   return occurrence.plannedDurationMinutes ?? habit.plannedDurationMinutes;
 }
 
-/** Logs the running stretch of a timer up to `end`, never past its deadline. */
+/**
+ * Ends the running stretch of a stopwatch at `end`: its time joins what was
+ * worked before, and it is logged as work. The caller sets the new state.
+ */
 export async function closeWorkSegment(
   manager: EntityManager,
   timer: TimerEntity,
@@ -58,10 +54,12 @@ export async function closeWorkSegment(
 ): Promise<void> {
   const startedAt = timer.segmentStartedAt;
   timer.segmentStartedAt = null;
-  if (!startedAt) return;
-  const endedAt =
-    timer.endsAt && timer.endsAt < end ? new Date(timer.endsAt) : end;
-  if (endedAt <= startedAt) return;
+  if (!startedAt || end <= startedAt) return;
+  // A stretch nobody ended never counts for more than its limit.
+  const endedAt = new Date(
+    Math.min(end.getTime(), startedAt.getTime() + MAX_SEGMENT_MS),
+  );
+  timer.elapsedMilliseconds += endedAt.getTime() - startedAt.getTime();
   await manager.insert(WorkLogEntity, {
     userId: timer.userId,
     todoId: timer.todoId,
@@ -73,7 +71,7 @@ export async function closeWorkSegment(
   });
 }
 
-/** Ends a timer for good: its work stays on record, its row stops counting. */
+/** Ends a stopwatch for good: its work stays on record, its row stops counting. */
 export async function stopTimer(
   manager: EntityManager,
   timer: TimerEntity,
@@ -81,7 +79,7 @@ export async function stopTimer(
 ): Promise<TimerEntity> {
   await closeWorkSegment(manager, timer, at);
   timer.state = 'stopped';
-  timer.endsAt = null;
+  timer.targetReachesAt = null;
   return manager.save(TimerEntity, timer);
 }
 

@@ -7,11 +7,6 @@ export class StartTimerDto {
   @Min(1)
   targetId!: number;
   @IsOptional()
-  @IsInt()
-  @Min(TIMER_MIN_MINUTES)
-  @Max(TIMER_MAX_MINUTES)
-  durationMinutes?: number;
-  @IsOptional()
   @IsUUID()
   replaceTimerId?: string;
 }

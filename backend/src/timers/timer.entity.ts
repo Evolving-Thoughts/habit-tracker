@@ -12,18 +12,26 @@ import {
 import { UserEntity } from '../auth/auth.entities';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
-export type TimerState = 'running' | 'paused' | 'finished' | 'stopped';
+
+export type TimerState = 'running' | 'paused' | 'stopped';
+
+/**
+ * A stopwatch on one todo or habit occurrence. It counts up: the time of
+ * finished stretches is stored, the running stretch starts at
+ * `segmentStartedAt`. A target is optional and only marks a moment; the
+ * stopwatch keeps running past it.
+ */
 @Entity('timers')
+@Check('CHK_timer_state', `"state" IN ('running', 'paused', 'stopped')`)
 @Check(
-  'CHK_timer_state',
-  `"state" IN ('running', 'paused', 'finished', 'stopped')`,
+  'CHK_timer_target_minutes',
+  '"targetMinutes" IS NULL OR "targetMinutes" BETWEEN 1 AND 10080',
 )
-@Check('CHK_timer_duration', '"durationMinutes" BETWEEN 1 AND 10080')
+@Check('CHK_timer_elapsed', '"elapsedMilliseconds" >= 0')
 @Check(
-  'CHK_timer_remaining',
-  '"remainingMilliseconds" BETWEEN 0 AND "durationMinutes" * 60000',
+  'CHK_timer_segment',
+  `("state" = 'running') = ("segmentStartedAt" IS NOT NULL)`,
 )
-@Check('CHK_timer_deadline', `("state" = 'running') = ("endsAt" IS NOT NULL)`)
 @Check('CHK_timer_target', '("todoId" IS NULL) <> ("occurrenceId" IS NULL)')
 @Index('UQ_timer_active_user', ['userId'], {
   unique: true,
@@ -55,17 +63,21 @@ export class TimerEntity {
   title!: string;
   @Column({ type: 'varchar', length: 16 })
   state!: TimerState;
-  @Column({ type: 'integer' })
-  durationMinutes!: number;
-  @Column({ type: 'integer' })
-  remainingMilliseconds!: number;
-  @Column({ type: 'timestamptz', nullable: true })
-  endsAt!: Date | null;
-  /** Start of the current running stretch; closed into a work log. */
+  /** Planned minutes of the target when it has any; the stopwatch runs on. */
+  @Column({ type: 'integer', nullable: true })
+  targetMinutes!: number | null;
+  /** Time of all finished stretches; the running one comes on top. */
+  @Column({ type: 'integer', default: 0 })
+  elapsedMilliseconds!: number;
+  /** Start of the running stretch; closed into a work log when it ends. */
   @Column({ type: 'timestamptz', nullable: true })
   segmentStartedAt!: Date | null;
+  /** When a running stopwatch will reach its target; null once it has. */
   @Column({ type: 'timestamptz', nullable: true })
-  finishedAt!: Date | null;
+  targetReachesAt!: Date | null;
+  /** When the target was reached; the notification hangs on this. */
+  @Column({ type: 'timestamptz', nullable: true })
+  targetReachedAt!: Date | null;
   @Column({ type: 'timestamptz', nullable: true })
   pushHandledAt!: Date | null;
   @CreateDateColumn({ type: 'timestamptz', default: () => 'clock_timestamp()' })
