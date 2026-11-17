@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useTodoDeletion } from "../composables/useTodoDeletion";
 import TodoDeletionSummary from "./TodoDeletionSummary.vue";
+import PlanFields from "./PlanFields.vue";
 import WhyField from "./WhyField.vue";
 import TodoGoalFields from "./TodoGoalFields.vue";
 import AppIcon from "./AppIcon.vue";
@@ -45,7 +46,6 @@ import {
   formatDateForGermanDisplay,
   getCurrentDateInTimeZone,
   isValidIsoDate,
-  toLocalInput,
 } from "../utils/date";
 
 const props = defineProps<{
@@ -104,13 +104,10 @@ const periodEnd = ref("");
 const goalHabitId = ref<number | null>(null);
 const goalTarget = ref<string | number>("");
 const loadedTodo = ref<TodoResponse | null>(null);
-const scheduledAt = ref("");
+const todoDate = ref("");
+const todoTime = ref("");
 const duration = ref<string | number>("");
 const timeOfDay = ref("");
-const isFixed = ref(false);
-
-const originalScheduledAt = ref<string | null>(null);
-const originalLocalInput = ref("");
 
 // Habit-Felder
 const isActive = ref(true);
@@ -165,15 +162,8 @@ async function loadEntity(): Promise<void> {
       goalTarget.value = todo.goalTarget ?? "";
       title.value = todo.title;
       duration.value = todo.plannedDurationMinutes ?? "";
-      isFixed.value = todo.isFixed;
-
-      originalScheduledAt.value = todo.scheduledAt;
-
-      scheduledAt.value = todo.scheduledAt
-        ? toLocalInput(todo.scheduledAt)
-        : "";
-
-      originalLocalInput.value = scheduledAt.value;
+      todoDate.value = todo.scheduledDate ?? "";
+      todoTime.value = todo.timeOfDay ?? "";
     } else {
       const habit = await getHabit(props.entityId);
 
@@ -235,15 +225,12 @@ function goalChanges(): TodoGoalInput {
 
 function todoInput(): UpdateTodoInput {
   return {
-    ...buildTodoInput(
-      {
-        title: title.value,
-        scheduledAt: scheduledAt.value,
-        duration: duration.value,
-        isFixed: isFixed.value,
-      },
-      { localInput: originalLocalInput.value, iso: originalScheduledAt.value },
-    ),
+    ...buildTodoInput({
+      title: title.value,
+      date: todoDate.value,
+      time: todoTime.value,
+      duration: duration.value,
+    }),
     ...assignmentChanges(),
     ...goalChanges(),
   };
@@ -437,21 +424,13 @@ onMounted(loadEntity);
         <WhyField id="planner-edit-why" v-model="why" :inherited="inheritedWhy" />
 
         <template v-if="kind === 'todo'">
-          <div class="item-editor__row">
-            <div class="field">
-              <label for="planner-edit-date">Zeitpunkt · optional</label>
-              <input
-                id="planner-edit-date"
-                v-model="scheduledAt"
-                name="scheduledAt"
-                type="datetime-local"
-                aria-describedby="planner-edit-date-hint"
-              />
-              <small id="planner-edit-date-hint" class="item-editor__hint"
-                >Ohne Zeitpunkt liegt sie im Questlog.</small
-              >
-            </div>
+          <PlanFields
+            v-model:date="todoDate"
+            v-model:time="todoTime"
+            id-prefix="planner-edit"
+          />
 
+          <div class="item-editor__row">
             <label class="field">
               Dauer in Minuten · optional
               <input
@@ -463,11 +442,6 @@ onMounted(loadEntity);
               />
             </label>
           </div>
-
-          <label class="item-editor__checkbox">
-            <input v-model="isFixed" name="isFixed" type="checkbox" />
-            Fester Termin
-          </label>
 
           <TodoGoalFields
             v-model:period-start="periodStart"

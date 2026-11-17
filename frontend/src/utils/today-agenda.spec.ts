@@ -9,6 +9,9 @@ import {
   arrangeToday,
   formatDayHeading,
   formatDuration,
+  itemKey,
+  moved,
+  withQueueOrder,
 } from "./today-agenda";
 
 const todo = (
@@ -20,10 +23,8 @@ const todo = (
   title: "Quest",
   status: "pending",
   scheduledDate: "2026-10-02",
-  scheduledAt: null,
   completedAt: null,
   plannedDurationMinutes: null,
-  isFixed: false,
   isOverdue: false,
   timerEligible: true,
   ...overrides,
@@ -54,43 +55,63 @@ const planner = (
   externalEvents,
   workedMinutes: 0,
 });
-// Berlin is UTC+2 on 2 October.
 const at = (hours: number, minutes = 0) => hours * 60 + minutes;
 
 describe("arrangeToday", () => {
-  it("focuses the timed item that is not over yet", () => {
-    const early = todo({
-      todoId: 1,
-      title: "Früh",
-      scheduledAt: "2026-10-02T06:00:00Z",
-      plannedDurationMinutes: 30,
-    });
-    const later = todo({
-      todoId: 2,
-      title: "Später",
-      scheduledAt: "2026-10-02T10:00:00Z",
-    });
-    const agenda = arrangeToday(planner([early, later]), at(9));
-    expect(agenda.focus?.title).toBe("Später");
-    // The missed early item stays on the axis, before "now".
-    expect(agenda.timeline.map((entry) => entry.time)).toEqual(["08:00"]);
-    expect(agenda.nowIndex).toBe(1);
+  it("puts the head of the order into focus, whatever the clock says", () => {
+    const first = todo({ todoId: 1, title: "Erstes" });
+    const second = habit({ occurrenceId: 2, title: "Zweites" });
+    const later = todo({ todoId: 3, title: "Termin", timeOfDay: "15:00" });
+    const agenda = arrangeToday(planner([later, first, second]), at(9));
+    expect(agenda.focus).toBe(first);
+    expect(agenda.queue).toEqual([first, second]);
+    // The appointment waits on the axis, after "now".
+    expect(agenda.timeline.map((entry) => entry.time)).toEqual(["15:00"]);
+    expect(agenda.nowIndex).toBe(0);
   });
 
-  it("keeps an item in focus while its duration runs", () => {
-    const running = todo({
-      scheduledAt: "2026-10-02T07:00:00Z",
+  it("lets a running appointment come before the order", () => {
+    const first = todo({ todoId: 1, title: "Erstes" });
+    const meeting = todo({
+      todoId: 2,
+      title: "Besprechung",
+      timeOfDay: "09:00",
       plannedDurationMinutes: 60,
     });
-    expect(arrangeToday(planner([running]), at(9, 30)).focus).toBe(running);
+    const during = arrangeToday(planner([meeting, first]), at(9, 30));
+    expect(during.focus).toBe(meeting);
+    expect(during.queue).toEqual([first]);
+    expect(during.timeline).toEqual([]);
+    // Once it is over, the order is back in focus and it stays on the axis.
+    const after = arrangeToday(planner([meeting, first]), at(10));
+    expect(after.focus).toBe(first);
+    expect(after.timeline.map((entry) => entry.time)).toEqual(["09:00"]);
+    expect(after.nowIndex).toBe(1);
   });
 
-  it("falls back to an untimed item and names the next timed step", () => {
-    const anytime = habit({ title: "Lesen" });
-    const meeting = todo({ scheduledAt: "2026-10-02T12:00:00Z" });
+  it("counts an appointment without a duration as half an hour", () => {
+    const meeting = todo({ timeOfDay: "09:00" });
+    const first = todo({ todoId: 2 });
+    expect(arrangeToday(planner([meeting, first]), at(9, 29)).focus).toBe(
+      meeting,
+    );
+    expect(arrangeToday(planner([meeting, first]), at(9, 30)).focus).toBe(
+      first,
+    );
+  });
+
+  it("falls back to the next appointment, then to a missed one", () => {
+    const missed = todo({ todoId: 1, timeOfDay: "08:00" });
+    const next = habit({ occurrenceId: 2, timeOfDay: "18:00" });
+    expect(arrangeToday(planner([missed, next]), at(12)).focus).toBe(next);
+    expect(arrangeToday(planner([missed]), at(12)).focus).toBe(missed);
+  });
+
+  it("shows calendar events on the axis with timed items", () => {
+    const meeting = todo({ timeOfDay: "14:00" });
     const agenda = arrangeToday(
       planner(
-        [anytime, meeting],
+        [habit({ title: "Lesen" }), meeting],
         [
           {
             id: 7,
@@ -102,9 +123,11 @@ describe("arrangeToday", () => {
       ),
       at(8),
     );
-    expect(agenda.focus?.title).toBe("Quest");
-    expect(agenda.next).toMatchObject({ kind: "event", time: "11:00" });
-    expect(agenda.anytime).toEqual([anytime]);
+    // Berlin is UTC+2 on 2 October.
+    expect(agenda.timeline.map((entry) => [entry.kind, entry.time])).toEqual([
+      ["event", "11:00"],
+      ["item", "14:00"],
+    ]);
   });
 
   it("separates carried-over and resolved items and counts only today", () => {
@@ -115,6 +138,7 @@ describe("arrangeToday", () => {
     expect(agenda.carriedOver).toEqual([overdue]);
     expect(agenda.resolved).toEqual([done]);
     expect(agenda.focus).toBe(open);
+    expect(agenda.queue).toEqual([]);
     expect([agenda.done, agenda.total]).toEqual([1, 2]);
   });
 
@@ -124,7 +148,36 @@ describe("arrangeToday", () => {
       at(8),
     );
     expect(agenda.focus).toBeNull();
-    expect(agenda.next).toBeNull();
+    expect(agenda.queue).toEqual([]);
+  });
+});
+
+describe("sorting the order of the day", () => {
+  it("moves one entry and leaves bad moves alone", () => {
+    expect(moved(["a", "b", "c"], 2, 0)).toEqual(["c", "a", "b"]);
+    expect(moved(["a", "b", "c"], 0, 1)).toEqual(["b", "a", "c"]);
+    expect(moved(["a", "b", "c"], 0, 3)).toEqual(["a", "b", "c"]);
+    expect(moved(["a", "b", "c"], -1, 1)).toEqual(["a", "b", "c"]);
+  });
+
+  it("keys todos and habit occurrences apart", () => {
+    expect(itemKey(todo({ todoId: 4 }))).toBe("todo-4");
+    expect(itemKey(habit({ occurrenceId: 4 }))).toBe("habit-4");
+  });
+
+  it("reorders only the queue and keeps everything else in place", () => {
+    const meeting = todo({ todoId: 1, timeOfDay: "09:00" });
+    const first = todo({ todoId: 2 });
+    const done = habit({ occurrenceId: 3, status: "completed" });
+    const second = habit({ occurrenceId: 4 });
+    const before = planner([meeting, first, done, second]);
+    expect(withQueueOrder(before, [second, first]).items).toEqual([
+      meeting,
+      second,
+      done,
+      first,
+    ]);
+    expect(before.items[1]).toBe(first);
   });
 });
 

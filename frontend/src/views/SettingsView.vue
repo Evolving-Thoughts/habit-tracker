@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import AppIcon from "../components/AppIcon.vue";
 import CalendarConnection from "../components/CalendarConnection.vue";
-import DayEndSetting from "../components/DayEndSetting.vue";
 import PushSettings from "../components/PushSettings.vue";
 
 defineProps<{ email: string }>();
@@ -15,11 +14,6 @@ defineEmits<{ signOut: [] }>();
     </header>
 
     <div class="settings-view__sections">
-      <section class="card" aria-labelledby="settings-day-end">
-        <h2 id="settings-day-end" class="section-title">Tagesende</h2>
-        <DayEndSetting />
-      </section>
-
       <section class="card" aria-labelledby="settings-push">
         <h2 id="settings-push" class="section-title">Benachrichtigungen</h2>
         <PushSettings />

@@ -3,6 +3,7 @@ import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getToday,
+  reorderDay,
   createTodo,
   createHabit,
   getHabit,
@@ -23,6 +24,7 @@ vi.mock("../api/categories.api", () => ({
 }));
 vi.mock("../api/day-planner.api", () => ({
   getToday: vi.fn(),
+  reorderDay: vi.fn(),
   createTodo: vi.fn(),
   createHabit: vi.fn(),
   updateOccurrenceStatus: vi.fn(),
@@ -54,10 +56,8 @@ function makeTodo(
     title: "NestJS lernen",
     status: "pending",
     scheduledDate: "2026-10-02",
-    scheduledAt: "2026-10-02T08:00:00.000Z",
     completedAt: null,
     plannedDurationMinutes: 30,
-    isFixed: false,
     isOverdue: false,
     timerEligible: true,
     ...overrides,
@@ -98,7 +98,7 @@ function makePlanner(
 describe("TodayView", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    // 08:00 in Berlin; the default todo is planned for 10:00.
+    // 08:00 in Berlin.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
 
@@ -106,6 +106,7 @@ describe("TodayView", () => {
     updateTodoMock.mockResolvedValue(undefined);
     updateOccurrenceMock.mockResolvedValue(undefined);
     vi.mocked(rescheduleTodo).mockResolvedValue(undefined as never);
+    vi.mocked(reorderDay).mockResolvedValue(undefined);
   });
   afterEach(() => vi.useRealTimers());
 
@@ -161,7 +162,6 @@ describe("TodayView", () => {
         makeTodo({
           title: "Überfälliges Quest",
           scheduledDate: "2026-10-01",
-          scheduledAt: "2026-10-01T08:00:00.000Z",
           isOverdue: true,
         }),
         makeHabit({ title: "Offenes Daily" }),
@@ -222,25 +222,130 @@ describe("TodayView", () => {
     );
   });
 
-  it("names the next step after the focus and puts the rest on the time axis", async () => {
+  it("shows the order of the day under the focus and appointments on the axis", async () => {
     getTodayMock.mockResolvedValueOnce(
       makePlanner([
+        makeTodo({ todoId: 3, title: "Zahnarzt", timeOfDay: "14:00" }),
         makeTodo(),
-        makeTodo({
-          todoId: 2,
-          title: "Bewerbung",
-          scheduledAt: "2026-10-02T10:00:00.000Z",
-        }),
+        makeTodo({ todoId: 2, title: "Bewerbung" }),
+        makeHabit({ title: "Lesen" }),
       ]),
     );
     const wrapper = mount(TodayView);
     await flushPromises();
     expect(wrapper.get("#focus-title").text()).toBe("NestJS lernen");
-    expect(wrapper.get(".today-view__next").text()).toContain(
-      "12:00 Bewerbung",
+    expect(
+      wrapper.findAll(".order .planner-item h3").map((row) => row.text()),
+    ).toEqual(["Bewerbung", "Lesen"]);
+    expect(wrapper.get(".timeline").text()).toContain("14:00");
+    expect(wrapper.get(".timeline").text()).toContain("Zahnarzt");
+    expect(wrapper.get(".timeline").text()).not.toContain("Bewerbung");
+  });
+
+  it("sorts with the grip's arrow keys, shows it at once and stores it", async () => {
+    const first = makeTodo();
+    const second = makeTodo({ todoId: 2, title: "Bewerbung" });
+    const third = makeHabit({ title: "Lesen" });
+    getTodayMock
+      .mockResolvedValueOnce(makePlanner([first, second, third]))
+      .mockResolvedValue(makePlanner([first, third, second]));
+    let stored = (): void => undefined;
+    vi.mocked(reorderDay).mockReturnValueOnce(
+      new Promise<void>((resolve) => (stored = resolve)),
     );
-    expect(wrapper.get(".timeline").text()).toContain("Bewerbung");
-    expect(wrapper.get(".timeline").text()).not.toContain("NestJS lernen");
+    const wrapper = mount(TodayView, { attachTo: document.body });
+    await flushPromises();
+
+    const grip = (title: string) =>
+      wrapper.get(
+        `button[aria-label="${title} in der Reihenfolge verschieben"]`,
+      );
+    await grip("Lesen").trigger("keydown", { key: "ArrowUp" });
+
+    // Before the server has answered, the new order already shows.
+    expect(
+      wrapper.findAll(".order .planner-item h3").map((row) => row.text()),
+    ).toEqual(["Lesen", "Bewerbung"]);
+    expect(reorderDay).toHaveBeenCalledWith([
+      { type: "todo", id: 1 },
+      { type: "habit", id: 20 },
+      { type: "todo", id: 2 },
+    ]);
+    expect(wrapper.get('[role="status"].visually-hidden').text()).toBe(
+      "„Lesen“ steht jetzt an Stelle 2 von 3.",
+    );
+
+    stored();
+    await flushPromises();
+    expect(document.activeElement).toBe(grip("Lesen").element);
+  });
+
+  it("makes another quest the focus when it moves to the head of the order", async () => {
+    const first = makeTodo();
+    const second = makeTodo({ todoId: 2, title: "Bewerbung" });
+    getTodayMock
+      .mockResolvedValueOnce(makePlanner([first, second]))
+      .mockResolvedValue(makePlanner([second, first]));
+    const wrapper = mount(TodayView);
+    await flushPromises();
+
+    await wrapper
+      .get('button[aria-label="Bewerbung in der Reihenfolge verschieben"]')
+      .trigger("keydown", { key: "ArrowUp" });
+    await flushPromises();
+
+    expect(wrapper.get("#focus-title").text()).toBe("Bewerbung");
+    expect(reorderDay).toHaveBeenCalledWith([
+      { type: "todo", id: 2 },
+      { type: "todo", id: 1 },
+    ]);
+  });
+
+  it("goes back to the stored order when saving it fails", async () => {
+    const first = makeTodo();
+    const second = makeTodo({ todoId: 2, title: "Bewerbung" });
+    const third = makeTodo({ todoId: 3, title: "Einkaufen" });
+    getTodayMock.mockResolvedValue(makePlanner([first, second, third]));
+    vi.mocked(reorderDay).mockRejectedValueOnce(new Error("Offline"));
+    const wrapper = mount(TodayView);
+    await flushPromises();
+
+    await wrapper
+      .get('button[aria-label="Einkaufen in der Reihenfolge verschieben"]')
+      .trigger("keydown", { key: "ArrowUp" });
+    await flushPromises();
+
+    expect(wrapper.get('[role="alert"]').text()).toBe("Offline");
+    await wrapper.vm.$nextTick();
+  });
+
+  it("moves everything open to tomorrow after asking, appointments stay", async () => {
+    getTodayMock.mockResolvedValue(
+      makePlanner([
+        makeTodo({ todoId: 3, title: "Zahnarzt", timeOfDay: "14:00" }),
+        makeTodo(),
+        makeTodo({ todoId: 2, title: "Bewerbung" }),
+        // This daily cannot move: its window ends today.
+        makeHabit({ title: "Lesen", moveUntil: "2026-10-02" }),
+      ]),
+    );
+    const wrapper = mount(TodayView, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.get(".today-view__postpone").trigger("click");
+    expect(rescheduleTodo).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain(
+      "2 offene Einträge wandern auf morgen",
+    );
+    document
+      .querySelector<HTMLButtonElement>("[data-postpone-confirm]")!
+      .click();
+    await flushPromises();
+
+    expect(vi.mocked(rescheduleTodo).mock.calls).toEqual([
+      [1, "2026-10-03", false],
+      [2, "2026-10-03", false],
+    ]);
   });
 
   it("completes the focus, reloads and offers undo", async () => {
@@ -392,22 +497,19 @@ describe("TodayView", () => {
         makeTodo({
           title: "Alt eins",
           scheduledDate: "2026-09-30",
-          scheduledAt: "2026-09-30T08:00:00.000Z",
           isOverdue: true,
         }),
         makeTodo({
           todoId: 2,
           title: "Alt zwei",
           scheduledDate: "2026-10-01",
-          scheduledAt: "2026-10-01T08:00:00.000Z",
           isOverdue: true,
         }),
         makeTodo({
           todoId: 3,
-          title: "Fester Termin",
+          title: "Termin von gestern",
           scheduledDate: "2026-10-01",
-          scheduledAt: "2026-10-01T09:00:00.000Z",
-          isFixed: true,
+          timeOfDay: "11:00",
           isOverdue: true,
         }),
       ]),
@@ -528,9 +630,9 @@ describe("TodayView creation flow", () => {
       title: "Test",
       completed: false,
       completedAt: null,
-      scheduledAt: null,
+      scheduledDate: null,
+      timeOfDay: null,
       plannedDurationMinutes: null,
-      isFixed: false,
       timerEligible: true,
     });
   });

@@ -2,11 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
 import { TodoEntity } from './entities/todo.entity';
-import { DayReplanService } from './day-replan.service';
 import { GoalSnapshotsService } from './goal-snapshots.service';
 import { TodosController } from './todos.controller';
 import { TodosService } from './todos.service';
-import { WhySources } from './why-sources';
+import { TodoAncestry } from './todo-ancestry';
 
 type TodosServiceMock = {
   findAll: jest.MockedFunction<() => Promise<TodoEntity[]>>;
@@ -23,7 +22,7 @@ type TodosServiceMock = {
 
   remove: jest.MockedFunction<(id: number) => Promise<void>>;
 
-  whySources: jest.MockedFunction<() => Promise<WhySources>>;
+  ancestry: jest.MockedFunction<() => Promise<TodoAncestry>>;
 };
 
 describe('TodosController', () => {
@@ -43,9 +42,10 @@ describe('TodosController', () => {
     title: 'Learn NestJS',
     completed: false,
     completedAt: null,
-    scheduledAt: null,
+    scheduledDate: null,
+    timeOfDay: null,
+    dayPosition: null,
     plannedDurationMinutes: null,
-    isFixed: false,
     createdAt: new Date('2026-09-18T10:00:00.000Z'),
     updatedAt: new Date('2026-09-18T10:00:00.000Z'),
     deletedAt: null,
@@ -58,14 +58,13 @@ describe('TodosController', () => {
       create: jest.fn(),
       update: jest.fn(),
       remove: jest.fn(),
-      whySources: jest.fn().mockResolvedValue(new WhySources([], '2026-09-18')),
+      ancestry: jest.fn().mockResolvedValue(new TodoAncestry([], '2026-09-18')),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TodosController],
       providers: [
         { provide: GoalSnapshotsService, useValue: {} },
-        { provide: DayReplanService, useValue: {} },
         {
           provide: TodosService,
           useValue: serviceMock,
@@ -103,9 +102,9 @@ describe('TodosController', () => {
           title: 'Learn NestJS',
           completed: false,
           completedAt: null,
-          scheduledAt: null,
+          scheduledDate: null,
+          timeOfDay: null,
           plannedDurationMinutes: null,
-          isFixed: false,
           timerEligible: true,
         },
       ]);
@@ -139,9 +138,9 @@ describe('TodosController', () => {
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
-        scheduledAt: null,
+        scheduledDate: null,
+        timeOfDay: null,
         plannedDurationMinutes: null,
-        isFixed: false,
         timerEligible: true,
       });
 
@@ -181,9 +180,9 @@ describe('TodosController', () => {
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
-        scheduledAt: null,
+        scheduledDate: null,
+        timeOfDay: null,
         plannedDurationMinutes: null,
-        isFixed: false,
         timerEligible: true,
       });
 
@@ -193,14 +192,12 @@ describe('TodosController', () => {
       );
     });
 
-    it('creates and maps a scheduled fixed todo', async () => {
-      const scheduledAt = new Date('2026-09-20T10:00:00.000Z');
-
+    it('creates and maps an appointment', async () => {
       const createTodoDto: CreateTodoDto = {
         title: 'Doctor appointment',
-        scheduledAt: scheduledAt.toISOString(),
+        scheduledDate: '2026-09-20',
+        timeOfDay: '12:00',
         plannedDurationMinutes: 30,
-        isFixed: true,
       };
 
       const scheduledTodo: TodoEntity = {
@@ -213,11 +210,10 @@ describe('TodosController', () => {
         goalHabitId: null,
         goalTarget: null,
         why: null,
-        inheritedWhy: null,
         title: 'Doctor appointment',
-        scheduledAt,
+        scheduledDate: '2026-09-20',
+        timeOfDay: '12:00',
         plannedDurationMinutes: 30,
-        isFixed: true,
       };
 
       serviceMock.create.mockResolvedValue(scheduledTodo);
@@ -243,9 +239,9 @@ describe('TodosController', () => {
         title: 'Doctor appointment',
         completed: false,
         completedAt: null,
-        scheduledAt: '2026-09-20T10:00:00.000Z',
+        scheduledDate: '2026-09-20',
+        timeOfDay: '12:00',
         plannedDurationMinutes: 30,
-        isFixed: true,
         timerEligible: true,
       });
 
@@ -294,9 +290,9 @@ describe('TodosController', () => {
         title: 'Learn NestJS',
         completed: true,
         completedAt: '2026-09-21T10:30:00.000Z',
-        scheduledAt: null,
+        scheduledDate: null,
+        timeOfDay: null,
         plannedDurationMinutes: null,
-        isFixed: false,
         timerEligible: false,
       });
 
@@ -342,9 +338,9 @@ describe('TodosController', () => {
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
-        scheduledAt: null,
+        scheduledDate: null,
+        timeOfDay: null,
         plannedDurationMinutes: null,
-        isFixed: false,
         timerEligible: true,
       });
 
@@ -356,19 +352,17 @@ describe('TodosController', () => {
     });
 
     it('maps scheduling values', async () => {
-      const scheduledAt = new Date('2026-09-20T10:00:00.000Z');
-
       const updateTodoDto: UpdateTodoDto = {
-        scheduledAt: scheduledAt.toISOString(),
+        scheduledDate: '2026-09-20',
+        timeOfDay: '12:00',
         plannedDurationMinutes: 30,
-        isFixed: true,
       };
 
       const updatedTodo: TodoEntity = {
         ...todo,
-        scheduledAt,
+        scheduledDate: '2026-09-20',
+        timeOfDay: '12:00',
         plannedDurationMinutes: 30,
-        isFixed: true,
       };
 
       serviceMock.update.mockResolvedValue(updatedTodo);
@@ -395,9 +389,9 @@ describe('TodosController', () => {
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
-        scheduledAt: '2026-09-20T10:00:00.000Z',
+        scheduledDate: '2026-09-20',
+        timeOfDay: '12:00',
         plannedDurationMinutes: 30,
-        isFixed: true,
         timerEligible: true,
       });
 

@@ -132,7 +132,7 @@ test("Calendar: month opens a day, Monday-first week rows, filters and soft-dele
     data: {
       title: "Abgeschlossener Artikel",
       plannedDurationMinutes: 15,
-      scheduledAt: `${daysAfter(date, -2)}T10:00:00Z`,
+      scheduledDate: daysAfter(date, -2),
     },
   });
   const todo = (await created.json()) as { id: number };
@@ -240,14 +240,14 @@ test("Calendar week: open plans, overdue Quests and weekly targets stay calm", a
 }) => {
   const date = await today(request);
   const overdueDate = daysAfter(date, -10);
-  for (const [title, scheduledAt] of [
-    ["Überfälliger Artikel", `${overdueDate}T10:00:00Z`],
-    ["Heutiger Termin", `${date}T10:00:00Z`],
+  for (const [title, scheduledDate] of [
+    ["Überfälliger Artikel", overdueDate],
+    ["Heutiger Termin", date],
   ] as const) {
     expect(
       (
         await request.post(`${API_URL}/todos`, {
-          data: { title, scheduledAt, plannedDurationMinutes: 15 },
+          data: { title, scheduledDate, plannedDurationMinutes: 15 },
         })
       ).status(),
     ).toBe(201);
@@ -390,7 +390,7 @@ test("Calendar forecast: future date placement, schedule change, pause and delet
       await request.post(`${API_URL}/todos`, {
         data: {
           title: "Geplanter Artikel",
-          scheduledAt: `${dates[1]}T10:00:00Z`,
+          scheduledDate: dates[1],
         },
       })
     ).status(),
@@ -450,7 +450,7 @@ test("Calendar day: date placement, filters, overdue plans and completion refres
   const tomorrow = daysAfter(date, 1);
   const old = daysAfter(date, -10);
   const response = await request.post(`${API_URL}/todos`, {
-    data: { title: "Überfälliges Quest", scheduledAt: `${old}T10:00:00Z` },
+    data: { title: "Überfälliges Quest", scheduledDate: old },
   });
   expect(response.status()).toBe(201);
   const todo = (await response.json()) as { id: number };
@@ -459,7 +459,7 @@ test("Calendar day: date placement, filters, overdue plans and completion refres
       await request.post(`${API_URL}/todos`, {
         data: {
           title: "Morgiger Termin",
-          scheduledAt: `${tomorrow}T10:00:00Z`,
+          scheduledDate: tomorrow,
         },
       })
     ).status(),
@@ -546,7 +546,7 @@ test("Calendar day: reflection saves only after a change and time is logged behi
   expect(
     (
       await request.post(`${API_URL}/todos`, {
-        data: { title: "Schreibzeit", scheduledAt: `${date}T10:00:00Z` },
+        data: { title: "Schreibzeit", scheduledDate: date },
       })
     ).status(),
   ).toBe(201);

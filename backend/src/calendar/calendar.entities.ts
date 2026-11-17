@@ -59,10 +59,6 @@ export class ExternalCalendarEntity {
 
   @Column({ type: 'boolean', default: false })
   primary!: boolean;
-
-  /** Whether its busy events count as obstacles when replanning. */
-  @Column({ type: 'boolean', default: false })
-  blocksPlanning!: boolean;
 }
 
 @Entity('calendar_oauth_states')
@@ -142,8 +138,4 @@ export class ExternalEventEntity {
 
   @Column({ type: 'timestamptz' })
   end!: Date;
-
-  /** False for events marked as free in Google; those never block planning. */
-  @Column({ type: 'boolean', default: true })
-  busy!: boolean;
 }

@@ -3,9 +3,11 @@ export type CreateTodoInput = {
   categoryId?: number | null;
   why?: string | null;
   title: string;
-  scheduledAt: string | null;
+  /** YYYY-MM-DD of the planned day; null keeps the quest in the Questlog. */
+  scheduledDate: string | null;
+  /** HH:mm makes it an appointment fixed to that time; needs a day. */
+  timeOfDay: string | null;
   plannedDurationMinutes: number | null;
-  isFixed: boolean;
 };
 
 export type TodoGoalInput = {
@@ -32,9 +34,9 @@ export type TodoResponse = Required<TodoGoalInput> & {
   title: string;
   completed: boolean;
   completedAt: string | null;
-  scheduledAt: string | null;
+  scheduledDate: string | null;
+  timeOfDay: string | null;
   plannedDurationMinutes: number | null;
-  isFixed: boolean;
   /** Server-side timer-target rule: may a timer run for this todo? */
   timerEligible: boolean;
 };

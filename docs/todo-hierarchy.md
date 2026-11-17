@@ -5,7 +5,7 @@
 The selected UI is **A: an expandable tree list** in the new **Aufgabenbaum** view.
 The Today, Todo-Dump, Habits and History views remain available. Every Todo,
 including a parent, retains its own completion checkbox, schedule, duration,
-fixed/flexible flag and timer eligibility. There is no separate Goal entity.
+optional time of day (see `day-order.md`) and timer eligibility. There is no separate Goal entity.
 
 T2 delivers hierarchy creation, progress, independent completion, atomic moves,
 root moves and timer/planner integration. T3 adds editing and confirmed subtree

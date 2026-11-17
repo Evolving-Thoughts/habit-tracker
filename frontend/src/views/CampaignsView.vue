@@ -23,11 +23,7 @@ import { useWrites } from "../composables/useWrites";
 import { useTodoDeletion } from "../composables/useTodoDeletion";
 import { useTimer } from "../composables/useTimer";
 import { categoryMark } from "../utils/category-mark";
-import {
-  APP_TIME_ZONE,
-  formatDateForGermanDisplay,
-  formatTimeForGermanDisplay,
-} from "../utils/date";
+import { formatDateForGermanDisplay } from "../utils/date";
 const page = ref<HTMLElement | null>(null),
   listFocus = useListFocus(page);
 const collapsed = ref(new Set<number>());
@@ -91,12 +87,6 @@ function onKeydown(event: KeyboardEvent) {
 onMounted(() => window.addEventListener("keydown", onKeydown));
 onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 
-const dayFormat = new Intl.DateTimeFormat("de-DE", {
-  timeZone: APP_TIME_ZONE,
-  weekday: "short",
-  day: "numeric",
-  month: "numeric",
-});
 function shortDate(isoDate: string) {
   return formatDateForGermanDisplay(isoDate).slice(0, 6);
 }
@@ -104,9 +94,11 @@ function details(todo: HierarchyTodo): string[] {
   const parts: string[] = [];
   if (todo.plannedDurationMinutes != null)
     parts.push(`${todo.plannedDurationMinutes} Min.`);
-  if (todo.scheduledAt)
+  if (todo.scheduledDate)
     parts.push(
-      `${dayFormat.format(new Date(todo.scheduledAt))}, ${formatTimeForGermanDisplay(todo.scheduledAt)}${todo.isFixed ? ", fester Termin" : ""}`,
+      todo.timeOfDay
+        ? `${shortDate(todo.scheduledDate)}, ${todo.timeOfDay} Uhr`
+        : shortDate(todo.scheduledDate),
     );
   if (todo.periodStart && todo.periodEnd)
     parts.push(`${shortDate(todo.periodStart)}–${shortDate(todo.periodEnd)}`);

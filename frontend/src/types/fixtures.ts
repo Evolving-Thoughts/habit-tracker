@@ -16,9 +16,18 @@ export const HABIT_FIELDS = {
   timeOfDay: null,
 };
 
-const PLANNER_CONTEXT = { why: null, goal: null, workedMinutes: 0 };
+const PLANNER_CONTEXT = {
+  why: null,
+  goal: null,
+  campaign: null,
+  workedMinutes: 0,
+};
 
-export const PLANNER_TODO_FIELDS = { categoryName: null, ...PLANNER_CONTEXT };
+export const PLANNER_TODO_FIELDS = {
+  categoryName: null,
+  timeOfDay: null,
+  ...PLANNER_CONTEXT,
+};
 
 export const PLANNER_HABIT_FIELDS = {
   categoryName: null,
@@ -32,6 +41,6 @@ export const HISTORY_ITEM_FIELDS = HISTORY_CONTEXT;
 
 export const PLANNED_FIELDS = {
   ...HISTORY_CONTEXT,
-  isFixed: false,
+  timeOfDay: null,
   moveUntil: null,
 };

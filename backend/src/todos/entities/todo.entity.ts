@@ -15,8 +15,8 @@ import {
 
 @Entity({ name: 'todos' })
 @Check(
-  'CHK_todos_fixed_needs_date',
-  '"isFixed" = false OR "scheduledAt" IS NOT NULL',
+  'CHK_todos_time_needs_date',
+  '"timeOfDay" IS NULL OR "scheduledDate" IS NOT NULL',
 )
 export class TodoEntity {
   @Index()
@@ -82,23 +82,27 @@ export class TodoEntity {
   })
   completedAt!: Date | null;
 
-  @Column({
-    type: 'timestamptz',
-    nullable: true,
-  })
-  scheduledAt!: Date | null;
+  /** The day the todo is planned for; null while it is in the backlog. */
+  @Index('IDX_todos_scheduled_date')
+  @Column({ type: 'date', nullable: true })
+  scheduledDate!: string | null;
+
+  /**
+   * Start as HH:mm in local time. Only an appointment has one: it is fixed
+   * to that time, while every other planned todo just has its day.
+   */
+  @Column({ type: 'varchar', length: 5, nullable: true })
+  timeOfDay!: string | null;
+
+  /** Place in the order of its day, set by sorting; null sorts last. */
+  @Column({ type: 'integer', nullable: true })
+  dayPosition!: number | null;
 
   @Column({
     type: 'integer',
     nullable: true,
   })
   plannedDurationMinutes!: number | null;
-
-  @Column({
-    type: 'boolean',
-    default: false,
-  })
-  isFixed!: boolean;
 
   @CreateDateColumn({
     type: 'timestamptz',

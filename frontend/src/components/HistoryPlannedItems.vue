@@ -15,7 +15,8 @@ function details(item: HistoryPlannedItem): string[] {
   if (item.id === null) parts.push("voraussichtlich");
   if (item.isOverdue)
     parts.push(`noch offen seit ${shortDate(item.scheduledDate)}`);
-  if (item.isFixed) parts.push("Fester Termin");
+  if (item.type === "todo" && item.timeOfDay)
+    parts.push(`Termin um ${item.timeOfDay} Uhr`);
   if (item.plannedDurationMinutes !== null)
     parts.push(`${item.plannedDurationMinutes} Min. geplant`);
   return parts;

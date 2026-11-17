@@ -138,7 +138,7 @@ describe('Habit goals on todos (e2e)', () => {
         title: 'Schuhe kaufen',
         parentId: id,
         why: 'Ohne Blasen laufen',
-        scheduledAt: new Date().toISOString(),
+        scheduledDate: today,
       })
       .expect(201);
 
@@ -183,7 +183,7 @@ describe('Habit goals on todos (e2e)', () => {
       .send({
         title: 'Schuhe kaufen',
         parentId: id,
-        scheduledAt: new Date().toISOString(),
+        scheduledDate: today,
       })
       .expect(201);
 

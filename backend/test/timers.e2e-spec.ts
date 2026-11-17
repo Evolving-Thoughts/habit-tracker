@@ -419,7 +419,6 @@ describe('Synced timers and Dump completion (e2e)', () => {
       title: 'Private',
       completed: false,
       plannedDurationMinutes: 2,
-      isFixed: false,
     });
     await client()
       .post('/timers')
@@ -452,7 +451,7 @@ describe('Synced timers and Dump completion (e2e)', () => {
     const id = await todo();
     await client().patch(`/todos/${id}`).send({ completed: true }).expect(200);
     const saved = await db.getRepository(TodoEntity).findOneByOrFail({ id });
-    expect(saved.scheduledAt).toBeNull();
+    expect(saved.scheduledDate).toBeNull();
     // Completion uses the injected Clock, not the wall clock.
     expect(saved.completedAt).toEqual(now);
     const item = (await planner()).items.find(
@@ -460,7 +459,7 @@ describe('Synced timers and Dump completion (e2e)', () => {
     );
     expect(item).toMatchObject({
       status: 'completed',
-      scheduledAt: null,
+      timeOfDay: null,
       completedAt: saved.completedAt!.toISOString(),
       scheduledDate: getCurrentDateInTimeZone(
         'Europe/Berlin',
@@ -478,7 +477,7 @@ describe('Synced timers and Dump completion (e2e)', () => {
     await client().patch(`/todos/${id}`).send({ completed: false }).expect(200);
     expect(
       await db.getRepository(TodoEntity).findOneByOrFail({ id }),
-    ).toMatchObject({ completedAt: null, scheduledAt: null });
+    ).toMatchObject({ completedAt: null, scheduledDate: null });
     expect((await planner()).items).toHaveLength(0);
   });
   it('buckets Dump completions at Berlin midnight, not UTC midnight', async () => {
@@ -500,7 +499,7 @@ describe('Synced timers and Dump completion (e2e)', () => {
     expect(items[0]).toMatchObject({
       todoId: today,
       scheduledDate: date,
-      scheduledAt: null,
+      timeOfDay: null,
     });
     const historical = await db
       .getRepository(TodoEntity)

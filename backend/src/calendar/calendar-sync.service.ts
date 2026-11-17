@@ -8,6 +8,7 @@ import {
   dayOf,
   endOfDay,
   startOfDay,
+  timeOfDayOf,
 } from '../common/date/local-day';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import {
@@ -205,7 +206,7 @@ export class CalendarSyncService {
     }
   }
 
-  /** A new event of the user's becomes a fixed todo. */
+  /** A new event of the user's becomes an appointment. */
   private async adoptEvent(
     manager: EntityManager,
     userId: string,
@@ -223,9 +224,9 @@ export class CalendarSyncService {
       repository.create({
         userId,
         title: (event.summary?.trim() || 'Termin').slice(0, 200),
-        scheduledAt: times.start,
+        scheduledDate: dayOf(times.start),
+        timeOfDay: timeOfDayOf(times.start),
         plannedDurationMinutes: times.minutes,
-        isFixed: true,
       }),
     );
     await manager.getRepository(CalendarLinkEntity).save({
@@ -254,7 +255,7 @@ export class CalendarSyncService {
       .getRepository(TodoEntity)
       .update(
         { id: link.todoId, userId: link.userId },
-        { scheduledAt: null, isFixed: false },
+        { scheduledDate: null, timeOfDay: null, dayPosition: null },
       );
     await links.remove(link);
   }
@@ -277,7 +278,10 @@ export class CalendarSyncService {
     link.remoteUpdatedAt = remote;
     if (todo && times && !todo.completedAt && !localWins) {
       todo.title = (event.summary?.trim() || todo.title).slice(0, 200);
-      todo.scheduledAt = times.start;
+      const day = dayOf(times.start);
+      if (day !== todo.scheduledDate) todo.dayPosition = null;
+      todo.scheduledDate = day;
+      todo.timeOfDay = timeOfDayOf(times.start);
       todo.plannedDurationMinutes = times.minutes;
       link.syncedAt = (await repository.save(todo)).updatedAt;
     }
@@ -334,13 +338,11 @@ export class CalendarSyncService {
     const repository = manager.getRepository(ExternalEventEntity);
     await repository.delete({ userId });
     for (const { calendar, events } of read) {
-      const stored = known.find((item) => item.calendarId === calendar.id);
       await calendars.save({
         userId,
         calendarId: calendar.id,
         title: (calendar.summary?.trim() || 'Kalender').slice(0, 300),
         primary: calendar.primary ?? false,
-        blocksPlanning: stored?.blocksPlanning ?? calendar.primary ?? false,
       });
       const rows = events.flatMap((event) => {
         const times = eventTimes(event);
@@ -352,7 +354,6 @@ export class CalendarSyncService {
             title: (event.summary?.trim() || 'Termin').slice(0, 500),
             start: times.start,
             end: times.end,
-            busy: event.transparency !== 'transparent',
           }),
         ];
       });
@@ -388,22 +389,22 @@ export class CalendarSyncService {
     const operations: PushOperation[] = [];
     for (const link of linked) {
       const todo = known.find((item) => item.id === link.todoId);
-      if (!todo || todo.deletedAt || !todo.scheduledAt)
+      // Only an appointment has an event; a todo that lost its time loses it.
+      if (!todo || todo.deletedAt || !todo.scheduledDate || !todo.timeOfDay)
         operations.push({ type: 'delete', link });
       else if (todo.completedAt)
         await manager.getRepository(CalendarLinkEntity).remove(link);
       else if (todo.updatedAt > link.syncedAt)
         operations.push({ type: 'patch', link, ...this.todoChange(todo) });
     }
-    const from = startOfDay(today).getTime();
-    const to = endOfDay(addDays(today, HORIZON_DAYS)).getTime();
     const open = await repository
       .createQueryBuilder('todo')
       .where('todo.userId = :userId', { userId })
       .andWhere('todo.completedAt IS NULL')
-      .andWhere('todo.scheduledAt BETWEEN :from AND :to', {
-        from: new Date(from),
-        to: new Date(to),
+      .andWhere('todo.timeOfDay IS NOT NULL')
+      .andWhere('todo.scheduledDate BETWEEN :today AND :lastDay', {
+        today,
+        lastDay: addDays(today, HORIZON_DAYS),
       })
       .getMany();
     const taken = new Set(linked.map((link) => link.todoId));
@@ -421,7 +422,7 @@ export class CalendarSyncService {
     return {
       input: eventInput(
         todo.title,
-        todo.scheduledAt!,
+        atTimeOfDay(todo.scheduledDate!, todo.timeOfDay!),
         todo.plannedDurationMinutes ?? DEFAULT_MINUTES,
       ),
       localUpdatedAt: todo.updatedAt,

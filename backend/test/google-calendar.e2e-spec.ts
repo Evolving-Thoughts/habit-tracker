@@ -117,6 +117,7 @@ describe('Google calendar sync (e2e)', () => {
       .expect(302);
     expect(callback.headers.location).toContain('calendar=connected');
   };
+  /** An appointment: only those have an event in Google. */
   const scheduledTodo = async (): Promise<number> =>
     (
       (
@@ -124,7 +125,8 @@ describe('Google calendar sync (e2e)', () => {
           .post('/todos')
           .send({
             title: 'Bericht',
-            scheduledAt: '2026-10-30T10:00:00.000Z',
+            scheduledDate: '2026-10-30',
+            timeOfDay: '11:00',
             plannedDurationMinutes: 60,
           })
           .expect(201)
@@ -213,7 +215,7 @@ describe('Google calendar sync (e2e)', () => {
     );
   });
 
-  it('turns a new event into a fixed todo and ignores all-day ones', async () => {
+  it('turns a new event into an appointment and ignores all-day ones', async () => {
     await connect();
     google.add(OWN, {
       summary: 'Zahnarzt',
@@ -231,7 +233,8 @@ describe('Google calendar sync (e2e)', () => {
     expect(all).toHaveLength(1);
     expect(all[0]).toMatchObject({
       title: 'Zahnarzt',
-      isFixed: true,
+      scheduledDate: '2026-10-30',
+      timeOfDay: '13:00',
       plannedDurationMinutes: 45,
     });
   });
@@ -248,7 +251,10 @@ describe('Google calendar sync (e2e)', () => {
     });
     await sync();
     const moved = await db.getRepository(TodoEntity).findOneByOrFail({ id });
-    expect(moved.scheduledAt?.toISOString()).toBe('2026-10-30T14:00:00.000Z');
+    expect(moved).toMatchObject({
+      scheduledDate: '2026-10-30',
+      timeOfDay: '15:00',
+    });
     expect(moved.plannedDurationMinutes).toBe(30);
 
     await request(server)
@@ -284,6 +290,27 @@ describe('Google calendar sync (e2e)', () => {
     expect(stored.title).toBe('Aus der App');
   });
 
+  it('writes only appointments, and removes the event when the time goes', async () => {
+    await connect();
+    await request(server)
+      .post('/todos')
+      .send({ title: 'Irgendwann heute', scheduledDate: '2026-10-30' })
+      .expect(201);
+    const id = await scheduledTodo();
+    await sync();
+    expect(google.events(OWN).map((event) => event.summary)).toEqual([
+      'Bericht',
+    ]);
+
+    await request(server)
+      .patch(`/todos/${id}`)
+      .send({ timeOfDay: null })
+      .expect(200);
+    await sync();
+    expect(google.events(OWN)[0].status).toBe('cancelled');
+    expect(await db.getRepository(CalendarLinkEntity).count()).toBe(0);
+  });
+
   it('keeps the todo unplanned when its event is deleted in Google', async () => {
     await connect();
     const id = await scheduledTodo();
@@ -292,7 +319,7 @@ describe('Google calendar sync (e2e)', () => {
     await sync();
 
     const stored = await db.getRepository(TodoEntity).findOneByOrFail({ id });
-    expect(stored.scheduledAt).toBeNull();
+    expect(stored).toMatchObject({ scheduledDate: null, timeOfDay: null });
     expect(await db.getRepository(CalendarLinkEntity).count()).toBe(0);
   });
 
@@ -367,7 +394,7 @@ describe('Google calendar sync (e2e)', () => {
     expect(google.events(OWN)[0].status).toBe('cancelled');
   });
 
-  it('shows main calendar events and plans around busy ones', async () => {
+  it('shows main calendar events without writing to that calendar', async () => {
     await connect();
     google.add('primary', {
       summary: 'Besprechung',
@@ -378,27 +405,12 @@ describe('Google calendar sync (e2e)', () => {
       transparency: 'transparent',
       ...timed('2026-10-30T10:00:00.000Z', '2026-10-30T11:00:00.000Z'),
     });
-    await request(server)
-      .post('/todos')
-      .send({
-        title: 'Flexibel',
-        scheduledAt: '2026-10-30T07:30:00.000Z',
-        plannedDurationMinutes: 60,
-      })
-      .expect(201);
     await sync();
 
     const planner = await request(server).get('/day-planner/today').expect(200);
     expect(
       (planner.body as { externalEvents: { title: string }[] }).externalEvents,
     ).toHaveLength(2);
-    const replan = await request(server).get('/todos/replan').expect(200);
-    expect(
-      (replan.body as { changes: { pieces: unknown[] }[] }).changes[0].pieces,
-    ).toEqual([
-      { start: '2026-10-30T07:30:00.000Z', minutes: 30 },
-      { start: '2026-10-30T09:00:00.000Z', minutes: 30 },
-    ]);
     expect(google.writes).not.toContain('primary');
 
     const month = await request(server)
@@ -432,7 +444,7 @@ describe('Google calendar sync (e2e)', () => {
     ).toEqual(['Nacht']);
   });
 
-  it('reads all shown calendars and blocks planning per setting', async () => {
+  it('reads all shown calendars and lists them', async () => {
     await connect();
     google.add('shared', {
       summary: 'Familie',
@@ -442,14 +454,6 @@ describe('Google calendar sync (e2e)', () => {
       summary: 'Unsichtbar',
       ...timed('2026-10-30T12:00:00.000Z', '2026-10-30T13:00:00.000Z'),
     });
-    await request(server)
-      .post('/todos')
-      .send({
-        title: 'Flexibel',
-        scheduledAt: '2026-10-30T07:30:00.000Z',
-        plannedDurationMinutes: 60,
-      })
-      .expect(201);
     await sync();
 
     const planner = await request(server).get('/day-planner/today').expect(200);
@@ -458,31 +462,9 @@ describe('Google calendar sync (e2e)', () => {
     ).toEqual([expect.objectContaining({ title: 'Familie' })]);
     const status = await request(server).get('/calendar/google').expect(200);
     expect((status.body as { calendars: unknown[] }).calendars).toEqual([
-      { id: 'primary', title: 'Ich', primary: true, blocksPlanning: true },
-      {
-        id: 'shared',
-        title: 'Gemeinsam',
-        primary: false,
-        blocksPlanning: false,
-      },
+      { id: 'primary', title: 'Ich', primary: true },
+      { id: 'shared', title: 'Gemeinsam', primary: false },
     ]);
-    const changes = async (): Promise<unknown[]> =>
-      (
-        (await request(server).get('/todos/replan').expect(200)).body as {
-          changes: unknown[];
-        }
-      ).changes;
-    expect(await changes()).toEqual([]);
-
-    await request(server)
-      .patch('/calendar/google/calendars')
-      .send({ calendarId: 'shared', blocksPlanning: true })
-      .expect(204);
-    expect(await changes()).toHaveLength(1);
-
-    // The choice survives the next sync.
-    await sync();
-    expect(await changes()).toHaveLength(1);
   });
 
   it('keeps reading the main calendar with an older token', async () => {

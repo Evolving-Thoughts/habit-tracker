@@ -102,6 +102,13 @@ export function atSameWallClock(instant: Date, date: string): Date {
   return wallClockMs(corrected) === target ? corrected : new Date(first);
 }
 
+/** The app-zone wall clock of an instant as HH:mm. */
+export function timeOfDayOf(instant: Date): string {
+  const minutes = Math.floor(wallClockMs(instant) / 60_000);
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+}
+
 /** The instant `minutes` after midnight on the wall clock of `date`. */
 export function atWallClockMinutes(date: string, minutes: number): Date {
   // January has no DST change, so the offset from midnight is the wall clock.

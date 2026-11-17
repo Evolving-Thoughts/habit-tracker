@@ -21,10 +21,8 @@ const todo: DayPlannerTodoItem = {
   title: "Saugen",
   status: "pending",
   scheduledDate: "2026-10-30",
-  scheduledAt: "2026-10-30T08:00:00.000Z",
   completedAt: null,
   plannedDurationMinutes: null,
-  isFixed: false,
   isOverdue: false,
   timerEligible: true,
 };
@@ -75,8 +73,8 @@ describe("MoveItemDialog", () => {
     expect(button(render(todo), "Heute")).toBeUndefined();
   });
 
-  it("needs a confirmation for a fixed todo", async () => {
-    const wrapper = render({ ...todo, isFixed: true });
+  it("needs a confirmation for an appointment", async () => {
+    const wrapper = render({ ...todo, timeOfDay: "09:00" });
     expect(button(wrapper, "Morgen")!.attributes("disabled")).toBeDefined();
     await wrapper.find('[data-test="move-confirm"]').setValue(true);
     await button(wrapper, "Morgen")!.trigger("click");

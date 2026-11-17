@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import {
   getToday,
+  reorderDay,
   rescheduleOccurrence,
   rescheduleTodo,
   updateOccurrenceStatus,
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { useListFocus } from "../composables/useListFocus";
+import { useSortable } from "../composables/useSortable";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import AppIcon from "../components/AppIcon.vue";
@@ -15,9 +17,10 @@ import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
 import PlannerItem from "../components/PlannerItem.vue";
+import QuickAddQuest from "../components/QuickAddQuest.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
 import MoveItemDialog from "../components/MoveItemDialog.vue";
-import ReplanDialog from "../components/ReplanDialog.vue";
+import ModalDialog from "../components/ModalDialog.vue";
 import UndoToast from "../components/UndoToast.vue";
 import type {
   DayPlannerHabitItem,
@@ -29,8 +32,11 @@ import {
   arrangeToday,
   formatDayHeading,
   formatDuration,
+  itemKey,
+  moved,
   nowInBerlin,
   plannedClock,
+  withQueueOrder,
 } from "../utils/today-agenda";
 import { categoryMark } from "../utils/category-mark";
 
@@ -45,7 +51,7 @@ const listFocus = useListFocus(page);
 const editingTarget = ref<EditingTarget | null>(null);
 const editorBusy = ref(false);
 const movingItem = ref<DayPlannerItem | null>(null);
-const replanOpen = ref(false);
+const postponeOpen = ref(false);
 const creationOpen = ref(false);
 const creationMessage = ref<string | null>(null);
 const catchUpOpen = ref(false);
@@ -63,7 +69,7 @@ const {
     !editorBusy.value &&
     !editingTarget.value &&
     !movingItem.value &&
-    !replanOpen.value &&
+    !postponeOpen.value &&
     !creationOpen.value &&
     !writes.busy.value,
 });
@@ -119,7 +125,7 @@ const focusMeta = computed(() => {
         ? `${focus.workedMinutes}/${focus.plannedDurationMinutes} Min.`
         : `${focus.plannedDurationMinutes} Min.`,
     );
-  if (focus.type === "todo" && focus.isFixed) parts.push("Fester Termin");
+  if (focus.type === "todo" && focus.timeOfDay) parts.push("Termin");
   return parts;
 });
 
@@ -132,11 +138,7 @@ function offerUndo(item: DayPlannerItem, label: string): void {
   undoTimer = setTimeout(() => (undo.value = null), 5000);
 }
 
-function getItemKey(item: DayPlannerItem): string {
-  return item.type === "todo"
-    ? `todo-${item.todoId}`
-    : `habit-${item.occurrenceId}`;
-}
+const getItemKey = itemKey;
 
 function isUpdating(item: DayPlannerItem): boolean {
   return editorBusy.value || writes.isWriting(getItemKey(item));
@@ -195,9 +197,9 @@ async function skipHabit(item: DayPlannerHabitItem): Promise<void> {
   );
 }
 
-/** Movable to `date` without a dialog; fixed todos and habit limits ask. */
+/** Movable to `date` without a dialog; appointments and habit limits ask. */
 function quickMovable(item: DayPlannerItem, date: string): boolean {
-  if (item.type === "todo") return item.scheduledAt !== null && !item.isFixed;
+  if (item.type === "todo") return item.timeOfDay === null;
   return item.moveUntil !== null && date <= item.moveUntil;
 }
 
@@ -278,14 +280,83 @@ async function onMoved(): Promise<void> {
   closeMoving();
 }
 
-function closeReplan(): void {
-  replanOpen.value = false;
-  editorBusy.value = false;
+/* The order of the day: the focus card is its head, the rows follow. */
+const order = ref<HTMLElement | null>(null);
+const orderMessage = ref("");
+/** The focus heads the queue unless an appointment is running right now. */
+const focusInQueue = computed(
+  () => !!agenda.value?.focus && agenda.value.focus === agenda.value.queue[0],
+);
+const rows = computed(
+  () =>
+    agenda.value?.queue.filter((item) => item !== agenda.value?.focus) ?? [],
+);
+
+/** How the server names an item of the order. */
+function orderRef(item: DayPlannerItem): {
+  type: "todo" | "habit";
+  id: number;
+} {
+  return item.type === "todo"
+    ? { type: "todo", id: item.todoId }
+    : { type: "habit", id: item.occurrenceId };
+}
+const orderRefs = computed(() => (agenda.value?.queue ?? []).map(orderRef));
+
+async function moveInOrder(from: number, to: number): Promise<void> {
+  const current = planner.value;
+  if (!current || !agenda.value || writes.isWriting("order")) return;
+  const queue = moved(agenda.value.queue, from, to);
+  const item = queue[to];
+  if (!item || queue[from] === item) return;
+  // Shown at once; the reload after the write confirms it or takes it back.
+  planner.value = withQueueOrder(current, queue);
+  orderMessage.value = `„${item.title}“ steht jetzt an Stelle ${to + 1} von ${queue.length}.`;
+  await writes.write(() => reorderDay(queue.map(orderRef)), {
+    key: "order",
+    fallbackError: "Die Reihenfolge konnte nicht gespeichert werden.",
+  });
 }
 
-async function onReplanned(): Promise<void> {
-  await writes.applied();
-  closeReplan();
+/** The grip's arrow keys move an item one place and keep the grip focused. */
+async function shiftInOrder(
+  item: DayPlannerItem,
+  direction: -1 | 1,
+): Promise<void> {
+  const from = agenda.value?.queue.indexOf(item) ?? -1;
+  if (from === -1) return;
+  listFocus.remember(getItemKey(item));
+  await moveInOrder(from, from + direction);
+  await nextTick();
+  page.value
+    ?.querySelector<HTMLElement>(
+      `[data-focus-key="${getItemKey(item)}"] .sort-handle`,
+    )
+    ?.focus();
+}
+
+useSortable(order, {
+  item: "[data-sort-key]",
+  handle: ".sort-handle",
+  onMove: (from, to) => void moveInOrder(from, to),
+});
+
+/* What is still open today can go to tomorrow in one step. */
+const postponable = computed(() =>
+  (agenda.value?.queue ?? []).filter((item) =>
+    quickMovable(item, tomorrow.value),
+  ),
+);
+async function postponeAll(): Promise<void> {
+  const items = postponable.value;
+  postponeOpen.value = false;
+  for (const item of items) {
+    if (!(await moveTo(item, tomorrow.value))) return;
+  }
+  creationMessage.value =
+    items.length === 1
+      ? "1 Eintrag steht jetzt bei morgen."
+      : `${items.length} Einträge stehen jetzt bei morgen.`;
 }
 
 function openCreation(): void {
@@ -302,7 +373,7 @@ function openCreation(): void {
 async function onCreated(kind: "todo" | "habit"): Promise<void> {
   creationMessage.value =
     kind === "todo"
-      ? "Quest erstellt. Ohne Zeitpunkt findest du sie im Questlog."
+      ? "Quest erstellt. Ohne Tag findest du sie im Questlog."
       : "Daily erstellt. Es erscheint ab seinem Startdatum an fälligen Tagen.";
   await writes.applied();
   creationOpen.value = false;
@@ -326,13 +397,14 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
         </p>
       </div>
       <button
-        class="today-view__replan"
+        v-if="postponable.length"
+        class="today-view__postpone"
         type="button"
-        :disabled="isLoading || editorBusy"
-        @click="replanOpen = true"
+        :disabled="isLoading || editorBusy || writes.busy.value"
+        @click="postponeOpen = true"
       >
-        <AppIcon name="replan" />
-        <span>Neu planen</span>
+        <AppIcon name="tomorrow" />
+        <span>Auf morgen</span>
       </button>
     </header>
 
@@ -357,14 +429,36 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
       @close="closeEditing"
     />
 
-    <ReplanDialog
-      v-if="replanOpen"
+    <ModalDialog
+      v-if="postponeOpen"
+      title="Offenes auf morgen verschieben"
+      focus-selector="[data-postpone-confirm]"
       :return-focus="() => null"
-      :carried-over="agenda?.carriedOver.length ?? 0"
-      @busy="editorBusy = $event"
-      @applied="onReplanned"
-      @close="closeReplan"
-    />
+      @close="postponeOpen = false"
+    >
+      <p class="postpone__lead">
+        {{
+          postponable.length === 1
+            ? "1 offener Eintrag wandert auf morgen und reiht sich dort hinten ein."
+            : `${postponable.length} offene Einträge wandern auf morgen und reihen sich dort hinten ein.`
+        }}
+        Termine mit Uhrzeit bleiben, wo sie sind.
+      </p>
+      <div class="postpone__actions">
+        <button
+          class="btn btn--primary"
+          type="button"
+          data-postpone-confirm
+          data-primary
+          @click="postponeAll"
+        >
+          Auf morgen verschieben
+        </button>
+        <button class="btn" type="button" @click="postponeOpen = false">
+          Abbrechen
+        </button>
+      </div>
+    </ModalDialog>
 
     <MoveItemDialog
       v-if="movingItem && planner"
@@ -381,6 +475,13 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
       {{ errorMessage }}
     </p>
 
+    <QuickAddQuest
+      v-if="planner"
+      :date="planner.date"
+      :order="orderRefs"
+      @created="writes.applied()"
+    />
+
     <div
       v-if="isLoading"
       class="today-view__loading"
@@ -394,90 +495,110 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
 
     <section v-else-if="!hasItems && !errorMessage" class="today-view__empty">
       <h2>Für heute ist nichts geplant.</h2>
-      <p>Genieße den freien Raum oder plane über das Plus einen Eintrag.</p>
+      <p>Genieße den freien Raum oder schreib oben auf, was heute ansteht.</p>
     </section>
 
     <template v-else-if="agenda && hasItems">
-      <section
-        v-if="agenda.focus"
-        class="focus"
-        :data-focus-key="getItemKey(agenda.focus)"
-        aria-labelledby="focus-title"
-      >
-        <h2 id="focus-title" class="focus__title">{{ agenda.focus.title }}</h2>
-        <p v-if="agenda.focus.why" class="focus__why">
-          {{ agenda.focus.why }}
-        </p>
-        <p v-if="focusMeta.length || focusGoal" class="focus__meta">
-          <span v-if="agenda.focus.categoryName" class="focus__category">
-            <i
-              class="category-mark"
-              :style="{ background: categoryMark(agenda.focus.categoryName) }"
-              aria-hidden="true"
-            />{{ agenda.focus.categoryName }}
-          </span>
-          <span v-for="part in focusMeta" :key="part">{{ part }}</span>
-          <span v-if="focusGoal">{{ focusGoal }}</span>
-        </p>
-        <div class="focus__actions">
-          <button
-            class="focus__done"
-            type="button"
-            :disabled="isUpdating(agenda.focus)"
-            :aria-label="`${agenda.focus.title} erledigen`"
-            @click="toggleItem(agenda.focus)"
-          >
-            <AppIcon name="check" />
-            <span>Erledigt</span>
-          </button>
-          <ItemPlayButton
-            :kind="agenda.focus.type === 'todo' ? 'todo' : 'occurrence'"
-            :target-id="
-              agenda.focus.type === 'todo'
-                ? agenda.focus.todoId
-                : agenda.focus.occurrenceId
-            "
-            :title="agenda.focus.title"
-            :duration="agenda.focus.plannedDurationMinutes"
-            :eligible="agenda.focus.timerEligible"
-            :disabled="isUpdating(agenda.focus)"
-          />
-          <button
-            v-if="agenda.focus.type === 'habit'"
-            class="focus__more focus__more--tinted"
-            type="button"
-            :disabled="isUpdating(agenda.focus)"
-            :aria-label="`${agenda.focus.title} überspringen`"
-            @click="skipHabit(agenda.focus)"
-          >
-            Überspringen
-          </button>
-          <button
-            class="focus__more focus__more--tinted"
-            data-edit-button
-            type="button"
-            :disabled="isUpdating(agenda.focus)"
-            :aria-label="`${agenda.focus.title} bearbeiten`"
-            @click="openEditing(agenda.focus)"
-          >
-            Bearbeiten
-          </button>
-        </div>
-      </section>
-      <section v-else-if="!agenda.carriedOver.length" class="today-view__empty">
-        <h2>Alles für heute erledigt.</h2>
-        <p>Der Rest des Tages gehört dir.</p>
-      </section>
+      <p class="visually-hidden" role="status">{{ orderMessage }}</p>
+      <div ref="order" class="order">
+        <section
+          v-if="agenda.focus"
+          class="focus"
+          :data-focus-key="getItemKey(agenda.focus)"
+          :data-sort-key="focusInQueue ? getItemKey(agenda.focus) : undefined"
+          aria-labelledby="focus-title"
+        >
+          <h2 id="focus-title" class="focus__title">{{ agenda.focus.title }}</h2>
+          <p v-if="agenda.focus.why" class="focus__why">
+            {{ agenda.focus.why }}
+          </p>
+          <p v-if="focusMeta.length || focusGoal" class="focus__meta">
+            <span v-if="agenda.focus.categoryName" class="focus__category">
+              <i
+                class="category-mark"
+                :style="{ background: categoryMark(agenda.focus.categoryName) }"
+                aria-hidden="true"
+              />{{ agenda.focus.categoryName }}
+            </span>
+            <span v-for="part in focusMeta" :key="part">{{ part }}</span>
+            <span v-if="focusGoal">{{ focusGoal }}</span>
+          </p>
+          <div class="focus__actions">
+            <button
+              class="focus__done"
+              type="button"
+              :disabled="isUpdating(agenda.focus)"
+              :aria-label="`${agenda.focus.title} erledigen`"
+              @click="toggleItem(agenda.focus)"
+            >
+              <AppIcon name="check" />
+              <span>Erledigt</span>
+            </button>
+            <ItemPlayButton
+              :kind="agenda.focus.type === 'todo' ? 'todo' : 'occurrence'"
+              :target-id="
+                agenda.focus.type === 'todo'
+                  ? agenda.focus.todoId
+                  : agenda.focus.occurrenceId
+              "
+              :title="agenda.focus.title"
+              :duration="agenda.focus.plannedDurationMinutes"
+              :eligible="agenda.focus.timerEligible"
+              :disabled="isUpdating(agenda.focus)"
+            />
+            <button
+              v-if="agenda.focus.type === 'habit'"
+              class="focus__more focus__more--tinted"
+              type="button"
+              :disabled="isUpdating(agenda.focus)"
+              :aria-label="`${agenda.focus.title} überspringen`"
+              @click="skipHabit(agenda.focus)"
+            >
+              Überspringen
+            </button>
+            <button
+              class="focus__more focus__more--tinted"
+              data-edit-button
+              type="button"
+              :disabled="isUpdating(agenda.focus)"
+              :aria-label="`${agenda.focus.title} bearbeiten`"
+              @click="openEditing(agenda.focus)"
+            >
+              Bearbeiten
+            </button>
+            <button
+              v-if="focusInQueue && rows.length"
+              class="focus__grip sort-handle"
+              type="button"
+              :disabled="isUpdating(agenda.focus)"
+              :aria-label="`${agenda.focus.title} in der Reihenfolge verschieben`"
+              title="Ziehen oder mit den Pfeiltasten verschieben"
+              @keydown.down.prevent="shiftInOrder(agenda.focus, 1)"
+            >
+              <AppIcon name="grip" />
+            </button>
+          </div>
+        </section>
+        <section v-else-if="!agenda.carriedOver.length" class="today-view__empty">
+          <h2>Alles für heute erledigt.</h2>
+          <p>Der Rest des Tages gehört dir.</p>
+        </section>
 
-      <p v-if="agenda.focus && agenda.next" class="today-view__next">
-        <span>Danach</span>
-        {{ agenda.next.time }}
-        {{
-          agenda.next.kind === "item"
-            ? agenda.next.item.title
-            : agenda.next.event.title
-        }}
-      </p>
+        <PlannerItem
+          v-for="item in rows"
+          :key="getItemKey(item)"
+          :data-focus-key="getItemKey(item)"
+          :data-sort-key="getItemKey(item)"
+          :item="item"
+          :is-updating="isUpdating(item)"
+          sortable
+          @toggle="toggleItem"
+          @skip="skipHabit"
+          @edit="openEditing"
+          @move="openMoving"
+          @shift="shiftInOrder"
+        />
+      </div>
 
       <section
         v-if="agenda.carriedOver.length"
@@ -545,9 +666,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
             </button>
             <button
               v-if="
-                item.type === 'todo'
-                  ? item.scheduledAt !== null
-                  : !!item.moveUntil
+                item.type === 'todo' || !!item.moveUntil
               "
               class="catch-up__chip"
               type="button"
@@ -578,7 +697,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
         aria-labelledby="timeline-title"
       >
         <h2 id="timeline-title" class="today-view__section-title">
-          Tagesablauf
+          Termine
         </h2>
         <ol class="timeline__list">
           <template
@@ -620,29 +739,6 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
             Jetzt
           </li>
         </ol>
-      </section>
-
-      <section
-        v-if="agenda.anytime.length"
-        class="timeline"
-        aria-labelledby="anytime-title"
-      >
-        <h2 id="anytime-title" class="today-view__section-title">
-          Irgendwann heute
-        </h2>
-        <div class="timeline__list">
-          <PlannerItem
-            v-for="item in agenda.anytime"
-            :key="getItemKey(item)"
-            :data-focus-key="getItemKey(item)"
-            :item="item"
-            :is-updating="isUpdating(item)"
-            @toggle="toggleItem"
-            @skip="skipHabit"
-            @edit="openEditing"
-            @move="openMoving"
-          />
-        </div>
       </section>
 
       <section v-if="agenda.resolved.length" class="resolved">
@@ -718,7 +814,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
   font-variant-numeric: tabular-nums;
 }
 
-.today-view__replan {
+.today-view__postpone {
   display: inline-flex;
   flex: none;
   gap: var(--space-2);
@@ -734,16 +830,16 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
   transition: transform 420ms var(--spring);
 }
 
-.today-view__replan :deep(svg) {
+.today-view__postpone :deep(svg) {
   width: 1.25rem;
   height: 1.25rem;
 }
 
-.today-view__replan:active:not(:disabled) {
+.today-view__postpone:active:not(:disabled) {
   transform: var(--press);
 }
 
-.today-view__replan:disabled {
+.today-view__postpone:disabled {
   color: var(--color-ink-soft);
   cursor: progress;
 }
@@ -876,50 +972,58 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
   color: var(--color-action-strong);
 }
 
-.today-view__next {
+/* The focus card and the rows after it are one sortable order. */
+.order {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.order > .focus {
+  margin-bottom: var(--space-1);
+}
+
+.focus__grip {
+  display: grid;
+  width: var(--tap);
+  height: var(--tap);
+  place-items: center;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-ink-soft);
+  cursor: grab;
+  touch-action: none;
+}
+
+.focus__grip :deep(svg) {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* What is being dragged, and the gap it leaves behind. */
+.order :deep(.sortable-ghost) {
+  opacity: 0.35;
+}
+
+.order :deep(.sortable-fallback) {
+  box-shadow: var(--shadow-card);
+  cursor: grabbing;
+}
+
+.postpone__lead {
+  margin: 0 0 var(--space-4);
+  color: var(--color-ink-muted);
+}
+
+.postpone__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 var(--space-2);
-  margin: var(--space-3) var(--space-5) 0;
-  color: var(--color-ink-muted);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  gap: var(--space-2);
 }
 
-.today-view__next span {
-  color: var(--color-ink);
-  font-weight: 800;
-}
-
-/* Catching up: an offer, never an alarm. */
-.catch-up {
-  margin-top: var(--space-5);
-  border-radius: var(--radius-card);
-  background: var(--color-ground-deep);
-}
-
-.catch-up__toggle {
-  display: flex;
-  gap: var(--space-3);
-  align-items: center;
-  width: 100%;
-  min-height: var(--tap-large);
-  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-5);
-  border: 0;
-  border-radius: var(--radius-card);
-  background: transparent;
-  color: var(--color-ink);
-  font-weight: 700;
-  text-align: left;
-  cursor: pointer;
-}
-
-.catch-up__hint {
-  margin-left: auto;
-  color: var(--color-action-strong);
-}
-
-.catch-up__toggle :deep(svg),
 .resolved__toggle :deep(svg) {
   width: 1.25rem;
   height: 1.25rem;

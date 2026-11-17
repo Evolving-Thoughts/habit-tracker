@@ -38,9 +38,9 @@ function makeTodo(overrides: Partial<TodoResponse> = {}): TodoResponse {
     title: "NestJS lernen",
     completed: false,
     completedAt: null,
-    scheduledAt: null,
+    scheduledDate: null,
+    timeOfDay: null,
     plannedDurationMinutes: 30,
-    isFixed: false,
     timerEligible: true,
     ...overrides,
   };
@@ -302,9 +302,9 @@ describe("QuestlogView", () => {
 
     expect(updateTodoMock).toHaveBeenCalledWith(1, {
       title: "Vue lernen",
-      scheduledAt: null,
+      scheduledDate: null,
+      timeOfDay: null,
       plannedDurationMinutes: 45,
-      isFixed: false,
     });
 
     expect(wrapper.text()).toContain("Vue lernen");
@@ -331,15 +331,13 @@ describe("QuestlogView", () => {
 
     expect(updateTodoMock).toHaveBeenCalledWith(1, {
       title: "NestJS lernen",
-      scheduledAt: null,
+      scheduledDate: null,
+      timeOfDay: null,
       plannedDurationMinutes: null,
-      isFixed: false,
     });
   });
 
   it("schedules a todo and removes it from the dump after reload", async () => {
-    const localDateTime = "2026-10-02T10:00";
-
     // A scheduled todo leaves the server's backlog.
     backlogMock.mockResolvedValueOnce([makeTodo()]).mockResolvedValueOnce([]);
 
@@ -351,9 +349,8 @@ describe("QuestlogView", () => {
       .get('button[aria-label="NestJS lernen bearbeiten"]')
       .trigger("click");
 
-    await wrapper.get('input[name="editScheduledAt"]').setValue(localDateTime);
-
-    await wrapper.get('input[name="editIsFixed"]').setValue(true);
+    await wrapper.get('input[name="scheduledDate"]').setValue("2026-10-02");
+    await wrapper.get('input[name="timeOfDay"]').setValue("10:00");
 
     await wrapper.get('[data-test="editing-form"]').trigger("submit");
 
@@ -361,9 +358,9 @@ describe("QuestlogView", () => {
 
     expect(updateTodoMock).toHaveBeenCalledWith(1, {
       title: "NestJS lernen",
-      scheduledAt: "2026-10-02T08:00:00.000Z",
+      scheduledDate: "2026-10-02",
+      timeOfDay: "10:00",
       plannedDurationMinutes: 30,
-      isFixed: true,
     });
 
     expect(wrapper.find('[data-todo-id="1"]').exists()).toBe(false);
@@ -390,30 +387,6 @@ describe("QuestlogView", () => {
 
     expect(wrapper.get('[role="alert"]').text()).toBe(
       "Bitte gib einen Titel ein.",
-    );
-  });
-
-  it("rejects a fixed todo without a scheduled time", async () => {
-    backlogMock.mockResolvedValueOnce([makeTodo()]);
-
-    const wrapper = mountView();
-
-    await flushPromises();
-
-    await wrapper
-      .get('button[aria-label="NestJS lernen bearbeiten"]')
-      .trigger("click");
-
-    await wrapper.get('input[name="editIsFixed"]').setValue(true);
-
-    await wrapper.get('[data-test="editing-form"]').trigger("submit");
-
-    await flushPromises();
-
-    expect(updateTodoMock).not.toHaveBeenCalled();
-
-    expect(wrapper.get('[role="alert"]').text()).toBe(
-      "Ein fester Termin benötigt einen Zeitpunkt.",
     );
   });
 
@@ -592,9 +565,9 @@ describe("QuestlogView creation flow", () => {
     await flushPromises();
     expect(createTodo).toHaveBeenCalledWith({
       title: "NestJS lernen",
-      scheduledAt: null,
+      scheduledDate: null,
+      timeOfDay: null,
       plannedDurationMinutes: null,
-      isFixed: false,
     });
     expect(wrapper.find("dialog").exists()).toBe(false);
     expect(backlogMock).toHaveBeenCalledTimes(2);

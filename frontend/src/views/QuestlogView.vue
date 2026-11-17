@@ -19,6 +19,7 @@ import ModalDialog from "../components/ModalDialog.vue";
 import UndoToast from "../components/UndoToast.vue";
 import type { CreateTodoInput, TodoResponse } from "../types/todo";
 import { shownWhy } from "../utils/why";
+import PlanFields from "../components/PlanFields.vue";
 import { categoryMark } from "../utils/category-mark";
 import { buildTodoInput } from "../utils/todo-input";
 
@@ -51,9 +52,9 @@ async function requestDeletion(): Promise<void> {
 const creationOpen = ref(false);
 
 const editTitle = ref("");
-const editScheduledAt = ref("");
+const editDate = ref("");
+const editTime = ref("");
 const editDuration = ref<string | number>("");
-const editIsFixed = ref(false);
 
 /** Category names for the meta line; the list stays usable without them. */
 const categoryNames = ref(new Map<number, string>());
@@ -126,7 +127,6 @@ function detailsOf(todo: TodoResponse): string[] {
   const parts: string[] = [];
   if (todo.plannedDurationMinutes !== null)
     parts.push(`${todo.plannedDurationMinutes} Min.`);
-  if (todo.isFixed) parts.push("Fester Termin");
   return parts;
 }
 
@@ -172,12 +172,11 @@ function openEditing(todo: TodoResponse): void {
 
   editTitle.value = todo.title;
 
-  // Im Dump stehen nur Todos ohne Zeitpunkt.
-  editScheduledAt.value = "";
+  // The Questlog only holds quests without a day.
+  editDate.value = "";
+  editTime.value = "";
 
   editDuration.value = todo.plannedDurationMinutes ?? "";
-
-  editIsFixed.value = todo.isFixed;
 
   errorMessage.value = null;
   successMessage.value = null;
@@ -188,17 +187,17 @@ function closeEditing(): void {
   cancelDeletion();
 
   editTitle.value = "";
-  editScheduledAt.value = "";
+  editDate.value = "";
+  editTime.value = "";
   editDuration.value = "";
-  editIsFixed.value = false;
 }
 
 function buildUpdateInput(): CreateTodoInput {
   return buildTodoInput({
     title: editTitle.value,
-    scheduledAt: editScheduledAt.value,
+    date: editDate.value,
+    time: editTime.value,
     duration: editDuration.value,
-    isFixed: editIsFixed.value,
   });
 }
 
@@ -227,9 +226,9 @@ async function saveTodo(): Promise<void> {
     })
   ) {
     successMessage.value =
-      input.scheduledAt === null
+      input.scheduledDate === null
         ? "Änderungen gespeichert."
-        : "Eingeplant. Die Quest steht jetzt in Heute.";
+        : "Eingeplant. Die Quest steht jetzt an ihrem Tag.";
     closeEditing();
   }
 }
@@ -307,16 +306,13 @@ async function onCreated(): Promise<void> {
               />
             </label>
 
-            <div class="todo-editor__row">
-              <label class="field">
-                Zeitpunkt · optional
-                <input
-                  v-model="editScheduledAt"
-                  name="editScheduledAt"
-                  type="datetime-local"
-                />
-              </label>
+            <PlanFields
+              v-model:date="editDate"
+              v-model:time="editTime"
+              id-prefix="questlog-edit"
+            />
 
+            <div class="todo-editor__row">
               <label class="field">
                 Dauer in Minuten · optional
                 <input
@@ -328,15 +324,6 @@ async function onCreated(): Promise<void> {
                 />
               </label>
             </div>
-
-            <label class="todo-editor__checkbox">
-              <input v-model="editIsFixed" name="editIsFixed" type="checkbox" />
-              Fester Termin
-            </label>
-
-            <p class="todo-editor__hint">
-              Mit Zeitpunkt wandert die Quest nach Heute.
-            </p>
 
             <p v-if="errorMessage" class="form-error" role="alert">
               {{ errorMessage }}
@@ -558,30 +545,11 @@ async function onCreated(): Promise<void> {
   gap: var(--space-4);
 }
 
-.todo-editor__checkbox {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-  min-height: var(--tap);
-  font-weight: 600;
-}
-
-.todo-editor__checkbox input {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
 .todo-editor__actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
   align-items: center;
-}
-
-.todo-editor__hint {
-  margin: 0;
-  color: var(--color-ink-muted);
-  font-size: 0.875rem;
 }
 
 .todo-editor__delete {

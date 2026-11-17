@@ -1,38 +1,34 @@
 import type { CreateTodoInput } from "../types/todo";
-import { fromLocalInput } from "./date";
 
-/** Raw values of any todo form (create, Dump editor, planner editor). */
+/** Raw values of any quest form (create, Questlog editor, planner editor). */
 export type TodoFormValues = {
   title: string;
-  /** datetime-local value in Berlin time, or "" for none. */
-  scheduledAt: string;
+  /** YYYY-MM-DD of the planned day, or "" for the Questlog. */
+  date: string;
+  /** HH:mm of an appointment, or "" when only the day is planned. */
+  time: string;
   duration: string | number;
-  isFixed: boolean;
 };
 
-/**
- * The one validation for todo forms. `unchanged` keeps an existing instant
- * exactly (seconds included) when the user did not touch the date field.
- */
-export function buildTodoInput(
-  values: TodoFormValues,
-  unchanged?: { localInput: string; iso: string | null },
-): CreateTodoInput {
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** The one validation for quest forms. */
+export function buildTodoInput(values: TodoFormValues): CreateTodoInput {
   const title = values.title.trim();
   if (!title) throw new Error("Bitte gib einen Titel ein.");
   if (title.length > 200)
     throw new Error("Der Titel darf höchstens 200 Zeichen enthalten.");
 
-  let scheduledAt: string | null = null;
-  if (unchanged && values.scheduledAt === unchanged.localInput) {
-    scheduledAt = unchanged.iso;
-  } else if (values.scheduledAt) {
-    scheduledAt = fromLocalInput(values.scheduledAt);
-    if (scheduledAt === null)
-      throw new Error("Bitte gib einen gültigen Zeitpunkt ein.");
-  }
-  if (values.isFixed && scheduledAt === null)
-    throw new Error("Ein fester Termin benötigt einen Zeitpunkt.");
+  const scheduledDate = values.date || null;
+  if (scheduledDate !== null && !DAY.test(scheduledDate))
+    throw new Error("Bitte gib einen gültigen Tag ein.");
+  // Browsers without a time picker hand over seconds as well.
+  const timeOfDay = values.time ? values.time.slice(0, 5) : null;
+  if (timeOfDay !== null && !TIME.test(timeOfDay))
+    throw new Error("Bitte gib eine gültige Uhrzeit ein.");
+  if (timeOfDay !== null && scheduledDate === null)
+    throw new Error("Ein fester Termin braucht einen Tag.");
 
   let plannedDurationMinutes: number | null = null;
   if (String(values.duration).trim() !== "") {
@@ -42,5 +38,5 @@ export function buildTodoInput(
     plannedDurationMinutes = minutes;
   }
 
-  return { title, scheduledAt, plannedDurationMinutes, isFixed: values.isFixed };
+  return { title, scheduledDate, timeOfDay, plannedDurationMinutes };
 }

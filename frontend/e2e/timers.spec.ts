@@ -138,10 +138,10 @@ test("switching requires confirmation and completing a Questlog Quest persists i
   const rows = (await (await request.get(`${API_URL}/todos`)).json()) as {
     title: string;
     completedAt: string | null;
-    scheduledAt: string | null;
+    scheduledDate: string | null;
   }[];
   expect(rows.find((t) => t.title === "Zweite Quest")).toMatchObject({
-    scheduledAt: null,
+    scheduledDate: null,
     completedAt: expect.any(String),
   });
 });

@@ -245,7 +245,7 @@ Ein warmes, einstimmiges Apricot-Umfeld mit einer gebrannten Orange-Stimme und s
 ### Neutral
 - **Apricot-Grund** (ground): Seitenhintergrund, Scrollbar-Spur, Hover im Filtermenü.
 - **Tiefer Apricot** (ground-deep): eingelassene Fläche des Nachholen-Panels, Spur der Segmentwahl und Spur aller Fortschrittsbalken.
-- **Kartenweiß** (surface): Karten, Leerzustände, Tab-Leiste, Dialoge, Menüs, gewähltes Segment und gewählter Chip, Buttons, die direkt auf dem Grund liegen ("Neu planen", Nachholen-Chips). Halbtransparent (55 %) für Kalendertermine, den Arbeitszeit-Umschalter und Ladeskelette.
+- **Kartenweiß** (surface): Karten, Leerzustände, Tab-Leiste, Dialoge, Menüs, gewähltes Segment und gewählter Chip, Buttons, die direkt auf dem Grund liegen ("Auf morgen", Nachholen-Chips). Halbtransparent (55 %) für Kalendertermine, den Arbeitszeit-Umschalter und Ladeskelette.
 - **Apricot-Linie** (line): Haarlinien zwischen Listenzeilen (Nachholen, Kategorien, Kalenderzeilen, Menütrenner), Einrückungslinie in den Kampagnen, Feld- und Chiprahmen (1.5px), Tab-Leisten-Kante, Unterstreichung von Text-Links.
 - **Warme Tinte** (ink): Fließtext, Titel, die Jetzt-Linie, der Undo-Toast, Füllung aller Fortschrittsbalken, Heute-Rahmen im Kalender (2px innen), Rahmen des gewählten Chips, "Löschen" im Aktionsmenü.
 - **Gedämpfte Tinte** (ink-muted): Metazeilen, Zeiten, Fortschritt, inaktive Tabs, erledigte Titel, Feldlabels, Legende, die Punkte im Monatsraster und der Zustandspunkt in Verlaufszeilen.
@@ -275,7 +275,7 @@ Ein warmes, einstimmiges Apricot-Umfeld mit einer gebrannten Orange-Stimme und s
 ### Hierarchy
 - **Display** (800, clamp 1.75–2.25rem, 1.1, -0.02em, balanciert): Wochentag und Datum oben auf "Heute" und der Seitentitel jeder Ansicht (dort mit 6vw-Mittelwert). Die Wochenquote im Kalender steht als Zahl noch größer (800, clamp 2.25–3rem, 1).
 - **Headline** (800, clamp 1.5–1.875rem, 1.15, -0.015em): Titel der Fokuskarte und der Anmeldekarte.
-- **Title** (800, 1.125rem): Abschnittstitel ("Tagesablauf", "Irgendwann heute", Einstellungs-Abschnitte), Titel im Leerzustand, Wortmarke; Dialog- und Boot-Fehlertitel 1.375rem im selben Gewicht.
+- **Title** (800, 1.125rem): Abschnittstitel ("Termine", Einstellungs-Abschnitte), Titel im Leerzustand, Wortmarke; Dialog- und Boot-Fehlertitel 1.375rem im selben Gewicht.
 - **Body Large** (1.0625rem): Warum-Satz der Fokuskarte (max. 60ch), Eintragstitel (700), Primär-Button (800).
 - **Body** (400, 1rem, 1.45): Fließtext und Feldeingaben; Fortschritt und "Danach" in 600; Seiteneinleitung gedämpft, max. 60ch.
 - **Label** (700, 0.875rem, tabellarische Ziffern): Uhrzeiten, Metazeilen, "Jetzt", Feldlabels, Zähler neben Abschnittstiteln. Metazeile der Fokuskarte und Button-Schrift 0.9375rem; Wochentage im Monatsraster 0.8125rem.
@@ -329,7 +329,7 @@ Weich, griffig, federnd.
 - **Shape:** Pille in Tap-Höhe, Schrift 700, 0.9375rem, Icon 1.125rem links. Nur der große Primär-Button ("Erledigt", Anmelden) hat die Control-Ecke 0.875rem und 3.25rem Höhe.
 - **Tinted (Basis):** Apricot-Hauch, Schrift tiefes Orange. Die Standardform jeder Nebenaktion, auch in allen Dialogen.
 - **Primary:** Orange voll, weiße Schrift 800. Ein Primär-Button pro Kontext; als Pille für Sammelaktionen ("Alle nachholen") und Dialog-Submit.
-- **On Ground:** Weiß auf dem Apricot-Grund, Schrift tiefes Orange ("Neu planen", Nachholen-Chips).
+- **On Ground:** Weiß auf dem Apricot-Grund, Schrift tiefes Orange ("Auf morgen", Nachholen-Chips).
 - **Quiet:** ohne Fläche in gedämpfter Tinte; beim Hover Apricot-Hauch und tiefes Orange. Für "Abbrechen", Menüeinträge und Nebenwege.
 - **Danger:** Fehlerhauch mit Fehlerrot, nur für die endgültige Löschbestätigung.
 - **Icon:** quadratisch in Tap-Größe, ohne Polster.
@@ -363,10 +363,16 @@ Weich, griffig, federnd.
 Ein Menü "Aktionen für …" pro Zeile statt verstreuter Buttons. Unter 40rem ein weißes Blatt von unten (oben Kartenecke, Scrim `rgb(43 29 22 / 18%)`), ab 40rem ein Popover am Auslöser (mind. 15rem, Kartenecke); beide mit dem Titel des Eintrags als Überschrift in Tinte. Einträge sind leise Buttons in Tinte mit Icon links. "Löschen" steht zuletzt, durch eine Haarlinie abgesetzt, ebenfalls in Tinte; erst der Bestätigungsdialog zeigt "Ja, löschen" rot.
 
 ### Fokuskarte (Signature)
-Die eine große Karte oben auf Heute: Titel als Headline, Warum-Satz in Body Large, Metazeile mit Kategoriemarke, Uhrzeit, Minuten und Zielstand, darunter "Erledigt" (Primär), Timer (runder getönter Icon-Button) und getönte Nebenaktionen. Direkt darunter, außerhalb der Karte, die Zeile "Danach" mit dem nächsten Eintrag.
+Die eine große Karte oben auf Heute: Titel als Headline, Warum-Satz in Body Large, Metazeile mit Kategoriemarke, Uhrzeit, Minuten und Zielstand, darunter "Erledigt" (Primär), Timer (runder getönter Icon-Button) und getönte Nebenaktionen. Sie zeigt, was jetzt dran ist: den Kopf der Reihenfolge oder einen gerade laufenden Termin. Rechts in der Aktionszeile sitzt ein leiser Griff.
+
+### Reihenfolge des Tages
+Fokuskarte und die Einträge darunter sind eine sortierbare Liste. Jede Zeile trägt in der Zeitspalte einen Griff aus sechs Punkten in leiser Tinte: ziehen (Maus, Finger, Stift) oder mit Pfeil hoch/runter verschieben. Beim Ziehen bleibt am alten Platz eine 35 % deckende Lücke, die gezogene Zeile hebt der Kartenschatten. Wer an den Kopf rückt, wird zur Fokuskarte. Darüber steht das Schnell-Anlegen: ein Feld mit Segment "Oben | Unten". "Auf morgen" im Kopf der Ansicht verschiebt alles Offene ohne Uhrzeit nach einer Rückfrage.
+
+### Kampagnen-Streifen
+Ein Eintrag, der zu einer Kampagne gehört, trägt links einen 5px breiten Streifen in der Marke der Kampagne und nennt sie fett in der Metazeile. Einträge ohne Kampagne bleiben ohne Streifen.
 
 ### Eintrag mit Haken-Ring (Signature)
-Zeit | Ring | Inhalt. Der Ring ist 1.875rem, 2.5px Orange; erledigt füllt er sich orange und der Haken springt mit `check-pop` (Skalierung von 0.4, --spring) ein, der Titel wird durchgestrichen und gedämpft. Übersprungen: gestrichelter Ring in leiser Tinte. Derselbe Ring trägt den Questlog (Timer neben dem Titel, Erledigtes unter "n erledigt" eingeklappt) und den Kampagnen.
+Zeit (oder Griff) | Ring | Inhalt. Nur Termine und Dailies mit Uhrzeit zeigen eine Zeit. Der Ring ist 1.875rem, 2.5px Orange; erledigt füllt er sich orange und der Haken springt mit `check-pop` (Skalierung von 0.4, --spring) ein, der Titel wird durchgestrichen und gedämpft. Übersprungen: gestrichelter Ring in leiser Tinte. Derselbe Ring trägt den Questlog (Timer neben dem Titel, Erledigtes unter "n erledigt" eingeklappt) und den Kampagnen.
 
 ### Kampagnen-Zeile
 Weiße Karte je Quest: Einrückungslinie, Chevron zum Auf- und Zuklappen (sonst Platzhalter in Tap-Breite), Haken-Ring, Titel als Button, Metazeile mit Kategoriemarke. Nur Quests mit Unter-Quests zeigen Fortschritt als flachen Balken mit Zähler. Rechts der Auslöser des Aktionsmenüs. Beim Ziehen wird das Ziel mit 2px gestrichelter gedämpfter Tinte umrandet.

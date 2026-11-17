@@ -24,9 +24,9 @@ const response: TodoResponse = {
   title: "NestJS lernen",
   completed: false,
   completedAt: null,
-  scheduledAt: null,
+  scheduledDate: null,
+  timeOfDay: null,
   plannedDurationMinutes: null,
-  isFixed: false,
   timerEligible: true,
 };
 
@@ -46,9 +46,9 @@ describe("CreateTodoForm", () => {
 
     expect(createTodoMock).toHaveBeenCalledWith({
       title: "NestJS lernen",
-      scheduledAt: null,
+      scheduledDate: null,
+      timeOfDay: null,
       plannedDurationMinutes: null,
-      isFixed: false,
     });
 
     expect(wrapper.emitted("created")).toEqual([[]]);
@@ -60,28 +60,40 @@ describe("CreateTodoForm", () => {
     expect(wrapper.get('[role="status"]').text()).toContain("Questlog");
   });
 
-  it("converts a local scheduled time to ISO", async () => {
-    const localDateTime = "2026-10-02T10:00";
-
+  it("plans an appointment for a day and a time", async () => {
     const wrapper = mount(CreateTodoForm);
 
     await wrapper.get('input[name="title"]').setValue("Arzttermin");
-
-    await wrapper.get('input[name="scheduledAt"]').setValue(localDateTime);
-
+    await wrapper.get('input[name="scheduledDate"]').setValue("2026-10-02");
+    await wrapper.get('input[name="timeOfDay"]').setValue("10:00");
     await wrapper.get('input[name="duration"]').setValue("30");
-
-    await wrapper.get('input[name="isFixed"]').setValue(true);
 
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
     expect(createTodoMock).toHaveBeenCalledWith({
       title: "Arzttermin",
-      scheduledAt: "2026-10-02T08:00:00.000Z",
+      scheduledDate: "2026-10-02",
+      timeOfDay: "10:00",
       plannedDurationMinutes: 30,
-      isFixed: true,
     });
+  });
+
+  it("plans a quest for a day without a time", async () => {
+    const wrapper = mount(CreateTodoForm);
+
+    await wrapper.get('input[name="title"]').setValue("Aufräumen");
+    await wrapper.get('input[name="scheduledDate"]').setValue("2026-10-02");
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(createTodoMock).toHaveBeenCalledWith(
+      expect.objectContaining({ scheduledDate: "2026-10-02", timeOfDay: null }),
+    );
+    expect(wrapper.get('[role="status"]').text()).toContain(
+      "Sie steht am geplanten Tag in Heute.",
+    );
   });
 
   it("sends a chosen category", async () => {
@@ -145,23 +157,6 @@ describe("CreateTodoForm", () => {
 
     expect(wrapper.get('[role="alert"]').text()).toBe(
       "Bitte gib einen Titel ein.",
-    );
-  });
-
-  it("rejects a fixed todo without a scheduled time", async () => {
-    const wrapper = mount(CreateTodoForm);
-
-    await wrapper.get('input[name="title"]').setValue("Arzttermin");
-
-    await wrapper.get('input[name="isFixed"]').setValue(true);
-
-    await wrapper.get("form").trigger("submit");
-    await flushPromises();
-
-    expect(createTodoMock).not.toHaveBeenCalled();
-
-    expect(wrapper.get('[role="alert"]').text()).toBe(
-      "Ein fester Termin benötigt einen Zeitpunkt.",
     );
   });
 

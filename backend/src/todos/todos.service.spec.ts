@@ -33,8 +33,9 @@ function todo(
     title: 'Task',
     completed,
     completedAt: completed ? new Date('2026-01-01') : null,
-    scheduledAt: null,
-    isFixed: false,
+    scheduledDate: null,
+    timeOfDay: null,
+    dayPosition: null,
     plannedDurationMinutes: null,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
@@ -123,9 +124,9 @@ describe('TodosService', () => {
       ).rejects.toThrow(BadRequestException);
       expect(repository.save).not.toHaveBeenCalled();
     });
-    it('rejects a fixed todo without a date', async () => {
+    it('rejects an appointment without a day', async () => {
       await expect(
-        service.create(USER, { title: 'Fix', isFixed: true }),
+        service.create(USER, { title: 'Fix', timeOfDay: '09:00' }),
       ).rejects.toThrow(BadRequestException);
     });
     it('does not reopen a completed parent when a child is added', async () => {
@@ -147,32 +148,56 @@ describe('TodosService', () => {
         NotFoundException,
       );
     });
-    it('converts and clears scheduling values of a flexible todo', async () => {
-      const scheduled = await service.update(USER, 1, {
-        scheduledAt: '2026-10-02T08:00:00.000Z',
+    it('plans a todo for a day and puts it back into the backlog', async () => {
+      const planned = await service.update(USER, 1, {
+        scheduledDate: '2026-10-02',
         plannedDurationMinutes: 15,
       });
-      expect(scheduled.scheduledAt).toEqual(new Date('2026-10-02T08:00:00Z'));
+      expect(planned).toMatchObject({
+        scheduledDate: '2026-10-02',
+        timeOfDay: null,
+      });
       const cleared = await service.update(USER, 1, {
-        scheduledAt: null,
+        scheduledDate: null,
         plannedDurationMinutes: null,
       });
       expect(cleared).toMatchObject({
-        scheduledAt: null,
+        scheduledDate: null,
         plannedDurationMinutes: null,
       });
     });
-    it('rejects removing the date from a fixed todo', async () => {
+    it('drops the time of an appointment that goes back into the backlog', async () => {
       rows = [
         Object.assign(todo(), {
-          isFixed: true,
-          scheduledAt: new Date('2026-10-02T08:00:00Z'),
+          scheduledDate: '2026-10-02',
+          timeOfDay: '10:00',
+          dayPosition: 3,
         }),
       ];
+      expect(
+        await service.update(USER, 1, { scheduledDate: null }),
+      ).toMatchObject({
+        scheduledDate: null,
+        timeOfDay: null,
+        dayPosition: null,
+      });
+    });
+    it('rejects a time of day without a day', async () => {
       await expect(
-        service.update(USER, 1, { scheduledAt: null }),
+        service.update(USER, 1, { timeOfDay: '10:00' }),
       ).rejects.toThrow(BadRequestException);
       expect(repository.save).not.toHaveBeenCalled();
+    });
+    it('joins another day at the end of its order, but keeps its place otherwise', async () => {
+      rows = [
+        Object.assign(todo(), { scheduledDate: '2026-10-02', dayPosition: 2 }),
+      ];
+      expect(
+        await service.update(USER, 1, { scheduledDate: '2026-10-02' }),
+      ).toMatchObject({ dayPosition: 2 });
+      expect(
+        await service.update(USER, 1, { scheduledDate: '2026-10-03' }),
+      ).toMatchObject({ scheduledDate: '2026-10-03', dayPosition: null });
     });
     it('stamps completion with the clock and keeps it on repeat', async () => {
       await service.update(USER, 1, { completed: true });

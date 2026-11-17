@@ -1035,9 +1035,8 @@ describe('Habit domain and day planner (e2e)', () => {
           title: 'Overdue',
           completed: false,
           completedAt: null,
-          scheduledAt: new Date(`${relativeDate(-1)}T08:00:00Z`),
+          scheduledDate: relativeDate(-1),
           plannedDurationMinutes: 30,
-          isFixed: false,
         }),
       );
 
@@ -1047,9 +1046,8 @@ describe('Habit domain and day planner (e2e)', () => {
           title: 'Dump',
           completed: false,
           completedAt: null,
-          scheduledAt: null,
+          scheduledDate: null,
           plannedDurationMinutes: null,
-          isFixed: false,
         }),
       );
 
@@ -1059,9 +1057,8 @@ describe('Habit domain and day planner (e2e)', () => {
           title: 'Future',
           completed: false,
           completedAt: null,
-          scheduledAt: new Date(`${relativeDate(1)}T08:00:00Z`),
+          scheduledDate: relativeDate(1),
           plannedDurationMinutes: null,
-          isFixed: false,
         }),
       );
 

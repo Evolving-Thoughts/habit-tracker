@@ -15,6 +15,8 @@ const props = defineProps<{
   showDate?: boolean;
   /** Replaces the item's own actions with the ones in the slot. */
   compact?: boolean;
+  /** Shows a grip in the leading column: drag it, or use the arrow keys. */
+  sortable?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -22,6 +24,8 @@ const emit = defineEmits<{
   skip: [item: DayPlannerHabitItem];
   edit: [item: DayPlannerItem];
   move: [item: DayPlannerItem];
+  /** The grip's arrow keys: one place up (-1) or down (1). */
+  shift: [item: DayPlannerItem, direction: -1 | 1];
 }>();
 
 const isCompleted = computed(() => props.item.status === "completed");
@@ -31,7 +35,7 @@ const isPending = computed(() => props.item.status === "pending");
 
 const canMove = computed(() => {
   if (!isPending.value) return false;
-  if (props.item.type === "todo") return props.item.scheduledAt !== null;
+  if (props.item.type === "todo") return true;
   return (props.item.moveUntil ?? "") > props.item.scheduledDate;
 });
 
@@ -47,11 +51,15 @@ const details = computed(() => {
   } else if (props.item.workedMinutes > 0) {
     parts.push(`${props.item.workedMinutes} Min. gearbeitet`);
   }
-  if (props.item.type === "todo" && props.item.isFixed)
-    parts.push("Fester Termin");
-  if (props.item.goal) parts.push(`Gehört zu: ${props.item.goal.title}`);
+  if (props.item.type === "todo" && props.item.timeOfDay)
+    parts.push("Termin");
   return parts;
 });
+
+/** Every campaign has its own quiet colour, like categories do. */
+const campaignMark = computed(() =>
+  props.item.campaign ? categoryMark(props.item.campaign.title) : null,
+);
 
 const leading = computed(() =>
   props.showDate
@@ -71,9 +79,23 @@ function skip(): void {
       'planner-item--completed': isCompleted,
       'planner-item--skipped': isSkipped,
       'planner-item--overdue': item.isOverdue,
+      'planner-item--campaign': campaignMark,
     }"
+    :style="campaignMark ? { '--campaign-mark': campaignMark } : undefined"
   >
-    <span class="planner-item__time">{{ leading }}</span>
+    <button
+      v-if="sortable"
+      class="planner-item__grip sort-handle"
+      type="button"
+      :disabled="isUpdating"
+      :aria-label="`${item.title} in der Reihenfolge verschieben`"
+      title="Ziehen oder mit den Pfeiltasten verschieben"
+      @keydown.up.prevent="emit('shift', item, -1)"
+      @keydown.down.prevent="emit('shift', item, 1)"
+    >
+      <AppIcon name="grip" />
+    </button>
+    <span v-else class="planner-item__time">{{ leading }}</span>
 
     <button
       class="planner-item__check"
@@ -105,7 +127,7 @@ function skip(): void {
         </button>
       </h3>
       <p
-        v-if="item.categoryName || details.length"
+        v-if="item.categoryName || details.length || item.campaign"
         class="planner-item__details"
       >
         <span v-if="item.categoryName" class="planner-item__category">
@@ -116,6 +138,9 @@ function skip(): void {
           />{{ item.categoryName }}
         </span>
         <span v-for="part in details" :key="part">{{ part }}</span>
+        <span v-if="item.campaign" class="planner-item__campaign">
+          {{ item.campaign.title }}
+        </span>
       </p>
 
       <div v-if="isPending && !compact" class="planner-item__actions">
@@ -165,6 +190,39 @@ function skip(): void {
   padding: var(--space-2) var(--space-4) var(--space-3) var(--space-3);
   border-radius: var(--radius-card);
   background: var(--color-surface);
+}
+
+/* The stripe names the campaign the item works towards. */
+.planner-item--campaign {
+  box-shadow: inset 0.3125rem 0 0 var(--campaign-mark);
+}
+
+.planner-item__campaign {
+  font-weight: 700;
+}
+
+.planner-item__grip {
+  display: grid;
+  width: 2.75rem;
+  height: var(--tap);
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-ink-soft);
+  cursor: grab;
+  /* A finger on the grip sorts; it must not scroll the page instead. */
+  touch-action: none;
+}
+
+.planner-item__grip:active {
+  cursor: grabbing;
+}
+
+.planner-item__grip :deep(svg) {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .planner-item__time {

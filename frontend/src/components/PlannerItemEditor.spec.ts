@@ -42,9 +42,9 @@ const todo: TodoResponse = {
   title: "NestJS lernen",
   completed: false,
   completedAt: null,
-  scheduledAt: "2026-10-02T08:00:12.000Z",
+  scheduledDate: "2026-10-02",
+  timeOfDay: null,
   plannedDurationMinutes: 30,
-  isFixed: false,
   timerEligible: true,
 };
 const interval: HabitScheduleRule = {
@@ -129,7 +129,7 @@ describe("PlannerItemEditor", () => {
     });
     expect(changeHabitSchedule).not.toHaveBeenCalled();
   });
-  it("saves a todo without changing an untouched timestamp", async () => {
+  it("saves a todo and keeps the day it is planned for", async () => {
     const wrapper = mount(PlannerItemEditor, {
       props: { kind: "todo", entityId: 1 },
     });
@@ -138,9 +138,9 @@ describe("PlannerItemEditor", () => {
     await save(wrapper);
     expect(updateTodo).toHaveBeenCalledWith(1, {
       title: "Vue lernen",
-      scheduledAt: todo.scheduledAt,
+      scheduledDate: "2026-10-02",
+      timeOfDay: null,
       plannedDurationMinutes: 30,
-      isFixed: false,
     });
     expect(changeHabitSchedule).not.toHaveBeenCalled();
     expect(wrapper.emitted("changed")).toEqual([[]]);

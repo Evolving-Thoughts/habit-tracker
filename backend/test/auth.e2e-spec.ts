@@ -12,6 +12,7 @@ import {
   UserEntity,
 } from '../src/auth/auth.entities';
 import { tokenHash } from '../src/auth/auth.crypto';
+import { dayOf } from '../src/common/date/local-day';
 
 const PASSWORD = 'test-password-at-least-12';
 type Mail = { email: string; kind: 'verify' | 'reset'; token: string };
@@ -374,7 +375,7 @@ describe('Authentication and ownership (e2e)', () => {
     const todo = await a
       .post('/todos', {
         title: 'Private todo',
-        scheduledAt: new Date().toISOString(),
+        scheduledDate: dayOf(new Date()),
       })
       .expect(201);
     const habit = await a

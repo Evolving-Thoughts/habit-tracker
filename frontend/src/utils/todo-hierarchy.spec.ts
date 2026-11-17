@@ -10,9 +10,9 @@ const node = (id: number, parentId: number | null): HierarchyTodo => ({
   completed: false,
   timerEligible: true,
   completedAt: null,
-  scheduledAt: null,
+  scheduledDate: null,
+  timeOfDay: null,
   plannedDurationMinutes: null,
-  isFixed: false,
   progress: {
     mode: "count",
     completed: 0,

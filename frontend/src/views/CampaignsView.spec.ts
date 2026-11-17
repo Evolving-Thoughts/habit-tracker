@@ -34,9 +34,9 @@ const node = (id: number, parentId: number | null): HierarchyTodo => ({
   completed: false,
   timerEligible: true,
   completedAt: null,
-  scheduledAt: null,
+  scheduledDate: null,
+  timeOfDay: null,
   plannedDurationMinutes: 30,
-  isFixed: false,
   progress: {
     mode: "duration",
     completed: 0,

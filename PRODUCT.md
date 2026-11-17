@@ -23,7 +23,7 @@ Erfolg heißt: Die App wird täglich benutzt, weil sie das Planen leichter macht
 Vier Dinge zusammen, die andere Tracker meist getrennt halten:
 
 - **Kampagnen und Dailies verbunden:** Quests bilden Hierarchien aus Kampagne, Questreihe und Quest; eine Quest kann ein Daily mit Zeitraum und Sollmenge verlinken, etwa 20 Läufe bis Dezember.
-- **Flexible Tagesplanung:** Quests und Daily-Ausführungen lassen sich verschieben, der Rest des Tages lässt sich mit Vorschau neu planen, Google Kalender ist in beide Richtungen angebunden.
+- **Planen nach Tag und Reihenfolge:** Eine Quest hat ihren Tag, nur ein Termin hat eine Uhrzeit. Was heute ansteht, zieht man in die Reihenfolge, in der man es angehen will; Offenes wandert mit einem Schritt auf morgen. Termine stehen in beide Richtungen im eigenen Google Kalender.
 - **Reflexion und Warum:** Quests und Dailies tragen ein persönliches Warum. Ohne eigenes übernehmen sie das der Quest oder Kampagne darüber, und zwar live: Ändert sich das Warum der Kampagne, ändert es sich überall darunter; dazu kommen Tagesreflexion, Wochenquote und Perfect Week je Kategorie.
 - **Zeit erfassen:** Timer und echte Arbeitszeit stehen neben der geplanten Zeit.
 
@@ -52,7 +52,9 @@ Die Oberfläche spricht das Vokabular links. Code, API und Datenbank behalten di
 | Kampagne | Oberste Quest mit Unter-Quests: das längerfristige Ziel | Wurzel-`todo` |
 | Daily | Gewohnheit mit veränderbarem Zeitplan | `habit` |
 | Ausführung | Einzelner Lauf eines Dailys | `habit occurrence` |
-| Questlog | Offene Quests ohne Termin | Backlog (`scheduledAt` leer) |
+| Questlog | Offene Quests ohne Tag | Backlog (`scheduledDate` leer) |
+| Termin | Quest mit fester Uhrzeit | `todo` mit `timeOfDay` |
+| Reihenfolge | In welcher Folge der Tag abgearbeitet wird | `dayPosition` |
 | Logbuch | Was erledigt und wie lange gearbeitet wurde | `history`, `work_logs` |
 | Fokus-Modus | Eine Quest im Blick, mit Timer | – |
 

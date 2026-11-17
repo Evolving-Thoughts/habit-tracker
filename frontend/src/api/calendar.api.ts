@@ -4,7 +4,6 @@ export type ReadCalendar = {
   id: string;
   title: string;
   primary: boolean;
-  blocksPlanning: boolean;
 };
 
 export type CalendarStatus = {
@@ -29,16 +28,6 @@ export function startCalendarConnection(): Promise<{ url: string }> {
 
 export function syncCalendar(): Promise<void> {
   return request<void>("/calendar/google/sync", { method: "POST" });
-}
-
-export function setCalendarBlocksPlanning(
-  calendarId: string,
-  blocksPlanning: boolean,
-): Promise<void> {
-  return request<void>("/calendar/google/calendars", {
-    method: "PATCH",
-    body: JSON.stringify({ calendarId, blocksPlanning }),
-  });
 }
 
 export function disconnectCalendar(): Promise<void> {

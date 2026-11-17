@@ -100,8 +100,8 @@ describe('Calendar month view (e2e)', () => {
       .post('/todos')
       .send({
         title: 'Arzt',
-        isFixed: true,
-        scheduledAt: `${target}T10:00:00.000Z`,
+        scheduledDate: target,
+        timeOfDay: '12:00',
       })
       .expect(201);
 
@@ -111,7 +111,7 @@ describe('Calendar month view (e2e)', () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
       date: target,
-      isFixed: true,
+      timeOfDay: '12:00',
       title: 'Arzt',
     });
   });

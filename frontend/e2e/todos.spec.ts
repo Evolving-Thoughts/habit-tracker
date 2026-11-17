@@ -64,7 +64,7 @@ test("Questlog: create, persist, rename, complete/reopen and confirmed delete", 
   expect((await list(request, "todos"))[0]).toMatchObject({
     title: "TypeScript lernen",
     completed: true,
-    scheduledAt: null,
+    scheduledDate: null,
     completedAt: expect.any(String),
     plannedDurationMinutes: 30,
   });
@@ -102,7 +102,7 @@ test("Today: create scheduled Quest, edit, complete/reopen and delete", async ({
 }) => {
   const date = await today(request);
   await visit(page, "Heute");
-  await createTodo(page, "Heute schreiben", `${date}T10:00`);
+  await createTodo(page, "Heute schreiben", date);
   await expect(
     page.getByRole("heading", { name: "Heute schreiben", exact: true }),
   ).toBeVisible();
@@ -152,7 +152,7 @@ test("scheduling a Questlog Quest moves it into Today", async ({
     .getByRole("button", { name: "Geplantes Quest bearbeiten", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
-  await dialog.locator('[name="editScheduledAt"]').fill(`${date}T10:00`);
+  await dialog.locator('[name="scheduledDate"]').fill(date);
   await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await expect(
@@ -243,7 +243,7 @@ test("switching back to Questlog before reopen finishes refreshes it after the w
     expect((await list(request, "todos"))[0]).toMatchObject({
       completed: false,
       completedAt: null,
-      scheduledAt: null,
+      scheduledDate: null,
     });
   } finally {
     release();
