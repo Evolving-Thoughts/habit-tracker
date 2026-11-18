@@ -153,8 +153,9 @@ describe("CampaignsView", () => {
     vi.mocked(getCategories).mockResolvedValue([
       { id: 7, name: "Lernen" } as never,
     ]);
+    // A campaign by its colour alone still stands in the tree.
     vi.mocked(getTodoHierarchy).mockResolvedValue([
-      { ...node(1, null), categoryId: 7, why: "Für den Job" },
+      { ...node(1, null), categoryId: 7, why: "Für den Job", color: "berry" },
     ]);
     const w = view();
     await flushPromises();
@@ -332,6 +333,37 @@ describe("CampaignsView", () => {
     expect(w.get(".empty-state").text()).toContain("Noch keine Kampagnen.");
     expect(w.get(".empty-state").text()).toContain("Plus-Button");
   });
+  it("shows the empty state when there are only loose quests", async () => {
+    vi.mocked(getTodoHierarchy).mockResolvedValue([
+      { ...node(1, null), title: "Zahnarzt" },
+      { ...node(2, null), title: "Einkaufen" },
+    ]);
+    const w = view();
+    await flushPromises();
+    expect(w.get(".empty-state").text()).toContain(
+      "Quests ohne Kampagne stehen im Questlog.",
+    );
+    expect(w.find("[data-todo-id]").exists()).toBe(false);
+  });
+  it("says where a new top-level quest stands until it is a campaign", async () => {
+    const w = view();
+    await flushPromises();
+    await w.get(".create-button").trigger("click");
+    vi.mocked(getTodoHierarchy).mockResolvedValue([
+      node(1, null, below(1)),
+      node(2, 1),
+      { ...node(5, null), title: "Neu" },
+    ]);
+    w.findComponent({ name: "CreateTodoForm" }).vm.$emit("created", {
+      ...node(5, null),
+      title: "Neu",
+    });
+    await flushPromises();
+    expect(w.get(".status-line").text()).toContain(
+      "Sie wird zur Kampagne, sobald sie Unter-Quests",
+    );
+    expect(w.find('[data-todo-id="5"]').exists()).toBe(false);
+  });
   it("creates through the shared plus button", async () => {
     const w = view();
     await flushPromises();
@@ -389,8 +421,12 @@ describe("CampaignsView", () => {
       expect(tile.get("svg[role=img]").attributes("aria-label")).toContain(
         "Woche ab 16.11.: 3 Std. 30 Min.",
       );
-      // The hierarchy below keeps every quest, loose ones included.
-      expect(w.findAll("[data-todo-id]")).toHaveLength(4);
+      // The tree below holds the campaigns only; the loose quest is not in it.
+      expect(
+        w.findAll("[data-todo-id]").map((row) => row.attributes("data-todo-id")),
+      ).toEqual(["1", "2", "3"]);
+      expect(w.text()).toContain("Kampagnen und ihre Quests");
+      expect(w.text()).not.toContain("Einkaufen");
     });
 
     it("lists completed campaigns under their own tab", async () => {
@@ -414,9 +450,11 @@ describe("CampaignsView", () => {
       expect(w.find("[data-campaign-tile]").exists()).toBe(false);
       expect(w.get("#campaign-detail-title").text()).toBe("Kampagne 1");
       expect(w.text()).toContain("Burnup 1");
-      expect(
-        w.findAll("[data-todo-id]").map((row) => row.attributes("data-todo-id")),
-      ).toEqual(["1", "2"]);
+      // The detail card is the campaign; the tree starts below it.
+      const rows = w.findAll("[data-todo-id]");
+      expect(rows.map((row) => row.attributes("data-todo-id"))).toEqual(["2"]);
+      expect(rows[0]!.attributes("data-depth")).toBe("0");
+      expect(w.findAll("[role=progressbar]")).toHaveLength(1);
       expect(
         w.find('[aria-label="Fortschritt von Kampagne 1"]').exists(),
       ).toBe(true);
@@ -425,7 +463,54 @@ describe("CampaignsView", () => {
       await flushPromises();
       expect(router.currentRoute.value.query).toEqual({});
       expect(w.findAll("[data-campaign-tile]")).toHaveLength(1);
-      expect(w.findAll("[data-todo-id]")).toHaveLength(4);
+      expect(w.findAll("[data-todo-id]")).toHaveLength(3);
+    });
+
+    it("keeps the campaign's actions on its detail card", async () => {
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        campaignNode(1, { color: "berry", progress: below(2, 1) }),
+        node(2, 1),
+        { ...node(3, 1), completed: true },
+      ]);
+      const w = view();
+      await flushPromises();
+      await button(w, "Kampagne 1").trigger("click");
+      await flushPromises();
+      await openMenu(w, "Kampagne 1");
+      const trigger = w.get('.campaign-detail [data-menu-trigger="1"]');
+      const menu = w.get(`#${trigger.attributes("aria-controls")}`);
+      expect(menu.findAll("[role=menuitem]").map((b) => b.text())).toEqual([
+        "Kampagne abschließen",
+        "Stoppuhr starten",
+        "Unter-Quest hinzufügen",
+        "Verschieben",
+        "Löschen",
+      ]);
+      // Closing it from here asks like its ring did.
+      await w.get('[aria-label="Kampagne 1 abschließen"]').trigger("click");
+      await flushPromises();
+      expect(w.get("[role=dialog]").text()).toContain(
+        "1 Quest in „Kampagne 1“ ist noch offen",
+      );
+      await w.get("[data-campaign-confirm]").trigger("click");
+      await flushPromises();
+      expect(updateTodoCompletion).toHaveBeenCalledWith(1, true);
+      expect(w.get(".undo-toast").text()).toContain("„Kampagne 1“ abgeschlossen");
+      expect(
+        w.get('.campaign-detail [data-edit-button]').attributes("aria-label"),
+      ).toBe("Kampagne Kampagne 1 bearbeiten");
+    });
+
+    it("says so when an opened campaign has no quests yet", async () => {
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        campaignNode(1, { color: "berry" }),
+      ]);
+      const w = view();
+      await flushPromises();
+      await button(w, "Kampagne 1").trigger("click");
+      await flushPromises();
+      expect(w.find("[data-todo-id]").exists()).toBe(false);
+      expect(w.text()).toContain("Noch keine Quests.");
     });
 
     it("still opens campaigns when the quest hours cannot be read", async () => {

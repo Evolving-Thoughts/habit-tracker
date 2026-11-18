@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import AppIcon from "./AppIcon.vue";
 import { campaignMark } from "../utils/category-mark";
 import {
   HOUR_REM,
-  MIN_BLOCK_MINUTES,
   axisHours,
+  drawnEnd,
   formatDuration,
   layoutLane,
   logLabel,
@@ -15,8 +16,9 @@ import {
 } from "../utils/logbook";
 
 const props = defineProps<{
+  /** Planned items, and marks where the rest was ticked off. */
   plan: PlanBlock[];
-  /** The Logbuch lane; null for a day still ahead. */
+  /** The measured stretches; null for a day still ahead. */
   logs: LogBlock[] | null;
 }>();
 const emit = defineEmits<{ edit: [logId: number] }>();
@@ -37,9 +39,7 @@ const overflow = computed(() =>
   Math.max(
     0,
     ...[...props.plan, ...(props.logs ?? [])].map(
-      (block) =>
-        Math.max(block.end, block.start + MIN_BLOCK_MINUTES) -
-        hours.value.to * 60,
+      (block) => drawnEnd(block) - hours.value.to * 60,
     ),
   ),
 );
@@ -67,8 +67,8 @@ const stripe = (block: LogBlock) =>
     }"
   >
     <div class="day-timeline__head" aria-hidden="true">
-      <span>Plan</span>
-      <span v-if="logs">Logbuch</span>
+      <span>Geplant</span>
+      <span v-if="logs">Gemessen</span>
     </div>
     <div class="day-timeline__axis">
       <div class="day-timeline__hours" aria-hidden="true">
@@ -79,14 +79,23 @@ const stripe = (block: LogBlock) =>
           >{{ String(hour).padStart(2, "0") }}:00</span
         >
       </div>
-      <ol class="day-timeline__lane" aria-label="Plan">
+      <ol class="day-timeline__lane" aria-label="Geplant">
         <li
           v-for="block in planBlocks"
           :key="block.key"
           class="day-timeline__slot"
+          :class="{ 'day-timeline__slot--mark': block.source === 'done' }"
           :style="place(block)"
         >
-          <div class="plan-block">
+          <!-- A record of a moment, not a control: the dot of the history rows. -->
+          <div v-if="block.source === 'done'" class="done-mark">
+            <span class="done-mark__dot" aria-hidden="true"
+              ><AppIcon name="check"
+            /></span>
+            <span class="day-timeline__title">{{ block.title }}</span>
+            <span class="visually-hidden">, erledigt um {{ block.time }}</span>
+          </div>
+          <div v-else class="plan-block">
             <strong class="day-timeline__title">{{ block.title }}</strong>
             <span class="day-timeline__meta"
               >{{ block.time
@@ -97,7 +106,7 @@ const stripe = (block: LogBlock) =>
           </div>
         </li>
       </ol>
-      <ol v-if="logs" class="day-timeline__lane" aria-label="Logbuch">
+      <ol v-if="logs" class="day-timeline__lane" aria-label="Gemessen">
         <li
           v-for="block in logBlocks"
           :key="block.key"
@@ -196,6 +205,41 @@ const stripe = (block: LogBlock) =>
   width: calc(100% / var(--columns));
   height: max(calc(var(--tap) + 2px), calc(var(--length) * var(--minute)));
   padding: 1px;
+}
+
+/* A completion is a moment: a slim mark, nothing to tap. */
+.day-timeline__slot--mark {
+  height: calc(1.5rem + 2px);
+}
+
+.done-mark {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+  height: 100%;
+  overflow: hidden;
+  padding: 0 0.375rem 0 0.25rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-flat);
+  color: var(--color-ink-muted);
+}
+
+/* The filled dot of the history rows: a state, never orange. */
+.done-mark__dot {
+  display: grid;
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-ink-muted);
+  color: var(--color-surface);
+}
+
+.done-mark__dot :deep(svg) {
+  width: 0.6875rem;
+  height: 0.6875rem;
+  stroke-width: 3.5;
 }
 
 .plan-block,

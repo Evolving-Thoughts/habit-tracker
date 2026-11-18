@@ -105,13 +105,15 @@ Logbuch, quest hours) carries `{ id, title, color, icon }`.
   a todo without parent, `CreateTodoForm.vue` when the Kampagnen view creates
   a new campaign. Hours become minutes in `utils/quest-hours.ts`.
 - `CampaignsView.vue` shows a tile per campaign (`CampaignTiles.vue`, tabs
-  "Aktiv" and "Abgeschlossen") above the full hierarchy: icon, colour stripe,
-  title, this week against its goal, an eight-week trend (`QuestTrend.vue`, a
-  small SVG with the weeks in words as its label) and the total. A tile opens
-  the campaign in the same view (`#/kampagnen?kampagne=<id>`, so Back closes
-  it): its numbers, the progress of the quests below it (never itself, see
-  `todo-hierarchy.md`), `GoalBurnup.vue` and the hierarchy of
-  that campaign only, with every row action the full list has.
+  "Aktiv" and "Abgeschlossen") above the tree of the campaigns and their
+  quests (loose quests are not in it): icon, colour stripe, title, this week
+  against its goal, an eight-week trend (`QuestTrend.vue`, a small SVG with
+  the weeks in words as its label) and the total. A tile opens the campaign in
+  the same view (`#/kampagnen?kampagne=<id>`, so Back closes it): its numbers,
+  the progress of the quests below it (never itself, see
+  `todo-hierarchy.md`), `GoalBurnup.vue`, "Bearbeiten" and "…" with the
+  campaign's own actions, and the quests below it as the tree, with every row
+  action the full list has. The campaign is the card, not a row of the tree.
 - Einstellungen: `QuestTargetSetting.vue` reads and saves the overall goal.
 - Heute: one quiet line in the head that relates the day's quest time to
   what was worked (both from the same stretches, so the part is never more

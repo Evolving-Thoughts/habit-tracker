@@ -1,5 +1,6 @@
 import type { QuestHoursResponse } from "../types/quest-hours";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
+import { isCampaign } from "./todo-hierarchy";
 import { formatDuration } from "./today-agenda";
 import { isCampaignColor, isCampaignIcon } from "./campaign-style";
 import type { CampaignColor, CampaignIcon } from "../types/campaign";
@@ -97,7 +98,7 @@ export type CampaignTile = {
 /**
  * One tile per campaign: a quest without parent that has quests below it,
  * a goal, colour or icon, or measured time the server counts for it. Loose
- * top-level quests stay in the list below the tiles only.
+ * top-level quests are no campaign and stay out (they live in the Questlog).
  */
 export function campaignTiles(
   todos: HierarchyTodo[],
@@ -111,12 +112,8 @@ export function campaignTiles(
   return todos
     .filter(
       (todo) =>
-        todo.parentId === null &&
-        (parents.has(todo.id) ||
-          todo.weeklyTargetMinutes !== null ||
-          todo.color !== null ||
-          todo.icon !== null ||
-          counted.has(todo.id)),
+        isCampaign(todo, parents) ||
+        (todo.parentId === null && counted.has(todo.id)),
     )
     .map((todo) => {
       const row = counted.get(todo.id);

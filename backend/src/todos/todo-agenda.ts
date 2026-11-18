@@ -1,5 +1,6 @@
 import { EntityManager, IsNull } from 'typeorm';
 import { endOfDay, startOfDay } from '../common/date/local-day';
+import { CampaignFields, hasCampaignFields } from './campaign-style';
 import { TodoEntity } from './entities/todo.entity';
 
 /**
@@ -74,13 +75,51 @@ export function completedTodos(
     .getMany();
 }
 
-/** Open todos without a day: the Questlog. */
-export function backlogTodos(
+type TreeNode = { id: number; parentId: number | null; completed: boolean };
+
+/**
+ * Whether an open todo without a day is something to work on, the rule of
+ * the Questlog. A todo with open todos below it is worked on through them,
+ * and a campaign (a top-level todo with todos below it or a colour, icon
+ * or weekly goal) is planned through its quests even while it has none
+ * open. A todo deeper down whose quests are all done is a step again.
+ */
+export function workableBacklog<T extends TreeNode & CampaignFields>(
+  candidates: T[],
+  live: TreeNode[],
+): T[] {
+  const parents = new Set<number>();
+  const openParents = new Set<number>();
+  for (const node of live) {
+    if (node.parentId === null) continue;
+    parents.add(node.parentId);
+    if (!node.completed) openParents.add(node.parentId);
+  }
+  return candidates.filter(
+    (todo) =>
+      !openParents.has(todo.id) &&
+      !(
+        todo.parentId === null &&
+        (parents.has(todo.id) || hasCampaignFields(todo))
+      ),
+  );
+}
+
+/** Open todos without a day that one can work on: the Questlog. */
+export async function backlogTodos(
   manager: EntityManager,
   userId: string,
 ): Promise<TodoEntity[]> {
-  return manager.getRepository(TodoEntity).find({
-    where: { userId, completed: false, scheduledDate: IsNull() },
-    order: { id: 'ASC' },
-  });
+  const repository = manager.getRepository(TodoEntity);
+  const [candidates, live] = await Promise.all([
+    repository.find({
+      where: { userId, completed: false, scheduledDate: IsNull() },
+      order: { id: 'ASC' },
+    }),
+    repository.find({
+      select: { id: true, parentId: true, completed: true },
+      where: { userId },
+    }),
+  ]);
+  return workableBacklog(candidates, live);
 }

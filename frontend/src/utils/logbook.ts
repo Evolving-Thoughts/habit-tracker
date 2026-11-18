@@ -25,16 +25,35 @@ const DEFAULT_APPOINTMENT_MINUTES = 30;
 export const HOUR_REM = 4;
 /** No block is drawn smaller than a tap target (2.75rem) and its 1px margins. */
 export const MIN_BLOCK_MINUTES = ((2.75 + 0.125) / HOUR_REM) * 60;
+/** A completion is a moment, not a stretch: a mark of 1.5rem and its margins. */
+export const DONE_MARK_MINUTES = ((1.5 + 0.125) / HOUR_REM) * 60;
+/** The axis of an empty day; a fuller one never starts later or ends earlier. */
+export const DEFAULT_HOURS = { from: 8, to: 18 } as const;
 
-export type AxisBlock = { key: string; start: number; end: number };
+export type AxisBlock = {
+  key: string;
+  start: number;
+  end: number;
+  /** Minutes the block takes on the axis at least; the lane's own by default. */
+  minLength?: number;
+};
 export type Placed<T> = T & { column: number; columns: number };
 
 export type PlanBlock = AxisBlock & {
   title: string;
-  /** "09:30" or "09:30–10:15". */
+  /** "09:30" or "09:30–10:15"; for a completion the time it was ticked off. */
   time: string;
-  source: "appointment" | "event";
+  /** "done" marks the moment something without a planned time was ticked off. */
+  source: "appointment" | "event" | "done";
 };
+
+/** Where a block ends as drawn: a short one still takes its least room. */
+export function drawnEnd(
+  block: AxisBlock,
+  minLength = MIN_BLOCK_MINUTES,
+): number {
+  return Math.max(block.end, block.start + (block.minLength ?? minLength));
+}
 export type LogBlock = AxisBlock & { log: HistoryWorkLog };
 
 type PlannedDay = {
@@ -78,7 +97,12 @@ export function logLabel(log: HistoryWorkLog): string {
   return parts.join(", ");
 }
 
-/** The day's appointments, timed dailies and calendar events. Skipped runs did not happen. */
+/**
+ * The day's appointments, timed dailies and calendar events, and the moments
+ * the rest was ticked off. Skipped runs did not happen. A completion with a
+ * planned time stands as its appointment; one without stands as a small mark
+ * at the time it was done, so a quest ticked off at 05:37 is on the axis.
+ */
 export function planBlocks(day: PlannedDay): PlanBlock[] {
   const timed = (
     key: string,
@@ -129,7 +153,37 @@ export function planBlocks(day: PlannedDay): PlanBlock[] {
       start: minuteOfDay(event.start, day.date),
       end: minuteOfDay(event.end, day.date),
     })),
+    ...doneMarks(day),
   ];
+}
+
+/**
+ * Completions without a planned time, as marks at the time they were ticked
+ * off. Marks close together stack below each other instead of sharing the
+ * lane's width, so each keeps a readable title; the time stays in the label.
+ */
+function doneMarks(day: PlannedDay): PlanBlock[] {
+  const marks = day.items
+    .flatMap((item) =>
+      item.status === "completed" && !item.timeOfDay && item.resolvedAt
+        ? [{ item, at: minuteOfDay(item.resolvedAt, day.date) }]
+        : [],
+    )
+    .sort((a, b) => a.at - b.at);
+  let free = -Infinity;
+  return marks.map(({ item, at }) => {
+    const start = Math.max(at, free);
+    free = start + DONE_MARK_MINUTES;
+    return {
+      key: `done:${item.type}-${item.id}`,
+      title: item.title,
+      time: formatTimeForGermanDisplay(item.resolvedAt!),
+      source: "done" as const,
+      start,
+      end: start,
+      minLength: DONE_MARK_MINUTES,
+    };
+  });
 }
 
 /** The day's stretches, cut to the day. */
@@ -162,7 +216,7 @@ export function layoutLane<T extends AxisBlock>(
     for (const block of group) block.columns = columnEnds.length;
   };
   for (const block of sorted) {
-    const drawnEnd = Math.max(block.end, block.start + minLength);
+    const reach = drawnEnd(block, minLength);
     if (block.start >= groupEnd) {
       close();
       group = [];
@@ -170,27 +224,36 @@ export function layoutLane<T extends AxisBlock>(
     }
     let column = columnEnds.findIndex((end) => end <= block.start);
     if (column === -1) column = columnEnds.length;
-    columnEnds[column] = drawnEnd;
+    columnEnds[column] = reach;
     const item = { ...block, column, columns: 1 };
     group.push(item);
     placed.push(item);
-    groupEnd = Math.max(groupEnd, drawnEnd);
+    groupEnd = Math.max(groupEnd, reach);
   }
   close();
   return placed;
 }
 
-/** The hours the axis shows: at least 8 to 18, widened to every block. */
+/**
+ * The hours the axis shows: from the full hour of the earliest planned item,
+ * stretch or completion to the full hour after the latest one as drawn. It
+ * never starts later than 8 or ends earlier than 18, so a day with little in
+ * it still reads as a day, and an empty one shows 8 to 18.
+ */
 export function axisHours(
   blocks: AxisBlock[],
   minLength = MIN_BLOCK_MINUTES,
 ): { from: number; to: number } {
   const starts = blocks.map((block) => block.start);
-  const ends = blocks.map((block) =>
-    Math.max(block.end, block.start + minLength),
-  );
+  const ends = blocks.map((block) => drawnEnd(block, minLength));
   return {
-    from: Math.max(0, Math.min(8, Math.floor(Math.min(...starts) / 60))),
-    to: Math.min(24, Math.max(18, Math.ceil(Math.max(...ends) / 60))),
+    from: Math.max(
+      0,
+      Math.min(DEFAULT_HOURS.from, Math.floor(Math.min(...starts) / 60)),
+    ),
+    to: Math.min(
+      24,
+      Math.max(DEFAULT_HOURS.to, Math.ceil(Math.max(...ends) / 60)),
+    ),
   };
 }

@@ -287,6 +287,33 @@ test("Plan: drag a quest from the Questlog column onto a day and into place", as
   expect(((await backlog.json()) as unknown[]).length).toBe(0);
 });
 
+test("Plan: the Questlog column lists only quests to work on, no campaigns", async ({
+  page,
+  request,
+}, info) => {
+  test.skip(
+    info.project.name !== "chromium",
+    "The Questlog column is a desktop column from 56rem; the phone's Plan stays as it was.",
+  );
+  const book = await plan(request, { title: "Buch schreiben" });
+  const series = await plan(request, { title: "Kapitel", parentId: book.id });
+  await plan(request, { title: "Kapitel 1", parentId: series.id });
+  await plan(request, { title: "Marathon im Frühjahr", icon: "dumbbell" });
+  await plan(request, { title: "Einkaufen" });
+  await page.goto("/#/plan");
+  await loaded(page);
+  await expect(page.locator("aside.plan-questlog li[data-todo-id] h3")).toHaveText([
+    "Kapitel 1",
+    "Einkaufen",
+  ]);
+  // The Questlog view reads the same list.
+  await openView(page, "Questlog");
+  await expect(page.locator(".questlog li[data-todo-id] .item-row__heading")).toHaveText([
+    "Kapitel 1",
+    "Einkaufen",
+  ]);
+});
+
 test("Plan: plan a Questlog quest by keyboard from its menu; the column remembers being closed", async ({
   page,
   request,

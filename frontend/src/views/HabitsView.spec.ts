@@ -15,10 +15,14 @@ import type {
   ScheduleVersionResponse,
 } from "../types/habit";
 import { getCategories } from "../api/categories.api";
+import { getHistory } from "../api/history.api";
+import type { HistoryResponse } from "../types/history";
+import { HISTORY_ITEM_FIELDS, PLANNED_FIELDS } from "../types/fixtures";
 import HabitsView from "./HabitsView.vue";
 vi.mock("../api/categories.api", () => ({
   getCategories: vi.fn().mockResolvedValue([]),
 }));
+vi.mock("../api/history.api", () => ({ getHistory: vi.fn() }));
 vi.mock("../api/day-planner.api", () => ({
   getHabits: vi.fn(),
   getHabit: vi.fn(),
@@ -203,6 +207,132 @@ describe("HabitsView", () => {
       "Sport3× pro Woche07:30 Uhr20 Min.",
     );
     expect(wrapper.find(".category-mark").exists()).toBe(true);
+  });
+  it("shows an inherited why as a quiet line like the rest of the app", async () => {
+    vi.mocked(getHabits).mockResolvedValueOnce([
+      habit({
+        inheritedWhy: {
+          text: "Für den Marathon",
+          fromId: 4,
+          fromTitle: "Lauf",
+        },
+      }),
+    ]);
+    const wrapper = mount(HabitsView);
+    await flushPromises();
+    expect(wrapper.get(".habit-card__why").text()).toBe("Für den Marathon");
+  });
+  describe("status this week", () => {
+    // Saturday, 3 October 2026 (see the clock above); the week is 28 Sep to 4 Oct.
+    const TODAY = "2026-10-03";
+    function week(
+      days: Partial<Record<string, Partial<HistoryResponse["days"][number]>>>,
+      weeklyTargets: HistoryResponse["weeklyTargets"] = [],
+    ): HistoryResponse {
+      return {
+        today: TODAY,
+        timeZone: "Europe/Berlin",
+        startDate: "2026-09-28",
+        endDate: "2026-10-04",
+        weeklyTargets,
+        days: [
+          "09-28",
+          "09-29",
+          "09-30",
+          "10-01",
+          "10-02",
+          "10-03",
+          "10-04",
+        ].map((day) => ({
+          date: `2026-${day}`,
+          items: [],
+          planned: [],
+          work: { minutes: 0 },
+          ...days[`2026-${day}`],
+        })),
+      };
+    }
+    const run = (id: number, status: "completed" | "skipped") => ({
+      ...HISTORY_ITEM_FIELDS,
+      type: "habit" as const,
+      id: 50 + id,
+      habitId: id,
+      title: "Daily",
+      status,
+      date: TODAY,
+      scheduledDate: TODAY,
+      resolvedAt: `${TODAY}T07:00:00Z`,
+      plannedDurationMinutes: null,
+      deleted: false,
+    });
+    const due = (id: number, date: string) => ({
+      ...PLANNED_FIELDS,
+      key: `habit:${id}:${date}`,
+      type: "habit" as const,
+      id: null,
+      habitId: id,
+      title: "Daily",
+      date,
+      scheduledDate: date,
+      isOverdue: false,
+      plannedDurationMinutes: null,
+    });
+
+    it("counts a weekly target and names today or the next due day", async () => {
+      vi.mocked(getHabits).mockResolvedValueOnce([
+        habit({
+          id: 1,
+          title: "Krafttraining",
+          currentSchedule: version({ type: "weekly_target", weeklyTarget: 3 }),
+        }),
+        habit({ id: 2, title: "Lesen" }),
+        habit({ id: 3, title: "Joggen" }),
+        habit({ id: 4, title: "Gießen" }),
+        habit({ id: 5, title: "Putzen" }),
+        habit({ id: 6, title: "Pausiert", isActive: false }),
+      ]);
+      vi.mocked(getHistory).mockResolvedValueOnce(
+        week(
+          {
+            [TODAY]: { items: [run(2, "completed")], planned: [due(3, TODAY)] },
+            "2026-10-04": { planned: [due(4, "2026-10-04")] },
+          },
+          [
+            {
+              key: "weekly:1",
+              habitId: 1,
+              title: "Krafttraining",
+              target: 3,
+              completed: 2,
+              remaining: 1,
+              fromDate: TODAY,
+              untilDate: "2026-10-04",
+            },
+          ],
+        ),
+      );
+      const wrapper = mount(HabitsView);
+      await flushPromises();
+      expect(getHistory).toHaveBeenCalledWith(TODAY, "week", "habits");
+      const status = (id: number) =>
+        wrapper.find(`[data-habit-id="${id}"] .habit-card__status`);
+      expect(status(1).text()).toBe("2 von 3 diese Woche");
+      expect(status(2).text()).toBe("heute erledigt");
+      expect(status(3).text()).toBe("heute fällig");
+      expect(status(4).text()).toBe("morgen fällig");
+      expect(status(5).text()).toBe("diese Woche nicht mehr fällig");
+      expect(status(6).exists()).toBe(false);
+    });
+
+    it("keeps the list without a status when the week does not load", async () => {
+      vi.mocked(getHabits).mockResolvedValueOnce([habit()]);
+      vi.mocked(getHistory).mockRejectedValueOnce(new Error("offline"));
+      const wrapper = mount(HabitsView);
+      await flushPromises();
+      expect(wrapper.text()).toContain("Joggen");
+      expect(wrapper.find(".habit-card__status").exists()).toBe(false);
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    });
   });
   it("offers a retry when loading fails", async () => {
     vi.mocked(getHabits)

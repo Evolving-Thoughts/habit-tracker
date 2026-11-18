@@ -68,8 +68,9 @@ The board has no write endpoint of its own.
 ## The Questlog column
 
 From 56rem the board has the Questlog on its left: the open quests without
-a day (`GET /todos/backlog`, which now names each quest's `campaign` like
-Heute's items do, so the column draws the stripe). It is a drag source in
+a day that one can work on (`GET /todos/backlog`: no campaigns, no
+Questreihen with open quests, see `todo-hierarchy.md`; it names each quest's
+`campaign` like Heute's items do, so the column draws the stripe). It is a drag source in
 the board's SortableJS group (`put: false`, so nothing is dropped back);
 dropping a quest on a day applies `dropOnDay` with the quest as `incoming`
 (it comes from no column and always moves), shows it there and removes it

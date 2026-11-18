@@ -125,7 +125,7 @@ function workDescription(day: Day): string {
             <strong>{{ dayLabel(day.date) }}</strong>
             <span :id="`week-day-${day.date}`" class="week-day__details">
               <span class="week-day__summary">{{
-                daySummary(dayCounts(day))
+                daySummary(dayCounts(day), day.work.minutes)
               }}</span>
               <span v-if="day.work.minutes" class="week-day__work">
                 <span class="work-track" aria-hidden="true">

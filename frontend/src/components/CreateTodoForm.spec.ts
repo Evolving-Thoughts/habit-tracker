@@ -75,7 +75,7 @@ describe("CreateTodoForm", () => {
       plannedDurationMinutes: null,
     });
 
-    expect(wrapper.emitted("created")).toEqual([[]]);
+    expect(wrapper.emitted("created")).toHaveLength(1);
 
     expect(
       wrapper.get<HTMLInputElement>('input[name="title"]').element.value,

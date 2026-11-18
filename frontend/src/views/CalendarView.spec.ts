@@ -388,10 +388,54 @@ describe("CalendarView header", () => {
     expect(click).toHaveBeenCalled();
   });
 
+  it("keeps the head to two rows: title with filter, then mode and steps", async () => {
+    const wrapper = await render();
+    const rows = wrapper.get("header").element.children;
+    const top = wrapper.get(".calendar-view__top");
+    expect(top.find("h1 button").exists()).toBe(true);
+    expect(top.find('[aria-haspopup="menu"]').exists()).toBe(true);
+    const controls = wrapper.get(".calendar-view__controls");
+    expect(controls.findAll(".segmented button").map((b) => b.text())).toEqual([
+      "Monat",
+      "Woche",
+      "Tag",
+    ]);
+    expect(controls.find('[aria-label="Voriger Zeitraum"]').exists()).toBe(true);
+    expect(controls.find('[aria-label="Nächster Zeitraum"]').exists()).toBe(true);
+    // Two visible rows (the hidden date field is the third child).
+    expect(
+      Array.from(rows).filter((row) => !row.classList.contains("visually-hidden")),
+    ).toHaveLength(2);
+  });
+
+  it("offers Heute only away from today and then names the new range", async () => {
+    const wrapper = mount(CalendarView, { attachTo: document.body });
+    await flushPromises();
+    expect(button(wrapper, "Heute")).toBeUndefined();
+    await wrapper.get('[aria-label="Nächster Zeitraum"]').trigger("click");
+    await flushPromises();
+    const today = button(wrapper, "Heute");
+    expect(today.exists()).toBe(true);
+    await today.trigger("click");
+    await flushPromises();
+    expect(wrapper.get("h1").text()).toBe("Oktober 2026");
+    expect(button(wrapper, "Heute")).toBeUndefined();
+    expect(document.activeElement).toBe(wrapper.get("h1 button").element);
+  });
+
+  it("shows the filter as a quiet icon and names a chosen one", async () => {
+    const wrapper = await render();
+    const menuButton = wrapper.get('[aria-haspopup="menu"]');
+    expect(menuButton.text()).toBe("");
+    expect(menuButton.attributes("aria-label")).toBe("Einträge: Alle");
+    await chooseFilter(wrapper, "Quests");
+    expect(menuButton.text()).toBe("Quests");
+    expect(menuButton.attributes("aria-label")).toBe("Einträge: Quests");
+  });
+
   it("offers the filter as one menu that closes on Escape", async () => {
     const wrapper = await render();
     const menuButton = wrapper.get('[aria-haspopup="menu"]');
-    expect(menuButton.text()).toBe("Alle");
     expect(menuButton.attributes("aria-expanded")).toBe("false");
     expect(wrapper.find('[role="menu"]').exists()).toBe(false);
     await menuButton.trigger("click");
@@ -745,8 +789,22 @@ describe("CalendarView day", () => {
     const wrapper = await renderDay(dayResponse([item()]));
     const logbook = wrapper.get('[aria-labelledby="day-axis-title"]');
     expect(logbook.get("h2").text()).toBe("Logbuch");
-    expect(logbook.text()).toContain("Heute ist noch nichts im Logbuch.");
+    expect(logbook.text()).toContain("Heute wurde noch keine Zeit gemessen.");
+    // The completion stands on the axis at the time it was ticked off.
+    expect(logbook.get('ol[aria-label="Geplant"]').text()).toContain(
+      "Artikel, erledigt um 14:32",
+    );
+    expect(logbook.find('select[name="target"]').exists()).toBe(false);
+    await logbook.get('button[aria-controls="work-log-add"]').trigger("click");
+    await flushPromises();
     expect(logbook.find('select[name="target"]').text()).toContain("Artikel");
+  });
+
+  it("shows no axis when nothing is planned, measured or done", async () => {
+    const wrapper = await renderDay(
+      dayResponse([item({ resolvedAt: null })]),
+    );
+    const logbook = wrapper.get('[aria-labelledby="day-axis-title"]');
     expect(logbook.find(".day-timeline").exists()).toBe(false);
   });
 });
@@ -887,11 +945,11 @@ describe("CalendarView Logbuch", () => {
     const wrapper = await renderDay(data);
     const logbook = wrapper.get('[aria-labelledby="day-axis-title"]');
     expect(logbook.get("h2").text()).toBe("Logbuch 32 Min.");
-    expect(logbook.text()).not.toContain("nichts im Logbuch");
-    const plan = logbook.get('ol[aria-label="Plan"]');
+    expect(logbook.text()).not.toContain("keine Zeit gemessen");
+    const plan = logbook.get('ol[aria-label="Geplant"]');
     expect(plan.text()).toContain("Besprechung");
     expect(plan.text()).toContain("08:00–09:00");
-    const blocks = logbook.findAll('ol[aria-label="Logbuch"] button');
+    const blocks = logbook.findAll('ol[aria-label="Gemessen"] button');
     expect(blocks.map((block) => block.attributes("aria-label"))).toEqual([
       "Kapitel, 10:00 bis 10:30, 30 Min., Kampagne Buch, korrigieren",
       "Mails, 11:00 bis 11:02, 2 Min., ohne Kampagne, korrigieren",
@@ -940,7 +998,7 @@ describe("CalendarView Logbuch", () => {
       await flushPromises();
       expect(rows(wrapper)).toEqual(["Lesen"]);
       expect(
-        wrapper.findAll('ol[aria-label="Logbuch"] button').map((block) =>
+        wrapper.findAll('ol[aria-label="Gemessen"] button').map((block) =>
           block.attributes("aria-label"),
         ),
       ).toEqual(["Lesen, 11:00 bis 11:05, 5 Min., Kampagne Buch, korrigieren"]);
@@ -1059,6 +1117,11 @@ describe("CalendarView Logbuch", () => {
     expect(rows[3]!.get(".work-bar").attributes("style")).toContain(
       "width: 33.3",
     );
+    // Nothing planned is not nothing done: the measured time is named.
+    expect(rows[3]!.get(".week-day__summary").text()).toBe(
+      "Nichts geplant · 45 Min. gemessen",
+    );
+    expect(rows[0]!.get(".week-day__summary").text()).toBe("Nichts geplant");
     const description = rows[2]!.attributes("aria-describedby")!;
     expect(wrapper.get(`[id="${description}"]`).text()).toContain(
       "2 Std. 15 Min. im Logbuch: Buch 1 Std. 30 Min., Ohne Kampagne 45 Min.",

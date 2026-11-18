@@ -6,6 +6,7 @@ import { getQuestHours } from "../api/quest-hours.api";
 import { updateTodo, updateTodoCompletion } from "../api/day-planner.api";
 import { getCategories } from "../api/categories.api";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
+import type { TodoResponse } from "../types/todo";
 import { whyBelow } from "../utils/why";
 import {
   hasProgress,
@@ -136,14 +137,23 @@ async function closeCampaign() {
     ?.querySelector<HTMLElement>(`[data-campaign-tile="${id}"] button`)
     ?.focus();
 }
-const rows = computed(() => {
-  if (!openTile.value) return visibleHierarchy(todos.value, collapsed.value);
-  const inside = descendantIds(todos.value, openTile.value.todo.id);
-  return visibleHierarchy(
-    todos.value.filter((todo) => inside.has(todo.id)),
-    collapsed.value,
-  );
-});
+/*
+ * The tree holds campaigns only: loose quests live in the Questlog, Heute and
+ * the Plan. An opened campaign is its detail card, so its tree starts with
+ * the quests below it instead of repeating it as a row.
+ */
+const campaignIds = computed(
+  () => new Set(tiles.value.map((tile) => tile.todo.id)),
+);
+const rows = computed(() =>
+  openTile.value
+    ? visibleHierarchy(todos.value, collapsed.value, {
+        under: openTile.value.todo.id,
+      })
+    : visibleHierarchy(todos.value, collapsed.value, {
+        keepTop: (todo) => campaignIds.value.has(todo.id),
+      }),
+);
 const children = computed(() => hierarchyChildren(todos.value));
 const titles = computed(
   () => new Map(todos.value.map((todo) => [todo.id, todo.title])),
@@ -263,6 +273,27 @@ function rowMenu(todo: HierarchyTodo): MenuEntry[] {
   return entries;
 }
 
+/*
+ * The opened campaign's "…": what its row offered, now that the detail card
+ * stands for it. Its ring becomes "Kampagne abschließen" (asking as the ring
+ * did), and its progress is already on the card.
+ */
+function campaignMenu(todo: HierarchyTodo): MenuEntry[] {
+  return [
+    {
+      id: "complete",
+      label: checked(todo) ? "Wieder öffnen" : "Kampagne abschließen",
+      icon: "check",
+      ariaLabel: checked(todo)
+        ? `${todo.title} wieder öffnen`
+        : `${todo.title} abschließen`,
+      disabled: busy.value,
+      run: () => void toggleCompletion(todo),
+    },
+    ...rowMenu(todo).filter((entry) => entry.id !== "progress"),
+  ];
+}
+
 function message(e: unknown) {
   return e instanceof Error ? e.message : "Änderung fehlgeschlagen.";
 }
@@ -355,7 +386,7 @@ function showProgress(todo: HierarchyTodo) {
   listFocus.remember(`todo-${todo.id}`);
   burnupTodo.value = todo;
 }
-async function created() {
+async function created(todo: TodoResponse) {
   formBusy.value = false;
   if (selected.value) {
     const next = new Set(collapsed.value);
@@ -365,8 +396,16 @@ async function created() {
   await applied();
   action.value = null;
   selected.value = null;
-  success.value = "Quest angelegt.";
+  // A plain top-level quest is no campaign yet, so it does not show here.
+  success.value =
+    todo.parentId === null && !campaignIds.value.has(todo.id)
+      ? "Quest angelegt. Sie wird zur Kampagne, sobald sie Unter-Quests, eine Farbe, ein Symbol oder ein Wochenziel hat; bis dahin steht sie im Questlog oder an ihrem Tag."
+      : "Quest angelegt.";
 }
+/** At the top, a quest without quests below it (and no look or goal) is no campaign. */
+const becomesCampaign = (id: number | null) =>
+  id !== null &&
+  (campaignIds.value.has(id) || Boolean(children.value.get(id)?.length));
 async function changed() {
   formBusy.value = false;
   await applied();
@@ -472,11 +511,14 @@ useShortcutHandlers({
     >
       <span /><span /><span />
     </div>
-    <div v-else-if="!todos.length && !shownError" class="empty-state">
+    <div v-else-if="!tiles.length && !shownError" class="empty-state">
       <strong>Noch keine Kampagnen.</strong>
-      <span>Leg mit dem Plus-Button die erste an.</span>
+      <span
+        >Leg mit dem Plus-Button die erste an. Quests ohne Kampagne stehen im
+        Questlog.</span
+      >
     </div>
-    <template v-else-if="todos.length">
+    <template v-else-if="tiles.length">
       <template v-if="openTile">
         <button
           class="btn btn--quiet campaign-back"
@@ -487,16 +529,32 @@ useShortcutHandlers({
         </button>
         <section
           class="card campaign-detail"
+          :class="{ 'row--over': dropTarget === openTile.todo.id }"
           :style="{ '--mark': openMark }"
           aria-labelledby="campaign-detail-title"
+          :data-focus-key="`todo-${openTile.todo.id}`"
+          @dragover.prevent="dropTarget = openTile.todo.id"
+          @dragleave="dropTarget = undefined"
+          @drop.stop="drop($event, openTile.todo.id)"
         >
           <div class="campaign-detail__head">
             <span class="campaign-detail__badge" aria-hidden="true">
               <AppIcon :name="openTile.icon ?? 'campaigns'" />
             </span>
-            <h2 id="campaign-detail-title" tabindex="-1">
-              {{ openTile.todo.title }}
-            </h2>
+            <div class="campaign-detail__name">
+              <h2 id="campaign-detail-title" tabindex="-1">
+                {{ openTile.todo.title }}
+              </h2>
+              <p v-if="checked(openTile.todo)" class="campaign-detail__state">
+                Abgeschlossen
+              </p>
+            </div>
+            <ActionMenu
+              :title="openTile.todo.title"
+              :entries="campaignMenu(openTile.todo)"
+              :disabled="busy"
+              :trigger-key="openTile.todo.id"
+            />
           </div>
           <template v-if="questHours">
             <p class="campaign-detail__week">
@@ -537,6 +595,7 @@ useShortcutHandlers({
           <button
             class="btn campaign-detail__edit"
             type="button"
+            data-edit-button
             :disabled="busy"
             :aria-label="`Kampagne ${openTile.todo.title} bearbeiten`"
             @click="open('edit', openTile.todo)"
@@ -545,6 +604,10 @@ useShortcutHandlers({
           </button>
         </section>
         <h2 class="section-title">Quests der Kampagne</h2>
+        <p v-if="!rows.length" class="status-line">
+          Noch keine Quests. „Unter-Quest hinzufügen“ steht im Menü der
+          Kampagne.
+        </p>
       </template>
       <template v-else>
         <CampaignTiles
@@ -553,7 +616,7 @@ useShortcutHandlers({
           :counted="questHours !== null"
           @open="openCampaign"
         />
-        <h2 class="section-title">Alle Quests</h2>
+        <h2 class="section-title">Kampagnen und ihre Quests</h2>
       </template>
       <ul class="tree" aria-label="Kampagnen">
         <li
@@ -678,7 +741,11 @@ useShortcutHandlers({
         @dragleave="dropTarget = undefined"
         @drop="drop($event, null)"
       >
-        Hier ablegen, um daraus eine eigene Kampagne zu machen.
+        {{
+          becomesCampaign(dragged)
+            ? "Hier ablegen, um daraus eine eigene Kampagne zu machen."
+            : "Hier ablegen, um die Quest aus der Kampagne zu lösen. Sie steht dann im Questlog oder an ihrem Tag."
+        }}
       </div>
     </template>
     <ModalDialog
@@ -726,7 +793,13 @@ useShortcutHandlers({
         <label class="field" for="new-parent"
           >Neuer Platz für „{{ selected?.title }}“
           <select id="new-parent" v-model="parent" :disabled="busy">
-            <option value="">Eigene Kampagne</option>
+            <option value="">
+              {{
+                becomesCampaign(selected?.id ?? null)
+                  ? "Eigene Kampagne"
+                  : "Keine Kampagne (Questlog oder ihr Tag)"
+              }}
+            </option>
             <option
               v-for="todo in parentOptions"
               :key="todo.id"
@@ -978,6 +1051,17 @@ useShortcutHandlers({
   gap: var(--space-3);
   align-items: center;
   min-width: 0;
+}
+
+.campaign-detail__name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.campaign-detail__state {
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
 }
 
 .campaign-detail__head h2 {

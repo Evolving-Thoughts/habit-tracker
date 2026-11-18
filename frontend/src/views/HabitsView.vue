@@ -9,11 +9,16 @@ import { useWrites } from "../composables/useWrites";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
+import { getHistory } from "../api/history.api";
 import type { HabitResponse, HabitScheduleRule } from "../types/habit";
+import type { HistoryResponse } from "../types/history";
 import { shownWhy } from "../utils/why";
 import { categoryMark } from "../utils/category-mark";
-import { formatDateForGermanDisplay } from "../utils/date";
-import { WEEKDAY_OPTIONS } from "../utils/habit";
+import {
+  formatDateForGermanDisplay,
+  getCurrentDateInTimeZone,
+} from "../utils/date";
+import { WEEKDAY_OPTIONS, dailyWeekStatus } from "../utils/habit";
 
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
@@ -33,8 +38,26 @@ async function loadCategoryNames(): Promise<void> {
     // Without names the cards simply show no category mark.
   }
 }
+/*
+ * The week as the calendar reads it, for each Daily's status this week; the
+ * list stays usable without it. Read once with the list, so both agree.
+ */
+const week = ref<HistoryResponse | null>(null);
+const today = ref(getCurrentDateInTimeZone());
+async function loadWeek(): Promise<void> {
+  today.value = getCurrentDateInTimeZone();
+  try {
+    week.value = await getHistory(today.value, "week", "habits");
+  } catch {
+    week.value = null;
+  }
+}
 async function loadAll(): Promise<HabitResponse[]> {
-  const [habits] = await Promise.all([getHabits(), loadCategoryNames()]);
+  const [habits] = await Promise.all([
+    getHabits(),
+    loadCategoryNames(),
+    loadWeek(),
+  ]);
   return habits;
 }
 
@@ -103,6 +126,10 @@ function categoryOf(habit: HabitResponse): string | null {
   return habit.categoryId === null
     ? null
     : (categoryNames.value.get(habit.categoryId) ?? null);
+}
+
+function statusOf(habit: HabitResponse): string | null {
+  return dailyWeekStatus(habit, week.value, today.value);
 }
 
 function detailsOf(habit: HabitResponse): string[] {
@@ -244,6 +271,9 @@ async function onCreated(): Promise<void> {
                   {{ shownWhy(habit) }}
                 </p>
                 <p class="habit-card__details">
+                  <span v-if="statusOf(habit)" class="habit-card__status">{{
+                    statusOf(habit)
+                  }}</span>
                   <span v-if="categoryOf(habit)" class="habit-card__category">
                     <i
                       class="category-mark"
@@ -374,6 +404,11 @@ async function onCreated(): Promise<void> {
 
 .habit-card__next {
   font-weight: 600;
+}
+
+/* Where the week stands, first and in ink; a number, never a warning colour. */
+.habit-card__status {
+  color: var(--color-ink);
 }
 
 .habit-card__category {

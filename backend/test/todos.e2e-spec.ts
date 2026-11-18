@@ -508,8 +508,39 @@ describe('Todos API (e2e)', () => {
         color: 'berry',
         icon: null,
       });
-      expect(byId.get(campaign)).toMatchObject({ id: campaign });
+      expect(byId.has(campaign)).toBe(false);
       expect(byId.get(loose)).toBeNull();
+    });
+
+    it('lists only quests to work on: no campaigns, no Questreihen with open quests', async () => {
+      const create = async (body: object) =>
+        (
+          (await request(httpServer).post('/todos').send(body).expect(201))
+            .body as TodoResponseDto
+        ).id;
+      const book = await create({ title: 'Buch schreiben' });
+      const chapters = await create({ title: 'Kapitel', parentId: book });
+      const chapter = await create({ title: 'Kapitel 1', parentId: chapters });
+      const outline = await create({ title: 'Gliederung', parentId: book });
+      const done = await create({ title: 'Notizen', parentId: outline });
+      await request(httpServer)
+        .patch(`/todos/${done}`)
+        .send({ completed: true })
+        .expect(200);
+      await create({ title: 'Marathon', icon: 'dumbbell' });
+      const loose = await create({ title: 'Zahnarzt anrufen' });
+
+      const response = await request(httpServer)
+        .get('/todos/backlog')
+        .expect(200);
+
+      // The campaign, the one with only an icon and the Questreihe with an
+      // open quest stay out; the Questreihe whose quests are done is a step.
+      expect((response.body as TodoResponseDto[]).map((t) => t.id)).toEqual([
+        chapter,
+        outline,
+        loose,
+      ]);
     });
   });
 

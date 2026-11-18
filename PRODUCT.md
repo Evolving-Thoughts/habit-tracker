@@ -38,7 +38,7 @@ Oberflächensprache ist Deutsch.
 
 ## Capabilities and Constraints
 
-- Ansichten: Heute, Plan (die Woche als Brett aus sieben Tagen; am Desktop mit dem Questlog daneben, aus dem man Quests auf einen Tag zieht), Wochenrückblick (die Woche in Zahlen und drei Fragen), Fokus-Modus, Questlog, Kampagnen (Kacheln je Kampagne über dem ganzen Baum; eine Kachel öffnet ihre Kampagne), Kalender (Monat, Woche, Tag; neben dem Geplanten das Logbuch: am Tag die gemessenen Abschnitte auf einer Zeitachse, in der Woche die Zeit je Kampagne, im Monat die Zeit je Tag), Dailies, Kategorien, Einstellungen. Jede hat eine eigene Adresse (`#/heute`, `#/plan`, `#/questlog`, …), sodass Zurück und Neuladen funktionieren; Plan und Wochenrückblick halten auch die gezeigte Woche in der Adresse, die Kampagnen die geöffnete Kampagne.
+- Ansichten: Heute, Plan (die Woche als Brett aus sieben Tagen; am Desktop mit dem Questlog daneben, aus dem man Quests auf einen Tag zieht), Wochenrückblick (die Woche in Zahlen und drei Fragen), Fokus-Modus, Questlog (die offenen Quests ohne Tag, an denen man arbeiten kann), Kampagnen (Kacheln je Kampagne über dem Baum der Kampagnen und ihrer Quests; eine Kachel öffnet ihre Kampagne), Kalender (Monat, Woche, Tag; neben dem Geplanten das Logbuch: am Tag Geplantes, Erledigtes und die gemessenen Abschnitte auf einer Zeitachse, in der Woche die Zeit je Kampagne, im Monat die Zeit je Tag), Dailies (jedes mit seinem Warum und dem Stand der Woche), Kategorien, Einstellungen. Jede hat eine eigene Adresse (`#/heute`, `#/plan`, `#/questlog`, …), sodass Zurück und Neuladen funktionieren; Plan und Wochenrückblick halten auch die gezeigte Woche in der Adresse, die Kampagnen die geöffnete Kampagne.
 - Tastatur am Desktop: einzelne Tasten öffnen die Ansichten (H, P, Q, C, K, R) und den Fokus-Modus (F), legen eine Quest an (N) und wirken auf die Zeile unter dem Mauszeiger oder mit dem Fokus (Leertaste Stoppuhr, X erledigen, T/D/W auf heute, morgen, nächsten Montag; dieselben Schritte stehen im Menü "Aktionen für …" jeder Zeile); Strg+Enter erledigt im Fokus-Modus, Strg+K öffnet das Befehlsmenü, "?" die Übersicht. Einzelne Tasten lassen sich je Gerät in den Einstellungen abschalten. Jede Taste tut nur, was auch ein Button tut. Einzelheiten in `docs/keyboard.md`.
 - Darstellung: hell (warmer Apricot) oder dunkel (warmes Umbra), je Gerät in den Einstellungen und im Befehlsmenü wählbar; voreingestellt folgt die App dem Gerät, auch wenn es abends umschaltet. Einzelheiten in `docs/theme.md`.
 - Navigation: am Handy vier Tabs und "Mehr"; ab 56rem eine obere Leiste mit den fünf Hauptansichten, "Mehr" für die übrigen und "Befehle"; ab 70rem (übliches PC-Fenster) stehen auch Wochenrückblick, Fokus und Dailies direkt darin, ab 82rem alle Ansichten mit Namen.
@@ -58,7 +58,7 @@ Die Oberfläche spricht das Vokabular links. Code, API und Datenbank behalten di
 | Kampagne | Oberste Quest mit Unter-Quests, Farbe, Symbol oder Wochenziel: das längerfristige Ziel | Wurzel-`todo` |
 | Daily | Gewohnheit mit veränderbarem Zeitplan | `habit` |
 | Ausführung | Einzelner Lauf eines Dailys | `habit occurrence` |
-| Questlog | Offene Quests ohne Tag | Backlog (`scheduledDate` leer) |
+| Questlog | Offene Quests ohne Tag, an denen man arbeiten kann | Backlog (`scheduledDate` leer, keine offene Quest darunter, keine Kampagne; `backlogTodos`) |
 | Termin | Quest mit fester Uhrzeit | `todo` mit `timeOfDay` |
 | Reihenfolge | In welcher Folge der Tag abgearbeitet wird | `dayPosition` |
 | Logbuch | Was erledigt und wie lange gearbeitet wurde | `history`, `work_logs` |
@@ -72,6 +72,8 @@ Die Oberfläche spricht das Vokabular links. Code, API und Datenbank behalten di
 | Dailies im Wochensoll | Erledigte gegen fällige Ausführungen einer Woche; ein Wochenziel zählt mit seiner Sollzahl | `weekQuota` |
 
 Eine oberste Quest wird zur Kampagne, sobald sie Unter-Quests hat oder eine Farbe, ein Symbol oder ein Wochenziel bekommt; ein eigenes Kampagnen-Feld gibt es nicht. Farbe, Symbol und Wochenziel gibt es nur für oberste Quests; wandert eine Kampagne unter eine andere Quest, verliert sie alle drei.
+
+Das Questlog führt nur, woran man arbeiten kann: Eine Quest mit offenen Quests darunter (eine Questreihe) wird über diese erledigt, und eine Kampagne wird über ihre Quests geplant, auch solange sie nur wegen Farbe, Symbol oder Wochenziel eine ist. Beide stehen in den Kampagnen, nicht im Questlog. Eine Questreihe, deren Quests alle erledigt sind, ist wieder ein Schritt und steht dort. Umgekehrt zeigen die Kampagnen nur Kampagnen; eine lose oberste Quest ohne Unter-Quests lebt im Questlog, in Heute und im Plan.
 
 ## Evidence on Hand
 
