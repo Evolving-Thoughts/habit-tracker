@@ -6,7 +6,11 @@ import { formatDateForGermanDisplay } from "../utils/date";
 import { questWord } from "../utils/todo-hierarchy";
 import AppIcon from "./AppIcon.vue";
 
-const props = defineProps<{ todoId: number }>();
+const props = defineProps<{
+  todoId: number;
+  /** Shown beside a done/total bar, which already says the plain count. */
+  besideBar?: boolean;
+}>();
 
 const WIDTH = 320;
 const HEIGHT = 160;
@@ -108,14 +112,20 @@ onMounted(load);
         <AppIcon name="refresh" />Erneut versuchen
       </button>
     </div>
+    <!-- One day is a number, not yet a line: no chart and nothing to switch. -->
+    <template v-else-if="latest && !hasHistory">
+      <p v-if="!besideBar" class="burnup__summary">
+        {{ latest.done }} von {{ latest.total }} {{ unitLabel }} erledigt,
+        {{ latest.remaining }} noch offen. Stand {{ shortDate(latest.date) }}
+      </p>
+      <p class="burnup__note">
+        Der Verlauf beginnt heute. Ab morgen zeigt hier eine Linie, wie es
+        vorangeht.
+      </p>
+    </template>
     <template v-else-if="latest">
       <div class="burnup__controls">
-        <div
-          v-if="hasHistory"
-          class="segmented"
-          role="group"
-          aria-label="Ansicht"
-        >
+        <div class="segmented" role="group" aria-label="Ansicht">
           <button
             type="button"
             :aria-pressed="chart === 'done'"
@@ -149,7 +159,6 @@ onMounted(load);
         </div>
       </div>
       <svg
-        v-if="hasHistory"
         :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
         role="img"
         :aria-label="`${latest.done} von ${latest.total} ${unitLabel} erledigt`"
@@ -176,7 +185,7 @@ onMounted(load);
           />
         </template>
       </svg>
-      <ul v-if="hasHistory" class="burnup__legend">
+      <ul class="burnup__legend">
         <li v-for="item in lines" :key="item.name">
           <span
             :class="`burnup__swatch burnup__swatch--${item.tone}`"
@@ -184,16 +193,15 @@ onMounted(load);
           />{{ item.name }}
         </li>
       </ul>
-      <p class="burnup__summary">
-        {{ latest.done }} von {{ latest.total }} {{ unitLabel }} erledigt,
-        {{ latest.remaining }} noch offen. Stand {{ shortDate(latest.date)
-        }}<template v-if="hasHistory"
-          >, seit {{ shortDate(series[0]!.date) }}</template
-        >
+      <!-- Beside the bar the count is said already; only the dates remain. -->
+      <p v-if="besideBar && unit === 'count'" class="burnup__summary">
+        Stand {{ shortDate(latest.date) }}, seit
+        {{ shortDate(series[0]!.date) }}
       </p>
-      <p v-if="!hasHistory" class="burnup__note">
-        Der Verlauf beginnt heute. Ab morgen zeigt hier eine Linie, wie es
-        vorangeht.
+      <p v-else class="burnup__summary">
+        {{ latest.done }} von {{ latest.total }} {{ unitLabel }} erledigt,
+        {{ latest.remaining }} noch offen. Stand
+        {{ shortDate(latest.date) }}, seit {{ shortDate(series[0]!.date) }}
       </p>
       <p v-if="unit === 'minutes'" class="burnup__note">
         Minuten zählen nur Quests mit geplanter Dauer.
@@ -212,8 +220,10 @@ onMounted(load);
   margin: 0;
 }
 
+/* Bounded, so on a wide card the chart does not outgrow its numbers. */
 .burnup svg {
   width: 100%;
+  max-width: 30rem;
   height: auto;
 }
 

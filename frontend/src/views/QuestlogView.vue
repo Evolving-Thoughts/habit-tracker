@@ -25,6 +25,7 @@ import UndoToast from "../components/UndoToast.vue";
 import type { CreateTodoInput, TodoResponse } from "../types/todo";
 import { shownWhy } from "../utils/why";
 import PlanFields from "../components/PlanFields.vue";
+import AppointmentFields from "../components/AppointmentFields.vue";
 import QuestNotes from "../components/QuestNotes.vue";
 import { campaignMark, categoryMark } from "../utils/category-mark";
 import { buildTodoInput } from "../utils/todo-input";
@@ -389,11 +390,7 @@ useShortcutHandlers({
               />
             </label>
 
-            <PlanFields
-              v-model:date="editDate"
-              v-model:time="editTime"
-              id-prefix="questlog-edit"
-            />
+            <PlanFields v-model:date="editDate" id-prefix="questlog-edit" />
 
             <div class="todo-editor__row">
               <label class="field">
@@ -407,6 +404,12 @@ useShortcutHandlers({
                 />
               </label>
             </div>
+
+            <AppointmentFields
+              v-model:time="editTime"
+              :date="editDate"
+              id-prefix="questlog-edit"
+            />
 
             <QuestNotes :todo-id="selectedTodo.id" />
 

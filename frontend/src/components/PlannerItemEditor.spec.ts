@@ -17,6 +17,8 @@ import type {
   ScheduleVersionResponse,
 } from "../types/habit";
 import type { TodoResponse } from "../types/todo";
+import { getCategories } from "../api/categories.api";
+import { request } from "../api/http";
 import PlannerItemEditor from "./PlannerItemEditor.vue";
 
 vi.mock("../api/categories.api", () => ({
@@ -32,6 +34,7 @@ vi.mock("../api/day-planner.api", () => ({
   deleteTodo: vi.fn(),
   deleteHabit: vi.fn(),
 }));
+vi.mock("../api/http", () => ({ request: vi.fn() }));
 vi.mock("./QuestNotes.vue", () => import("../test/quest-notes-stub"));
 enableAutoUnmount(afterEach);
 afterEach(() => vi.useRealTimers());
@@ -105,6 +108,8 @@ describe("PlannerItemEditor", () => {
     });
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-02T12:00:00Z"));
+    vi.mocked(getCategories).mockResolvedValue([{ id: 7, name: "Sport" }]);
+    vi.mocked(request).mockResolvedValue([{ id: 3, title: "Joggen" }]);
     vi.mocked(getTodo).mockResolvedValue(todo);
     vi.mocked(getHabit).mockResolvedValue(makeHabit());
     vi.mocked(updateTodo).mockResolvedValue(todo);
@@ -594,5 +599,263 @@ describe("PlannerItemEditor", () => {
     expect(
       wrapper.get<HTMLFieldSetElement>("form > fieldset").element.disabled,
     ).toBe(false);
+  });
+
+  it("reports only writes as busy, so a dialog closes while the editor still loads", async () => {
+    let resolve!: (value: HabitResponse) => void;
+    vi.mocked(getHabit).mockReturnValueOnce(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    const wrapper = mountHabitEditor();
+    await flushPromises();
+    expect(wrapper.find('[role="status"]').exists()).toBe(true);
+    expect(wrapper.emitted("busy")).toBeUndefined();
+    resolve(makeHabit());
+    await flushPromises();
+    expect(wrapper.emitted("busy")).toBeUndefined();
+    await wrapper.get('input[name="title"]').setValue("Neu");
+    await save(wrapper);
+    expect(wrapper.emitted("busy")).toEqual([[true], [false]]);
+  });
+
+  describe("quest fields", () => {
+    function mountQuest(changes: Partial<TodoResponse> = {}) {
+      vi.mocked(getTodo).mockResolvedValue({ ...todo, ...changes });
+      return mount(PlannerItemEditor, {
+        props: { kind: "todo", entityId: 1, embedded: true },
+        attachTo: document.body,
+      });
+    }
+    type Editor = ReturnType<typeof mountQuest>;
+    const toggles = (wrapper: Editor) =>
+      wrapper.findAll("button[aria-expanded]");
+    const toggle = (wrapper: Editor, label: string) =>
+      toggles(wrapper).find((button) => button.text().startsWith(label))!;
+    const visible = (wrapper: Editor, selector: string) =>
+      wrapper.get(selector).isVisible();
+
+    it("shows title, day, duration and Warum; the rest waits behind closed disclosures", async () => {
+      const wrapper = mountQuest();
+      await flushPromises();
+      for (const field of [
+        'input[name="title"]',
+        'input[name="scheduledDate"]',
+        'input[name="duration"]',
+        'textarea[name="why"]',
+      ])
+        expect(visible(wrapper, field)).toBe(true);
+      for (const field of [
+        'input[name="timeOfDay"]',
+        'select[name="goalHabit"]',
+        'select[name="category"]',
+        'input[name="weeklyTarget"]',
+      ])
+        expect(visible(wrapper, field)).toBe(false);
+      expect(toggles(wrapper).map((button) => button.text())).toEqual([
+        "Kampagne (Farbe, Symbol, Wochenziel)",
+        "Termin (feste Uhrzeit)",
+        "Ziel mit Daily (Daily und Zeitraum)",
+        "Kategorie",
+      ]);
+      expect(
+        toggles(wrapper).map((button) => button.attributes("aria-expanded")),
+      ).toEqual(["false", "false", "false", "false"]);
+      // The period means nothing without a daily: it is not even in the form.
+      expect(wrapper.find('input[name="periodStart"]').exists()).toBe(false);
+    });
+
+    it("offers no campaign group below another quest", async () => {
+      const wrapper = mountQuest({ parentId: 5 });
+      await flushPromises();
+      expect(toggles(wrapper).map((button) => button.text())).toEqual([
+        "Termin (feste Uhrzeit)",
+        "Ziel mit Daily (Daily und Zeitraum)",
+        "Kategorie",
+      ]);
+    });
+
+    it("opens every group that already holds a value, so nothing set is hidden", async () => {
+      const wrapper = mountQuest({
+        timeOfDay: "10:00",
+        goalHabitId: 3,
+        goalTarget: 12,
+        periodStart: "2026-10-01",
+        periodEnd: "2026-10-31",
+        categoryId: 7,
+        icon: "book",
+      });
+      await flushPromises();
+      expect(
+        toggles(wrapper).map((button) => button.attributes("aria-expanded")),
+      ).toEqual(["true", "true", "true", "true"]);
+      expect(
+        wrapper.get<HTMLInputElement>('input[name="timeOfDay"]').element.value,
+      ).toBe("10:00");
+      expect(visible(wrapper, 'input[name="periodStart"]')).toBe(true);
+      expect(visible(wrapper, 'input[name="goalTarget"]')).toBe(true);
+      expect(visible(wrapper, 'select[name="category"]')).toBe(true);
+      expect(visible(wrapper, 'input[name="weeklyTarget"]')).toBe(true);
+    });
+
+    it("keeps an old period without a daily in sight, so it can be cleared", async () => {
+      const wrapper = mountQuest({
+        periodStart: "2026-10-01",
+        periodEnd: "2026-10-31",
+      });
+      await flushPromises();
+      expect(
+        toggle(wrapper, "Ziel mit Daily").attributes("aria-expanded"),
+      ).toBe("true");
+      expect(visible(wrapper, 'input[name="periodEnd"]')).toBe(true);
+      expect(wrapper.find('input[name="goalTarget"]').exists()).toBe(false);
+    });
+
+    it.each([
+      ["Termin", 'input[name="timeOfDay"]'],
+      ["Ziel mit Daily", 'select[name="goalHabit"]'],
+      ["Kategorie", 'select[name="category"]'],
+      ["Kampagne", 'input[type="radio"]'],
+    ])(
+      "opens “%s” in place with the focus on its first field",
+      async (label, field) => {
+        const wrapper = mountQuest();
+        await flushPromises();
+        await toggle(wrapper, label).trigger("click");
+        expect(toggle(wrapper, label).attributes("aria-expanded")).toBe("true");
+        expect(document.activeElement).toBe(wrapper.get(field).element);
+      },
+    );
+
+    it("sets a daily goal: the period appears with the daily and only the goal is sent", async () => {
+      const wrapper = mountQuest();
+      await flushPromises();
+      await toggle(wrapper, "Ziel mit Daily").trigger("click");
+      await wrapper.get('select[name="goalHabit"]').setValue(3);
+      await wrapper.get('input[name="periodStart"]').setValue("2026-10-01");
+      await wrapper.get('input[name="periodEnd"]').setValue("2026-12-31");
+      await wrapper.get('input[name="goalTarget"]').setValue("20");
+      // Closed, the button still names the goal.
+      await toggle(wrapper, "Ziel mit Daily").trigger("click");
+      expect(toggle(wrapper, "Ziel mit Daily").text()).toContain(
+        "Joggen, 20-mal · 01.10.–31.12.",
+      );
+      await save(wrapper);
+      expect(updateTodo).toHaveBeenCalledWith(1, {
+        title: "NestJS lernen",
+        scheduledDate: "2026-10-02",
+        timeOfDay: null,
+        plannedDurationMinutes: 30,
+        periodStart: "2026-10-01",
+        periodEnd: "2026-12-31",
+        goalHabitId: 3,
+        goalTarget: 20,
+      });
+    });
+
+    it("makes an appointment through the Termin group", async () => {
+      const wrapper = mountQuest();
+      await flushPromises();
+      await toggle(wrapper, "Termin").trigger("click");
+      await wrapper.get('input[name="timeOfDay"]').setValue("09:15");
+      await save(wrapper);
+      expect(updateTodo).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ timeOfDay: "09:15" }),
+      );
+    });
+
+    it("keeps Speichern and Abbrechen together in the sticky footer, before the quiet delete", async () => {
+      const wrapper = mountQuest();
+      await flushPromises();
+      expect(wrapper.classes()).toContain("item-editor--embedded");
+      const footer = wrapper.get('[data-test="editor-actions"]');
+      expect(footer.findAll("button").map((button) => button.text())).toEqual([
+        "Speichern",
+        "Abbrechen",
+      ]);
+      const deletion = wrapper.get('[data-test="request-delete"]').element;
+      expect(
+        footer.element.compareDocumentPosition(deletion) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      // A failed save is said right above the buttons, where the eye is.
+      await wrapper.get('input[name="title"]').setValue(" ");
+      await save(wrapper);
+      expect(footer.get('[role="alert"]').text()).toContain("Titel");
+    });
+  });
+
+  describe("inherited Warum", () => {
+    const inheritedWhy = {
+      text: "Im März ins Ziel kommen",
+      fromId: 9,
+      fromTitle: "Halbmarathon",
+    };
+    function mountQuest(why: string | null) {
+      vi.mocked(getTodo).mockResolvedValue({
+        ...todo,
+        parentId: 9,
+        why,
+        inheritedWhy,
+      });
+      return mount(PlannerItemEditor, {
+        props: { kind: "todo", entityId: 1 },
+        attachTo: document.body,
+      });
+    }
+
+    it("quotes the inherited reason and sends no why on a plain save", async () => {
+      const wrapper = mountQuest(null);
+      await flushPromises();
+      expect(wrapper.find('textarea[name="why"]').exists()).toBe(false);
+      expect(wrapper.get("blockquote").text()).toContain(
+        "Übernommen von „Halbmarathon“:",
+      );
+      expect(wrapper.get("blockquote").text()).toContain(
+        "Im März ins Ziel kommen",
+      );
+      await wrapper.get('input[name="title"]').setValue("Schuhe kaufen");
+      await save(wrapper);
+      expect(vi.mocked(updateTodo).mock.calls[0]![1]).not.toHaveProperty("why");
+    });
+
+    it("writes an own reason only after asking for it", async () => {
+      const wrapper = mountQuest(null);
+      await flushPromises();
+      await wrapper.get('[data-test="why-write-own"]').trigger("click");
+      const area = wrapper.get<HTMLTextAreaElement>('textarea[name="why"]');
+      expect(document.activeElement).toBe(area.element);
+      await area.setValue("Ohne Blasen laufen");
+      await save(wrapper);
+      expect(updateTodo).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ why: "Ohne Blasen laufen" }),
+      );
+    });
+
+    it("sends nothing when the own field was opened and left empty", async () => {
+      const wrapper = mountQuest(null);
+      await flushPromises();
+      await wrapper.get('[data-test="why-write-own"]').trigger("click");
+      await save(wrapper);
+      expect(vi.mocked(updateTodo).mock.calls[0]![1]).not.toHaveProperty("why");
+    });
+
+    it("clears an own reason with “Wieder übernehmen”, so it inherits again", async () => {
+      const wrapper = mountQuest("Eigenes Warum");
+      await flushPromises();
+      expect(
+        wrapper.get<HTMLTextAreaElement>('textarea[name="why"]').element.value,
+      ).toBe("Eigenes Warum");
+      await wrapper.get('[data-test="why-take-over"]').trigger("click");
+      expect(wrapper.find('textarea[name="why"]').exists()).toBe(false);
+      await save(wrapper);
+      expect(updateTodo).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ why: null }),
+      );
+    });
   });
 });

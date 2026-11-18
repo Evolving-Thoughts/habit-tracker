@@ -8,6 +8,8 @@ export type CategoryChoice = number | null | "default";
 
 defineProps<{ id: string; inheritsFromParent?: boolean }>();
 const choice = defineModel<CategoryChoice>({ default: "default" });
+/** The list once loaded, so a form can name the chosen category. */
+const emit = defineEmits<{ loaded: [categories: CategoryResponse[]] }>();
 const categories = ref<CategoryResponse[]>([]);
 
 onMounted(async () => {
@@ -17,6 +19,7 @@ onMounted(async () => {
     // Creating an entry must still work without the optional category list.
     categories.value = [];
   }
+  emit("loaded", categories.value);
 });
 </script>
 

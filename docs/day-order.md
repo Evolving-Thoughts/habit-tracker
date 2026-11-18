@@ -60,8 +60,10 @@ export only, as Logbuch events (see `logbook.md`).
 
 ## Frontend
 
-- `PlanFields.vue`: the day (with "Heute" / "Morgen") and an optional fixed time,
-  used by every quest form. `utils/todo-input.ts` validates them.
+- `PlanFields.vue`: the day (with "Heute" / "Morgen"); `AppointmentFields.vue`:
+  the optional fixed time behind the disclosure "Termin (feste Uhrzeit)", open
+  when the quest has one, cleared when the day goes. Every quest form uses
+  both; `utils/todo-input.ts` validates them.
 - `utils/today-agenda.ts` arranges Heute. `currentItem` is the one rule for
   what is up now, shared by Heute's focus card and the Fokus-Modus: an
   appointment (a todo or habit with a time) from its start until its end, the

@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import { computed, watch } from "vue";
+import { computed } from "vue";
 import { addDays, getCurrentDateInTimeZone } from "../utils/date";
 
 /**
- * When a quest is planned: its day, and a time only if it is an appointment.
- * Everything else is worked through in the order of its day.
+ * The day a quest is planned for. Everything on a day is worked through in
+ * its order; only an appointment gets a time (`AppointmentFields`).
  */
 const date = defineModel<string>("date", { required: true });
-const time = defineModel<string>("time", { required: true });
 defineProps<{ idPrefix: string }>();
 
 const today = getCurrentDateInTimeZone();
@@ -19,62 +18,37 @@ const days = computed(() => [
 function pick(day: string): void {
   date.value = date.value === day ? "" : day;
 }
-// Without a day there is nothing an appointment could be on.
-watch(date, (day) => {
-  if (!day) time.value = "";
-});
 </script>
 
 <template>
-  <div class="plan-fields">
-    <div class="field">
-      <label :for="`${idPrefix}-date`">Tag · optional</label>
-      <div class="plan-fields__day">
-        <input
-          :id="`${idPrefix}-date`"
-          v-model="date"
-          name="scheduledDate"
-          type="date"
-          :aria-describedby="`${idPrefix}-date-hint`"
-        />
-        <button
-          v-for="day in days"
-          :key="day.value"
-          type="button"
-          class="chip"
-          :aria-pressed="date === day.value"
-          @click="pick(day.value)"
-        >
-          {{ day.label }}
-        </button>
-      </div>
-      <small :id="`${idPrefix}-date-hint`" class="plan-fields__hint">
-        Ohne Tag liegt die Quest im Questlog.
-      </small>
-    </div>
-    <div class="field">
-      <label :for="`${idPrefix}-time`">Feste Uhrzeit · optional</label>
+  <div class="field">
+    <label :for="`${idPrefix}-date`">Tag · optional</label>
+    <div class="plan-fields__day">
       <input
-        :id="`${idPrefix}-time`"
-        v-model="time"
-        name="timeOfDay"
-        type="time"
-        :disabled="!date"
-        :aria-describedby="`${idPrefix}-time-hint`"
+        :id="`${idPrefix}-date`"
+        v-model="date"
+        name="scheduledDate"
+        type="date"
+        :aria-describedby="`${idPrefix}-date-hint`"
       />
-      <small :id="`${idPrefix}-time-hint`" class="plan-fields__hint">
-        Nur für Termine. Alles andere erledigst du in deiner Reihenfolge.
-      </small>
+      <button
+        v-for="day in days"
+        :key="day.value"
+        type="button"
+        class="chip"
+        :aria-pressed="date === day.value"
+        @click="pick(day.value)"
+      >
+        {{ day.label }}
+      </button>
     </div>
+    <small :id="`${idPrefix}-date-hint`" class="plan-fields__hint">
+      Ohne Tag liegt die Quest im Questlog.
+    </small>
   </div>
 </template>
 
 <style scoped>
-.plan-fields {
-  display: grid;
-  gap: var(--space-4);
-}
-
 .plan-fields__day {
   display: flex;
   flex-wrap: wrap;
@@ -82,9 +56,15 @@ watch(date, (day) => {
   align-items: center;
 }
 
+/* Narrow enough that the date and both chips share one line at 375px. */
 .plan-fields__day input {
-  flex: 1 1 10rem;
+  flex: 1 1 9rem;
   width: auto;
+  min-width: 0;
+}
+
+.plan-fields__day .chip {
+  padding: 0 var(--space-3);
 }
 
 /* Dialogs tint every button; the chosen day still has to stand out. */

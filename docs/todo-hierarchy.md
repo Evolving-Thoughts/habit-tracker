@@ -197,9 +197,13 @@ lookup from that.
   from the same snapshot (`TodoAncestry.campaignOf`), so the Questlog and the
   Plan's Questlog column draw the campaign stripe like Heute does.
 - Day planner and history items carry one `why`: the reason to show.
-- The frontend's `WhyField` starts with the inherited text. Leaving it unchanged
-  or empty sends no `why` and keeps inheriting; a different text becomes the
-  own reason. `PATCH` with an empty `why` returns to inheriting.
+- The frontend's `WhyField` quotes the inherited text instead of offering it
+  as editable text, so no keystroke can turn it into a copy. "Eigenes Warum
+  schreiben" opens an empty field; what is typed there becomes the own reason
+  (left empty, or equal to the inherited text, it sends no `why` and keeps
+  inheriting). "Wieder übernehmen" clears an own reason: the editor then sends
+  an empty `why`, and `PATCH` with an empty `why` returns to inheriting. The
+  editor sends `why` only when it changed.
 
 Known limit: an entry below a reasoned ancestor cannot have "no reason at all".
 

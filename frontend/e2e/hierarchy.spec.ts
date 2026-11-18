@@ -145,9 +145,15 @@ test("Why: an Unter-Quest takes over the campaign's reason until it gets its own
     "Unter-Quest zu Halbmarathon hinzufügen",
   );
   const dialog = page.getByRole("dialog");
-  const why = dialog.getByLabel("Warum · optional");
-  await expect(why).toHaveValue("Im März ins Ziel kommen");
-  await expect(dialog.getByText("Übernommen von „Halbmarathon“")).toBeVisible();
+  // Quoted, not a text to edit: nothing can turn it into a copy by accident.
+  const why = dialog.getByRole("group", { name: "Warum", exact: true });
+  await expect(why.locator("blockquote")).toContainText(
+    "Übernommen von „Halbmarathon“:",
+  );
+  await expect(why.locator("blockquote")).toContainText(
+    "Im März ins Ziel kommen",
+  );
+  await expect(dialog.locator("[name=why]")).toHaveCount(0);
   await dialog.locator("[name=title]").fill("Laufschuhe kaufen");
   await dialog
     .getByRole("button", { name: "Quest erstellen", exact: true })
@@ -179,19 +185,108 @@ test("Why: an Unter-Quest takes over the campaign's reason until it gets its own
     page.getByRole("heading", { name: "Halbmarathon", exact: true }),
   ).toHaveCount(0);
 
-  // Changing the text gives the Unter-Quest its own reason.
+  // Writing an own reason, on purpose, gives the Unter-Quest its own.
   await openView(page, "Kampagnen");
   await row(page, child.id)
     .getByRole("button", { name: "Laufschuhe kaufen bearbeiten", exact: true })
     .click();
   const editor = page.getByRole("dialog");
-  await editor.getByLabel("Warum · optional").fill("Ohne Blasen laufen");
-  await expect(editor.getByText("Eigenes Warum.")).toBeVisible();
+  await editor
+    .getByRole("button", { name: "Eigenes Warum schreiben", exact: true })
+    .click();
+  const own = editor.getByLabel("Eigenes Warum", { exact: true });
+  await expect(own).toBeFocused();
+  await expect(own).toHaveValue("");
+  await own.fill("Ohne Blasen laufen");
   await editor.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(editor).not.toBeVisible();
   expect((await todos()).find((t) => t.id === child.id)?.why).toBe(
     "Ohne Blasen laufen",
   );
+});
+test("Why: typing in the editor never detaches the inherited reason, and “Wieder übernehmen” restores it", async ({
+  page,
+  request,
+}) => {
+  const root = await campaign(request, "Buch schreiben");
+  await request.patch(`${API_URL}/todos/${root.id}`, {
+    data: { why: "Die Geschichte fertig erzählen" },
+  });
+  const child = await create(request, "Kapitel 3 überarbeiten", root.id);
+  const stored = async () =>
+    (await (await request.get(`${API_URL}/todos/${child.id}`)).json()) as {
+      why: string | null;
+      inheritedWhy: { text: string } | null;
+    };
+  await open(page);
+  const edit = async () => {
+    await row(page, child.id)
+      .getByRole("button", {
+        name: "Kapitel 3 überarbeiten bearbeiten",
+        exact: true,
+      })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.locator("[name=title]")).toHaveValue(
+      "Kapitel 3 überarbeiten",
+    );
+    return dialog;
+  };
+
+  // Every keystroke lands somewhere else: the quote is no field.
+  let editor = await edit();
+  const quote = editor.locator("blockquote");
+  await expect(quote).toContainText("Die Geschichte fertig erzählen");
+  await quote.click();
+  await page.keyboard.type("Tippfehler");
+  await editor.locator("[name=duration]").focus();
+  await page.keyboard.press("Tab");
+  await page.keyboard.type("x");
+  await expect(editor.locator("[name=why]")).toHaveCount(0);
+  await editor.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(editor).not.toBeVisible();
+  expect(await stored()).toMatchObject({
+    why: null,
+    inheritedWhy: { text: "Die Geschichte fertig erzählen" },
+  });
+
+  // An own reason on purpose, then taken back.
+  editor = await edit();
+  await editor
+    .getByRole("button", { name: "Eigenes Warum schreiben", exact: true })
+    .click();
+  await page.keyboard.type("Weil es der Wendepunkt ist");
+  await editor.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(editor).not.toBeVisible();
+  expect((await stored()).why).toBe("Weil es der Wendepunkt ist");
+
+  editor = await edit();
+  await expect(editor.getByLabel("Eigenes Warum", { exact: true })).toHaveValue(
+    "Weil es der Wendepunkt ist",
+  );
+  await editor
+    .getByRole("button", { name: "Wieder übernehmen", exact: true })
+    .click();
+  await expect(
+    editor.getByRole("button", { name: "Eigenes Warum schreiben", exact: true }),
+  ).toBeFocused();
+  await editor.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(editor).not.toBeVisible();
+  expect((await stored()).why).toBeNull();
+
+  // After a reload it still inherits, live.
+  await request.patch(`${API_URL}/todos/${root.id}`, {
+    data: { why: "Die Geschichte endlich fertig erzählen" },
+  });
+  await page.reload();
+  editor = await edit();
+  await expect(editor.locator("blockquote")).toContainText(
+    "Übernommen von „Buch schreiben“:",
+  );
+  await expect(editor.locator("blockquote")).toContainText(
+    "Die Geschichte endlich fertig erzählen",
+  );
+  await expect(editor.locator("[name=why]")).toHaveCount(0);
 });
 test("Tree: accessible move to parent and root, edit duration, preserve own schedule", async ({
   page,

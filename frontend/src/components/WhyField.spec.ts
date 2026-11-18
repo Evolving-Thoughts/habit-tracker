@@ -1,7 +1,9 @@
-import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
-import { defineComponent, ref } from "vue";
+import { enableAutoUnmount, mount } from "@vue/test-utils";
+import { afterEach, describe, expect, it } from "vitest";
+import { defineComponent, nextTick, ref } from "vue";
 import WhyField from "./WhyField.vue";
+
+enableAutoUnmount(afterEach);
 
 const inherited = { text: "Gesund bleiben", fromId: 1, fromTitle: "Fit" };
 
@@ -14,60 +16,89 @@ function mountField(initial = "", from: typeof inherited | null = inherited) {
       setup: () => ({ own, source }),
       template: '<WhyField id="why" v-model="own" :inherited="source" />',
     }),
+    { attachTo: document.body },
   );
-  return { wrapper, own, source, area: wrapper.get("textarea") };
+  const writeOwn = () => wrapper.get('[data-test="why-write-own"]');
+  const takeOver = () => wrapper.get('[data-test="why-take-over"]');
+  return { wrapper, own, source, writeOwn, takeOver };
 }
 
 describe("WhyField", () => {
-  it("starts with the inherited reason without storing a copy", () => {
-    const { wrapper, own, area } = mountField();
-    expect(area.element.value).toBe("Gesund bleiben");
+  it("quotes the inherited reason instead of offering it as text to edit", () => {
+    const { wrapper, own, writeOwn } = mountField();
+    expect(wrapper.find("textarea").exists()).toBe(false);
+    expect(wrapper.get(".why-field__from").text()).toBe(
+      "Übernommen von „Fit“:",
+    );
+    expect(wrapper.get("blockquote p").text()).toBe("Gesund bleiben");
+    expect(writeOwn().text()).toBe("Eigenes Warum schreiben");
     expect(own.value).toBe("");
-    expect(wrapper.text()).toContain("Übernommen von „Fit“");
+    expect(wrapper.get('[role="group"]').attributes("aria-labelledby")).toBe(
+      "why-label",
+    );
   });
 
-  it("turns a changed text into an own reason", async () => {
-    const { wrapper, own, area } = mountField();
-    await area.setValue("Marathon laufen");
+  it("opens an empty own field with the focus in it, and keeps the quote as context", async () => {
+    const { wrapper, own, writeOwn } = mountField();
+    await writeOwn().trigger("click");
+    const area = wrapper.get<HTMLTextAreaElement>("textarea");
+    expect(area.element.value).toBe("");
+    expect(document.activeElement).toBe(area.element);
+    expect(wrapper.get(`label[for="why"]`).text()).toBe("Eigenes Warum");
+    expect(wrapper.get("blockquote").text()).toContain(
+      "Ersetzt das Warum von „Fit“",
+    );
+    expect(area.attributes("aria-describedby")).toBe("why-inherited why-hint");
+    // Nothing typed yet: still inheriting.
+    expect(own.value).toBe("");
+    await area.setValue("  Marathon laufen ");
     expect(own.value).toBe("Marathon laufen");
-    expect(wrapper.text()).toContain("Eigenes Warum.");
   });
 
-  it("inherits again when the text matches or the field is emptied", async () => {
-    const { own, area } = mountField("Marathon laufen");
-    await area.setValue("  Gesund bleiben ");
+  it("keeps inheriting when the own text is left empty or repeats the inherited one", async () => {
+    const { wrapper, own, writeOwn } = mountField();
+    await writeOwn().trigger("click");
+    const area = wrapper.get("textarea");
+    await area.setValue("Gesund bleiben");
     expect(own.value).toBe("");
-    await area.setValue("Anderes");
     await area.setValue("");
     expect(own.value).toBe("");
-    // While typing the field may stay empty; leaving it shows what applies.
-    expect(area.element.value).toBe("");
-    await area.trigger("blur");
-    expect(area.element.value).toBe("Gesund bleiben");
   });
 
-  it("offers to take the inherited reason over again", async () => {
-    const { wrapper, own, area } = mountField("Eigenes");
-    expect(area.element.value).toBe("Eigenes");
-    await wrapper.get("button").trigger("click");
+  it("takes the inherited reason over again and returns the focus", async () => {
+    const { wrapper, own, takeOver } = mountField("Eigenes");
+    expect(wrapper.get<HTMLTextAreaElement>("textarea").element.value).toBe(
+      "Eigenes",
+    );
+    await takeOver().trigger("click");
     expect(own.value).toBe("");
-    expect(area.element.value).toBe("Gesund bleiben");
+    expect(wrapper.find("textarea").exists()).toBe(false);
+    expect(document.activeElement).toBe(
+      wrapper.get('[data-test="why-write-own"]').element,
+    );
   });
 
   it("follows a reset form and a reason that loads later", async () => {
-    const { own, source, area, wrapper } = mountField("Eigenes", null);
-    expect(wrapper.find("p").exists()).toBe(false);
+    const { own, source, wrapper, writeOwn } = mountField("Eigenes", null);
+    expect(wrapper.find("blockquote").exists()).toBe(false);
     own.value = "";
-    await wrapper.vm.$nextTick();
-    expect(area.element.value).toBe("");
+    await nextTick();
+    expect(wrapper.get<HTMLTextAreaElement>("textarea").element.value).toBe("");
     source.value = inherited;
-    await wrapper.vm.$nextTick();
-    expect(area.element.value).toBe("Gesund bleiben");
-    expect(own.value).toBe("");
+    await nextTick();
+    expect(wrapper.find("textarea").exists()).toBe(false);
+    expect(writeOwn().text()).toBe("Eigenes Warum schreiben");
+    // A form reset while writing shows the quote again.
+    await writeOwn().trigger("click");
+    await wrapper.get("textarea").setValue("Neu");
+    own.value = "";
+    await nextTick();
+    expect(wrapper.find("textarea").exists()).toBe(false);
   });
 
   it("is a plain optional field when there is nothing to inherit", async () => {
-    const { wrapper, own, area } = mountField("", null);
+    const { wrapper, own } = mountField("", null);
+    const area = wrapper.get("textarea");
     expect(area.attributes("aria-describedby")).toBeUndefined();
     await area.setValue("  Kopf frei ");
     expect(own.value).toBe("Kopf frei");
