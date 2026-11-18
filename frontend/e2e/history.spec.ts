@@ -295,16 +295,30 @@ test("Calendar week: open plans, overdue Quests and weekly targets stay calm", a
   );
   await expect(planned).not.toContainText("überfällig");
   await expect(planned).toContainText("Tägliche Gitarre");
-  // Open plans can be moved here, but never ticked off.
+  // Open quests get the ring, as on Heute; a daily run is ticked on its day.
   await expect(planned.getByRole("button", { name: /erledigen$/ })).toHaveCount(
-    0,
+    2,
   );
   await expect(
     planned.getByRole("button", {
+      name: "Tägliche Gitarre erledigen",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  // Moving sits in the row's menu, not on a lone button.
+  await planned
+    .getByRole("button", {
+      name: "Aktionen für Überfälliger Artikel",
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByRole("menuitem", {
       name: "Überfälliger Artikel verschieben",
       exact: true,
     }),
   ).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(page.locator(".empty-state")).toHaveCount(0);
   await expect(page.locator("body")).toHaveJSProperty(
     "scrollWidth",
@@ -483,9 +497,16 @@ test("Calendar day: date placement, filters, overdue plans and completion refres
     "Täglicher Daily",
   ]);
   await expect(planned).toContainText(`noch offen seit ${shortDate(old)}`);
+  // The open quest has its ring, as on Heute; the daily run has none here.
   await expect(planned.getByRole("button", { name: /erledigen$/ })).toHaveCount(
-    0,
+    1,
   );
+  await expect(
+    planned.getByRole("button", {
+      name: "Überfälliges Quest erledigen",
+      exact: true,
+    }),
+  ).toBeVisible();
   const before = (await (
     await request.get(`${API_URL}/habits/${habit.id}/occurrences`)
   ).json()) as unknown;

@@ -195,6 +195,18 @@ export function toggleTimer(
   return true;
 }
 
+/** Whether the stopwatch of this target runs or waits paused; null when it has none. */
+export function timerStateOf(
+  controller: TimerController | null,
+  kind: TimerTarget["kind"],
+  targetId: number | null,
+): "running" | "paused" | null {
+  const current = controller?.timer.value;
+  if (!current || targetId === null) return null;
+  if (current.kind !== kind || current.targetId !== targetId) return null;
+  return current.state === "running" ? "running" : "paused";
+}
+
 export const timerKey: InjectionKey<TimerController> = Symbol("timer");
 export function useTimer(): TimerController | null {
   return inject(timerKey, null);

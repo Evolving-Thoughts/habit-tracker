@@ -3,12 +3,15 @@ defineProps<{
   icon: "play" | "pause" | "stop" | "edit" | "check";
   label: string;
   disabled?: boolean;
+  /** The stopwatch of this row runs or waits: the button stands out a little. */
+  active?: boolean;
 }>();
 defineEmits<{ click: [] }>();
 </script>
 <template>
   <button
     class="timer-icon"
+    :class="{ 'timer-icon--active': active }"
     type="button"
     :aria-label="label"
     :title="label"
@@ -84,6 +87,10 @@ defineEmits<{ click: [] }>();
 .timer-icon:focus-visible {
   outline: 3px solid var(--color-action-strong);
   outline-offset: 3px;
+}
+.timer-icon--active {
+  background: var(--color-action-tint-hover);
+  box-shadow: inset 0 0 0 2px var(--color-action-strong);
 }
 .timer-icon:disabled {
   background: transparent;

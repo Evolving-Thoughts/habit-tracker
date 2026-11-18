@@ -152,3 +152,21 @@ export async function list(
   expect(response.ok()).toBeTruthy();
   return response.json();
 }
+
+/**
+ * A step of the timer bar: a round button beside the time on wide screens,
+ * an entry of the bar's menu on a phone.
+ */
+export async function timerBarAction(page: Page, name: string) {
+  const bar = page.getByRole("complementary", { name: "Aktueller Timer" });
+  await expect(bar).toBeVisible();
+  const button = bar.getByRole("button", { name, exact: true });
+  if (await button.isVisible()) {
+    await button.click();
+    return;
+  }
+  await bar
+    .getByRole("button", { name: "Weitere Aktionen der Stoppuhr", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name, exact: true }).click();
+}

@@ -167,6 +167,7 @@ describe('Todos API (e2e)', () => {
         icon: null,
         why: null,
         inheritedWhy: null,
+        campaign: null,
         title: 'Learn NestJS',
         completed: false,
         completedAt: null,
@@ -482,6 +483,33 @@ describe('Todos API (e2e)', () => {
       expect((response.body as TodoResponseDto[]).map((t) => t.id)).toEqual([
         open,
       ]);
+    });
+
+    it('names the campaign each backlog todo works towards', async () => {
+      const create = async (body: object) =>
+        (
+          (await request(httpServer).post('/todos').send(body).expect(201))
+            .body as TodoResponseDto
+        ).id;
+      const campaign = await create({ title: 'Marathon', color: 'berry' });
+      const step = await create({ title: 'Schuhe kaufen', parentId: campaign });
+      const loose = await create({ title: 'Lose' });
+
+      const response = await request(httpServer)
+        .get('/todos/backlog')
+        .expect(200);
+      const byId = new Map(
+        (response.body as TodoResponseDto[]).map((t) => [t.id, t.campaign]),
+      );
+
+      expect(byId.get(step)).toEqual({
+        id: campaign,
+        title: 'Marathon',
+        color: 'berry',
+        icon: null,
+      });
+      expect(byId.get(campaign)).toMatchObject({ id: campaign });
+      expect(byId.get(loose)).toBeNull();
     });
   });
 

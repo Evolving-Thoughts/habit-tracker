@@ -1,14 +1,32 @@
-<script setup lang="ts">
+<script lang="ts">
 import type { HistoryPlannedItem } from "../types/history";
+import type { MenuEntry } from "../utils/row-actions";
+
+/** What the calendar lets a planned row do; the view owns every write. */
+export type PlannedActions = {
+  /** Open quests get the ring and are ticked like on Heute. */
+  checkable: (item: HistoryPlannedItem) => boolean;
+  complete: (item: HistoryPlannedItem) => void;
+  /** The title opens the editor where the entry is stored. */
+  editable: (item: HistoryPlannedItem) => boolean;
+  edit: (item: HistoryPlannedItem) => void;
+  /** "Aktionen für …": moving to today, tomorrow, next week or another day. */
+  menu: (item: HistoryPlannedItem) => MenuEntry[];
+  busy: (item: HistoryPlannedItem) => boolean;
+};
+</script>
+
+<script setup lang="ts">
+import { computed } from "vue";
+import ItemRow from "./ItemRow.vue";
 import { categoryMark } from "../utils/category-mark";
 import { shortDate } from "../utils/history";
 
 const props = defineProps<{
   items: HistoryPlannedItem[];
-  /** Which entries may be moved; without it the list is read-only. */
-  canMove?: (item: HistoryPlannedItem) => boolean;
+  /** Without it the list is read-only. */
+  actions?: PlannedActions;
 }>();
-const emit = defineEmits<{ move: [item: HistoryPlannedItem] }>();
 
 function details(item: HistoryPlannedItem): string[] {
   const parts: string[] = [];
@@ -22,36 +40,48 @@ function details(item: HistoryPlannedItem): string[] {
   return parts;
 }
 
-const movable = (item: HistoryPlannedItem) => props.canMove?.(item) ?? false;
+const can = <K extends "checkable" | "editable">(
+  kind: K,
+  item: HistoryPlannedItem,
+) => props.actions?.[kind](item) ?? false;
+/* Daily runs keep the ring's place, so all titles of the list line up. */
+const anyCheckable = computed(() =>
+  props.items.some((item) => can("checkable", item)),
+);
 </script>
 
 <template>
   <ul class="planned-items">
-    <li v-for="item in items" :key="item.key" class="planned-item">
-      <h3>{{ item.title }}</h3>
-      <p v-if="item.why" class="planned-item__why">{{ item.why }}</p>
-      <p
-        v-if="item.categoryName || details(item).length"
-        class="planned-item__details"
+    <li
+      v-for="item in items"
+      :key="item.key"
+      class="planned-item"
+      :data-focus-key="item.key"
+    >
+      <ItemRow
+        :title="item.title"
+        :checkable="can('checkable', item)"
+        :keep-ring-column="anyCheckable"
+        :editable="can('editable', item)"
+        :busy="actions?.busy(item) ?? false"
+        :menu="actions?.menu(item) ?? []"
+        @toggle="actions?.complete(item)"
+        @edit="actions?.edit(item)"
       >
-        <span v-if="item.categoryName" class="planned-item__category">
-          <i
-            class="planned-item__mark"
-            :style="{ background: categoryMark(item.categoryName) }"
-            aria-hidden="true"
-          />{{ item.categoryName }}
-        </span>
-        <span v-for="part in details(item)" :key="part">{{ part }}</span>
-      </p>
-      <button
-        v-if="movable(item)"
-        type="button"
-        class="btn planned-item__move"
-        :aria-label="`${item.title} verschieben`"
-        @click="emit('move', item)"
-      >
-        Verschieben
-      </button>
+        <template v-if="item.categoryName || details(item).length" #meta>
+          <span v-if="item.categoryName" class="planned-item__category">
+            <i
+              class="planned-item__mark"
+              :style="{ background: categoryMark(item.categoryName) }"
+              aria-hidden="true"
+            />{{ item.categoryName }}
+          </span>
+          <span v-for="part in details(item)" :key="part">{{ part }}</span>
+        </template>
+        <template v-if="item.why" #below>
+          <p class="planned-item__why">{{ item.why }}</p>
+        </template>
+      </ItemRow>
     </li>
   </ul>
 </template>
@@ -65,39 +95,16 @@ const movable = (item: HistoryPlannedItem) => props.canMove?.(item) ?? false;
   list-style: none;
 }
 
-/* Upcoming entries have no time and no state yet: just the text. */
 .planned-item {
   min-width: 0;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-card);
-  background: var(--color-surface);
-}
-
-.planned-item h3 {
-  margin: 0;
-  color: var(--color-ink);
-  font-size: 1.0625rem;
-  font-weight: 700;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
 }
 
 .planned-item__why {
-  margin: 0.15rem 0 0;
+  margin: 0.1rem 0 0;
   color: var(--color-ink-muted);
   font-size: 0.9375rem;
   line-height: 1.4;
   overflow-wrap: anywhere;
-}
-
-.planned-item__details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 var(--space-3);
-  margin: 0.15rem 0 0;
-  color: var(--color-ink-muted);
-  font-size: 0.875rem;
-  font-variant-numeric: tabular-nums;
 }
 
 .planned-item__category {
@@ -110,9 +117,5 @@ const movable = (item: HistoryPlannedItem) => props.canMove?.(item) ?? false;
   width: 0.625rem;
   height: 0.625rem;
   border-radius: 0.2rem;
-}
-
-.planned-item__move {
-  margin-top: var(--space-2);
 }
 </style>

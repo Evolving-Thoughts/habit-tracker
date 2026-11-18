@@ -13,11 +13,12 @@ import { useSortable } from "../composables/useSortable";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import { useUndo } from "../composables/useUndo";
-import { toggleTimer, useTimer } from "../composables/useTimer";
+import { timerStateOf, toggleTimer, useTimer } from "../composables/useTimer";
 import {
   focusWhenReady,
   useShortcutHandlers,
 } from "../composables/useShortcuts";
+import ActionMenu from "../components/ActionMenu.vue";
 import AppIcon from "../components/AppIcon.vue";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
@@ -48,6 +49,11 @@ import {
 import { categoryMark } from "../utils/category-mark";
 import { questHoursLine } from "../utils/quest-hours";
 import { hrefOf } from "../routes";
+import {
+  quickMoveEntries,
+  quickMoves,
+  type MenuEntry,
+} from "../utils/row-actions";
 
 type EditingTarget = {
   kind: "todo" | "habit";
@@ -410,6 +416,67 @@ function moveByKey(key: string | null, date: string): boolean {
   });
   return true;
 }
+/*
+ * "Aktionen für …" of a row and of the focus card. The quick moves run the
+ * same step as T, D and W; "Verschieben" opens the dialog the row had.
+ */
+function canMoveByDialog(item: DayPlannerItem): boolean {
+  if (item.status !== "pending") return false;
+  if (item.type === "todo") return true;
+  return (item.moveUntil ?? "") > item.scheduledDate;
+}
+function rowMenu(item: DayPlannerItem): MenuEntry[] {
+  const today = planner.value?.date;
+  if (!today || item.status !== "pending") return [];
+  const busy = isUpdating(item);
+  const entries: MenuEntry[] = [];
+  if (item.type === "habit")
+    entries.push({
+      id: "skip",
+      label: "Überspringen",
+      icon: "skip",
+      ariaLabel: `${item.title} überspringen`,
+      disabled: busy,
+      run: () => void skipHabit(item),
+    });
+  const moves = quickMoves(today, {
+    date: item.scheduledDate,
+    timeOfDay: item.type === "todo" ? item.timeOfDay : null,
+    moveUntil: item.type === "habit" ? item.moveUntil : undefined,
+  });
+  entries.push(
+    ...quickMoveEntries(
+      item.title,
+      moves,
+      (move) => void moveByKey(getItemKey(item), move.date),
+      { disabled: busy },
+    ),
+  );
+  if (canMoveByDialog(item))
+    entries.push({
+      id: "move",
+      label:
+        item.type === "todo" && item.timeOfDay
+          ? "Termin verschieben …"
+          : "Anderer Tag …",
+      icon: "move",
+      ariaLabel: `${item.title} verschieben`,
+      disabled: busy,
+      run: () => openMoving(item),
+    });
+  return entries;
+}
+/** The focus card says in words when its stopwatch runs. */
+const focusTimer = computed(() => {
+  const focus = agenda.value?.focus;
+  if (!focus) return null;
+  return timerStateOf(
+    timer,
+    focus.type === "todo" ? "todo" : "occurrence",
+    focus.type === "todo" ? focus.todoId : focus.occurrenceId,
+  );
+});
+
 useShortcutHandlers(
   {
     "quest.new": () => {
@@ -591,11 +658,49 @@ useShortcutHandlers(
           :data-sort-key="focusInQueue ? getItemKey(agenda.focus) : undefined"
           aria-labelledby="focus-title"
         >
-          <h2 id="focus-title" class="focus__title">{{ agenda.focus.title }}</h2>
+          <div class="focus__head">
+            <!-- The heading keeps the plain title; the button inside says "bearbeiten". -->
+            <h2
+              id="focus-title"
+              class="focus__title"
+              :aria-label="agenda.focus.title"
+            >
+              <button
+                class="focus__title-button"
+                data-edit-button
+                type="button"
+                :disabled="isUpdating(agenda.focus)"
+                :aria-label="`${agenda.focus.title} bearbeiten`"
+                @click="openEditing(agenda.focus)"
+              >
+                {{ agenda.focus.title }}
+              </button>
+            </h2>
+            <!-- Top right, where the plus button never covers it. -->
+            <button
+              v-if="focusInQueue && rows.length"
+              class="focus__grip sort-handle"
+              type="button"
+              :disabled="isUpdating(agenda.focus)"
+              :aria-label="`${agenda.focus.title} in der Reihenfolge verschieben`"
+              title="Ziehen oder mit den Pfeiltasten verschieben"
+              @keydown.down.prevent="shiftInOrder(agenda.focus, 1)"
+            >
+              <AppIcon name="grip" />
+            </button>
+          </div>
           <p v-if="agenda.focus.why" class="focus__why">
             {{ agenda.focus.why }}
           </p>
-          <p v-if="focusMeta.length || focusGoal" class="focus__meta">
+          <p
+            v-if="focusMeta.length || focusGoal || focusTimer"
+            class="focus__meta"
+          >
+            <span v-if="focusTimer" class="focus__running">
+              <i aria-hidden="true" />{{
+                focusTimer === "running" ? "läuft" : "pausiert"
+              }}
+            </span>
             <span v-if="agenda.focus.categoryName" class="focus__category">
               <i
                 class="category-mark"
@@ -628,41 +733,20 @@ useShortcutHandlers(
               :eligible="agenda.focus.timerEligible"
               :disabled="isUpdating(agenda.focus)"
             />
-            <a class="focus__mode" :href="hrefOf('focus')">
+            <a
+              class="focus__mode"
+              :href="hrefOf('focus')"
+              aria-label="Fokus-Modus"
+              title="Fokus-Modus"
+            >
               <AppIcon name="focus" />
-              <span>Fokus-Modus</span>
             </a>
-            <button
-              v-if="agenda.focus.type === 'habit'"
-              class="focus__more focus__more--tinted"
-              type="button"
+            <ActionMenu
+              v-if="rowMenu(agenda.focus).length"
+              :title="agenda.focus.title"
+              :entries="rowMenu(agenda.focus)"
               :disabled="isUpdating(agenda.focus)"
-              :aria-label="`${agenda.focus.title} überspringen`"
-              @click="skipHabit(agenda.focus)"
-            >
-              Überspringen
-            </button>
-            <button
-              class="focus__more focus__more--tinted"
-              data-edit-button
-              type="button"
-              :disabled="isUpdating(agenda.focus)"
-              :aria-label="`${agenda.focus.title} bearbeiten`"
-              @click="openEditing(agenda.focus)"
-            >
-              Bearbeiten
-            </button>
-            <button
-              v-if="focusInQueue && rows.length"
-              class="focus__grip sort-handle"
-              type="button"
-              :disabled="isUpdating(agenda.focus)"
-              :aria-label="`${agenda.focus.title} in der Reihenfolge verschieben`"
-              title="Ziehen oder mit den Pfeiltasten verschieben"
-              @keydown.down.prevent="shiftInOrder(agenda.focus, 1)"
-            >
-              <AppIcon name="grip" />
-            </button>
+            />
           </div>
         </section>
         <section v-else-if="!agenda.carriedOver.length" class="today-view__empty">
@@ -677,11 +761,10 @@ useShortcutHandlers(
           :data-sort-key="getItemKey(item)"
           :item="item"
           :is-updating="isUpdating(item)"
+          :menu="rowMenu(item)"
           sortable
           @toggle="toggleItem"
-          @skip="skipHabit"
           @edit="openEditing"
-          @move="openMoving"
           @shift="shiftInOrder"
         />
       </div>
@@ -804,10 +887,9 @@ useShortcutHandlers(
                 :item="entry.item"
                 :time="entry.time"
                 :is-updating="isUpdating(entry.item)"
+                :menu="rowMenu(entry.item)"
                 @toggle="toggleItem"
-                @skip="skipHabit"
                 @edit="openEditing"
-                @move="openMoving"
               />
               <div v-else class="timeline__event">
                 <span class="timeline__time">{{ entry.time }}</span>
@@ -846,9 +928,7 @@ useShortcutHandlers(
             :item="item"
             :is-updating="isUpdating(item)"
             @toggle="toggleItem"
-            @skip="skipHabit"
             @edit="openEditing"
-            @move="openMoving"
           />
         </div>
       </section>
@@ -985,7 +1065,15 @@ useShortcutHandlers(
   font-variant-numeric: tabular-nums;
 }
 
+.focus__head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
 .focus__title {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   font-size: clamp(1.5rem, 6vw, 1.875rem);
   font-weight: 800;
@@ -995,15 +1083,63 @@ useShortcutHandlers(
   text-wrap: balance;
 }
 
+/* The title opens the editor, like a row's title. */
+.focus__title-button {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+  transition: text-decoration-color 160ms var(--ease-out);
+}
+
+.focus__title-button:hover:not(:disabled) {
+  text-decoration-color: var(--color-line);
+}
+
+.focus__title-button:disabled {
+  cursor: progress;
+}
+
+/* "läuft" is a state: ink, never orange. */
+.focus__running {
+  display: inline-flex;
+  gap: 0.375rem;
+  align-items: center;
+  color: var(--color-ink);
+  font-weight: 800;
+}
+
+.focus__running i {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--color-ink);
+  animation: today-pulse 1.6s var(--ease-out) infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .focus__running i {
+    animation: none;
+  }
+}
+
 .focus__why {
   max-width: 60ch;
   margin: var(--space-2) 0 0;
   font-size: 1.0625rem;
 }
 
+/* One line on a phone: Erledigt takes the room, the round buttons follow. */
 .focus__actions {
   display: flex;
-  flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
   margin-top: var(--space-4);
@@ -1011,7 +1147,8 @@ useShortcutHandlers(
 
 .focus__done {
   display: inline-flex;
-  flex: 1 1 10rem;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: var(--space-2);
   align-items: center;
   justify-content: center;
@@ -1027,6 +1164,13 @@ useShortcutHandlers(
   transition:
     transform 420ms var(--spring),
     background-color 160ms var(--ease-out);
+}
+
+/* Wide screens keep Erledigt a button, not a bar across the card. */
+@media (min-width: 40rem) {
+  .focus__done {
+    flex: 0 1 18rem;
+  }
 }
 
 .focus__done :deep(svg) {
@@ -1047,43 +1191,30 @@ useShortcutHandlers(
   cursor: progress;
 }
 
+/* The Fokus-Modus is a round icon button beside the stopwatch; its name is the tooltip. */
 .focus__mode {
-  display: inline-flex;
-  gap: var(--space-2);
-  align-items: center;
-  min-height: 3.25rem;
-  padding: 0 var(--space-4);
-  border-radius: var(--radius-control);
+  display: grid;
+  flex: none;
+  width: var(--tap);
+  height: var(--tap);
+  place-items: center;
+  border-radius: 50%;
   background: var(--color-action-tint);
   color: var(--color-action-strong);
-  font-weight: 700;
-  text-decoration: none;
+  transition: transform 420ms var(--spring);
+}
+
+.focus__mode:hover {
+  background: var(--color-action-tint-hover);
+}
+
+.focus__mode:active {
+  transform: scale(0.92);
 }
 
 .focus__mode :deep(svg) {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
-.focus__more {
-  min-height: 3.25rem;
-  padding: 0 var(--space-4);
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--color-ink-muted);
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.focus__more:hover:not(:disabled) {
-  background: var(--color-action-tint);
-}
-
-.focus__more--tinted {
-  border-radius: var(--radius-pill);
-  background: var(--color-action-tint);
-  color: var(--color-action-strong);
+  width: 1.375rem;
+  height: 1.375rem;
 }
 
 /* The focus card and the rows after it are one sortable order. */
@@ -1099,10 +1230,11 @@ useShortcutHandlers(
 
 .focus__grip {
   display: grid;
+  flex: none;
   width: var(--tap);
   height: var(--tap);
   place-items: center;
-  margin-left: auto;
+  margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) 0 0;
   padding: 0;
   border: 0;
   border-radius: var(--radius-control);

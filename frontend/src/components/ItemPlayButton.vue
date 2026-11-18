@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { useTimer } from "../composables/useTimer";
+import { timerStateOf, toggleTimer, useTimer } from "../composables/useTimer";
 import TimerIconButton from "./TimerIconButton.vue";
+
+/**
+ * ▶ of a row. While the row's own stopwatch runs it turns into pause (and
+ * into resume while paused), the same step as Space and the timer bar.
+ */
 const props = defineProps<{
   kind: "todo" | "occurrence";
   targetId: number | null;
@@ -10,31 +15,38 @@ const props = defineProps<{
   disabled?: boolean;
 }>();
 const controller = useTimer();
-const ownActive = computed(() => {
-  const timer = controller?.timer.value;
-  return timer?.kind === props.kind && timer.targetId === props.targetId;
-});
-const label = computed(() =>
-  ownActive.value
-    ? `Timer für ${props.title} ist bereits aktiv`
-    : !props.eligible
-      ? `Timer für ${props.title}: keine offene fällige Ausführung`
-      : `Timer für ${props.title} starten`,
+const own = computed(() =>
+  timerStateOf(controller, props.kind, props.targetId),
 );
-function start(): void {
-  if (controller && props.targetId !== null)
-    void controller.start({
-      kind: props.kind,
-      targetId: props.targetId,
-      title: props.title,
-    });
+const label = computed(() =>
+  own.value === "running"
+    ? `Stoppuhr für ${props.title} läuft, pausieren`
+    : own.value === "paused"
+      ? `Stoppuhr für ${props.title} fortsetzen`
+      : !props.eligible
+        ? `Timer für ${props.title}: keine offene fällige Ausführung`
+        : `Timer für ${props.title} starten`,
+);
+function press(): void {
+  if (props.targetId === null) return;
+  toggleTimer(
+    controller,
+    { kind: props.kind, targetId: props.targetId, title: props.title },
+    props.eligible,
+  );
 }
 </script>
 <template>
   <TimerIconButton
-    icon="play"
+    :icon="own === 'running' ? 'pause' : 'play'"
     :label="label"
-    :disabled="disabled || !eligible || ownActive || controller?.busy.value"
-    @click="start"
+    :active="own !== null"
+    :disabled="
+      disabled ||
+      (!own && !eligible) ||
+      targetId === null ||
+      controller?.busy.value
+    "
+    @click="press"
   />
 </template>

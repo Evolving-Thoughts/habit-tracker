@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import AppIcon from "./AppIcon.vue";
-import ItemPlayButton from "./ItemPlayButton.vue";
+import ItemRow from "./ItemRow.vue";
 import { campaignMark as markOf, categoryMark } from "../utils/category-mark";
 import { formatDateForGermanDisplay } from "../utils/date";
-import type { DayPlannerHabitItem, DayPlannerItem } from "../types/day-planner";
+import type { MenuEntry } from "../utils/row-actions";
+import type { DayPlannerItem } from "../types/day-planner";
 
+/**
+ * A row of Heute on the shared row (ItemRow): ring, title with its meta
+ * line, ▶ and the menu the view builds. Carried-over rows are compact and
+ * show the view's chips instead of ▶ and the menu.
+ */
 const props = defineProps<{
   item: DayPlannerItem;
   isUpdating: boolean;
@@ -13,35 +19,32 @@ const props = defineProps<{
   time?: string | null;
   /** Shows the original day instead of a time, for items carried over. */
   showDate?: boolean;
-  /** Replaces the item's own actions with the ones in the slot. */
+  /** Replaces ▶ and the menu with the choices in the slot. */
   compact?: boolean;
   /** Shows a grip in the leading column: drag it, or use the arrow keys. */
   sortable?: boolean;
+  /** "Aktionen für …": everything beyond ring, title and ▶. */
+  menu?: MenuEntry[];
 }>();
 
 const emit = defineEmits<{
   toggle: [item: DayPlannerItem];
-  skip: [item: DayPlannerHabitItem];
   edit: [item: DayPlannerItem];
-  move: [item: DayPlannerItem];
   /** The grip's arrow keys: one place up (-1) or down (1). */
   shift: [item: DayPlannerItem, direction: -1 | 1];
 }>();
 
-const isCompleted = computed(() => props.item.status === "completed");
-const isSkipped = computed(() => props.item.status === "skipped");
-const isResolved = computed(() => isCompleted.value || isSkipped.value);
-const isPending = computed(() => props.item.status === "pending");
-
-const canMove = computed(() => {
-  if (!isPending.value) return false;
-  if (props.item.type === "todo") return true;
-  return (props.item.moveUntil ?? "") > props.item.scheduledDate;
-});
+const state = computed(() =>
+  props.item.status === "completed"
+    ? "completed"
+    : props.item.status === "skipped"
+      ? "skipped"
+      : "open",
+);
 
 const details = computed(() => {
   const parts: string[] = [];
-  if (isSkipped.value) parts.push("Übersprungen");
+  if (state.value === "skipped") parts.push("Übersprungen");
   if (props.item.plannedDurationMinutes != null) {
     parts.push(
       props.item.workedMinutes > 0
@@ -65,135 +68,71 @@ const leading = computed(() =>
     : (props.time ?? ""),
 );
 
-function skip(): void {
-  if (props.item.type === "habit") emit("skip", props.item);
-}
+const measure = computed(() =>
+  props.compact
+    ? null
+    : {
+        kind:
+          props.item.type === "todo"
+            ? ("todo" as const)
+            : ("occurrence" as const),
+        targetId:
+          props.item.type === "todo"
+            ? props.item.todoId
+            : props.item.occurrenceId,
+        eligible: props.item.timerEligible,
+      },
+);
 </script>
 
 <template>
-  <article
+  <ItemRow
     class="planner-item"
-    :class="{
-      'planner-item--completed': isCompleted,
-      'planner-item--skipped': isSkipped,
-      'planner-item--overdue': item.isOverdue,
-      'planner-item--campaign': campaignMark,
-    }"
-    :style="campaignMark ? { '--campaign-mark': campaignMark } : undefined"
+    :class="{ 'planner-item--overdue': item.isOverdue }"
+    :title="item.title"
+    :state="state"
+    :busy="isUpdating"
+    :campaign-mark="campaignMark"
+    :measure="measure"
+    :menu="compact || state !== 'open' ? [] : (menu ?? [])"
+    @toggle="emit('toggle', item)"
+    @edit="emit('edit', item)"
   >
-    <button
-      v-if="sortable"
-      class="planner-item__grip sort-handle"
-      type="button"
-      :disabled="isUpdating"
-      :aria-label="`${item.title} in der Reihenfolge verschieben`"
-      title="Ziehen oder mit den Pfeiltasten verschieben"
-      @keydown.up.prevent="emit('shift', item, -1)"
-      @keydown.down.prevent="emit('shift', item, 1)"
-    >
-      <AppIcon name="grip" />
-    </button>
-    <span v-else class="planner-item__time">{{ leading }}</span>
-
-    <button
-      class="planner-item__check"
-      type="button"
-      :disabled="isUpdating"
-      :aria-busy="isUpdating || undefined"
-      :aria-label="
-        isResolved ? `${item.title} wieder öffnen` : `${item.title} erledigen`
-      "
-      @click="emit('toggle', item)"
-    >
-      <span class="planner-item__ring">
-        <AppIcon v-if="isCompleted" name="check" />
-      </span>
-    </button>
-
-    <div class="planner-item__content">
-      <!-- The heading keeps the plain title; the button inside says "bearbeiten". -->
-      <h3 :aria-label="item.title">
-        <button
-          class="planner-item__title"
-          data-edit-button
-          type="button"
-          :disabled="isUpdating"
-          :aria-label="`${item.title} bearbeiten`"
-          @click="emit('edit', item)"
-        >
-          {{ item.title }}
-        </button>
-      </h3>
-      <p
-        v-if="item.categoryName || details.length || item.campaign"
-        class="planner-item__details"
+    <template v-if="sortable || leading" #leading>
+      <button
+        v-if="sortable"
+        class="planner-item__grip sort-handle"
+        type="button"
+        :disabled="isUpdating"
+        :aria-label="`${item.title} in der Reihenfolge verschieben`"
+        title="Ziehen oder mit den Pfeiltasten verschieben"
+        @keydown.up.prevent="emit('shift', item, -1)"
+        @keydown.down.prevent="emit('shift', item, 1)"
       >
-        <span v-if="item.categoryName" class="planner-item__category">
-          <i
-            class="category-mark"
-            :style="{ background: categoryMark(item.categoryName) }"
-            aria-hidden="true"
-          />{{ item.categoryName }}
-        </span>
-        <span v-for="part in details" :key="part">{{ part }}</span>
-        <span v-if="item.campaign" class="planner-item__campaign">
-          {{ item.campaign.title }}
-        </span>
-      </p>
-
-      <div v-if="isPending && !compact" class="planner-item__actions">
-        <ItemPlayButton
-          :kind="item.type === 'todo' ? 'todo' : 'occurrence'"
-          :target-id="item.type === 'todo' ? item.todoId : item.occurrenceId"
-          :title="item.title"
-          :eligible="item.timerEligible"
-          :disabled="isUpdating"
-        />
-        <button
-          v-if="item.type === 'habit'"
-          class="planner-item__action planner-item__skip-button"
-          type="button"
-          :disabled="isUpdating"
-          :aria-label="`${item.title} überspringen`"
-          @click="skip"
-        >
-          Überspringen
-        </button>
-        <button
-          v-if="canMove"
-          class="planner-item__action planner-item__move-button"
-          data-move-button
-          type="button"
-          :disabled="isUpdating"
-          :aria-label="`${item.title} verschieben`"
-          @click="emit('move', item)"
-        >
-          Verschieben
-        </button>
-      </div>
-    </div>
-    <div v-if="compact && $slots.default" class="planner-item__quick">
+        <AppIcon name="grip" />
+      </button>
+      <span v-else class="planner-item__time">{{ leading }}</span>
+    </template>
+    <template v-if="item.categoryName || details.length || item.campaign" #meta>
+      <span v-if="item.categoryName" class="planner-item__category">
+        <i
+          class="category-mark"
+          :style="{ background: categoryMark(item.categoryName) }"
+          aria-hidden="true"
+        />{{ item.categoryName }}
+      </span>
+      <span v-for="part in details" :key="part">{{ part }}</span>
+      <span v-if="item.campaign" class="planner-item__campaign">
+        {{ item.campaign.title }}
+      </span>
+    </template>
+    <template v-if="compact && $slots.default" #default>
       <slot />
-    </div>
-  </article>
+    </template>
+  </ItemRow>
 </template>
 
 <style scoped>
-.planner-item {
-  display: grid;
-  grid-template-columns: 2.75rem var(--tap) minmax(0, 1fr);
-  gap: var(--space-2);
-  align-items: start;
-  padding: var(--space-2) var(--space-4) var(--space-3) var(--space-3);
-  border-radius: var(--radius-card);
-  background: var(--color-surface);
-}
-
-/* The stripe names the campaign the item works towards. */
-.planner-item--campaign {
-  box-shadow: inset 0.3125rem 0 0 var(--campaign-mark);
-}
-
 .planner-item__campaign {
   font-weight: 700;
 }
@@ -223,103 +162,11 @@ function skip(): void {
 }
 
 .planner-item__time {
+  align-self: start;
   padding-top: 0.7rem;
   color: var(--color-ink-muted);
   font-size: 0.875rem;
   font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.planner-item__check {
-  display: grid;
-  width: var(--tap);
-  height: var(--tap);
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--color-on-action);
-  cursor: pointer;
-  transition: transform 420ms var(--spring);
-}
-
-.planner-item__check:active:not(:disabled) {
-  transform: scale(0.86);
-  transition-duration: 90ms;
-}
-
-.planner-item__ring {
-  display: grid;
-  width: 1.875rem;
-  height: 1.875rem;
-  place-items: center;
-  border: 2.5px solid var(--color-action);
-  border-radius: 50%;
-  transition:
-    background-color 240ms var(--ease-out),
-    border-color 240ms var(--ease-out);
-}
-
-.planner-item__ring :deep(svg) {
-  width: 1.125rem;
-  height: 1.125rem;
-  stroke-width: 3;
-  animation: check-pop 420ms var(--spring);
-}
-
-@keyframes check-pop {
-  from {
-    transform: scale(0.4);
-    opacity: 0;
-  }
-}
-
-.planner-item--completed .planner-item__ring {
-  background: var(--color-action);
-}
-
-.planner-item--skipped .planner-item__ring {
-  border-color: var(--color-ink-soft);
-  border-style: dashed;
-}
-
-.planner-item__check:disabled {
-  cursor: progress;
-}
-
-.planner-item__check:disabled .planner-item__ring {
-  border-color: var(--color-ink-soft);
-}
-
-.planner-item__content {
-  min-width: 0;
-  padding-top: 0.55rem;
-}
-
-.planner-item__content h3 {
-  margin: 0;
-  color: var(--color-ink);
-  font-size: 1.0625rem;
-  font-weight: 700;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.planner-item--completed h3,
-.planner-item--skipped h3 {
-  color: var(--color-ink-muted);
-  text-decoration: line-through;
-  text-decoration-thickness: 1.5px;
-}
-
-.planner-item__details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 var(--space-3);
-  margin: 0.15rem 0 0;
-  color: var(--color-ink-muted);
-  font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -333,72 +180,5 @@ function skip(): void {
   width: 0.625rem;
   height: 0.625rem;
   border-radius: 0.2rem;
-}
-
-.planner-item__title {
-  display: inline;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  text-decoration: underline;
-  text-decoration-color: transparent;
-  text-underline-offset: 0.2em;
-  cursor: pointer;
-  transition: text-decoration-color 160ms var(--ease-out);
-}
-
-.planner-item__title:hover:not(:disabled) {
-  text-decoration-color: var(--color-line);
-}
-
-.planner-item__title:disabled {
-  cursor: progress;
-}
-
-.planner-item__actions:empty {
-  display: none;
-}
-
-/* Carried-over rows: quick choices start at the time column, so all fit. */
-.planner-item__quick {
-  display: flex;
-  flex-wrap: wrap;
-  grid-column: 1 / -1;
-  gap: var(--space-2);
-}
-
-.planner-item__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  align-items: center;
-  margin-top: var(--space-2);
-}
-
-.planner-item__action {
-  min-height: var(--tap);
-  padding: 0 var(--space-4);
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-action-tint);
-  color: var(--color-action-strong);
-  font-size: 0.9375rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 420ms var(--spring);
-}
-
-.planner-item__action:active:not(:disabled) {
-  transform: var(--press);
-  transition-duration: 90ms;
-}
-
-.planner-item__action:disabled {
-  color: var(--color-ink-soft);
-  background: transparent;
-  cursor: progress;
 }
 </style>

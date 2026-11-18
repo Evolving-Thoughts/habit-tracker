@@ -130,6 +130,9 @@ lookup from that.
 
 - `TodoResponseDto` and `HabitResponseDto` carry the own `why` and
   `inheritedWhy: { text, fromId, fromTitle } | null`, so an editor can show both.
+- `TodoResponseDto` also names its `campaign: { id, title, color, icon } | null`
+  from the same snapshot (`TodoAncestry.campaignOf`), so the Questlog and the
+  Plan's Questlog column draw the campaign stripe like Heute does.
 - Day planner and history items carry one `why`: the reason to show.
 - The frontend's `WhyField` starts with the inherited text. Leaving it unchanged
   or empty sends no `why` and keeps inheriting; a different text becomes the

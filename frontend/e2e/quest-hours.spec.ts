@@ -110,7 +110,7 @@ test("Quest-Stunden: goals, a campaign's colour and icon, its tile and the line 
     /^Quest-Stunden heute \d+ Min\. · Woche \d+ Min\. von 20 Std\.$/,
   );
   // The quest's stripe takes the campaign's stored colour.
-  await expect(page.locator(".planner-item--campaign").first()).toHaveAttribute(
+  await expect(page.locator(".planner-item.item-row--campaign").first()).toHaveAttribute(
     "style",
     /--color-mark-berry/,
   );

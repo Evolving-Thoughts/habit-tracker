@@ -10,6 +10,7 @@ export const TODO_FIELDS = {
   weeklyTargetMinutes: null,
   color: null,
   icon: null,
+  campaign: null,
 };
 
 export const HABIT_FIELDS = {

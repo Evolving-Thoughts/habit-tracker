@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import HistoryItem from "./HistoryItem.vue";
-import HistoryPlannedItems from "./HistoryPlannedItems.vue";
-import type { HistoryPlannedItem, HistoryResponse } from "../types/history";
+import HistoryPlannedItems, {
+  type PlannedActions,
+} from "./HistoryPlannedItems.vue";
+import type { HistoryResponse } from "../types/history";
 import { formatTimeForGermanDisplay } from "../utils/date";
 import {
   dayCounts,
@@ -19,12 +21,11 @@ const props = defineProps<{
   result: HistoryResponse;
   /** The selected day. */
   date: string;
-  canMove: (item: HistoryPlannedItem) => boolean;
+  actions: PlannedActions;
 }>();
 const emit = defineEmits<{
   select: [date: string];
   openDay: [date: string];
-  move: [item: HistoryPlannedItem];
 }>();
 
 const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
@@ -149,8 +150,7 @@ function cellLabel(day: Day): string {
       <HistoryPlannedItems
         v-if="selectedDay.planned?.length"
         :items="selectedDay.planned"
-        :can-move="canMove"
-        @move="emit('move', $event)"
+        :actions="actions"
       />
       <ul v-if="selectedDay.items.length" class="entries__list">
         <HistoryItem

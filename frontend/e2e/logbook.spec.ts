@@ -1,5 +1,11 @@
 import { test, expect } from "./fixtures";
-import { daysAfter, openCalendar, openView, today } from "./helpers";
+import {
+  daysAfter,
+  openCalendar,
+  openView,
+  timerBarAction,
+  today,
+} from "./helpers";
 import { API_URL } from "./environment";
 
 test("Logbuch: a stopwatch stretch and time added by hand show in the day, the week and the month", async ({
@@ -39,9 +45,7 @@ test("Logbuch: a stopwatch stretch and time added by hand show in the day, the w
     .click();
   const bar = page.getByRole("complementary", { name: "Aktueller Timer" });
   await expect(bar).toContainText("Stoppuhr läuft");
-  await page
-    .getByRole("button", { name: "Timer beenden", exact: true })
-    .click();
+  await timerBarAction(page, "Timer beenden");
   await expect(bar).toHaveCount(0);
 
   const view = await openCalendar(page, "Tag");

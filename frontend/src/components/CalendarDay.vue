@@ -4,12 +4,13 @@ import DayReflection from "./DayReflection.vue";
 import DayTimeline from "./DayTimeline.vue";
 import DayWorkLogs from "./DayWorkLogs.vue";
 import HistoryItem from "./HistoryItem.vue";
-import HistoryPlannedItems from "./HistoryPlannedItems.vue";
+import HistoryPlannedItems, {
+  type PlannedActions,
+} from "./HistoryPlannedItems.vue";
 import WeeklyTargets from "./WeeklyTargets.vue";
 import type { WorkTarget } from "../api/work-logs.api";
 import type {
   HistoryFilter,
-  HistoryPlannedItem,
   HistoryResponse,
   HistoryWeeklyTarget,
 } from "../types/history";
@@ -24,10 +25,10 @@ const props = defineProps<{
   weeklyTargets: HistoryWeeklyTarget[];
   filter: HistoryFilter;
   filterLabel: string;
-  canMove: (item: HistoryPlannedItem) => boolean;
+  actions: PlannedActions;
   reload: (showPageLoading?: boolean) => Promise<void>;
 }>();
-const emit = defineEmits<{ move: [item: HistoryPlannedItem]; showAll: [] }>();
+const emit = defineEmits<{ showAll: [] }>();
 
 const completedItems = computed(() =>
   props.day.items.filter((item) => item.status === "completed"),
@@ -116,11 +117,7 @@ watch(
         <h2 class="section-title">
           Offen / geplant <span class="count">{{ plannedItems.length }}</span>
         </h2>
-        <HistoryPlannedItems
-          :items="plannedItems"
-          :can-move="canMove"
-          @move="emit('move', $event)"
-        />
+        <HistoryPlannedItems :items="plannedItems" :actions="actions" />
       </section>
 
       <WeeklyTargets v-if="weeklyTargets.length" :targets="weeklyTargets" />

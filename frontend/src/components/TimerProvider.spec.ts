@@ -115,6 +115,28 @@ describe("global Timer bar", () => {
     expect(updateTodoCompletion).toHaveBeenCalledWith(1, true);
     expect(w.find("aside").exists()).toBe(false);
   });
+  it("keeps Soll ändern, erledigen and beenden in the bar's menu for a phone", async () => {
+    vi.mocked(timerAction).mockResolvedValue(none);
+    vi.mocked(updateTodoCompletion).mockResolvedValue(undefined);
+    const w = mount(TimerProvider);
+    await flushPromises();
+    // Wide screens show the round buttons; the phone hides them by CSS.
+    expect(w.findAll(".timer-bar__wide")).toHaveLength(3);
+    const more = w.get('[aria-label="Weitere Aktionen der Stoppuhr"]');
+    expect(more.attributes("aria-haspopup")).toBe("menu");
+    await more.trigger("click");
+    await flushPromises();
+    expect(
+      w
+        .findAll(".timer-bar__more [role=menuitem]")
+        .map((item) => item.attributes("aria-label") ?? item.text()),
+    ).toEqual(["Soll ändern", "Schreiben erledigen", "Timer beenden"]);
+    await w
+      .get('.timer-bar__more [role=menuitem][aria-label="Timer beenden"]')
+      .trigger("click");
+    await flushPromises();
+    expect(timerAction).toHaveBeenCalledWith("a", "stop");
+  });
   it("hides the bar where a view shows the stopwatch itself, but keeps its dialogs", async () => {
     const w = mount(TimerProvider, { props: { hideBar: true } });
     await flushPromises();

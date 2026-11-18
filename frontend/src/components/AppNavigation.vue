@@ -158,7 +158,7 @@ onUnmounted(() => {
   position: fixed;
   inset: auto 0 0;
   z-index: 30;
-  padding: 0 var(--space-2) env(safe-area-inset-bottom, 0px);
+  padding: 0 var(--space-1) env(safe-area-inset-bottom, 0px);
   background: var(--color-surface);
   box-shadow: var(--shadow-bar);
 }
@@ -179,13 +179,15 @@ onUnmounted(() => {
   justify-content: center;
   min-width: 0;
   min-height: var(--tab-bar-height);
-  padding: var(--space-2) var(--space-1);
+  /* Narrow side padding: "Kampagnen" fits a fifth of a 360px phone uncut. */
+  padding: var(--space-2) 0.0625rem;
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
   color: var(--color-ink-muted);
   font-size: 0.75rem;
   font-weight: 700;
+  letter-spacing: -0.01em;
   text-decoration: none;
   cursor: pointer;
   transition: transform 420ms var(--spring);
@@ -254,6 +256,7 @@ onUnmounted(() => {
   min-height: var(--tap-large);
   padding: 0 var(--space-4);
   font-size: 1rem;
+  letter-spacing: normal;
 }
 
 .tab-bar__scrim {
@@ -288,6 +291,7 @@ onUnmounted(() => {
     min-height: 3.5rem;
     padding: 0 var(--space-3);
     font-size: 0.9375rem;
+    letter-spacing: normal;
   }
 
   .tab-bar__tab--wide {

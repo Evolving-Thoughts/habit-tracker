@@ -1,4 +1,5 @@
 import type { CampaignColor, CampaignIcon } from '../campaign-style';
+import type { Campaign } from '../todo-ancestry';
 import type { InheritedWhy } from '../todo-hierarchy';
 
 export type TodoResponseDtoProperties = {
@@ -7,6 +8,8 @@ export type TodoResponseDtoProperties = {
   categoryId?: number | null;
   why?: string | null;
   inheritedWhy?: InheritedWhy | null;
+  /** The campaign it works towards (see todo-ancestry); null for a loose todo. */
+  campaign?: Campaign | null;
   periodStart?: string | null;
   periodEnd?: string | null;
   goalHabitId?: number | null;
@@ -40,6 +43,8 @@ export class TodoResponseDto {
   readonly why: string | null;
   /** What it takes over from an ancestor while it has none of its own. */
   readonly inheritedWhy: InheritedWhy | null;
+  /** The topmost todo above it, as on Heute and in the Plan. */
+  readonly campaign: Campaign | null;
   readonly title: string;
   readonly completed: boolean;
   readonly completedAt: string | null;
@@ -63,6 +68,7 @@ export class TodoResponseDto {
     this.icon = properties.icon ?? null;
     this.why = properties.why ?? null;
     this.inheritedWhy = properties.inheritedWhy ?? null;
+    this.campaign = properties.campaign ?? null;
     this.title = properties.title;
     this.completed = properties.completed;
     this.completedAt = properties.completedAt;

@@ -1,15 +1,25 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import {
+  rescheduleOccurrence,
+  rescheduleTodo,
+  updateTodoCompletion,
+} from "../api/day-planner.api";
 import { getHistory } from "../api/history.api";
 import AppIcon from "../components/AppIcon.vue";
 import CalendarDay from "../components/CalendarDay.vue";
 import CalendarMonth from "../components/CalendarMonth.vue";
 import CalendarWeek from "../components/CalendarWeek.vue";
+import EditItemDialog from "../components/EditItemDialog.vue";
+import type { PlannedActions } from "../components/HistoryPlannedItems.vue";
 import MoveItemDialog, {
   type MoveTarget,
 } from "../components/MoveItemDialog.vue";
-import { notifyDataChanged } from "../composables/data-sync";
+import UndoToast from "../components/UndoToast.vue";
+import { useListFocus } from "../composables/useListFocus";
 import { useLoader } from "../composables/useLoader";
+import { useUndo } from "../composables/useUndo";
+import { useWrites } from "../composables/useWrites";
 import type {
   HistoryFilter,
   HistoryPlannedItem,
@@ -23,6 +33,7 @@ import {
   supportedHistoryDate,
   weekLabel,
 } from "../utils/history";
+import { quickMoveEntries, quickMoves } from "../utils/row-actions";
 
 type Mode = "month" | "week" | "day";
 
@@ -41,6 +52,10 @@ const mode = ref<Mode>("month");
 const date = ref(getCurrentDateInTimeZone());
 const filter = ref<HistoryFilter>("all");
 const moving = ref<MoveTarget | null>(null);
+const editing = ref<{ kind: "todo" | "habit"; id: number } | null>(null);
+const editorBusy = ref(false);
+const page = ref<HTMLElement | null>(null);
+const listFocus = useListFocus(page);
 
 /** A month loads once; picking another day inside it needs no request. */
 const requestDate = computed(() =>
@@ -78,9 +93,16 @@ const {
     fallbackError: "Der Kalender konnte nicht geladen werden.",
     params: [requestDate, mode, filter],
     resetOnLoad: true,
-    refreshOnChange: () => !moving.value,
+    refreshOnChange: () =>
+      !moving.value &&
+      !editing.value &&
+      !editorBusy.value &&
+      !writes.busy.value,
   },
 );
+/* Kept apart from the load error: a failed tick must not hide the calendar. */
+const writeError = ref<string | null>(null);
+const writes = useWrites(reload, writeError);
 
 const title = computed(() => {
   if (!isValidIsoDate(date.value)) return "Kalender";
@@ -236,18 +258,107 @@ function moveTarget(item: HistoryPlannedItem): MoveTarget | null {
     moveUntil: item.moveUntil,
   };
 }
-const canMoveItem = (item: HistoryPlannedItem) => moveTarget(item) !== null;
 function startMoving(item: HistoryPlannedItem): void {
+  listFocus.remember(item.key);
   moving.value = moveTarget(item);
 }
-function onMoved(): void {
+async function onDialogDone(): Promise<void> {
+  await writes.applied();
+  closeDialogs();
+}
+function closeDialogs(): void {
   moving.value = null;
-  notifyDataChanged();
+  editing.value = null;
+  editorBusy.value = false;
+}
+
+/*
+ * The planned rows follow the row contract: open quests get the ring (with
+ * undo, as on Heute), the title opens the editor, and moving sits in the
+ * menu "Aktionen für …" with the same quick days as Heute.
+ */
+const { undo, offer: offerUndo, take: takeUndo } = useUndo<number>();
+const busyKey = (item: HistoryPlannedItem) => `planned-${item.key}`;
+function quickMove(item: HistoryPlannedItem, date: string): void {
+  if (item.id === null) return;
+  const id = item.id;
+  void listFocus.around(item.key, () =>
+    writes.write(
+      () =>
+        item.type === "todo"
+          ? rescheduleTodo(id, date, false)
+          : rescheduleOccurrence(id, date),
+      {
+        key: busyKey(item),
+        fallbackError: "Der Eintrag konnte nicht verschoben werden.",
+      },
+    ),
+  );
+}
+const plannedActions: PlannedActions = {
+  checkable: (item) => item.type === "todo" && item.id !== null,
+  complete: (item) => {
+    if (item.type !== "todo" || item.id === null) return;
+    const id = item.id;
+    void listFocus.around(item.key, async () => {
+      const done = await writes.write(() => updateTodoCompletion(id, true), {
+        key: busyKey(item),
+        fallbackError: "Die Quest konnte nicht erledigt werden.",
+      });
+      if (done) offerUndo(id, `„${item.title}“ erledigt`);
+    });
+  },
+  editable: (item) =>
+    item.type === "todo" ? item.id !== null : item.habitId !== null,
+  edit: (item) => {
+    const id = item.type === "todo" ? item.id : item.habitId;
+    if (id === null || writes.busy.value) return;
+    listFocus.remember(item.key);
+    editing.value = { kind: item.type, id };
+  },
+  menu: (item) => {
+    const today = result.value?.today;
+    if (!moveTarget(item) || !today) return [];
+    const disabled = writes.busy.value;
+    return [
+      ...quickMoveEntries(
+        item.title,
+        quickMoves(today, {
+          date: item.scheduledDate,
+          timeOfDay: item.timeOfDay,
+          moveUntil: item.type === "habit" ? item.moveUntil : undefined,
+        }),
+        (move) => quickMove(item, move.date),
+        { disabled },
+      ),
+      {
+        id: "move",
+        label:
+          item.type === "todo" && item.timeOfDay
+            ? "Termin verschieben …"
+            : "Anderer Tag …",
+        icon: "move",
+        ariaLabel: `${item.title} verschieben`,
+        disabled,
+        run: () => startMoving(item),
+      },
+    ];
+  },
+  busy: (item) => writes.isWriting(busyKey(item)),
+};
+async function undoLast(): Promise<void> {
+  const id = takeUndo();
+  if (id === null) return;
+  await writes.write(() => updateTodoCompletion(id, false), {
+    key: `undo-${id}`,
+    fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
+  });
 }
 </script>
 
 <template>
   <main
+    ref="page"
     class="page calendar-view"
     :class="{ 'calendar-view--day': mode === 'day' }"
   >
@@ -369,14 +480,16 @@ function onMoved(): void {
     </div>
 
     <template v-else-if="result">
+      <div v-if="writeError" class="alert calendar-view__alert" role="alert">
+        <p>{{ writeError }}</p>
+      </div>
       <CalendarMonth
         v-if="mode === 'month'"
         :result="result"
         :date="date"
-        :can-move="canMoveItem"
+        :actions="plannedActions"
         @select="date = $event"
         @open-day="openDay"
-        @move="startMoving"
       />
       <CalendarWeek
         v-else-if="mode === 'week'"
@@ -393,9 +506,8 @@ function onMoved(): void {
         :weekly-targets="result.weeklyTargets ?? []"
         :filter="filter"
         :filter-label="filterLabel"
-        :can-move="canMoveItem"
+        :actions="plannedActions"
         :reload="reload"
-        @move="startMoving"
         @show-all="filter = 'all'"
       />
 
@@ -403,11 +515,23 @@ function onMoved(): void {
         v-if="moving"
         :item="moving"
         :today="result.today"
-        :return-focus="() => null"
-        @moved="onMoved"
-        @close="moving = null"
+        :return-focus="listFocus.returnFocus"
+        @busy="editorBusy = $event"
+        @moved="onDialogDone"
+        @close="closeDialogs"
+      />
+      <EditItemDialog
+        v-if="editing"
+        :key="`${editing.kind}-${editing.id}`"
+        :kind="editing.kind"
+        :entity-id="editing.id"
+        :return-focus="listFocus.returnFocus"
+        @busy="editorBusy = $event"
+        @changed="onDialogDone"
+        @close="closeDialogs"
       />
     </template>
+    <UndoToast :label="undo?.label ?? null" @undo="undoLast" />
   </main>
 </template>
 
@@ -556,6 +680,10 @@ function onMoved(): void {
   .calendar-view__nav {
     flex: 1 1 auto;
   }
+}
+
+.calendar-view__alert {
+  margin-bottom: var(--space-4);
 }
 
 /* Tag puts the list and the time axis side by side on wide screens. */

@@ -172,7 +172,7 @@ describe("QuestlogView", () => {
     const wrapper = mountView();
     await flushPromises();
     expect(wrapper.get(".dump-item__why").text()).toBe("Für das neue Projekt");
-    expect(wrapper.get(".dump-item__details").text()).toBe("Lernen30 Min.");
+    expect(wrapper.get(".item-row__meta").text()).toBe("Lernen30 Min.");
     expect(wrapper.get(".dump-item").text()).not.toContain("Quest");
     expect(
       wrapper
@@ -721,5 +721,100 @@ describe("QuestlogView keyboard shortcuts", () => {
     press("n");
     await flushPromises();
     expect(wrapper.find("dialog").exists()).toBe(true);
+  });
+});
+
+describe("QuestlogView Einplanen", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // Friday, 2 Oct 2026, 08:00 in Berlin.
+    vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
+    localStorage.clear();
+    reloadShortcutSettings();
+    vi.mocked(getCategories).mockResolvedValue([]);
+    backlogMock.mockResolvedValue([
+      makeTodo({
+        id: 1,
+        title: "Steuer",
+        campaign: { id: 9, title: "Ordnung", color: "slate", icon: null },
+      }),
+      makeTodo({ id: 2, title: "Fahrrad", plannedDurationMinutes: null }),
+    ]);
+    completionMock.mockResolvedValue(undefined);
+    updateTodoMock.mockResolvedValue(makeTodo());
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = "";
+  });
+
+  async function mountAttached() {
+    const wrapper = mount(QuestlogView, {
+      attachTo: document.body,
+      global: { stubs: { CreateTodoForm: true } },
+    });
+    await flushPromises();
+    return wrapper;
+  }
+  const labels = (wrapper: ReturnType<typeof mount>) =>
+    wrapper
+      .findAll("[role=menuitem] .action-menu__label")
+      .map((label) => label.text());
+
+  it("puts Einplanen into each row's menu and plans like T, D and W", async () => {
+    const wrapper = await mountAttached();
+    await wrapper.get('[aria-label="Aktionen für Fahrrad"]').trigger("click");
+    expect(labels(wrapper)).toEqual([
+      "Heute",
+      "Morgen",
+      "Nächste Woche",
+      "Tag wählen …",
+    ]);
+    await wrapper
+      .get('[aria-label="Fahrrad einplanen für morgen"]')
+      .trigger("click");
+    await flushPromises();
+    expect(updateTodoMock).toHaveBeenCalledWith(2, {
+      title: "Fahrrad",
+      scheduledDate: "2026-10-03",
+      timeOfDay: null,
+      plannedDurationMinutes: null,
+    });
+    expect(wrapper.get(".questlog__status").text()).toBe(
+      "„Fahrrad“ steht jetzt bei morgen.",
+    );
+
+    await wrapper.get('[aria-label="Aktionen für Steuer"]').trigger("click");
+    await wrapper
+      .get('[aria-label="Steuer einplanen für nächste Woche"]')
+      .trigger("click");
+    await flushPromises();
+    expect(updateTodoMock).toHaveBeenLastCalledWith(
+      1,
+      expect.objectContaining({ scheduledDate: "2026-10-05" }),
+    );
+  });
+
+  it("opens the editor at its day field for Tag wählen …", async () => {
+    const wrapper = await mountAttached();
+    await wrapper.get('[aria-label="Aktionen für Steuer"]').trigger("click");
+    await wrapper.get('[aria-label="Tag für Steuer wählen"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-test="editing-form"]').exists()).toBe(true);
+    expect(document.activeElement?.getAttribute("name")).toBe("scheduledDate");
+  });
+
+  it("shows each quest's campaign as a stripe and in the meta line", async () => {
+    const wrapper = await mountAttached();
+    const row = wrapper.get('[data-focus-key="todo-1"] .item-row');
+    expect(row.classes()).toContain("item-row--campaign");
+    expect(row.attributes("style")).toContain(
+      "--campaign-mark: var(--color-mark-slate)",
+    );
+    expect(row.get(".dump-item__campaign").text()).toBe("Ordnung");
+    expect(
+      wrapper.find('[data-focus-key="todo-2"] .item-row--campaign').exists(),
+    ).toBe(false);
   });
 });

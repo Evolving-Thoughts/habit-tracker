@@ -238,3 +238,113 @@ test("Plan: drag a quest onto another day and into place", async ({ page, reques
   // A drag is no tap: the day dialog stays closed.
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
+
+/** A quest of the Questlog column (from 56rem), by title. */
+const questlogRow = (page: Page, title: string) =>
+  page
+    .locator("aside.plan-questlog li[data-todo-id]")
+    .filter({ hasText: title });
+
+test("Plan: drag a quest from the Questlog column onto a day and into place", async ({
+  page,
+  request,
+}, info) => {
+  test.skip(
+    info.project.name !== "chromium",
+    "The Questlog column is a desktop column from 56rem; the phone's Plan stays as it was.",
+  );
+  const nextMonday = daysAfter(mondayOf(await today(request)), 7);
+  const tuesday = daysAfter(nextMonday, 1);
+  await plan(request, { title: "Aus dem Questlog" });
+  await plan(request, { title: "Bleibt oben", scheduledDate: tuesday });
+  await plan(request, { title: "Bleibt unten", scheduledDate: tuesday });
+  await page.goto(`/#/plan?woche=${nextMonday}`);
+  await loaded(page);
+  await expect(questlogRow(page, "Aus dem Questlog")).toBeVisible();
+
+  const from = (await questlogRow(page, "Aus dem Questlog")
+    .locator(".sort-handle")
+    .boundingBox())!;
+  const to = (await grip(page, "Bleibt unten").boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2 + 8, {
+    steps: 16,
+  });
+  await page.mouse.move(to.x + to.width / 2, to.y - 4, { steps: 6 });
+  await page.mouse.up();
+
+  await expect
+    .poll(() => storedDay(request, tuesday))
+    .toEqual(["Bleibt oben", "Aus dem Questlog", "Bleibt unten"]);
+  expect(await shownDay(page, tuesday)).toEqual([
+    "Bleibt oben",
+    "Aus dem Questlog",
+    "Bleibt unten",
+  ]);
+  await expect(questlogRow(page, "Aus dem Questlog")).toHaveCount(0);
+  const backlog = await request.get(`${API_URL}/todos/backlog`);
+  expect(((await backlog.json()) as unknown[]).length).toBe(0);
+});
+
+test("Plan: plan a Questlog quest by keyboard from its menu; the column remembers being closed", async ({
+  page,
+  request,
+}, info) => {
+  test.skip(
+    info.project.name !== "chromium",
+    "The Questlog column is a desktop column from 56rem; the phone's Plan stays as it was.",
+  );
+  const nextMonday = daysAfter(mondayOf(await today(request)), 7);
+  const tuesday = daysAfter(nextMonday, 1);
+  await plan(request, { title: "Steht schon da", scheduledDate: tuesday });
+  await plan(request, { title: "Per Taste" });
+  await page.goto(`/#/plan?woche=${nextMonday}`);
+  await loaded(page);
+
+  const trigger = questlogRow(page, "Per Taste").getByRole("button", {
+    name: "Aktionen für Per Taste",
+    exact: true,
+  });
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  const menu = page.getByRole("menu", { name: "Per Taste", exact: true });
+  await expect(menu.getByRole("menuitem").first()).toBeFocused();
+  // Monday first, then Tuesday.
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    menu.getByRole("menuitem", {
+      name: `Per Taste einplanen am ${dayLabel(tuesday)}`,
+      exact: true,
+    }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+
+  await expect
+    .poll(() => storedDay(request, tuesday))
+    .toEqual(["Steht schon da", "Per Taste"]);
+  expect(await shownDay(page, tuesday)).toEqual([
+    "Steht schon da",
+    "Per Taste",
+  ]);
+  await expect(questlogRow(page, "Per Taste")).toHaveCount(0);
+
+  await page
+    .getByRole("button", { name: "Questlog ausblenden", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Questlog einblenden", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
+  await page.reload();
+  await loaded(page);
+  await expect(
+    page.getByRole("button", { name: "Questlog einblenden", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(0);
+});
