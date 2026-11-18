@@ -265,7 +265,7 @@ export class TodosService {
         );
       if (await hasOpenTimer(manager, userId, { todoId: id }))
         throw new ConflictException(
-          'Beende zuerst den Timer, bevor du die Quest verschiebst.',
+          'Beende zuerst die Stoppuhr, bevor du die Quest verschiebst.',
         );
       if (todo.scheduledDate !== dto.date) this.moveToDay(todo, dto.date);
       return repository.save(todo);

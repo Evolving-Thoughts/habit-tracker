@@ -204,7 +204,7 @@ describe('Week review (e2e)', () => {
       rootTodoId: book,
       date: '2026-11-14',
       doneCount: 1,
-      totalCount: 5,
+      totalCount: 4,
       doneMinutes: 0,
       totalMinutes: 0,
     });
@@ -219,11 +219,11 @@ describe('Week review (e2e)', () => {
         campaign: { id: book, title: 'Buch', color: 'berry', icon: 'book' },
         start: {
           doneCount: 1,
-          totalCount: 5,
-          percentage: 20,
+          totalCount: 4,
+          percentage: 25,
           source: 'snapshot',
         },
-        end: { doneCount: 2, totalCount: 5, percentage: 40, source: 'live' },
+        end: { doneCount: 2, totalCount: 4, percentage: 50, source: 'live' },
         dailyGoals: [],
       },
     ]);
@@ -232,14 +232,15 @@ describe('Week review (e2e)', () => {
       expect.objectContaining({
         start: {
           doneCount: 0,
-          totalCount: 5,
+          totalCount: 4,
           percentage: 0,
           source: 'reconstructed',
         },
         end: {
           doneCount: 1,
-          totalCount: 5,
-          percentage: 20,
+          totalCount: 4,
+          percentage: 25,
+
           source: 'snapshot',
         },
       }),

@@ -67,18 +67,38 @@ describe('Burnup (e2e)', () => {
         totalCount,
       ]),
     ).toEqual([
-      ['2026-10-30', 1, 2],
-      ['2026-10-31', 1, 3],
-      ['2026-11-01', 0, 3],
+      ['2026-10-30', 1, 1],
+      ['2026-10-31', 1, 2],
+      ['2026-11-01', 0, 2],
     ]);
   });
 
   it('keeps one row per day with the latest value', async () => {
     const root = await todo('Projekt');
+    const part = await todo('Teil', root);
     await burnup(root);
-    await complete(root);
+    await complete(part);
     expect(await burnup(root)).toHaveLength(1);
-    expect((await burnup(root))[0].doneCount).toBe(1);
+    expect((await burnup(root))[0]).toMatchObject({
+      doneCount: 1,
+      totalCount: 1,
+    });
+  });
+
+  it('counts the quests below a campaign, never the campaign itself', async () => {
+    const root = await todo('Projekt');
+    await todo('Teil 1', root);
+    await todo('Teil 2', root);
+    await complete(root);
+    expect(await burnup(root)).toEqual([
+      {
+        date: '2026-10-30',
+        doneCount: 0,
+        totalCount: 2,
+        doneMinutes: 0,
+        totalMinutes: 60,
+      },
+    ]);
   });
 
   it('only offers roots and only the own ones', async () => {

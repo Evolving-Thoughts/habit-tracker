@@ -83,10 +83,22 @@ describe('Migrations (e2e)', () => {
       [id, root],
     );
 
+    // A snapshot that still counted the campaign itself.
+    await db.query(
+      `INSERT INTO goal_snapshots
+         ("userId", "rootTodoId", date, "doneCount", "totalCount",
+          "doneMinutes", "totalMinutes")
+       VALUES ($1, $2, '2026-03-09', 1, 3, 0, 0)`,
+      [id, root],
+    );
+
     const applied = await db.runMigrations();
 
-    expect(applied).toHaveLength(8);
+    expect(applied).toHaveLength(9);
     expect(await remainingChanges()).toEqual([]);
+    // Progress no longer counts the campaign: the old rows are gone.
+    expect(await db.query('SELECT id FROM goal_snapshots')).toEqual([]);
+
     expect(
       await db.query(
         `SELECT title, state, "targetMinutes", "elapsedMilliseconds",

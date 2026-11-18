@@ -20,22 +20,33 @@ const progress = (rows: HierarchyTodo[]) => TodoTree.of(rows).progress();
 
 describe('TodoTree', () => {
   describe('progress', () => {
-    it('handles empty and single todo', () => {
+    it('handles empty and single todo: a lone todo has no progress', () => {
       expect(progress([]).size).toBe(0);
-      expect(progress([t(1, null, true)]).get(1)?.percentage).toBe(100);
+      expect(progress([t(1, null, true)]).get(1)).toEqual({
+        mode: 'count',
+        completed: 0,
+        total: 0,
+        percentage: 0,
+        knownDurationMinutes: 0,
+        todoCount: 0,
+        doneCount: 0,
+      });
     });
-    it('counts parent plus five children as six units', () => {
+    it('counts only the five children, not the parent', () => {
       const rows = [
         t(1, null, true),
-        ...Array.from({ length: 5 }, (_, i) => t(i + 2, 1)),
+        t(2, 1, true),
+        ...Array.from({ length: 4 }, (_, i) => t(i + 3, 1)),
       ];
       expect(progress(rows).get(1)).toMatchObject({
-        total: 6,
+        total: 5,
         completed: 1,
+        todoCount: 5,
+        doneCount: 1,
         mode: 'count',
       });
     });
-    it('weights all nodes including the parent by duration', () => {
+    it('weights the todos below by duration, without the parent', () => {
       expect(
         progress([
           t(1, null, true, 60),
@@ -43,39 +54,46 @@ describe('TodoTree', () => {
           t(3, 1, false, 90),
         ]).get(1),
       ).toMatchObject({
-        completed: 90,
-        total: 180,
-        percentage: 50,
+        completed: 30,
+        total: 120,
+        percentage: 25,
+        doneCount: 1,
         mode: 'duration',
       });
     });
-    it('switches to equal counts if any duration is missing', () => {
+    it('ignores a missing duration on the parent itself', () => {
+      expect(
+        progress([t(1, null), t(2, 1, true, 30), t(3, 1, false, 30)]).get(1),
+      ).toMatchObject({ completed: 30, total: 60, mode: 'duration' });
+    });
+    it('switches to equal counts if any duration below is missing', () => {
       expect(
         progress([t(1, null, true, 60), t(2, 1, true, 30), t(3, 1)]).get(1),
       ).toMatchObject({
-        completed: 2,
-        total: 3,
-        knownDurationMinutes: 90,
+        completed: 1,
+        total: 2,
+        knownDurationMinutes: 30,
         mode: 'count',
       });
     });
-    it('counts intermediate nodes once', () => {
+    it('counts intermediate nodes once, each without itself', () => {
       const stats = progress([t(1, null), t(2, 1, true), t(3, 2, true)]);
-      expect(stats.get(1)).toMatchObject({ completed: 2, total: 3 });
-      expect(stats.get(2)).toMatchObject({ completed: 2, total: 2 });
+      expect(stats.get(1)).toMatchObject({ completed: 2, total: 2 });
+      expect(stats.get(2)).toMatchObject({ completed: 1, total: 1 });
+      expect(stats.get(3)).toMatchObject({ completed: 0, total: 0 });
     });
     it('treats an orphan as a root instead of failing the whole tree', () => {
-      const stats = progress([t(1, null), t(2, 999, true)]);
-      expect(stats.get(2)).toMatchObject({ completed: 1, total: 1 });
-      expect(stats.get(1)).toMatchObject({ completed: 0, total: 1 });
+      const stats = progress([t(1, null), t(2, 999, true), t(3, 2)]);
+      expect(stats.get(2)).toMatchObject({ completed: 0, total: 1 });
+      expect(stats.get(1)).toMatchObject({ completed: 0, total: 0 });
     });
     it('processes 20,000 levels without recursion', () => {
       const rows = Array.from({ length: 20000 }, (_, i) =>
         t(i + 1, i === 0 ? null : i, true, 1),
       );
       expect(progress(rows).get(1)).toMatchObject({
-        total: 20000,
-        completed: 20000,
+        total: 19999,
+        completed: 19999,
         percentage: 100,
       });
     });

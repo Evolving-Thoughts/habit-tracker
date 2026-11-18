@@ -299,12 +299,14 @@ describe('TodosService', () => {
   });
 
   describe('hierarchy', () => {
-    it('adds subtree progress to every todo', async () => {
+    it('adds the progress of the todos below to every todo', async () => {
       rows = [todo(1), todo(2, 1, true)];
       const result = await service.hierarchy(USER);
-      expect(result.map((r) => [r.id, r.progress.completed])).toEqual([
-        [1, 1],
-        [2, 1],
+      expect(
+        result.map((r) => [r.id, r.progress.completed, r.progress.todoCount]),
+      ).toEqual([
+        [1, 1, 1],
+        [2, 0, 0],
       ]);
     });
     it('reports the reason a todo inherits, next to its own', async () => {
