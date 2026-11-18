@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { createTodo } from "../api/day-planner.api";
-import type { CreateTodoInput, InheritedWhy } from "../types/todo";
+import type {
+  CreateTodoInput,
+  InheritedWhy,
+  TodoResponse,
+} from "../types/todo";
 import { buildTodoInput } from "../utils/todo-input";
 import type { CampaignColor, CampaignIcon } from "../types/campaign";
 import { hoursToMinutes } from "../utils/quest-hours";
@@ -20,7 +24,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  created: [];
+  /** The new quest, so a view can say where it now stands. */
+  created: [todo: TodoResponse];
   busy: [value: boolean];
 }>();
 
@@ -82,7 +87,7 @@ async function submit(): Promise<void> {
     isSubmitting.value = true;
     emit("busy", true);
 
-    await createTodo(input);
+    const todo = await createTodo(input);
 
     resetForm();
 
@@ -91,7 +96,7 @@ async function submit(): Promise<void> {
         ? "Quest erstellt. Sie liegt im Questlog."
         : "Quest erstellt. Sie steht am geplanten Tag in Heute.";
 
-    emit("created");
+    emit("created", todo);
   } catch (error: unknown) {
     errorMessage.value =
       error instanceof Error

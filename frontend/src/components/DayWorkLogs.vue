@@ -6,6 +6,7 @@ import {
   type WorkTarget,
 } from "../api/work-logs.api";
 import { useWrites } from "../composables/useWrites";
+import AppIcon from "./AppIcon.vue";
 import type { HistoryWorkLog } from "../types/history";
 import { campaignMark } from "../utils/category-mark";
 import {
@@ -40,6 +41,29 @@ const editTo = ref("");
 const list = ref<HTMLElement | null>(null);
 
 const canAdd = computed(() => targetKey.value && from.value && to.value);
+
+/*
+ * "Zeit nachtragen" waits behind one quiet button, so the day shows its
+ * stretches first and not a form. The fields keep what was typed while the
+ * form is open, also after a refused save.
+ */
+const adding = ref(false);
+const addButton = ref<HTMLButtonElement | null>(null);
+const addForm = ref<HTMLFormElement | null>(null);
+async function openAdding(): Promise<void> {
+  adding.value = true;
+  await nextTick();
+  addForm.value?.querySelector<HTMLElement>("select, input")?.focus();
+}
+async function closeAdding(): Promise<void> {
+  adding.value = false;
+  await nextTick();
+  addButton.value?.focus();
+}
+function toggleAdding(): void {
+  if (adding.value) void closeAdding();
+  else void openAdding();
+}
 const keyOf = (target: WorkTarget): string =>
   `${target.kind}-${target.targetId}`;
 
@@ -71,7 +95,9 @@ async function add(): Promise<void> {
       times(from.value, to.value),
     ),
   );
-  if (added) from.value = to.value = "";
+  if (!added) return;
+  targetKey.value = from.value = to.value = "";
+  await closeAdding();
 }
 
 const editing = computed(() =>
@@ -127,6 +153,8 @@ watch(
   () => {
     editingId.value = null;
     error.value = null;
+    adding.value = false;
+    targetKey.value = from.value = to.value = "";
   },
 );
 </script>
@@ -207,33 +235,57 @@ watch(
         </div>
       </li>
     </ul>
-    <form v-if="targets.length" class="work-logs__add" @submit.prevent="add">
-      <h3 class="work-logs__title">Zeit nachtragen</h3>
-      <label class="field work-logs__target">
-        Eintrag
-        <select v-model="targetKey" name="target">
-          <option value="">Eintrag wählen</option>
-          <option
-            v-for="target in targets"
-            :key="keyOf(target)"
-            :value="keyOf(target)"
-          >
-            {{ target.title }}
-          </option>
-        </select>
-      </label>
-      <label class="field">
-        Von
-        <input v-model="from" name="from" type="time" />
-      </label>
-      <label class="field">
-        Bis
-        <input v-model="to" name="to" type="time" />
-      </label>
-      <button type="submit" class="btn" :disabled="saving || !canAdd">
-        Nachtragen
+    <div v-if="targets.length" class="work-logs__adding">
+      <button
+        ref="addButton"
+        type="button"
+        class="btn btn--quiet work-logs__toggle"
+        aria-controls="work-log-add"
+        :aria-expanded="adding"
+        @click="toggleAdding"
+      >
+        <AppIcon name="plus" />Zeit nachtragen
       </button>
-    </form>
+      <form
+        v-if="adding"
+        id="work-log-add"
+        ref="addForm"
+        class="work-logs__add"
+        aria-label="Zeit nachtragen"
+        @submit.prevent="add"
+        @keydown.esc.prevent="closeAdding"
+      >
+        <label class="field work-logs__target">
+          Eintrag
+          <select v-model="targetKey" name="target">
+            <option value="">Eintrag wählen</option>
+            <option
+              v-for="target in targets"
+              :key="keyOf(target)"
+              :value="keyOf(target)"
+            >
+              {{ target.title }}
+            </option>
+          </select>
+        </label>
+        <label class="field">
+          Von
+          <input v-model="from" name="from" type="time" />
+        </label>
+        <label class="field">
+          Bis
+          <input v-model="to" name="to" type="time" />
+        </label>
+        <div class="work-logs__actions">
+          <button type="submit" class="btn" :disabled="saving || !canAdd">
+            Nachtragen
+          </button>
+          <button type="button" class="btn btn--quiet" @click="closeAdding">
+            Abbrechen
+          </button>
+        </div>
+      </form>
+    </div>
   </div>
 </template>
 
@@ -244,11 +296,15 @@ watch(
   container-type: inline-size;
 }
 
-.work-logs__title {
-  grid-column: 1 / -1;
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 800;
+.work-logs__adding {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/* Quiet and at the start of the card, like the other side ways of the day. */
+.work-logs__toggle {
+  justify-self: start;
+  margin-left: calc(var(--space-3) * -1);
 }
 
 .work-logs__list {
@@ -320,8 +376,10 @@ watch(
   grid-column: 1 / -1;
 }
 
-.work-logs__add .btn {
+.work-logs__actions {
+  display: flex;
+  flex-wrap: wrap;
   grid-column: 1 / -1;
-  justify-self: start;
+  gap: var(--space-2);
 }
 </style>

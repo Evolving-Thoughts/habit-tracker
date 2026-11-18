@@ -5,8 +5,9 @@
 ## Anzeige
 
 - Tagesansicht: Bereiche **Offen / geplant**, **Erledigt** und **Übersprungen** mit Anzahl; Wochenziele ohne festen Tag stehen separat.
-- Wochenansicht: Montag–Sonntag, sieben aufklappbare Tage mit separaten Zählern für Todos erledigt, Habits erledigt und übersprungen. „Tag öffnen“ führt zum gewählten Tagesverlauf.
-- Datumsauswahl, voriger/nächster Tag bzw. Woche, „Heute“, „Aktualisieren“ und Filter **Alle / Todos / Habits**.
+- Wochenansicht: Montag–Sonntag, sieben Tage mit den Zählern ungleich null („2 erledigt · 1 offen“). Ein Tag ohne Einträge heißt „Nichts geplant“; wurde an ihm trotzdem Zeit gemessen, sagt die Zeile es mit („Nichts geplant · 2 Std. 10 Min. gemessen“). „Tag öffnen“ führt zum gewählten Tag.
+- Kopf in zwei Zeilen: der Zeitraum als Titel, der die Datumsauswahl öffnet, daneben der Filter **Alle / Quests / Dailies** als leiser Icon-Button (ein gewählter Filter nennt sich); darunter Monat · Woche · Tag und voriger/nächster Zeitraum. „Heute“ erscheint nur, wenn der gezeigte Zeitraum heute nicht enthält (`rangeContains`). Es gibt keinen Aktualisieren-Button; die Ansicht lädt bei Änderungen anderswo selbst neu.
+- Tagesansicht mit Zeitachse: siehe `logbook.md` (Spuren „Geplant“ und „Gemessen“, Erledigtes als Marke zur Zeit des Abhakens, Achse vom frühesten bis zum spätesten Eintrag, „Zeit nachtragen“ eingeklappt).
 - DD.MM.YYYY für Ausgaben; native Datumseingaben folgen der Browser-/Gerätesprache. API-Daten bleiben YYYY-MM-DD/ISO-Zeitpunkte.
 - Alle Tageszuordnungen und angezeigten Uhrzeiten verwenden **Europe/Berlin**, einschließlich Sommer-/Winterzeit.
 
@@ -50,4 +51,4 @@ Kein DB-Reset nötig. Die nullable Spalte `habit_occurrences.resolvedAt` wird du
 
 Tests prüfen zusätzlich überfällige/geplante Todos, Intervall-/Wochentagsprognosen, Regelwechsel, Wochenzielzählung, Filter und unveränderte Datenbankzeilen beim Lesen. Tests prüfen Nutzertrennung einschließlich gelöschter Beziehungen, Berlin-Mitternacht und beide DST-Wechsel, Montag/Jahreswechsel, verspätete Erledigungen, geplante Skip-Tage, Soft-Delete, Reopen, idempotente Erledigung, reine Lesezugriffe, Filter, Leer-/Fehlerzustände und veraltete Frontend-Antworten. Browser-E2E nutzen die echten App-/API-/Datenbank-Komponenten.
 
-Seitdem hinzugekommen: Monatsansicht, Wochenquote (in der Oberfläche "Dailies im Wochensoll") und Perfect Week sowie das Logbuch der gemessenen Arbeitszeit (`logbook.md`). Noch nicht enthalten: Streaks und unveränderliche Ereignis-Snapshots.
+Seitdem hinzugekommen: Monatsansicht, Wochenquote (in der Oberfläche "Dailies im Wochensoll") und Perfect Week sowie das Logbuch der gemessenen Arbeitszeit (`logbook.md`). Die Dailies lesen dieselbe Woche (`GET /history?view=week&filter=habits` für die laufende Woche) für den Stand jedes Dailys: ein Wochenziel aus `weeklyTargets` („2 von 3 diese Woche“), ein Zeitplan aus den erledigten, übersprungenen und offenen Ausführungen von heute und den offenen der restlichen Woche („heute fällig“, „heute erledigt“, „Freitag fällig“, sonst „diese Woche nicht mehr fällig“; `dailyWeekStatus` in `utils/habit.ts`). Eine eigene Schnittstelle braucht das nicht. Noch nicht enthalten: Streaks und unveränderliche Ereignis-Snapshots.

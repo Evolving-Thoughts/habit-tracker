@@ -40,6 +40,7 @@ import {
   addDays,
   dayLabel,
   monthLabel,
+  rangeContains,
   supportedHistoryDate,
   weekLabel,
 } from "../utils/history";
@@ -229,8 +230,16 @@ function step(direction: number): void {
   const next = adjacent(direction);
   if (next !== null && canMove(direction)) date.value = next;
 }
-function showToday(): void {
+/** "Heute" only shows when it would change something. */
+const showsToday = computed(() =>
+  rangeContains(mode.value, date.value, getCurrentDateInTimeZone()),
+);
+const titleButton = ref<HTMLButtonElement | null>(null);
+async function showToday(): Promise<void> {
   date.value = getCurrentDateInTimeZone();
+  // The button leaves with the step; the title names where it went.
+  await nextTick();
+  titleButton.value?.focus();
 }
 function openDay(value: string): void {
   date.value = value;
@@ -409,18 +418,68 @@ async function undoLast(): Promise<void> {
     class="page calendar-view"
     :class="{ 'calendar-view--day': mode === 'day' }"
   >
+    <!--
+      Two rows instead of a wall of controls: the range as title (it opens
+      the date picker) with the filter as a quiet icon beside it, then the
+      mode and the steps. "Heute" only appears once the range left today.
+    -->
     <header class="calendar-view__header">
-      <h1 class="page-title calendar-view__title">
-        <button
-          type="button"
-          class="calendar-view__title-button"
-          :aria-label="`Datum wählen, ${title}`"
-          @click="pickDate"
-        >
-          {{ title }}
-          <AppIcon name="chevron-down" />
-        </button>
-      </h1>
+      <div class="calendar-view__top">
+        <h1 class="page-title calendar-view__title">
+          <button
+            ref="titleButton"
+            type="button"
+            class="calendar-view__title-button"
+            :aria-label="`Datum wählen, ${title}`"
+            @click="pickDate"
+          >
+            {{ title }}
+            <AppIcon name="chevron-down" />
+          </button>
+        </h1>
+        <div class="calendar-view__filter">
+          <button
+            ref="filterButton"
+            type="button"
+            class="btn btn--quiet calendar-view__filter-button"
+            :class="{
+              'btn--icon': filter === 'all',
+              'calendar-view__filter-button--active': filter !== 'all',
+            }"
+            aria-haspopup="menu"
+            :aria-expanded="filterOpen"
+            aria-controls="calendar-filter-menu"
+            :aria-label="`Einträge: ${filterLabel}`"
+            :title="`Einträge: ${filterLabel}`"
+            @click="toggleFilter"
+          >
+            <AppIcon name="filter" />
+            <template v-if="filter !== 'all'">{{ filterLabel }}</template>
+          </button>
+          <div
+            v-if="filterOpen"
+            id="calendar-filter-menu"
+            ref="filterMenu"
+            class="calendar-view__filter-menu"
+            role="menu"
+            aria-label="Einträge"
+            @keydown="onMenuKeydown"
+          >
+            <button
+              v-for="option in FILTERS"
+              :key="option.value"
+              type="button"
+              role="menuitemradio"
+              class="calendar-view__filter-option"
+              :aria-checked="filter === option.value"
+              @click="chooseFilter(option.value)"
+            >
+              {{ option.label }}
+              <AppIcon v-if="filter === option.value" name="check" />
+            </button>
+          </div>
+        </div>
+      </div>
       <input
         ref="dateInput"
         v-model="date"
@@ -450,6 +509,14 @@ async function undoLast(): Promise<void> {
         </div>
         <div class="calendar-view__nav">
           <button
+            v-if="!showsToday"
+            type="button"
+            class="btn"
+            @click="showToday"
+          >
+            Heute
+          </button>
+          <button
             type="button"
             class="btn btn--icon"
             aria-label="Voriger Zeitraum"
@@ -458,7 +525,6 @@ async function undoLast(): Promise<void> {
           >
             <AppIcon name="chevron-left" />
           </button>
-          <button type="button" class="btn" @click="showToday">Heute</button>
           <button
             type="button"
             class="btn btn--icon"
@@ -468,43 +534,6 @@ async function undoLast(): Promise<void> {
           >
             <AppIcon name="chevron" />
           </button>
-          <div class="calendar-view__filter">
-            <button
-              ref="filterButton"
-              type="button"
-              class="chip calendar-view__filter-button"
-              aria-haspopup="menu"
-              :aria-expanded="filterOpen"
-              aria-controls="calendar-filter-menu"
-              :aria-label="`Einträge: ${filterLabel}`"
-              @click="toggleFilter"
-            >
-              {{ filterLabel }}
-              <AppIcon name="chevron-down" />
-            </button>
-            <div
-              v-if="filterOpen"
-              id="calendar-filter-menu"
-              ref="filterMenu"
-              class="calendar-view__filter-menu"
-              role="menu"
-              aria-label="Einträge"
-              @keydown="onMenuKeydown"
-            >
-              <button
-                v-for="option in FILTERS"
-                :key="option.value"
-                type="button"
-                role="menuitemradio"
-                class="calendar-view__filter-option"
-                :aria-checked="filter === option.value"
-                @click="chooseFilter(option.value)"
-              >
-                {{ option.label }}
-                <AppIcon v-if="filter === option.value" name="check" />
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </header>
@@ -591,30 +620,45 @@ async function undoLast(): Promise<void> {
   margin-bottom: var(--space-5);
 }
 
+.calendar-view__top {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
 .calendar-view__controls {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-3);
   align-items: center;
+  justify-content: space-between;
 }
 
+/* On a phone the modes take what the steps leave; wider they keep their size. */
 .calendar-view__modes {
   display: flex;
-  flex: 1 1 100%;
+  flex: 1 1 12rem;
+  max-width: 22rem;
 }
 
 .calendar-view__modes > button {
   flex: 1 1 0;
+  padding: 0 var(--space-2);
 }
 
 .calendar-view__nav {
   display: flex;
-  flex: 1 1 100%;
+  flex: none;
   gap: var(--space-2);
   align-items: center;
+  margin-left: auto;
 }
 
+/* Takes the row beside the filter, so the range wraps only when it must. */
 .calendar-view__title {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
 }
 
@@ -657,27 +701,15 @@ async function undoLast(): Promise<void> {
 
 .calendar-view__filter {
   position: relative;
-  margin-left: auto;
+  flex: none;
 }
 
-.calendar-view__filter-button {
-  display: inline-flex;
-  gap: var(--space-1);
-  align-items: center;
-  border-color: var(--color-ink);
+/* Quiet while everything shows; a chosen filter names itself in ink on white. */
+.calendar-view__filter-button--active {
+  padding: 0 var(--space-4) 0 var(--space-3);
+  box-shadow: inset 0 0 0 1.5px var(--color-ink);
   background: var(--color-surface);
   color: var(--color-ink);
-  transition: transform 420ms var(--spring);
-}
-
-.calendar-view__filter-button:active {
-  transform: var(--press);
-  transition-duration: 90ms;
-}
-
-.calendar-view__filter-button :deep(svg) {
-  width: 1rem;
-  height: 1rem;
 }
 
 .calendar-view__filter-menu {
@@ -726,8 +758,8 @@ async function undoLast(): Promise<void> {
     flex: 0 1 auto;
   }
 
-  .calendar-view__nav {
-    flex: 1 1 auto;
+  .calendar-view__modes > button {
+    padding: 0 var(--space-4);
   }
 }
 

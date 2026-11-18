@@ -38,13 +38,25 @@ export function hierarchyChildren(todos: HierarchyTodo[]) {
   }
   return groups;
 }
+/**
+ * The rows of the tree in reading order. `under` starts below one quest (an
+ * opened campaign is its detail card, not a row of its own); `keepTop`
+ * chooses which of the top rows stand at all, with everything below them.
+ */
 export function visibleHierarchy(
   todos: HierarchyTodo[],
   collapsed: Set<number>,
+  {
+    under = null,
+    keepTop = () => true,
+  }: {
+    under?: number | null;
+    keepTop?: (todo: HierarchyTodo) => boolean;
+  } = {},
 ) {
   const groups = hierarchyChildren(todos);
-  const stack = (groups.get(null) ?? [])
-    .slice()
+  const stack = (groups.get(under) ?? [])
+    .filter(keepTop)
     .reverse()
     .map((todo) => ({ todo, depth: 0 }));
   const rows: { todo: HierarchyTodo; depth: number }[] = [],
@@ -60,6 +72,27 @@ export function visibleHierarchy(
   }
   return rows;
 }
+/**
+ * A top-level quest that is a campaign: one with quests below it or a
+ * colour, icon or weekly goal (PRODUCT.md, Glossar). The server decides the
+ * same in `TodoAncestry.campaignOf`; the Questlog leaves these out.
+ */
+export function isCampaign(
+  todo: Pick<
+    HierarchyTodo,
+    "id" | "parentId" | "color" | "icon" | "weeklyTargetMinutes"
+  >,
+  parents: ReadonlySet<number | null>,
+): boolean {
+  return (
+    todo.parentId === null &&
+    (parents.has(todo.id) ||
+      todo.color !== null ||
+      todo.icon !== null ||
+      todo.weeklyTargetMinutes !== null)
+  );
+}
+
 export function descendantIds(todos: HierarchyTodo[], id: number) {
   const groups = hierarchyChildren(todos),
     stack = [id],

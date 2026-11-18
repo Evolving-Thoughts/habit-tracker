@@ -15,8 +15,6 @@ import ItemRow from "../components/ItemRow.vue";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import { useUndo } from "../composables/useUndo";
-import { useCampaignCompletion } from "../composables/useCampaignCompletion";
-import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
 import { useShortcutHandlers } from "../composables/useShortcuts";
 import { toggleTimer, useTimer } from "../composables/useTimer";
 import { addDays, getCurrentDateInTimeZone, weekStart } from "../utils/date";
@@ -94,12 +92,7 @@ const {
   initial: [] as TodoResponse[],
   fallbackError: "Die Quests konnten nicht geladen werden.",
   refreshOnChange: () =>
-    !(
-      isSaving.value ||
-      selectedTodo.value ||
-      creationOpen.value ||
-      campaignCompletion.question.value
-    ),
+    !(isSaving.value || selectedTodo.value || creationOpen.value),
 });
 const { write, applied, busy: isSaving } = useWrites(loadTodos, errorMessage);
 
@@ -127,7 +120,6 @@ function forgetDone(id: number): void {
 }
 
 const { undo, offer, take: takeUndo } = useUndo<TodoResponse>();
-const campaignCompletion = useCampaignCompletion();
 
 function categoryOf(todo: TodoResponse): string | null {
   return todo.categoryId === null
@@ -149,12 +141,6 @@ async function toggleTodo(todo: TodoResponse): Promise<void> {
 
   successMessage.value = null;
   const completing = !todo.completed;
-  // Campaigns show up here as rows: one with open quests asks first.
-  const open =
-    completing && todo.campaign?.id === todo.id
-      ? await campaignCompletion.openQuestsBelow(todo.id)
-      : 0;
-  if (!(await campaignCompletion.confirm(todo.title, open))) return;
   const written = await write(() => updateTodoCompletion(todo.id, completing), {
     fallbackError: "Die Quest konnte nicht aktualisiert werden.",
   });
@@ -162,10 +148,7 @@ async function toggleTodo(todo: TodoResponse): Promise<void> {
   forgetDone(todo.id);
   if (completing) {
     doneHere.value = [{ ...todo, completed: true }, ...doneHere.value];
-    offer(
-      todo,
-      open > 0 ? `„${todo.title}“ abgeschlossen` : `„${todo.title}“ erledigt`,
-    );
+    offer(todo, `„${todo.title}“ erledigt`);
   }
 }
 
@@ -378,7 +361,7 @@ useShortcutHandlers({
     />
     <header class="page-header">
       <h1 class="page-title">Questlog</h1>
-      <p class="page-lead">Alles, was noch keinen Tag hat.</p>
+      <p class="page-lead">Quests ohne Tag, an denen du arbeiten kannst.</p>
     </header>
 
     <CreateItemDialog
@@ -604,13 +587,6 @@ useShortcutHandlers({
       </template>
     </template>
 
-    <CampaignCompletionDialog
-      v-if="campaignCompletion.question.value"
-      :title="campaignCompletion.question.value.title"
-      :open="campaignCompletion.question.value.open"
-      @confirm="campaignCompletion.reply(true)"
-      @cancel="campaignCompletion.reply(false)"
-    />
     <UndoToast :label="undo?.label ?? null" @undo="undoLast" />
   </main>
 </template>

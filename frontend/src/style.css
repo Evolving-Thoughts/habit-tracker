@@ -309,6 +309,16 @@ body:has(.tab-bar) {
   color: var(--color-ink-muted);
 }
 
+/*
+ * In the header the lead always takes its own line below the title: capped at
+ * 60ch a short one would otherwise fit beside a short title. The padding keeps
+ * the measure instead.
+ */
+.page-header > .page-lead {
+  max-width: none;
+  padding-inline-end: max(0px, 100% - 60ch);
+}
+
 .section-title {
   margin: var(--space-6) 0 var(--space-3);
   font-size: 1.125rem;

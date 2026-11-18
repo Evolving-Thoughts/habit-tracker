@@ -42,8 +42,20 @@ async function render(logs: HistoryWorkLog[] = [log]) {
   await flushPromises();
   return wrapper;
 }
-const button = (wrapper: Awaited<ReturnType<typeof render>>, label: string) =>
+type Wrapper = Awaited<ReturnType<typeof render>>;
+const button = (wrapper: Wrapper, label: string) =>
   wrapper.findAll("button").find((item) => item.text() === label)!;
+const toggle = (wrapper: Wrapper) =>
+  wrapper.get('button[aria-controls="work-log-add"]');
+async function openForm(wrapper: Wrapper) {
+  await toggle(wrapper).trigger("click");
+  await flushPromises();
+}
+async function fillForm(wrapper: Wrapper, from: string, to: string) {
+  await wrapper.find('select[name="target"]').setValue("todo-1");
+  await wrapper.find('input[name="from"]').setValue(from);
+  await wrapper.find('input[name="to"]').setValue(to);
+}
 
 describe("DayWorkLogs", () => {
   beforeEach(() => {
@@ -61,9 +73,8 @@ describe("DayWorkLogs", () => {
 
   it("adds a manual entry on the shown day and loads the day again", async () => {
     const wrapper = await render();
-    await wrapper.find('select[name="target"]').setValue("todo-1");
-    await wrapper.find('input[name="from"]').setValue("10:00");
-    await wrapper.find('input[name="to"]').setValue("10:45");
+    await openForm(wrapper);
+    await fillForm(wrapper, "10:00", "10:45");
     await button(wrapper, "Nachtragen").element.form!.requestSubmit();
     await flushPromises();
     expect(createWorkLog).toHaveBeenCalledWith(
@@ -130,14 +141,60 @@ describe("DayWorkLogs", () => {
     });
   });
 
-  it("shows a refused entry", async () => {
+  it("shows a refused entry and keeps what was typed", async () => {
     vi.mocked(createWorkLog).mockRejectedValueOnce(new Error("Ende vor Start"));
     const wrapper = await render();
-    await wrapper.find('select[name="target"]').setValue("todo-1");
-    await wrapper.find('input[name="from"]').setValue("10:00");
-    await wrapper.find('input[name="to"]').setValue("09:00");
+    await openForm(wrapper);
+    await fillForm(wrapper, "10:00", "09:00");
     await button(wrapper, "Nachtragen").element.form!.requestSubmit();
     await flushPromises();
     expect(wrapper.find('[role="alert"]').text()).toBe("Ende vor Start");
+    expect(toggle(wrapper).attributes("aria-expanded")).toBe("true");
+    const value = (name: string) =>
+      (wrapper.get(`[name="${name}"]`).element as HTMLInputElement).value;
+    expect([value("target"), value("from"), value("to")]).toEqual([
+      "todo-1",
+      "10:00",
+      "09:00",
+    ]);
+  });
+
+  it("keeps adding time behind one button that opens in place", async () => {
+    const wrapper = await render();
+    expect(wrapper.find("#work-log-add").exists()).toBe(false);
+    expect(toggle(wrapper).text()).toBe("Zeit nachtragen");
+    expect(toggle(wrapper).attributes("aria-expanded")).toBe("false");
+
+    await openForm(wrapper);
+    expect(toggle(wrapper).attributes("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(
+      wrapper.get('select[name="target"]').element,
+    );
+
+    await button(wrapper, "Abbrechen").trigger("click");
+    await flushPromises();
+    expect(wrapper.find("#work-log-add").exists()).toBe(false);
+    expect(document.activeElement).toBe(toggle(wrapper).element);
+
+    await openForm(wrapper);
+    await wrapper.get("#work-log-add").trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    expect(wrapper.find("#work-log-add").exists()).toBe(false);
+    expect(document.activeElement).toBe(toggle(wrapper).element);
+  });
+
+  it("closes again after a saved entry and gives the focus back", async () => {
+    const wrapper = await render();
+    await openForm(wrapper);
+    await fillForm(wrapper, "10:00", "10:45");
+    await button(wrapper, "Nachtragen").element.form!.requestSubmit();
+    await flushPromises();
+    expect(wrapper.find("#work-log-add").exists()).toBe(false);
+    expect(document.activeElement).toBe(toggle(wrapper).element);
+    // Opened again, the form starts empty.
+    await openForm(wrapper);
+    expect(
+      (wrapper.get('input[name="from"]').element as HTMLInputElement).value,
+    ).toBe("");
   });
 });

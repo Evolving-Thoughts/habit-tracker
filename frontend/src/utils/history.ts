@@ -1,5 +1,6 @@
 import type { HistoryItem, HistoryPlannedItem } from "../types/history";
 import { addDays, isValidIsoDate, weekStart } from "./date";
+import { formatDuration } from "./today-agenda";
 export { addDays, weekStart };
 
 /* Own tables: ICU versions disagree on abbreviations ("Okt" vs "Okt."). */
@@ -83,6 +84,18 @@ export function weekLabel(date: string): string {
   return `${shortDate(start)} – ${shortDate(end)}`;
 }
 
+/** Whether the month, week or day shown around `date` contains `day`. */
+export function rangeContains(
+  view: "day" | "week" | "month",
+  date: string,
+  day: string,
+): boolean {
+  if (!isValidIsoDate(date)) return false;
+  if (view === "month") return date.slice(0, 7) === day.slice(0, 7);
+  if (view === "week") return weekStart(date) === weekStart(day);
+  return date === day;
+}
+
 export function supportedHistoryDate(
   date: string,
   view: "day" | "week" | "month",
@@ -132,8 +145,13 @@ export function hasEntries(day: {
   );
 }
 
-/** Only the non-zero counts: "2 erledigt · 1 offen", or "Nichts geplant". */
-export function daySummary(counts: DayCounts): string {
+/**
+ * Only the non-zero counts: "2 erledigt · 1 offen". A day without any says
+ * "Nichts geplant", and when time was measured anyway it says that too
+ * ("Nichts geplant · 2 Std. 10 Min. gemessen"), so the bar beside it does
+ * not contradict the words.
+ */
+export function daySummary(counts: DayCounts, workedMinutes = 0): string {
   const parts = [
     counts.completed && `${counts.completed} erledigt`,
     counts.skipped && `${counts.skipped} übersprungen`,
@@ -141,5 +159,8 @@ export function daySummary(counts: DayCounts): string {
     counts.events &&
       `${counts.events} ${counts.events === 1 ? "Termin" : "Termine"}`,
   ].filter(Boolean);
-  return parts.length ? parts.join(" · ") : "Nichts geplant";
+  if (parts.length) return parts.join(" · ");
+  return workedMinutes > 0
+    ? `Nichts geplant · ${formatDuration(workedMinutes)} gemessen`
+    : "Nichts geplant";
 }

@@ -64,11 +64,49 @@ X): "Kampagne abschließen?", "3 Quests in „Buch“ sind noch offen. Sie bleib
 offen; die Kampagne steht danach unter „Abgeschlossen“." The count is the
 server's (`todoCount - doneCount` of its progress); without open todos below
 nothing asks. `useCampaignCompletion` and `CampaignCompletionDialog` do this in
-the Kampagnen view (the tree is at hand), the Questlog, Heute and the Plan's X
-(they read `GET /todos/hierarchy` once, only for a row that is itself a
-campaign; a failed read asks nothing). The calendar's rows do not name their
+the Kampagnen view (the tree is at hand: the ring of a campaign's row, and
+"Kampagne abschließen" in the "…" of an opened campaign's detail card), Heute
+and the Plan's X (they read `GET /todos/hierarchy` once, only for a row that
+is itself a campaign; a failed read asks nothing). The Questlog lists no
+campaigns (see below) and never asks. The calendar's rows do not name their
 campaign and do not ask. Every completion by ring, including the Kampagnen
 view, offers the undo toast.
+
+### The Questlog: what one can work on
+
+`GET /todos/backlog` (`todo-agenda.ts`: `backlogTodos`, the pure rule
+`workableBacklog`) is the one definition of the Questlog; the Questlog view and
+the Plan's Questlog column only show it. A todo is in it when it is open, has
+no day, and
+
+- has no open todo below it: a Questreihe is worked on through its quests; one
+  whose quests are all done is a step again and returns;
+- is not a campaign: a top-level todo with todos below it (open or done) or a
+  colour, icon or weekly goal is planned through its quests, even while it has
+  none. A campaign that is one only by its look or goal is therefore in
+  neither the Questlog nor anywhere to tick off by accident; it waits in the
+  Kampagnen until it gets quests.
+
+A plain top-level todo without todos below it and without those fields is a
+loose quest: it lives in the Questlog (or on its day) and not in the
+Kampagnen. The rule reads the user's live todos once (id, parent, done) beside
+the open undated ones, so it costs one more light query, not one per todo.
+
+### The Kampagnen view
+
+The tiles and the tree below them show campaigns only (`campaignTiles`, using
+`isCampaign` from `utils/todo-hierarchy.ts`, the frontend twin of
+`TodoAncestry.campaignOf`, plus roots the quest hours count). The tree
+("Kampagnen und ihre Quests") is `visibleHierarchy` with `keepTop` set to the
+campaigns. An opened campaign is its detail card; its tree starts with the
+quests below it (`visibleHierarchy` with `under`), so the campaign is not
+repeated as a root row with the same progress bar. The card takes the
+campaign's actions ("Bearbeiten" and "…") and accepts drops. Moving a quest to
+the top says what it becomes: "Eigene Kampagne" when it has quests below it
+(or already is one), otherwise "Keine Kampagne (Questlog oder ihr Tag)", and
+it then leaves the tree. A new top-level quest that is no campaign yet is
+announced as such ("… sobald sie Unter-Quests, eine Farbe, ein Symbol oder ein
+Wochenziel hat").
 
 ### Progress and deep trees
 

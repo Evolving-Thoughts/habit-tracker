@@ -30,6 +30,7 @@ defineProps<{
     | "refresh"
     | "logout"
     | "search"
+    | "filter"
     | "code"
     | "link"
     | "list"
@@ -192,6 +193,9 @@ defineProps<{
     <template v-else-if="name === 'search'">
       <circle cx="11" cy="11" r="6.5" />
       <path d="m20 20-4.4-4.4" />
+    </template>
+    <template v-else-if="name === 'filter'">
+      <path d="M4 7h16M7 12h10M10 17h4" />
     </template>
     <template v-else-if="name === 'code'">
       <path d="m8 7-5 5 5 5M16 7l5 5-5 5" />

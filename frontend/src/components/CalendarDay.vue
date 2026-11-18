@@ -163,8 +163,8 @@ watch(
         <p v-if="!logs.length" class="calendar-day__quiet">
           {{
             day.date === today
-              ? "Heute ist noch nichts im Logbuch."
-              : "An diesem Tag ist nichts im Logbuch."
+              ? "Heute wurde noch keine Zeit gemessen."
+              : "An diesem Tag wurde keine Zeit gemessen."
           }}
         </p>
         <div v-if="logs.length || workTargets.length" class="card">

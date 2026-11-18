@@ -155,6 +155,13 @@ test("Calendar: month opens a day, Monday-first week rows, filters and soft-dele
   ).toBe(204);
   await page.goto("/");
   const view = await openCalendar(page);
+  // The head stays short: no "Heute" while today is shown, the filter a quiet icon.
+  await expect(
+    view.getByRole("button", { name: "Heute", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    view.getByRole("button", { name: "Einträge: Alle", exact: true }),
+  ).toHaveText("");
   // Monat is the default, with today selected.
   const cell = view.locator(`.month-day[data-date="${date}"]`);
   await expect(cell).toHaveAttribute("aria-pressed", "true");
@@ -587,7 +594,10 @@ test("Calendar day: reflection saves only after a change and time is logged in t
   await expect(reflection.getByLabel("Reflexion")).toHaveValue("Ruhiger Tag");
 
   const logbook = view.getByRole("region", { name: /^Logbuch/ });
-  await expect(logbook).toContainText("Heute ist noch nichts im Logbuch.");
+  await expect(logbook).toContainText("Heute wurde noch keine Zeit gemessen.");
+  await logbook
+    .getByRole("button", { name: "Zeit nachtragen", exact: true })
+    .click();
   await logbook
     .locator('[name="target"]')
     .selectOption({ label: "Schreibzeit" });
@@ -602,8 +612,10 @@ test("Calendar day: reflection saves only after a change and time is logged in t
   await expect(entries).toContainText("1 Min.");
   await expect(
     logbook
-      .getByRole("list", { name: "Logbuch", exact: true })
+      .getByRole("list", { name: "Gemessen", exact: true })
       .getByRole("button", { name: /^Schreibzeit, 00:00 bis 00:01, 1 Min\./ }),
   ).toBeVisible();
-  await expect(logbook).not.toContainText("nichts im Logbuch");
+  await expect(logbook).not.toContainText("keine Zeit gemessen");
+  // Saved, the form folds away again.
+  await expect(logbook.locator('[name="target"]')).toHaveCount(0);
 });

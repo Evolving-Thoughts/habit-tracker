@@ -7,13 +7,20 @@ const create = async (
   title: string,
   parentId: number | null = null,
   duration: number | null = 30,
+  extra: Record<string, unknown> = {},
 ) => {
   const res = await request.post(`${API_URL}/todos`, {
-    data: { title, parentId, plannedDurationMinutes: duration },
+    data: { title, parentId, plannedDurationMinutes: duration, ...extra },
   });
   expect(res.status()).toBe(201);
   return (await res.json()) as { id: number };
 };
+/**
+ * A campaign before it has quests: its colour makes it one. A plain
+ * top-level quest is no campaign and does not stand in the tree.
+ */
+const campaign = (request: APIRequestContext, title: string) =>
+  create(request, title, null, 30, { color: "berry" });
 const open = async (page: Page) => {
   await page.goto("/");
   await openView(page, "Kampagnen");
@@ -43,7 +50,7 @@ test("Tree: add child, collapse, independent completion and reopen, persist", as
   page,
   request,
 }) => {
-  const root = await create(request, "Lernprojekt abschließen");
+  const root = await campaign(request, "Lernprojekt abschließen");
   await open(page);
   await menuAction(
     page,
@@ -126,7 +133,7 @@ test("Why: an Unter-Quest takes over the campaign's reason until it gets its own
   page,
   request,
 }) => {
-  const root = await create(request, "Halbmarathon");
+  const root = await campaign(request, "Halbmarathon");
   await request.patch(`${API_URL}/todos/${root.id}`, {
     data: { why: "Im März ins Ziel kommen" },
   });
@@ -159,11 +166,18 @@ test("Why: an Unter-Quest takes over the campaign's reason until it gets its own
   expect(child.inheritedWhy?.text).toBe("Im März ins Ziel kommen");
 
   // The Questlog shows the inherited reason, and follows the campaign live.
+  // The campaign itself is planned through its quests, so it is not listed.
   await request.patch(`${API_URL}/todos/${root.id}`, {
     data: { why: "Gesund ankommen" },
   });
   await openView(page, "Questlog");
-  await expect(page.getByText("Gesund ankommen")).toHaveCount(2);
+  await expect(page.getByText("Gesund ankommen")).toHaveCount(1);
+  await expect(
+    page.getByRole("heading", { name: "Laufschuhe kaufen", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Halbmarathon", exact: true }),
+  ).toHaveCount(0);
 
   // Changing the text gives the Unter-Quest its own reason.
   await openView(page, "Kampagnen");
@@ -184,8 +198,9 @@ test("Tree: accessible move to parent and root, edit duration, preserve own sche
   isMobile,
   request,
 }) => {
-  const a = await create(request, "Backend verstehen"),
-    b = await create(request, "Frontend verstehen");
+  const a = await campaign(request, "Backend verstehen"),
+    b = await create(request, "Frontend verstehen"),
+    leaf = await create(request, "Router lernen", b.id);
   await open(page);
   await menuAction(
     page,
@@ -202,6 +217,7 @@ test("Tree: accessible move to parent and root, edit duration, preserve own sche
     .click();
   await expect(dialog).not.toBeVisible();
   await expect(row(page, b.id)).toHaveAttribute("data-depth", "1");
+  await expect(row(page, leaf.id)).toHaveAttribute("data-depth", "2");
   await row(page, b.id)
     .getByRole("button", { name: "Frontend verstehen bearbeiten", exact: true })
     .click();
@@ -211,12 +227,31 @@ test("Tree: accessible move to parent and root, edit duration, preserve own sche
   await expect(dialog).not.toBeVisible();
   await expect(row(page, b.id)).toContainText("45 Min.");
   await menuAction(page, b.id, "Vue verstehen", "Vue verstehen verschieben");
+  // With a quest below it, it becomes a campaign of its own at the top.
+  await expect(dialog.locator('option[value=""]')).toHaveText(
+    "Eigene Kampagne",
+  );
   await dialog.getByRole("combobox").selectOption("");
   await dialog
     .getByRole("button", { name: "Verschieben", exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
   await expect(row(page, b.id)).toHaveAttribute("data-depth", "0");
+  // A single quest moved to the top is no campaign: it leaves the tree.
+  await menuAction(page, leaf.id, "Router lernen", "Router lernen verschieben");
+  await expect(dialog.locator('option[value=""]')).toHaveText(
+    "Keine Kampagne (Questlog oder ihr Tag)",
+  );
+  await dialog.getByRole("combobox").selectOption("");
+  await dialog
+    .getByRole("button", { name: "Verschieben", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(row(page, leaf.id)).toHaveCount(0);
+  await openView(page, "Questlog");
+  await expect(
+    page.getByRole("heading", { name: "Router lernen", exact: true }),
+  ).toBeVisible();
 });
 test("Tree: review paused timer, cancel deletion, reject stale preview then confirm subtree", async ({
   page,
@@ -290,12 +325,78 @@ test("Tree: drag subtree between parents; invalid cycle is rejected", async ({
     "Touch uses the tested move dialog",
   );
   const a = await create(request, "A"),
-    b = await create(request, "B"),
+    b = await campaign(request, "B"),
     child = await create(request, "Kind", a.id);
+  // Room for the tiles above the tree, so both rows are on screen for the drag.
+  await page.setViewportSize({ width: 1280, height: 1000 });
   await open(page);
+  // The tiles grow once their quest hours load; drag only after the tree settled.
+  await expect(
+    page.locator(`[data-campaign-tile="${b.id}"]`),
+  ).toContainText("diese Woche");
   await row(page, a.id).dragTo(row(page, b.id));
   await expect(row(page, a.id)).toHaveAttribute("data-depth", "1");
   await expect(row(page, child.id)).toHaveAttribute("data-depth", "2");
   await row(page, b.id).dragTo(row(page, child.id));
   await expect(page.getByRole("alert")).toContainText("descendant");
+});
+test("Kampagnen: the tree holds campaigns only, an opened one starts below its card", async ({
+  page,
+  request,
+}) => {
+  const book = await create(request, "Buch schreiben");
+  const series = await create(request, "Kapitel", book.id);
+  const chapter = await create(request, "Kapitel 1", series.id);
+  const marathon = await campaign(request, "Marathon im Frühjahr");
+  const loose = await create(request, "Zahnarzt");
+  await open(page);
+  await expect(
+    page.getByRole("heading", {
+      name: "Kampagnen und ihre Quests",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(row(page, book.id)).toBeVisible();
+  await expect(row(page, marathon.id)).toBeVisible();
+  await expect(row(page, loose.id)).toHaveCount(0);
+
+  await page
+    .locator(`[data-campaign-tile="${book.id}"]`)
+    .getByRole("button", { name: "Buch schreiben", exact: true })
+    .click();
+  await expect(page.locator("#campaign-detail-title")).toHaveText(
+    "Buch schreiben",
+  );
+  // The card is the campaign; the tree begins with what lies below it.
+  await expect(row(page, book.id)).toHaveCount(0);
+  await expect(row(page, series.id)).toHaveAttribute("data-depth", "0");
+  await expect(row(page, chapter.id)).toHaveAttribute("data-depth", "1");
+  const card = page.locator(".campaign-detail");
+  await card
+    .getByRole("button", { name: "Aktionen für Buch schreiben", exact: true })
+    .click();
+  const menu = page.getByRole("menu", { name: "Buch schreiben", exact: true });
+  await expect(menu.getByRole("menuitem")).toHaveText([
+    "Kampagne abschließen",
+    "Stoppuhr starten",
+    "Unter-Quest hinzufügen",
+    "Verschieben",
+    "Löschen",
+  ]);
+  await menu
+    .getByRole("menuitem", {
+      name: "Unter-Quest zu Buch schreiben hinzufügen",
+      exact: true,
+    })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.locator("[name=title]").fill("Lektorat suchen");
+  await dialog
+    .getByRole("button", { name: "Quest erstellen", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Lektorat suchen", exact: true }),
+  ).toBeVisible();
+  await expect(card.getByRole("button", { name: /bearbeiten$/ })).toBeFocused();
 });

@@ -9,6 +9,7 @@ import {
   hasEntries,
   longDate,
   monthLabel,
+  rangeContains,
   shortDate,
   supportedHistoryDate,
   weekLabel,
@@ -65,6 +66,30 @@ it("counts a day and names only the non-zero counts", () => {
   });
   expect(counts).toEqual({ completed: 2, skipped: 1, open: 0, events: 1 });
   expect(daySummary(counts)).toBe("2 erledigt · 1 übersprungen · 1 Termin");
+  // Measured time stands beside the counts as a bar; only alone it is named.
+  expect(daySummary(counts, 130)).toBe(
+    "2 erledigt · 1 übersprungen · 1 Termin",
+  );
+});
+
+it("knows whether the shown range holds a day", () => {
+  // Wednesday, 18 November 2026; its week runs from Monday 16 to Sunday 22.
+  const today = "2026-11-18";
+  expect(rangeContains("day", today, today)).toBe(true);
+  expect(rangeContains("day", "2026-11-17", today)).toBe(false);
+  expect(rangeContains("week", "2026-11-22", today)).toBe(true);
+  expect(rangeContains("week", "2026-11-23", today)).toBe(false);
+  expect(rangeContains("month", "2026-11-01", today)).toBe(true);
+  expect(rangeContains("month", "2026-12-18", today)).toBe(false);
+  expect(rangeContains("day", "", today)).toBe(false);
+});
+
+it("says honestly that time was measured on a day without plans", () => {
+  const nothing = dayCounts({ items: [] });
+  expect(daySummary(nothing, 130)).toBe(
+    "Nichts geplant · 2 Std. 10 Min. gemessen",
+  );
+  expect(daySummary(nothing, 0)).toBe("Nichts geplant");
 });
 
 it("counts measured work as something to show on a day", () => {

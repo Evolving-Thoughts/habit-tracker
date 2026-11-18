@@ -157,3 +157,53 @@ test("future-start Daily is manageable but not due in Today", async ({
     page.getByRole("heading", { name: "Zukunftshabit", exact: true }),
   ).toHaveCount(0);
 });
+
+test("Dailies: each Daily shows its why and where it stands this week", async ({
+  page,
+  request,
+}) => {
+  const post = async (data: object) =>
+    expect((await request.post(`${API_URL}/habits`, { data })).status()).toBe(
+      201,
+    );
+  await post({
+    title: "Lesen",
+    why: "Damit der Abend ruhig wird",
+    schedule: { type: "interval", intervalDays: 1 },
+  });
+  await post({
+    title: "Krafttraining",
+    schedule: { type: "weekly_target", weeklyTarget: 3 },
+  });
+
+  await visit(page, "Dailies");
+  const card = (title: string) =>
+    page.locator(".habit-card").filter({
+      has: page.getByRole("heading", { name: title, exact: true }),
+    });
+  await expect(card("Lesen").locator(".habit-card__why")).toHaveText(
+    "Damit der Abend ruhig wird",
+  );
+  await expect(card("Lesen").locator(".habit-card__status")).toHaveText(
+    "heute fällig",
+  );
+  await expect(card("Krafttraining").locator(".habit-card__status")).toHaveText(
+    "0 von 3 diese Woche",
+  );
+  // The lead stands below the title, as in every other view.
+  const title = (await page.locator(".page-title").boundingBox())!;
+  const lead = (await page.locator(".page-lead").boundingBox())!;
+  expect(lead.y).toBeGreaterThanOrEqual(title.y + title.height - 1);
+
+  await openView(page, "Heute");
+  await page
+    .getByRole("button", { name: "Lesen erledigen", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Lesen erledigen", exact: true }),
+  ).toHaveCount(0);
+  await openView(page, "Dailies");
+  await expect(card("Lesen").locator(".habit-card__status")).toHaveText(
+    "heute erledigt",
+  );
+});

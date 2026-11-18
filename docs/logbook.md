@@ -86,20 +86,38 @@ and other calendars are only read.
   `CalendarDay.vue` draw the three views (`WeeklyTargets.vue` is shared).
 - **Day**: the list of the day (reflection, done, skipped, open, weekly goals)
   and, beside it on wide screens (from 56rem, page up to 64rem) or below it on a
-  phone, the time axis `components/DayTimeline.vue`: the plan (appointments,
-  timed dailies, events of the read calendars) in one lane, the Logbuch in the
-  other. Stretches are white blocks with the campaign's stripe (a neutral one
+  phone, the section "Logbuch" with the day's total and the time axis
+  `components/DayTimeline.vue`. Its two lanes are named for what they hold,
+  "Geplant" and "Gemessen", so the section and a lane never both say
+  "Logbuch". "Geplant" has the appointments, timed dailies and events of the
+  read calendars, and a slim mark (the history dot and the title, read as
+  "…, erledigt um 05:37") for each completion without a planned time, at the
+  time it was ticked off; a completed appointment stays its block. "Gemessen"
+  has the stretches: white blocks with the campaign's stripe (a neutral one
   without campaign), title and duration; a block is never smaller than a tap
   target, its label names title, real times, duration and campaign, and a tap
-  opens it for correcting. Below the axis `DayWorkLogs.vue` lists the stretches
-  in words (correct, delete; the source reads "Stoppuhr" or "Nachtrag") and
-  adds time by hand. A day without a stretch says so in one quiet line. Days
-  ahead have no Logbuch.
+  opens it for correcting.
+- **The axis window** (`axisHours`): from the full hour of the earliest
+  block, mark or stretch to the full hour after the latest one as drawn (a
+  short block still takes its least room, `drawnEnd`). It never starts later
+  than 8 or ends earlier than 18 (`DEFAULT_HOURS`), so a quiet day still reads
+  as a day and an empty one shows 8 to 18; a stretch at 05:37 starts it at 5.
+- Below the axis `DayWorkLogs.vue` lists the stretches in words (correct,
+  delete; the source reads "Stoppuhr" or "Nachtrag"). Adding time by hand
+  waits behind one quiet button "Zeit nachtragen" (`aria-expanded`): it opens
+  the fields in place with the focus in the first, Abbrechen or Escape close
+  them and give the focus back to the button. A refused entry keeps what was
+  typed next to the reason; a saved one closes the form, empties it and gives
+  the focus back. A day without a stretch says so in one quiet line ("Heute
+  wurde noch keine Zeit gemessen."). Days ahead have no Logbuch; their section
+  is "Termine".
 - **Deleting a stretch** has an undo, the toast of the calendar ("Abschnitt
   „Lesen“ gelöscht · Rückgängig", see below).
 - **Week**: a legend of the week's work by campaign, then per day a stacked bar
   in the campaigns' marks, scaled to the longest day, with the total as text and
-  the split in words for screen readers.
+  the split in words for screen readers. A day without plans or entries but
+  with measured time says both ("Nichts geplant · 2 Std. 10 Min. gemessen",
+  `daySummary`), so the words never contradict the bar.
 - **Month**: the day's worked time as a small figure in the cell ("2 Std. 15
   Min.", on a phone "2:15 h"); the cell's label says it in full.
 ## Deleting with undo
@@ -132,7 +150,7 @@ the view is left (unmount) or the page closes (`pagehide`; the request uses
 
 ## Frontend rules
 
-- Pure rules in `utils/logbook.ts` (positions on the axis, side-by-side layout
-  of overlapping blocks, the axis range, labels). The colour of a campaign comes
+- Pure rules in `utils/logbook.ts` (positions on the axis, completion marks,
+  side-by-side layout of overlapping blocks, the axis range, labels). The colour of a campaign comes
   from `campaignMark` in `utils/category-mark.ts`: its stored colour, else one
   from its title (see `quest-hours.md`).
