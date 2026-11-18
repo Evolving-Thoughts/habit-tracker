@@ -366,7 +366,7 @@ function removeLink(): void {
 
 <style scoped>
 .rich-text {
-  border: 1.5px solid var(--color-line);
+  border: 1.5px solid var(--color-line-strong);
   border-radius: var(--radius-control);
   background: var(--color-surface);
   color: var(--color-ink);

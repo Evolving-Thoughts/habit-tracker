@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-12T16:51:48.000Z",
+  "generatedAt": "2026-11-18T12:00:00.000Z",
   "title": "Design System: Habit-Tracker",
   "extensions": {
     "colorMeta": {
@@ -97,16 +97,16 @@
       "ink-soft": {
         "role": "neutral",
         "displayName": "Leise Tinte",
-        "canonical": "#8f6a55",
+        "canonical": "#7a5846",
         "tonalRamp": [
-          "#130803",
-          "#342217",
-          "#583e30",
-          "#7f5d4a",
-          "#a3816e",
-          "#c4a797",
-          "#e3ccbf",
-          "#fceae1"
+          "#100c09",
+          "#31231c",
+          "#573f32",
+          "#7e5b49",
+          "#a47860",
+          "#bc9c8a",
+          "#d6c2b8",
+          "#f2ece8"
         ]
       },
       "action": {
@@ -277,31 +277,31 @@
       "mark-ochre": {
         "role": "secondary",
         "displayName": "Ocker",
-        "canonical": "#b08a3e",
+        "canonical": "#a07c33",
         "tonalRamp": [
-          "#140900",
-          "#352300",
-          "#5a4000",
-          "#826012",
-          "#a58443",
-          "#c5aa78",
-          "#e4cea7",
-          "#fdecce"
+          "#130f06",
+          "#3a2d12",
+          "#685121",
+          "#977530",
+          "#c39842",
+          "#d3b374",
+          "#e4d1aa",
+          "#f6f0e4"
         ]
       },
       "mark-sage": {
         "role": "secondary",
         "displayName": "Salbeigrün",
-        "canonical": "#5f8f87",
+        "canonical": "#588880",
         "tonalRamp": [
-          "#020e0c",
-          "#132c28",
-          "#2a4c47",
-          "#447069",
-          "#69938c",
-          "#94b6b0",
-          "#bdd8d3",
-          "#dff4f0"
+          "#0a0f0f",
+          "#1e2e2c",
+          "#36544f",
+          "#4e7972",
+          "#679d94",
+          "#90b7b0",
+          "#bbd3cf",
+          "#e9f1f0"
         ]
       },
       "mark-walnut": {
@@ -317,6 +317,36 @@
           "#c2a898",
           "#e1ccbf",
           "#fbebe1"
+        ]
+      },
+      "line-strong": {
+        "role": "neutral",
+        "displayName": "Feldrahmen",
+        "canonical": "#a07d66",
+        "tonalRamp": [
+          "#100c0a",
+          "#2f241d",
+          "#554235",
+          "#7b5f4c",
+          "#9f7c65",
+          "#b99f8e",
+          "#d4c4ba",
+          "#f1ece9"
+        ]
+      },
+      "mark-none": {
+        "role": "secondary",
+        "displayName": "Ohne Kampagne",
+        "canonical": "#a38d7a",
+        "tonalRamp": [
+          "#0f0d0a",
+          "#2d261f",
+          "#514438",
+          "#766251",
+          "#99806b",
+          "#b4a292",
+          "#d1c6bd",
+          "#f0edea"
         ]
       }
     },
@@ -354,37 +384,37 @@
       {
         "name": "shadow-card",
         "value": "0 1px 2px rgb(107 50 18 / 6%), 0 6px 18px rgb(107 50 18 / 7%)",
-        "purpose": "Die eine gehobene Karte pro Ansicht (Fokus, Quote, Anmeldung, Boot-Fehler), gewählter Kalendertag, Filtermenü."
+        "purpose": "Die eine gehobene Karte pro Ansicht (Fokus, Quote, Anmeldung, Boot-Fehler), gewählter Kalendertag, Filtermenü. Token: --shadow-card. Dunkel: 0 0 0 1px rgb(255 238 222 / 7%)."
       },
       {
         "name": "tab-bar-edge",
         "value": "0 -1px 0 var(--color-line), 0 -8px 24px rgb(107 50 18 / 8%)",
-        "purpose": "Mobile Tab-Leiste; oben nur 0 1px 0 var(--color-line)."
+        "purpose": "Mobile Tab-Leiste; oben nur 0 1px 0 var(--color-line). Token: --shadow-bar. Dunkel: 0 -1px 0 var(--color-line)."
       },
       {
         "name": "popover",
         "value": "var(--shadow-card), 0 12px 32px rgb(107 50 18 / 16%)",
-        "purpose": "Mehr-Menü und Aktionsmenü."
+        "purpose": "Mehr-Menü und Aktionsmenü. Token: --shadow-popover. Dunkel: 0 0 0 1px rgb(255 238 222 / 9%), 0 12px 32px rgb(10 6 4 / 40%)."
       },
       {
         "name": "segment-rest",
         "value": "0 1px 2px rgb(107 50 18 / 12%)",
-        "purpose": "Gewähltes Segment; Schalter-Daumen mit rgb(43 29 22 / 20%)."
+        "purpose": "Gewähltes Segment; Schalter-Daumen mit rgb(43 29 22 / 20%). Token: --shadow-rest (Daumen: --shadow-thumb). Dunkel: 0 0 0 1px rgb(255 238 222 / 8%)."
       },
       {
         "name": "dialog",
         "value": "0 12px 40px rgb(43 29 22 / 22%)",
-        "purpose": "Modaldialog; Backdrop rgb(43 29 22 / 40%)."
+        "purpose": "Modaldialog; Backdrop rgb(43 29 22 / 40%). Token: --shadow-dialog (Backdrop: --color-scrim). Dunkel: 0 0 0 1px rgb(255 238 222 / 9%), 0 12px 40px rgb(10 6 4 / 40%)."
       },
       {
         "name": "toast",
         "value": "0 8px 24px rgb(43 29 22 / 30%)",
-        "purpose": "Undo-Toast."
+        "purpose": "Undo-Toast. Token: --shadow-toast. Dunkel: 0 8px 24px rgb(10 6 4 / 45%)."
       },
       {
         "name": "fab",
         "value": "0 4px 14px rgb(154 51 10 / 28%)",
-        "purpose": "Plus-Button."
+        "purpose": "Plus-Button. Token: --shadow-fab. Dunkel: 0 4px 14px rgb(10 6 4 / 45%)."
       }
     ],
     "motion": [
@@ -422,7 +452,42 @@
         "name": "wide",
         "value": "56rem"
       }
-    ]
+    ],
+    "darkColors": {
+      "ground": "#1e1611",
+      "ground-deep": "#150f0b",
+      "surface": "#2f231b",
+      "surface-faint": "rgb(255 238 222 / 2.5%)",
+      "surface-flat": "rgb(255 238 222 / 5%)",
+      "surface-quiet": "rgb(255 238 222 / 8%)",
+      "line": "#44352b",
+      "line-strong": "#8a705f",
+      "selection": "#6e3b1f",
+      "scrim": "rgb(10 6 4 / 60%)",
+      "scrim-light": "rgb(10 6 4 / 40%)",
+      "ink": "#f6e9df",
+      "ink-muted": "#cdb4a4",
+      "ink-soft": "#a88d7c",
+      "action": "#f08a4e",
+      "action-strong": "#ffa774",
+      "action-tint": "#3d2619",
+      "action-tint-hover": "#4d2f1e",
+      "on-action": "#2b1408",
+      "success": "#6cc08e",
+      "danger": "#ff8a7a",
+      "danger-tint": "#3f211b",
+      "mark-moss": "#93ad80",
+      "mark-pine": "#6f9a80",
+      "mark-sage": "#8cbab2",
+      "mark-slate": "#86abc6",
+      "mark-indigo": "#9a9edb",
+      "mark-heather": "#c79ccb",
+      "mark-plum": "#b483a6",
+      "mark-berry": "#d78fa4",
+      "mark-walnut": "#b8987f",
+      "mark-ochre": "#d6b46e",
+      "mark-none": "#857265"
+    }
   },
   "components": [
     {
@@ -469,9 +534,9 @@
       "name": "Eingabefeld",
       "kind": "input",
       "refersTo": "input-field",
-      "description": "Dialogfeld: weiß, 1.5px Apricot-Linie, weiche Ecke, oranges Caret.",
+      "description": "Dialogfeld: weiß, 1.5px Feldrahmen (line-strong), weiche Ecke, oranges Caret.",
       "html": "<input class=\"ds-input\" placeholder=\"Titel\">",
-      "css": ".ds-input{min-height:2.75rem;padding:0 .75rem;border:1.5px solid var(--color-line,#f1cfb4);border-radius:var(--radius-control,.875rem);background:var(--color-surface,#fff);color:var(--color-ink,#2b1d16);caret-color:var(--color-action,#c2410c);font:400 1rem 'Nunito Variable',ui-rounded,system-ui,sans-serif}.ds-input:focus-visible{outline:3px solid var(--color-action-strong,#9a330a);outline-offset:2px}"
+      "css": ".ds-input{min-height:2.75rem;padding:0 .75rem;border:1.5px solid var(--color-line-strong,#a07d66);border-radius:var(--radius-control,.875rem);background:var(--color-surface,#fff);color:var(--color-ink,#2b1d16);caret-color:var(--color-action,#c2410c);font:400 1rem 'Nunito Variable',ui-rounded,system-ui,sans-serif}.ds-input:focus-visible{outline:3px solid var(--color-action-strong,#9a330a);outline-offset:2px}"
     },
     {
       "name": "Segmentwahl",
@@ -540,13 +605,14 @@
   ],
   "narrative": {
     "northStar": "Der warme Küchentisch",
-    "overview": "Ein Ort, an dem man morgens kurz den Tag auslegt: warmer Apricot-Grund, darauf weiße Karten mit großen weichen Ecken, eine runde, freundliche Schrift in komfortablen Größen. Das System ist ruhig und flach; Tiefe entsteht aus dem Wechsel zwischen warmem Grund und weißer Karte, nicht aus Schatten oder Verläufen.\n\nGenau eine kräftige Farbe, ein gebranntes Orange, trägt die ganze Bedienung. Sie erscheint nur auf dem, was man antippen kann: Haken, Primär-Button, aktiver Tab, Plus-Button. Alles andere spricht in warmer Tinte. Kategorien bekommen kleine, gedämpfte Farbmarken, die nie orange sind, damit Orange immer \"hier tippen\" bedeutet.\n\nBewegung ist taktil: Antippbares gibt beim Druck leicht nach und federt beim Loslassen kurz über. Liegengebliebenes und Fehler werden ohne Alarmfarbe gezeigt; die Oberfläche bietet an, statt zu mahnen.",
+    "overview": "Ein Ort, an dem man morgens kurz den Tag auslegt: warmer Apricot-Grund, darauf weiße Karten mit großen weichen Ecken, eine runde, freundliche Schrift in komfortablen Größen. Das System ist ruhig und flach; Tiefe entsteht aus dem Wechsel zwischen warmem Grund und weißer Karte, nicht aus Schatten oder Verläufen.\n\nNachts liegt derselbe Tisch im Dunkeln: ein tiefer, warmer Umbra-Grund, Karten eine Stufe heller, warmweiße Tinte. Wer will, wählt in den Einstellungen \"Hell\" oder \"Dunkel\"; sonst folgt die App dem Gerät.\n\nGenau eine kräftige Farbe, ein gebranntes Orange, trägt die ganze Bedienung. Sie erscheint nur auf dem, was man antippen kann: Haken, Primär-Button, aktiver Tab, Plus-Button. Alles andere spricht in warmer Tinte. Kategorien bekommen kleine, gedämpfte Farbmarken, die nie orange sind, damit Orange immer \"hier tippen\" bedeutet.\n\nBewegung ist taktil: Antippbares gibt beim Druck leicht nach und federt beim Loslassen kurz über. Liegengebliebenes und Fehler werden ohne Alarmfarbe gezeigt; die Oberfläche bietet an, statt zu mahnen.",
     "keyCharacteristics": [
       "Warmer Apricot-Grund, weiße Karten, warme braune Tinte statt Grau.",
       "Eine Aktionsfarbe, ausschließlich auf Antippbarem.",
       "Große weiche Ecken (Karte 1.375rem, Control 0.875rem, Pillen).",
       "Nunito Variable, kräftige 700/800-Gewichte für Titel und Labels, tabellarische Ziffern für Zeiten und Zählungen.",
       "Flach mit einem einzigen leisen Kartenschatten; Druck federt.",
+      "Zwei Themen aus denselben Rollen: Hell (Apricot) und Dunkel (Umbra), nie Grau, nie reines Schwarz.",
       "Mobile zuerst: Tap-Ziele ab 2.75rem, feste Tab-Leiste unten, ab 56rem Leiste oben.",
       "Ein gemeinsamer Bausatz (Seite, Buttons, Felder, Segmentwahl, Chips, Karte, Zustände) für jede Ansicht."
     ],
@@ -595,10 +661,36 @@
         "name": "The Warm-Shadow Rule",
         "body": "Schatten sind weich, diffus und warmbraun getönt, nie schwarz, nie hart versetzt.",
         "section": "elevation"
+      },
+      {
+        "name": "The Same-Roles Rule",
+        "body": "Hell und Dunkel teilen jede Rolle und jeden Token-Namen; Komponenten fragen nie, welches Thema gilt. Jede Farbe der App ist ein Token in style.css, ein Test lehnt Farbliterale in .vue-Dateien und außerhalb der Token-Blöcke ab.",
+        "section": "colors"
+      },
+      {
+        "name": "The Warm-Night Rule",
+        "body": "Dunkel ist warmes Umbra, nie neutrales Grau und nie reines Schwarz; die Tinte ist Warmweiß, nie reines Weiß.",
+        "section": "colors"
+      },
+      {
+        "name": "The Still-Orange Rule",
+        "body": "Nachts ist das Orange heller (#f08a4e), damit es auf Umbra als einzige Tippfarbe leuchtet; Schrift auf Orange wird dunkle Tinte. action-strong heißt im Dunkeln heller: Hover, Text auf Getöntem, Links, Fokusring.",
+        "section": "colors"
+      },
+      {
+        "name": "The Marks-At-Night Rule",
+        "body": "Die zehn Marken sind nachts heller und etwas ruhiger, weiter in der Helligkeit gestaffelt; mark-none ist nachts dunkler als die Marken.",
+        "section": "colors"
+      },
+      {
+        "name": "The Hairline-Not-Shadow Rule",
+        "body": "Auf Dunkel hebt eine helle Haarlinie statt eines schwereren Schattens; Popover und Dialog behalten darunter einen weichen dunklen Schatten.",
+        "section": "elevation"
       }
     ],
     "dos": [
-      "Do Farben, Ecken, Abstände, Tap-Größen und Bewegung ausschließlich über die Tokens in `frontend/src/style.css` beziehen.",
+      "Do Farben, Ecken, Abstände, Tap-Größen und Bewegung ausschließlich über die Tokens in `frontend/src/style.css` beziehen; eine neue Farbe bekommt einen Wert für Hell und für Dunkel.",
+      "Do neue Farbpaare in `frontend/src/theme.spec.ts` aufnehmen, damit beide Themen ihren Kontrast halten.",
       "Do neue Ansichten aus den gemeinsamen Bausteinen (Seite, Buttons, Felder, Segmentwahl, Chips, Karte, Leerzustand, Hinweis, Skelett) zusammensetzen.",
       "Do jede Nebenaktion als getönte Pille (action-tint, Schrift action-strong) bauen und pro Kontext höchstens einen orange gefüllten Primär-Button setzen.",
       "Do Zeilenaktionen in einem Menü \"Aktionen für …\" bündeln: unteres Blatt auf dem Handy, Popover ab 40rem.",
@@ -611,7 +703,9 @@
     "donts": [
       "Don't Orange auf nicht antippbare Elemente legen (Überschriften, Linien, Status, Fortschritt, Kategorien, Verlaufspunkte).",
       "Don't Grau verwenden; Text und Linien bleiben in der warmen Tinten- und Apricot-Familie.",
-      "Don't Verläufe, harte versetzte Schatten oder schwarze Schatten einsetzen.",
+      "Don't Verläufe, harte versetzte Schatten oder schwarze Schatten einsetzen; im Dunkeln keine schwereren Schatten, sondern Haarlinien.",
+      "Don't Farbliterale (#…, rgb(), white) in Komponenten schreiben; ein Test lehnt sie ab.",
+      "Don't im Dunkeln neutrales Grau, reines Schwarz oder reines Weiß verwenden.",
       "Don't Überfälliges rot färben oder als Warnblock oben stapeln; Nachholen ist ein Angebot in tiefem Apricot.",
       "Don't Rot für Löschwege vor der endgültigen Bestätigung verwenden; \"Löschen\" im Menü ist Tinte.",
       "Don't eine zweite Farbe für Auswahl einführen; gewählt heißt Tinte auf Weiß.",

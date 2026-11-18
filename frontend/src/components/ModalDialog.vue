@@ -152,10 +152,10 @@ onUnmounted(() => {
   border-radius: var(--radius-card);
   background: var(--color-surface);
   color: var(--color-ink);
-  box-shadow: 0 12px 40px rgb(43 29 22 / 22%);
+  box-shadow: var(--shadow-dialog);
 }
 .modal-dialog::backdrop {
-  background: rgb(43 29 22 / 40%);
+  background: var(--color-scrim);
 }
 .modal-dialog__header {
   display: flex;
@@ -218,7 +218,7 @@ onUnmounted(() => {
 .modal-dialog__content :deep(textarea) {
   min-height: var(--tap);
   padding: 0 var(--space-3);
-  border: 1.5px solid var(--color-line);
+  border: 1.5px solid var(--color-line-strong);
   border-radius: var(--radius-control);
   background: var(--color-surface);
   color: var(--color-ink);

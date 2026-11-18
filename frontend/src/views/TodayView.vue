@@ -1138,6 +1138,35 @@ useShortcutHandlers(
   gap: var(--space-2);
 }
 
+/* Carried over from earlier days: a panel in deep apricot, not a warning. */
+.catch-up {
+  margin-top: var(--space-5);
+  border-radius: var(--radius-card);
+  background: var(--color-ground-deep);
+}
+
+.catch-up__toggle {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  width: 100%;
+  min-height: var(--tap-large);
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-5);
+  border: 0;
+  border-radius: var(--radius-card);
+  background: transparent;
+  color: var(--color-ink);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.catch-up__hint {
+  margin-left: auto;
+  color: var(--color-action-strong);
+}
+
+.catch-up__toggle :deep(svg),
 .resolved__toggle :deep(svg) {
   width: 1.25rem;
   height: 1.25rem;
@@ -1252,7 +1281,7 @@ useShortcutHandlers(
   gap: 0 calc(var(--tap) + var(--space-4));
   padding: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
   border-radius: var(--radius-card);
-  background: rgb(255 255 255 / 55%);
+  background: var(--color-surface-flat);
 }
 
 .timeline__time {
@@ -1315,7 +1344,7 @@ useShortcutHandlers(
 .today-view__bone {
   height: 4.5rem;
   border-radius: var(--radius-card);
-  background: rgb(255 255 255 / 55%);
+  background: var(--color-surface-flat);
   animation: today-pulse 1.4s ease-in-out infinite alternate;
 }
 

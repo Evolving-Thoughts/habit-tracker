@@ -40,7 +40,7 @@ const emit = defineEmits<{ undo: [] }>();
   background: var(--color-ink);
   color: var(--color-surface);
   font-weight: 600;
-  box-shadow: 0 8px 24px rgb(43 29 22 / 30%);
+  box-shadow: var(--shadow-toast);
   pointer-events: auto;
   animation: undo-toast-in 240ms var(--ease-out);
 }

@@ -137,7 +137,7 @@ useSortable(list, {
   min-width: 0;
   padding: var(--space-3) var(--space-2) var(--space-2);
   border-radius: var(--radius-card);
-  background: rgb(255 255 255 / 35%);
+  background: var(--color-surface-faint);
 }
 
 /* Today wears the calendar's ink frame. */
@@ -211,7 +211,7 @@ useSortable(list, {
 .plan-day__add :deep(.input) {
   min-height: var(--tap);
   border-color: transparent;
-  background: rgb(255 255 255 / 70%);
+  background: var(--color-surface-quiet);
   font-size: 0.9375rem;
 }
 

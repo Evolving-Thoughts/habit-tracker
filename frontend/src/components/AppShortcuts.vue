@@ -10,6 +10,11 @@ import {
   runShortcut,
   useShortcutHandlers,
 } from "../composables/useShortcuts";
+import {
+  THEME_CHOICES,
+  setThemeChoice,
+  themeChoice,
+} from "../composables/useTheme";
 import { useTimer } from "../composables/useTimer";
 import { VIEWS, type ViewName } from "../router";
 import type { Command } from "../utils/command-filter";
@@ -107,7 +112,18 @@ const commands = computed<Command[]>(() => {
       run: () =>
         void timer?.action(running.state === "running" ? "pause" : "resume"),
     });
-  actions.push(...layerCommands(), {
+  actions.push(...layerCommands());
+  // The other two looks; the one on screen needs no command.
+  for (const choice of THEME_CHOICES)
+    if (choice.value !== themeChoice.value)
+      actions.push({
+        id: `theme.${choice.value}`,
+        label: `Darstellung: ${choice.label}`,
+        group: "Aktionen",
+        keywords: ["Design", "Farben", "Dark Mode", "Nachtmodus", "Theme"],
+        run: () => setThemeChoice(choice.value),
+      });
+  actions.push({
     id: "overview.open",
     label: "Tastenkürzel anzeigen",
     group: "Aktionen",

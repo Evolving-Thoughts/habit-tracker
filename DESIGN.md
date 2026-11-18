@@ -5,10 +5,12 @@ colors:
   ground: "#fde4d0"
   ground-deep: "#f9d3b5"
   surface: "#ffffff"
+  surface-flat: "rgb(255 255 255 / 55%)"
   line: "#f1cfb4"
+  line-strong: "#a07d66"
   ink: "#2b1d16"
   ink-muted: "#6b4d3d"
-  ink-soft: "#8f6a55"
+  ink-soft: "#7a5846"
   action: "#c2410c"
   action-strong: "#9a330a"
   action-tint: "#fff1e8"
@@ -19,15 +21,15 @@ colors:
   danger-tint: "#fff0ec"
   mark-moss: "#6d8b5a"
   mark-pine: "#3e6650"
-  mark-sage: "#5f8f87"
+  mark-sage: "#588880"
   mark-slate: "#4f7c99"
   mark-indigo: "#5b5f9e"
   mark-heather: "#9a6b9e"
   mark-plum: "#7a4a6c"
   mark-berry: "#a8566e"
   mark-walnut: "#8c6b55"
-  mark-ochre: "#b08a3e"
-  mark-none: "#cdb4a2"
+  mark-ochre: "#a07c33"
+  mark-none: "#a38d7a"
 typography:
   display:
     fontFamily: "Nunito Variable, ui-rounded, system-ui, -apple-system, Segoe UI, sans-serif"
@@ -226,6 +228,8 @@ components:
 
 Ein Ort, an dem man morgens kurz den Tag auslegt: warmer Apricot-Grund, darauf weiße Karten mit großen weichen Ecken, eine runde, freundliche Schrift in komfortablen Größen. Das System ist ruhig und flach; Tiefe entsteht aus dem Wechsel zwischen warmem Grund und weißer Karte, nicht aus Schatten oder Verläufen.
 
+Nachts liegt derselbe Tisch im Dunkeln: ein tiefer, warmer Umbra-Grund, Karten eine Stufe heller, warmweiße Tinte. Wer will, wählt in den Einstellungen "Hell" oder "Dunkel"; sonst folgt die App dem Gerät.
+
 Genau eine kräftige Farbe, ein gebranntes Orange, trägt die ganze Bedienung. Sie erscheint nur auf dem, was man antippen kann: Haken, Primär-Button, aktiver Tab, Plus-Button. Alles andere spricht in warmer Tinte. Kategorien bekommen kleine, gedämpfte Farbmarken, die nie orange sind, damit Orange immer "hier tippen" bedeutet.
 
 Bewegung ist taktil: Antippbares gibt beim Druck leicht nach und federt beim Loslassen kurz über. Liegengebliebenes und Fehler werden ohne Alarmfarbe gezeigt; die Oberfläche bietet an, statt zu mahnen.
@@ -236,6 +240,7 @@ Bewegung ist taktil: Antippbares gibt beim Druck leicht nach und federt beim Los
 - Große weiche Ecken (Karte 1.375rem, Control 0.875rem, Pillen).
 - Nunito Variable, kräftige 700/800-Gewichte für Titel und Labels, tabellarische Ziffern für Zeiten und Zählungen.
 - Flach mit einem einzigen leisen Kartenschatten; Druck federt.
+- Zwei Themen aus denselben Rollen: Hell (Apricot) und Dunkel (Umbra), nie Grau, nie reines Schwarz.
 - Mobile zuerst: Tap-Ziele ab 2.75rem, feste Tab-Leiste unten, ab 56rem Leiste oben.
 - Ein gemeinsamer Bausatz (Seite, Buttons, Felder, Segmentwahl, Chips, Karte, Zustände) für jede Ansicht.
 
@@ -257,8 +262,9 @@ Ein warmes, einstimmiges Apricot-Umfeld mit einer gebrannten Orange-Stimme und z
 ### Neutral
 - **Apricot-Grund** (ground): Seitenhintergrund, Scrollbar-Spur, Hover im Filtermenü.
 - **Tiefer Apricot** (ground-deep): eingelassene Fläche des Nachholen-Panels, Spur der Segmentwahl und Spur aller Fortschrittsbalken.
-- **Kartenweiß** (surface): Karten, Leerzustände, Tab-Leiste, Dialoge, Menüs, gewähltes Segment und gewählter Chip, Buttons, die direkt auf dem Grund liegen ("Auf morgen", Nachholen-Chips). Halbtransparent (55 %) für Kalendertermine, Plan-Blöcke der Zeitachse und Ladeskelette.
-- **Apricot-Linie** (line): Haarlinien zwischen Listenzeilen (Nachholen, Kategorien, Kalenderzeilen, Menütrenner), Einrückungslinie in den Kampagnen, Feld- und Chiprahmen (1.5px), Tab-Leisten-Kante, Unterstreichung von Text-Links.
+- **Kartenweiß** (surface): Karten, Leerzustände, Tab-Leiste, Dialoge, Menüs, gewähltes Segment und gewählter Chip, Buttons, die direkt auf dem Grund liegen ("Auf morgen", Nachholen-Chips). Flacher als eine Karte über eigene Tokens: `surface-flat` (55 % Weiß) für Kalendertermine, Plan-Blöcke der Zeitachse, Dailies im Plan und Ladeskelette; `surface-faint` (35 %) für die Tagesspalten im Plan; `surface-quiet` (70 %) für deren Schnell-Anlegen.
+- **Apricot-Linie** (line): Haarlinien zwischen Listenzeilen (Nachholen, Kategorien, Kalenderzeilen, Menütrenner), Einrückungslinie in den Kampagnen, Chiprahmen (1.5px), Tab-Leisten-Kante, Unterstreichung von Text-Links.
+- **Feldrahmen** (line-strong): der 1.5px-Rahmen von Feldern, Auswahllisten, Textflächen und dem Notizen-Editor. Er ist oft die einzige Kante eines Felds und hält deshalb 3:1 gegen Karte und Grund.
 - **Warme Tinte** (ink): Fließtext, Titel, die Jetzt-Linie, der Undo-Toast, Füllung aller Fortschrittsbalken, Heute-Rahmen im Kalender (2px innen), Rahmen des gewählten Chips, "Löschen" im Aktionsmenü.
 - **Gedämpfte Tinte** (ink-muted): Metazeilen, Zeiten, Fortschritt, inaktive Tabs, erledigte Titel, Feldlabels, Legende, die Punkte im Monatsraster und der Zustandspunkt in Verlaufszeilen.
 - **Leise Tinte** (ink-soft): deaktivierte und laufende Zustände, gestrichelter Ring oder Punkt für Übersprungenes, Terminstrich im Monatsraster, ausgeschalteter Schalter.
@@ -274,7 +280,80 @@ Ein warmes, einstimmiges Apricot-Umfeld mit einer gebrannten Orange-Stimme und z
 
 **The Last-Step-Red Rule.** Neben Fehlern ist die einzige rote Fläche der letzte, unumkehrbare Schritt einer Löschung ("Ja, löschen"). Der Weg dorthin, etwa "Löschen" im Aktionsmenü, bleibt in Tinte.
 
+**The Same-Roles Rule.** Hell und Dunkel teilen jede Rolle und jeden Token-Namen; Komponenten fragen nie, welches Thema gilt. Jede Farbe der App ist ein Token in `style.css`, ein Test lehnt Farbliterale in `.vue`-Dateien und außerhalb der Token-Blöcke ab.
+
 **The Ink-Choice Rule.** Auswahl ist keine zweite Farbe: gewähltes Segment und gewählter Chip sind Tinte auf Weiß, Fortschritt ist ein flacher Tintenbalken auf tiefem Apricot.
+
+### Dunkel
+Dasselbe Haus bei Nacht, keine Umkehrung: Die Rollen bleiben, die Werte wechseln. `:root` hält Hell, `:root[data-theme="dark"]` Dunkel; wie das Attribut gesetzt wird, steht in `docs/theme.md`.
+
+| Token | Hell | Dunkel |
+|---|---|---|
+| ground | #fde4d0 | #1e1611 |
+| ground-deep | #f9d3b5 | #150f0b |
+| surface | #ffffff | #2f231b |
+| surface-faint | rgb(255 255 255 / 35%) | rgb(255 238 222 / 2.5%) |
+| surface-flat | rgb(255 255 255 / 55%) | rgb(255 238 222 / 5%) |
+| surface-quiet | rgb(255 255 255 / 70%) | rgb(255 238 222 / 8%) |
+| line | #f1cfb4 | #44352b |
+| line-strong | #a07d66 | #8a705f |
+| selection | #fbc79f | #6e3b1f |
+| scrim | rgb(43 29 22 / 40%) | rgb(10 6 4 / 60%) |
+| scrim-light | rgb(43 29 22 / 18%) | rgb(10 6 4 / 40%) |
+| ink | #2b1d16 | #f6e9df |
+| ink-muted | #6b4d3d | #cdb4a4 |
+| ink-soft | #7a5846 | #a88d7c |
+| action | #c2410c | #f08a4e |
+| action-strong | #9a330a | #ffa774 |
+| action-tint | #fff1e8 | #3d2619 |
+| action-tint-hover | #ffe2cf | #4d2f1e |
+| on-action | #ffffff | #2b1408 |
+| success | #2e7d4f | #6cc08e |
+| danger | #b42318 | #ff8a7a |
+| danger-tint | #fff0ec | #3f211b |
+| mark-moss | #6d8b5a | #93ad80 |
+| mark-pine | #3e6650 | #6f9a80 |
+| mark-sage | #588880 | #8cbab2 |
+| mark-slate | #4f7c99 | #86abc6 |
+| mark-indigo | #5b5f9e | #9a9edb |
+| mark-heather | #9a6b9e | #c79ccb |
+| mark-plum | #7a4a6c | #b483a6 |
+| mark-berry | #a8566e | #d78fa4 |
+| mark-walnut | #8c6b55 | #b8987f |
+| mark-ochre | #a07c33 | #d6b46e |
+| mark-none | #a38d7a | #857265 |
+
+**The Warm-Night Rule.** Dunkel ist warmes Umbra, nie neutrales Grau und nie reines Schwarz; die Tinte ist Warmweiß, nie reines Weiß.
+
+**The Still-Orange Rule.** Nachts ist das Orange heller (action #f08a4e), damit es auf Umbra als einzige Tippfarbe leuchtet; Schrift auf Orange wird dafür dunkle Tinte (on-action #2b1408), auch die Symbole auf den Kampagnen-Plaketten. "Tief" (action-strong) heißt im Dunkeln "kontrastreicher", also heller: Hover, Text auf getönten Flächen, Links und Fokusring. Orange bleibt auch nachts nur auf Antippbarem.
+
+**The Hairline-Not-Shadow Rule.** Schatten sieht man auf Dunkel kaum. Gehobenes (Fokuskarte, Popover, Dialog, gewähltes Segment) bekommt statt eines schwereren Schattens eine helle Haarlinie (`0 0 0 1px` in 7–9 % Warmweiß); Popover und Dialog behalten darunter einen weichen dunklen Schatten. Eingelassenes (ground-deep) liegt tiefer als der Grund.
+
+**The Marks-At-Night Rule.** Die zehn Marken sind nachts heller und etwas ruhiger, weiter in der Helligkeit gestaffelt; mark-none ist nachts dunkler als die Marken, damit "ohne Kampagne" leiser bleibt.
+
+Der Undo-Toast bleibt eine Pille in Tinte und ist im Dunkeln deshalb hell mit dunkler Schrift. Native Bedienelemente, Scrollbars und Autofill folgen `color-scheme` (light bzw. dark).
+
+### Kontrast
+Ein Test (`frontend/src/theme.spec.ts`) liest beide Token-Sätze aus `style.css` und prüft die Paare, die die App zeichnet: Text 4.5:1, Marken, Ringe, Symbole, Feldrahmen und Fokusring 3:1. Durchscheinende Flächen werden auf den Grund gerechnet.
+
+| Paar | Hell | Dunkel | Mindestens |
+|---|---|---|---|
+| ink / ground · ground-deep · surface · surface-flat | 13.32 · 11.64 · 16.28 · 14.89 | 14.97 · 15.96 · 12.81 · 13.30 | 4.5 |
+| ink-muted / ground · ground-deep · surface · surface-flat | 6.24 · 5.45 · 7.63 · 6.97 | 9.05 · 9.65 · 7.74 · 8.04 | 4.5 |
+| ink-soft / ground · ground-deep · surface · surface-flat | 5.19 · 4.53 · 6.34 · 5.80 | 5.74 · 6.12 · 4.91 · 5.10 | 4.5 |
+| action / surface · action-tint | 5.18 · 4.69 | 6.14 · 5.67 | 4.5 |
+| action / ground (Plus-Button, Ringe; dort steht keine Schrift) | 4.24 | 7.17 | 3 |
+| action-strong / action-tint · action-tint-hover · surface · ground · ground-deep | 6.66 · 5.97 · 7.36 · 6.03 · 5.26 | 7.41 · 6.34 · 8.01 · 9.36 · 9.98 | 4.5 |
+| on-action / action · action-strong | 5.18 · 7.36 | 7.01 · 9.15 | 4.5 |
+| success / surface | 5.05 | 6.95 | 4.5 |
+| danger / surface · danger-tint | 6.57 · 5.93 | 6.66 · 6.35 | 4.5 |
+| ink / danger-tint (Hinweisfläche) | 14.67 | 12.21 | 4.5 |
+| surface / ink (Undo-Toast) | 16.28 | 12.81 | 4.5 |
+| line-strong / surface · ground (Feldrahmen) | 3.74 · 3.06 | 3.31 · 3.87 | 3 |
+| Marken / surface (kleinster Wert) | 3.82 (moss) | 4.80 (pine) | 3 |
+| Marken / ground (kleinster Wert) | 3.13 (moss) | 5.61 (pine) | 3 |
+| on-action / Marke (Symbol auf Plakette, kleinster Wert) | 3.82 (moss) | 5.48 (pine) | 3 |
+| mark-none / surface | 3.16 | 3.33 | 3 |
 
 ## Typography
 
@@ -317,6 +396,7 @@ Einträge sind ein Raster aus Zeitspalte (2.75rem), Haken-Spalte (Tap-Breite) un
 Weitgehend flach. Tiefe entsteht durch Tonwechsel: weiße Karte auf Apricot, eingelassenes Panel in tieferem Apricot, halbtransparentes Weiß für nicht abhakbare Termine. Ein einziger leiser, warmbrauner Kartenschatten hebt pro Ansicht höchstens eine ruhende Karte: die Fokuskarte auf Heute, die Quotenkarte in der Kalenderwoche, die Kennzahlen-Karte im Wochenrückblick (dort liegt die Quotenkarte flach), die Anmeldekarte, die Boot-Fehlerkarte. Sonst hebt er nur einen Auswahlzustand (gewählter Tag im Monatsraster). Alles Schwebende (Tab-Leiste, Popover, Filtermenü, Aktionsmenü, Dialog, Toast, Plus-Button) bekommt einen weichen, diffusen Schatten in warmem Braun.
 
 ### Shadow Vocabulary
+Alle Schatten sind Tokens (`--shadow-card`, `--shadow-rest`, `--shadow-thumb`, `--shadow-bar`, `--shadow-popover`, `--shadow-dialog`, `--shadow-toast`, `--shadow-fab`), die Scrims ebenso (`--color-scrim`, `--color-scrim-light`). Die Werte unten gelten für Hell; Dunkel ersetzt sie durch Haarlinien (siehe Colors › Dunkel).
 - **Kartenschatten** (`box-shadow: 0 1px 2px rgb(107 50 18 / 6%), 0 6px 18px rgb(107 50 18 / 7%)`): die eine gehobene Karte der Ansicht, gewählter Kalendertag, Filtermenü; Basis von Mehr-Popover und Aktionsmenü.
 - **Leistenkante** (`box-shadow: 0 -1px 0 var(--color-line), 0 -8px 24px rgb(107 50 18 / 8%)`): mobile Tab-Leiste; oben nur `0 1px 0 var(--color-line)`.
 - **Popover** (`box-shadow: var(--shadow-card), 0 12px 32px rgb(107 50 18 / 16%)`): Mehr-Menü, Aktionsmenü.
@@ -355,7 +435,7 @@ Weich, griffig, federnd.
 - **Disabled:** Nebenbuttons verlieren die Fläche und werden leise Tinte. Ein noch nicht verfügbarer Primär-Button wird ruhig: Apricot-Hauch mit leiser Tinte, Cursor `not-allowed`; während er arbeitet, Cursor `progress`.
 
 ### Chips
-- **Segmentwahl:** Pillen-Spur in tiefem Apricot (0.25rem Innenabstand), Optionen in gedämpfter Tinte 700; die gewählte ist Weiß mit Tinte und leiser Auflage. Für Modi wie Monat · Woche · Tag.
+- **Segmentwahl:** Pillen-Spur in tiefem Apricot (0.25rem Innenabstand), Optionen in gedämpfter Tinte 700; die gewählte ist Weiß mit Tinte und leiser Auflage. Für Modi wie Monat · Woche · Tag. Als Buttons mit `aria-pressed` oder, wo es eine echte Auswahl ist (Darstellung), als `role="radiogroup"` mit versteckten nativen Radios in den Labels.
 - **Filter-Chip:** Pille mit 1.5px-Apricot-Linie, gedämpfte Tinte; gewählt Weiß mit Tintenrahmen und Tinte. Im Kalender öffnet ein solcher Chip das Filtermenü (weiß, Control-Ecke, Kartenschatten, Einträge mit Hover in Apricot-Grund).
 
 ### Cards / Containers
@@ -364,10 +444,10 @@ Weich, griffig, federnd.
 - **Shadow Strategy:** höchstens eine gehobene Karte pro Ansicht (siehe Elevation).
 - **Border:** keine; Zeilen in Listenkarten trennt eine Haarlinie (Kategorien, Kalenderzeilen).
 - **Internal Padding:** Basis 1rem; Fokus 1.5rem (unten 1rem), Quote 1.5rem, Einträge 0.5–1rem.
-- **Einstellungen:** jede Gruppe eine flache Karte mit Abschnittstitel; zuerst "Wochenziel Quest-Stunden" (Satz, Zahlfeld in Stunden, getöntes "Speichern", stille Rückmeldung "Gespeichert."); Schalter (`.switch`, für Benachrichtigungen und Tastenkürzel) sind eine Zeile mit kleiner Pillen-Spur (3 × 1.75rem) in Tap-Fläche, aus leise Tinte, an Orange, weißer Daumen federt über. "Tastatur" erscheint nur, wo eine Tastatur wahrscheinlich ist: Schalter "Tastenkürzel", ein gedämpfter Satz, darunter die Tastenkürzel-Liste.
+- **Einstellungen:** jede Gruppe eine flache Karte mit Abschnittstitel; zuerst "Wochenziel Quest-Stunden" (Satz, Zahlfeld in Stunden, getöntes "Speichern", stille Rückmeldung "Gespeichert."), dann "Darstellung": eine Radiogruppe im Look der Segmentwahl ("Wie das Gerät", "Hell", "Dunkel"), darunter gedämpft "Gilt auf diesem Gerät." und bei "Wie das Gerät", was gerade gilt; Schalter (`.switch`, für Benachrichtigungen und Tastenkürzel) sind eine Zeile mit kleiner Pillen-Spur (3 × 1.75rem) in Tap-Fläche, aus leise Tinte, an Orange, weißer Daumen federt über. "Tastatur" erscheint nur, wo eine Tastatur wahrscheinlich ist: Schalter "Tastenkürzel", ein gedämpfter Satz, darunter die Tastenkürzel-Liste.
 
 ### Inputs / Fields
-- **Style:** Label darüber in gedämpfter Tinte 700, 0.875rem. Feld weiß, 1.5px Apricot-Linie, Ecke 0.875rem, Tap-Höhe, Polster 0.75rem, Schrift 1rem 400; Textflächen mit Rundum-Polster und vertikal ziehbar.
+- **Style:** Label darüber in gedämpfter Tinte 700, 0.875rem. Feld weiß, 1.5px Feldrahmen (line-strong), Platzhalter in leiser Tinte, Ecke 0.875rem, Tap-Höhe, Polster 0.75rem, Schrift 1rem 400; Textflächen mit Rundum-Polster und vertikal ziehbar.
 - **Focus:** 3px-Ring in tiefem Orange, Abstand 2px; Caret orange.
 - **Error:** Formularfehler als Satz in Fehlerrot 700, 0.9375rem; Ladefehler als Hinweisfläche (Fehlerhauch, Tinte, Kartenecke) mit Wiederholen-Button.
 - **Gespeichert:** stille Rückmeldung als gedämpfter Text neben dem Feld (Kategorien, Tagesreflexion), kein Toast.
@@ -463,7 +543,8 @@ Skelett aus 55 %-weißen Kartenflächen (Basis 4.25rem; Fokus 13rem, Einträge 4
 ## Do's and Don'ts
 
 ### Do:
-- **Do** Farben, Ecken, Abstände, Tap-Größen und Bewegung ausschließlich über die Tokens in `frontend/src/style.css` beziehen.
+- **Do** Farben, Ecken, Abstände, Tap-Größen und Bewegung ausschließlich über die Tokens in `frontend/src/style.css` beziehen; eine neue Farbe bekommt einen Wert für Hell und für Dunkel.
+- **Do** neue Farbpaare in `frontend/src/theme.spec.ts` aufnehmen, damit beide Themen ihren Kontrast halten.
 - **Do** neue Ansichten aus den gemeinsamen Bausteinen (Seite, Buttons, Felder, Segmentwahl, Chips, Karte, Leerzustand, Hinweis, Skelett) zusammensetzen.
 - **Do** jede Nebenaktion als getönte Pille (action-tint, Schrift action-strong) bauen und pro Kontext höchstens einen orange gefüllten Primär-Button setzen.
 - **Do** Zeilenaktionen in einem Menü "Aktionen für …" bündeln: unteres Blatt auf dem Handy, Popover ab 40rem.
@@ -476,7 +557,9 @@ Skelett aus 55 %-weißen Kartenflächen (Basis 4.25rem; Fokus 13rem, Einträge 4
 ### Don't:
 - **Don't** Orange auf nicht antippbare Elemente legen (Überschriften, Linien, Status, Fortschritt, Kategorien, Verlaufspunkte).
 - **Don't** Grau verwenden; Text und Linien bleiben in der warmen Tinten- und Apricot-Familie.
-- **Don't** Verläufe, harte versetzte Schatten oder schwarze Schatten einsetzen.
+- **Don't** Verläufe, harte versetzte Schatten oder schwarze Schatten einsetzen; im Dunkeln keine schwereren Schatten, sondern Haarlinien.
+- **Don't** Farbliterale (#…, rgb(), white) in Komponenten schreiben; ein Test lehnt sie ab.
+- **Don't** im Dunkeln neutrales Grau, reines Schwarz oder reines Weiß verwenden.
 - **Don't** Überfälliges rot färben oder als Warnblock oben stapeln; Nachholen ist ein Angebot in tiefem Apricot.
 - **Don't** Rot für Löschwege vor der endgültigen Bestätigung verwenden; "Löschen" im Menü ist Tinte.
 - **Don't** eine zweite Farbe für Auswahl einführen; gewählt heißt Tinte auf Weiß.

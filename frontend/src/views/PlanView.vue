@@ -442,7 +442,7 @@ useShortcutHandlers({
 .plan-view__bone {
   height: 14rem;
   border-radius: var(--radius-card);
-  background: rgb(255 255 255 / 55%);
+  background: var(--color-surface-flat);
   animation: plan-breathe 1.6s var(--ease-out) infinite alternate;
 }
 

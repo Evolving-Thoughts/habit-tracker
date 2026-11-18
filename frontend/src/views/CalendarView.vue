@@ -467,7 +467,7 @@ function onMoved(): void {
 }
 
 .calendar-view__title-button:hover {
-  background: rgb(255 255 255 / 55%);
+  background: var(--color-surface-flat);
 }
 
 .calendar-view__title-button:active {
