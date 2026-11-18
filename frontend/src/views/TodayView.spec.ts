@@ -474,6 +474,11 @@ describe("TodayView", () => {
     const wrapper = mount(TodayView);
     await flushPromises();
 
+    // Überspringen waits in the menu, not as a button on the card.
+    expect(
+      wrapper.find('button[aria-label="Joggen überspringen"]').exists(),
+    ).toBe(false);
+    await wrapper.get('[aria-label="Aktionen für Joggen"]').trigger("click");
     await wrapper
       .get('button[aria-label="Joggen überspringen"]')
       .trigger("click");
@@ -983,5 +988,196 @@ describe("TodayView keyboard shortcuts", () => {
     await flushPromises();
     expect(updateTodoMock).not.toHaveBeenCalled();
     setSingleKeys(true);
+  });
+});
+
+describe("TodayView rows and focus card", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
+    localStorage.clear();
+    reloadShortcutSettings();
+    updateTodoMock.mockResolvedValue(undefined);
+    updateOccurrenceMock.mockResolvedValue(undefined);
+    vi.mocked(rescheduleTodo).mockResolvedValue(undefined as never);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = "";
+  });
+
+  const texts = (
+    wrapper: { findAll(selector: string): { text(): string }[] },
+    selector: string,
+  ) => wrapper.findAll(selector).map((element) => element.text());
+
+  it("keeps the focus card to one action row: Erledigt, ▶, Fokus-Modus and its menu", async () => {
+    getTodayMock.mockResolvedValue(
+      makePlanner([
+        makeHabit({ moveUntil: "2026-10-04" }),
+        makeTodo({ todoId: 2, title: "Danach" }),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+
+    const focus = wrapper.get(".focus");
+    const actions = focus.get(".focus__actions");
+    expect(
+      actions
+        .findAll("button, a")
+        .map((control) => control.attributes("aria-label")),
+    ).toEqual([
+      "Joggen erledigen",
+      "Timer für Joggen starten",
+      "Fokus-Modus",
+      "Aktionen für Joggen",
+    ]);
+    // The Fokus-Modus is an icon link with its name as tooltip.
+    const mode = actions.get('a[aria-label="Fokus-Modus"]');
+    expect(mode.attributes("title")).toBe("Fokus-Modus");
+    expect(mode.text()).toBe("");
+    // No text buttons for Überspringen or Bearbeiten on the card.
+    expect(texts(focus, "button")).not.toContain("Überspringen");
+    expect(texts(focus, "button")).not.toContain("Bearbeiten");
+    // The grip sits in the card's head, beside the title, not in the actions.
+    expect(
+      focus.get(".focus__head .sort-handle").attributes("aria-label"),
+    ).toBe("Joggen in der Reihenfolge verschieben");
+    expect(actions.find(".sort-handle").exists()).toBe(false);
+
+    await actions.get('[aria-label="Aktionen für Joggen"]').trigger("click");
+    expect(texts(wrapper, "[role=menuitem] .action-menu__label")).toEqual([
+      "Überspringen",
+      "Morgen",
+      "Anderer Tag …",
+    ]);
+  });
+
+  it("opens the editor from the focus card's title", async () => {
+    getTodayMock.mockResolvedValue(makePlanner([makeTodo()]));
+    const wrapper = mount(TodayView, {
+      global: {
+        stubs: {
+          EditItemDialog: {
+            props: ["kind", "entityId"],
+            template:
+              '<div class="editor-stub">{{ kind }} {{ entityId }}</div>',
+          },
+        },
+      },
+    });
+    await flushPromises();
+    const title = wrapper.get('.focus h2[aria-label="NestJS lernen"] button');
+    expect(title.attributes("aria-label")).toBe("NestJS lernen bearbeiten");
+    await title.trigger("click");
+    expect(wrapper.get(".editor-stub").text()).toBe("todo 1");
+  });
+
+  it("shows rows with ring, title, ▶ and a menu, and no text buttons", async () => {
+    getTodayMock.mockResolvedValue(
+      makePlanner([
+        makeTodo({ todoId: 1, title: "Erstens" }),
+        makeTodo({ todoId: 2, title: "Zweitens" }),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    const row = wrapper.get('[data-focus-key="todo-2"]');
+    expect(
+      row.findAll("button").map((button) => button.attributes("aria-label")),
+    ).toEqual([
+      "Zweitens in der Reihenfolge verschieben",
+      "Zweitens erledigen",
+      "Zweitens bearbeiten",
+      "Timer für Zweitens starten",
+      "Aktionen für Zweitens",
+    ]);
+    expect(row.text()).not.toContain("Verschieben");
+  });
+
+  it("moves a row to tomorrow from its menu the way D does", async () => {
+    getTodayMock.mockResolvedValue(
+      makePlanner([
+        makeTodo({ todoId: 1, title: "Erstens" }),
+        makeTodo({ todoId: 2, title: "Zweitens" }),
+      ]),
+    );
+    const wrapper = mount(TodayView, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.get('[aria-label="Aktionen für Zweitens"]').trigger("click");
+    const entries = wrapper.findAll("[role=menuitem]");
+    expect(
+      entries.map((entry) => entry.get(".action-menu__label").text()),
+    ).toEqual(["Morgen", "Nächste Woche", "Anderer Tag …"]);
+    // The keys that do the same are named for assistive technology.
+    expect(entries[0]!.attributes("aria-keyshortcuts")).toBe("D");
+    expect(entries[1]!.attributes("aria-keyshortcuts")).toBe("W");
+    await wrapper.get('[aria-label="Zweitens auf morgen"]').trigger("click");
+    await flushPromises();
+    expect(rescheduleTodo).toHaveBeenCalledWith(2, "2026-10-03", false);
+    expect(wrapper.get('[role="status"].visually-hidden').text()).toBe(
+      "„Zweitens“ steht jetzt bei morgen.",
+    );
+  });
+
+  it("offers an appointment only Verschieben, where the move is confirmed", async () => {
+    getTodayMock.mockResolvedValue(
+      makePlanner([
+        makeTodo({ todoId: 1, title: "Erstens" }),
+        makeTodo({ todoId: 2, title: "Zahnarzt", timeOfDay: "15:00" }),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    await wrapper.get('[aria-label="Aktionen für Zahnarzt"]').trigger("click");
+    expect(texts(wrapper, "[role=menuitem] .action-menu__label")).toEqual([
+      "Termin verschieben …",
+    ]);
+    await wrapper.get('[aria-label="Zahnarzt verschieben"]').trigger("click");
+    expect(wrapper.find('[data-test="move-confirm"]').exists()).toBe(true);
+  });
+
+  it("says in words which row's stopwatch runs", async () => {
+    getTodayMock.mockResolvedValue(
+      makePlanner([
+        makeTodo({ todoId: 1, title: "Erstens" }),
+        makeTodo({ todoId: 2, title: "Zweitens" }),
+      ]),
+    );
+    const controller = createTimerController();
+    controller.timer.value = {
+      id: "t",
+      kind: "todo",
+      targetId: 2,
+      title: "Zweitens",
+      state: "running",
+      elapsedMilliseconds: 1000,
+      targetMinutes: null,
+      targetReachedAt: null,
+    };
+    const wrapper = mount(TodayView, {
+      global: { provide: { [timerKey as symbol]: controller } },
+    });
+    await flushPromises();
+    const row = wrapper.get('[data-focus-key="todo-2"]');
+    expect(row.get(".item-row__running").text()).toBe("läuft");
+    expect(
+      row
+        .find('[aria-label="Stoppuhr für Zweitens läuft, pausieren"]')
+        .exists(),
+    ).toBe(true);
+    expect(wrapper.find(".focus__running").exists()).toBe(false);
+
+    controller.timer.value = {
+      ...controller.timer.value,
+      targetId: 1,
+      title: "Erstens",
+      state: "paused",
+    };
+    await flushPromises();
+    expect(wrapper.get(".focus__running").text()).toBe("pausiert");
+    controller.dispose();
   });
 });

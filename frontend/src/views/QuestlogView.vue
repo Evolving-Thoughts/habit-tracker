@@ -8,9 +8,10 @@ import {
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { getCategories } from "../api/categories.api";
+import { planQuest } from "../api/questlog.api";
 import { useListFocus } from "../composables/useListFocus";
 import AppIcon from "../components/AppIcon.vue";
-import ItemPlayButton from "../components/ItemPlayButton.vue";
+import ItemRow from "../components/ItemRow.vue";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import { useUndo } from "../composables/useUndo";
@@ -25,9 +26,14 @@ import type { CreateTodoInput, TodoResponse } from "../types/todo";
 import { shownWhy } from "../utils/why";
 import PlanFields from "../components/PlanFields.vue";
 import QuestNotes from "../components/QuestNotes.vue";
-import { categoryMark } from "../utils/category-mark";
+import { campaignMark, categoryMark } from "../utils/category-mark";
 import { buildTodoInput } from "../utils/todo-input";
 import { dayLabel, fullStop } from "../utils/history";
+import {
+  quickMoveEntries,
+  quickMoves,
+  type MenuEntry,
+} from "../utils/row-actions";
 
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
@@ -160,12 +166,17 @@ async function undoLast(): Promise<void> {
     forgetDone(todo.id);
 }
 
-function openEditing(todo: TodoResponse): void {
+/** Where the editor puts the focus: the title, or the day for "Tag wählen …". */
+const editorFocus = ref('input[name="editTitle"]');
+function openEditing(todo: TodoResponse, { atDay = false } = {}): void {
   if (isBusy.value) {
     return;
   }
 
   listFocus.remember(`todo-${todo.id}`);
+  editorFocus.value = atDay
+    ? 'input[name="scheduledDate"]'
+    : 'input[name="editTitle"]';
   selectedTodo.value = todo;
   cancelDeletion();
 
@@ -271,25 +282,51 @@ function openTodo(key: string | null): TodoResponse | null {
   if (isBusy.value || selectedTodo.value) return null;
   return todos.value.find((todo) => `todo-${todo.id}` === key) ?? null;
 }
-function plan(key: string | null, date: string, where: string): boolean {
+function whereLabel(date: string): string {
+  const today = getCurrentDateInTimeZone();
+  if (date === today) return "bei heute";
+  if (date === addDays(today, 1)) return "bei morgen";
+  return `am ${dayLabel(date)}`;
+}
+function plan(key: string | null, date: string): boolean {
   const todo = openTodo(key);
   if (!todo) return false;
   void listFocus.around(key!, async () => {
     successMessage.value = null;
-    const input = buildTodoInput({
-      title: todo.title,
-      date,
-      time: "",
-      duration: todo.plannedDurationMinutes ?? "",
-    });
     if (
-      await write(() => updateTodo(todo.id, input), {
+      await write(() => planQuest(todo, date), {
         fallbackError: "Die Quest konnte nicht eingeplant werden.",
       })
     )
-      successMessage.value = fullStop(`„${todo.title}“ steht jetzt ${where}`);
+      successMessage.value = fullStop(
+        `„${todo.title}“ steht jetzt ${whereLabel(date)}`,
+      );
   });
   return true;
+}
+
+/*
+ * "Aktionen für …": Einplanen for today, tomorrow or next week runs the same
+ * step as T, D and W; "Tag wählen …" opens the editor at its day field.
+ */
+function rowMenu(todo: TodoResponse): MenuEntry[] {
+  const key = `todo-${todo.id}`;
+  return [
+    ...quickMoveEntries(
+      todo.title,
+      quickMoves(getCurrentDateInTimeZone(), { date: null }),
+      (move) => void plan(key, move.date),
+      { disabled: isBusy.value, plan: true },
+    ),
+    {
+      id: "choose-day",
+      label: "Tag wählen …",
+      icon: "calendar",
+      ariaLabel: `Tag für ${todo.title} wählen`,
+      disabled: isBusy.value,
+      run: () => openEditing(todo, { atDay: true }),
+    },
+  ];
 }
 useShortcutHandlers({
   "quest.new": () => {
@@ -310,13 +347,11 @@ useShortcutHandlers({
     if (!todo) return false;
     void listFocus.around(key!, () => toggleTodo(todo));
   },
-  "row.today": ({ key }) => plan(key, getCurrentDateInTimeZone(), "bei heute"),
+  "row.today": ({ key }) => plan(key, getCurrentDateInTimeZone()),
   "row.tomorrow": ({ key }) =>
-    plan(key, addDays(getCurrentDateInTimeZone(), 1), "bei morgen"),
-  "row.nextWeek": ({ key }) => {
-    const monday = addDays(weekStart(getCurrentDateInTimeZone()), 7);
-    return plan(key, monday, `am ${dayLabel(monday)}`);
-  },
+    plan(key, addDays(getCurrentDateInTimeZone(), 1)),
+  "row.nextWeek": ({ key }) =>
+    plan(key, addDays(weekStart(getCurrentDateInTimeZone()), 7)),
 });
 </script>
 
@@ -345,7 +380,7 @@ useShortcutHandlers({
       title="Quest bearbeiten"
       :busy="isSaving"
       :return-focus="listFocus.returnFocus"
-      focus-selector='input[name="editTitle"]'
+      :focus-selector="editorFocus"
       @close="closeEditing"
     >
       <section class="todo-editor">
@@ -502,47 +537,32 @@ useShortcutHandlers({
             :key="todo.id"
             :data-todo-id="todo.id"
             :data-focus-key="`todo-${todo.id}`"
-            class="dump-item"
-            :class="{ 'dump-item--completed': todo.completed }"
           >
-            <button
-              class="dump-item__check"
-              type="button"
-              :disabled="isBusy"
-              :aria-busy="isSaving || undefined"
-              :aria-pressed="todo.completed"
-              :aria-label="
+            <ItemRow
+              class="dump-item"
+              :title="todo.title"
+              :state="todo.completed ? 'completed' : 'open'"
+              :ring-pressed="todo.completed"
+              :busy="isBusy"
+              :campaign-mark="campaignMark(todo.campaign)"
+              :measure="
                 todo.completed
-                  ? `${todo.title} wieder öffnen`
-                  : `${todo.title} erledigen`
+                  ? null
+                  : {
+                      kind: 'todo',
+                      targetId: todo.id,
+                      eligible: todo.timerEligible,
+                    }
               "
-              @click="toggleTodo(todo)"
+              :menu="todo.completed ? [] : rowMenu(todo)"
+              @toggle="toggleTodo(todo)"
+              @edit="openEditing(todo)"
             >
-              <span class="dump-item__ring">
-                <AppIcon v-if="todo.completed" name="check" />
-              </span>
-            </button>
-
-            <div class="dump-item__content">
-              <!-- The heading keeps the plain title; the button says "bearbeiten". -->
-              <h3 :aria-label="todo.title">
-                <button
-                  class="dump-item__title"
-                  data-edit-button
-                  type="button"
-                  :disabled="isBusy"
-                  :aria-label="`${todo.title} bearbeiten`"
-                  @click="openEditing(todo)"
-                >
-                  {{ todo.title }}
-                </button>
-              </h3>
-              <p v-if="shownWhy(todo)" class="dump-item__why">
-                {{ shownWhy(todo) }}
-              </p>
-              <p
-                v-if="categoryOf(todo) || detailsOf(todo).length"
-                class="dump-item__details"
+              <template
+                v-if="
+                  categoryOf(todo) || detailsOf(todo).length || todo.campaign
+                "
+                #meta
               >
                 <span v-if="categoryOf(todo)" class="dump-item__category">
                   <i
@@ -554,17 +574,17 @@ useShortcutHandlers({
                 <span v-for="part in detailsOf(todo)" :key="part">{{
                   part
                 }}</span>
-              </p>
-            </div>
-            <ItemPlayButton
-              v-if="!todo.completed"
-              class="dump-item__play"
-              kind="todo"
-              :target-id="todo.id"
-              :title="todo.title"
-              :eligible="todo.timerEligible"
-              :disabled="isBusy"
-            />
+                <span
+                  v-if="todo.campaign && todo.campaign.id !== todo.id"
+                  class="dump-item__campaign"
+                >
+                  {{ todo.campaign.title }}
+                </span>
+              </template>
+              <template v-if="shownWhy(todo)" #below>
+                <p class="dump-item__why">{{ shownWhy(todo) }}</p>
+              </template>
+            </ItemRow>
           </li>
         </ul>
       </template>
@@ -627,7 +647,7 @@ useShortcutHandlers({
   color: var(--color-danger);
 }
 
-/* List. */
+/* List: each quest on the shared row (ItemRow). */
 .dump-list {
   display: grid;
   gap: var(--space-2);
@@ -636,135 +656,11 @@ useShortcutHandlers({
   list-style: none;
 }
 
-.dump-item {
-  display: grid;
-  grid-template-columns: var(--tap) minmax(0, 1fr) auto;
-  gap: var(--space-2);
-  align-items: start;
-  padding: var(--space-2) var(--space-3) var(--space-3) var(--space-2);
-  border-radius: var(--radius-card);
-  background: var(--color-surface);
-}
-
-.dump-item__check {
-  display: grid;
-  width: var(--tap);
-  height: var(--tap);
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--color-on-action);
-  cursor: pointer;
-  transition: transform 420ms var(--spring);
-}
-
-.dump-item__check:active:not(:disabled) {
-  transform: scale(0.86);
-  transition-duration: 90ms;
-}
-
-.dump-item__check:disabled {
-  cursor: progress;
-}
-
-.dump-item__ring {
-  display: grid;
-  width: 1.875rem;
-  height: 1.875rem;
-  place-items: center;
-  border: 2.5px solid var(--color-action);
-  border-radius: 50%;
-  transition:
-    background-color 240ms var(--ease-out),
-    border-color 240ms var(--ease-out);
-}
-
-.dump-item__ring :deep(svg) {
-  width: 1.125rem;
-  height: 1.125rem;
-  stroke-width: 3;
-  animation: check-pop 420ms var(--spring);
-}
-
-@keyframes check-pop {
-  from {
-    transform: scale(0.4);
-    opacity: 0;
-  }
-}
-
-.dump-item--completed .dump-item__ring {
-  background: var(--color-action);
-}
-
-.dump-item__check:disabled .dump-item__ring {
-  border-color: var(--color-ink-soft);
-}
-
-.dump-item--completed .dump-item__check:disabled .dump-item__ring {
-  background: var(--color-ink-soft);
-}
-
-.dump-item__content {
-  min-width: 0;
-  padding-top: 0.55rem;
-}
-
-.dump-item h3 {
-  margin: 0;
-  color: var(--color-ink);
-  font-size: 1.0625rem;
-  font-weight: 700;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.dump-item--completed h3 {
-  color: var(--color-ink-muted);
-  text-decoration: line-through;
-  text-decoration-thickness: 1.5px;
-}
-
-.dump-item__title {
-  display: inline;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  text-decoration: underline;
-  text-decoration-color: transparent;
-  text-underline-offset: 0.2em;
-  cursor: pointer;
-  transition: text-decoration-color 160ms var(--ease-out);
-}
-
-.dump-item__title:hover:not(:disabled) {
-  text-decoration-color: var(--color-line);
-}
-
-.dump-item__title:disabled {
-  cursor: progress;
-}
-
 .dump-item__why {
   max-width: 60ch;
-  margin: 0.15rem 0 0;
+  margin: 0.1rem 0 0;
   color: var(--color-ink-muted);
-}
-
-.dump-item__details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 var(--space-3);
-  margin: 0.15rem 0 0;
-  color: var(--color-ink-muted);
-  font-size: 0.875rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+  font-size: 0.9375rem;
 }
 
 .dump-item__category {
@@ -773,15 +669,14 @@ useShortcutHandlers({
   align-items: center;
 }
 
+.dump-item__campaign {
+  font-weight: 700;
+}
+
 .category-mark {
   width: 0.625rem;
   height: 0.625rem;
   border-radius: 0.2rem;
-}
-
-/* The timer sits beside the title, so a card stays one line tall. */
-.dump-item__play {
-  align-self: start;
 }
 
 /* Finished items fold away, like on Heute. */

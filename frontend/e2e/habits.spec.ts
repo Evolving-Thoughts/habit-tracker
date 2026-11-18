@@ -23,8 +23,12 @@ test("Today: create Daily, complete/reopen and skip/reopen one occurrence", asyn
   await page
     .getByRole("button", { name: "Joggen wieder öffnen", exact: true })
     .click();
+  // Überspringen waits in the row's menu.
   await page
-    .getByRole("button", { name: "Joggen überspringen", exact: true })
+    .getByRole("button", { name: "Aktionen für Joggen", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Joggen überspringen", exact: true })
     .click();
   await showResolved(page);
   const row = page.locator("#resolved-list .planner-item").filter({

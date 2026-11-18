@@ -37,6 +37,8 @@ defineProps<{
     | "list-check"
     | "divider"
     | "close"
+    | "skip"
+    | "stop"
     // Campaign icons (keys of CAMPAIGN_ICONS; "code" is above).
     | "book"
     | "dumbbell"
@@ -147,6 +149,13 @@ defineProps<{
     </template>
     <template v-else-if="name === 'plus'">
       <path d="M12 5v14M5 12h14" />
+    </template>
+    <template v-else-if="name === 'skip'">
+      <path d="M5 6l9 6-9 6Z" />
+      <path d="M18.5 6v12" />
+    </template>
+    <template v-else-if="name === 'stop'">
+      <rect x="6" y="6" width="12" height="12" rx="2" />
     </template>
     <template v-else-if="name === 'edit'">
       <path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z" />

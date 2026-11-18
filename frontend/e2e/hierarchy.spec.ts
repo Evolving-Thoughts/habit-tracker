@@ -22,7 +22,8 @@ const open = async (page: Page) => {
   ).toBeVisible();
 };
 const row = (page: Page, id: number) => page.locator(`[data-todo-id="${id}"]`);
-// Row actions live behind one "Aktionen für <Titel>" menu.
+// Row actions live behind one "Aktionen für <Titel>" menu, shown at the end
+// of the page (so no scrolling list can cut it off).
 const menuAction = async (
   page: Page,
   id: number,
@@ -32,7 +33,10 @@ const menuAction = async (
   await row(page, id)
     .getByRole("button", { name: `Aktionen für ${title}`, exact: true })
     .click();
-  await row(page, id).getByRole("menuitem", { name, exact: true }).click();
+  await page
+    .getByRole("menu", { name: title, exact: true })
+    .getByRole("menuitem", { name, exact: true })
+    .click();
 };
 
 test("Tree: add child, collapse, independent completion and reopen, persist", async ({

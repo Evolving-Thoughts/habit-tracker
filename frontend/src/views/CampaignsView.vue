@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import { getQuestHours } from "../api/quest-hours.api";
@@ -12,7 +12,9 @@ import {
   visibleHierarchy,
   descendantIds,
 } from "../utils/todo-hierarchy";
+import ActionMenu from "../components/ActionMenu.vue";
 import AppIcon from "../components/AppIcon.vue";
+import CheckRing from "../components/CheckRing.vue";
 import CreateButton from "../components/CreateButton.vue";
 import ModalDialog from "../components/ModalDialog.vue";
 import CreateTodoForm from "../components/CreateTodoForm.vue";
@@ -36,6 +38,7 @@ import {
 import { formatDuration } from "../utils/today-agenda";
 import { againstTarget, campaignTiles } from "../utils/quest-hours";
 import type { QuestHoursResponse } from "../types/quest-hours";
+import type { MenuEntry } from "../utils/row-actions";
 const page = ref<HTMLElement | null>(null),
   listFocus = useListFocus(page);
 const collapsed = ref(new Set<number>());
@@ -47,7 +50,6 @@ const action = ref<"create" | "move" | "edit" | "delete" | null>(null),
 const formBusy = ref(false),
   parent = ref("");
 const burnupTodo = ref<HierarchyTodo | null>(null);
-const menuFor = ref<number | null>(null);
 const categoryNames = ref(new Map<number, string>());
 const timer = useTimer();
 const {
@@ -149,12 +151,6 @@ onMounted(async () => {
     categoryNames.value = new Map();
   }
 });
-function onKeydown(event: KeyboardEvent) {
-  if (event.key === "Escape" && menuFor.value !== null) closeMenu();
-}
-onMounted(() => window.addEventListener("keydown", onKeydown));
-onUnmounted(() => window.removeEventListener("keydown", onKeydown));
-
 function shortDate(isoDate: string) {
   return formatDateForGermanDisplay(isoDate).slice(0, 6);
 }
@@ -204,51 +200,62 @@ function timerDisabled(todo: HierarchyTodo) {
   );
 }
 function startTimer(todo: HierarchyTodo) {
-  closeMenu();
   if (timer)
     void timer.start({ kind: "todo", targetId: todo.id, title: todo.title });
 }
 
-function menuItems() {
-  return Array.from(
-    page.value?.querySelectorAll<HTMLElement>(
-      `#todo-menu-${menuFor.value} [role=menuitem]:not(:disabled)`,
-    ) ?? [],
+/*
+ * "Aktionen für …": the tree structures campaigns, so measuring is one entry
+ * here instead of a ▶ on every row.
+ */
+function rowMenu(todo: HierarchyTodo): MenuEntry[] {
+  const entries: MenuEntry[] = [
+    {
+      id: "timer",
+      label: "Timer starten",
+      icon: "timer",
+      ariaLabel: timerLabel(todo),
+      disabled: timerDisabled(todo),
+      run: () => startTimer(todo),
+    },
+    {
+      id: "child",
+      label: "Unter-Quest hinzufügen",
+      icon: "child",
+      ariaLabel: `Unter-Quest zu ${todo.title} hinzufügen`,
+      disabled: busy.value,
+      run: () => open("create", todo),
+    },
+  ];
+  if (todo.parentId === null)
+    entries.push({
+      id: "progress",
+      label: "Fortschritt anzeigen",
+      icon: "chart",
+      ariaLabel: `Fortschritt von ${todo.title} anzeigen`,
+      disabled: busy.value,
+      run: () => showProgress(todo),
+    });
+  entries.push(
+    {
+      id: "move",
+      label: "Verschieben",
+      icon: "move",
+      ariaLabel: `${todo.title} verschieben`,
+      disabled: busy.value,
+      run: () => open("move", todo),
+    },
+    {
+      id: "delete",
+      label: "Löschen",
+      icon: "trash",
+      ariaLabel: `${todo.title} mit allen Unter-Quests löschen`,
+      disabled: busy.value,
+      last: true,
+      run: () => void requestDelete(todo),
+    },
   );
-}
-async function toggleMenu(id: number) {
-  if (menuFor.value === id) return closeMenu();
-  menuFor.value = id;
-  await nextTick();
-  menuItems()[0]?.focus();
-}
-function closeMenu({ restoreFocus = true } = {}) {
-  const id = menuFor.value;
-  menuFor.value = null;
-  if (restoreFocus && id !== null)
-    void nextTick(() =>
-      page.value
-        ?.querySelector<HTMLElement>(`[data-menu-trigger="${id}"]`)
-        ?.focus(),
-    );
-}
-function moveMenuFocus(event: KeyboardEvent) {
-  const items = menuItems();
-  if (!items.length) return;
-  const index = items.indexOf(document.activeElement as HTMLElement);
-  if (event.key === "ArrowDown") items[(index + 1) % items.length]?.focus();
-  else if (event.key === "ArrowUp")
-    items[(index - 1 + items.length) % items.length]?.focus();
-  else if (event.key === "Home") items[0]?.focus();
-  else if (event.key === "End") items[items.length - 1]?.focus();
-  else if (event.key === "Tab") return closeMenu({ restoreFocus: false });
-  else return;
-  event.preventDefault();
-}
-/** Menu entries hand focus to the dialog, which returns it to the row. */
-function fromMenu(fn: () => void) {
-  closeMenu({ restoreFocus: false });
-  fn();
+  return entries;
 }
 
 function message(e: unknown) {
@@ -362,7 +369,6 @@ function startDrag(event: DragEvent, id: number) {
     event.preventDefault();
     return;
   }
-  menuFor.value = null;
   dragged.value = id;
   event.dataTransfer?.setData("text/plain", String(id));
   if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
@@ -563,19 +569,15 @@ useShortcutHandlers({
             <AppIcon name="chevron-down" />
           </button>
           <span v-else class="row__spacer" aria-hidden="true" />
-          <button
-            type="button"
+          <CheckRing
             role="checkbox"
             class="row__check"
             :aria-checked="checked(todo)"
+            :checked="checked(todo)"
             :disabled="busy"
-            :aria-label="`${todo.title} als eigene Quest erledigen`"
-            @click="toggleCompletion(todo)"
-          >
-            <span class="row__ring">
-              <AppIcon v-if="checked(todo)" name="check" />
-            </span>
-          </button>
+            :label="`${todo.title} als eigene Quest erledigen`"
+            @toggle="toggleCompletion(todo)"
+          />
           <div class="row__content">
             <h2 :aria-label="todo.title">
               <button
@@ -638,88 +640,12 @@ useShortcutHandlers({
               <span class="row__count">{{ progressText(todo) }}</span>
             </div>
           </div>
-          <div class="row__more">
-            <button
-              type="button"
-              class="btn btn--quiet btn--icon"
-              aria-haspopup="menu"
-              :aria-expanded="menuFor === todo.id"
-              :aria-controls="`todo-menu-${todo.id}`"
-              :aria-label="`Aktionen für ${todo.title}`"
-              :data-menu-trigger="todo.id"
-              :disabled="busy"
-              @click="toggleMenu(todo.id)"
-            >
-              <AppIcon name="more" />
-            </button>
-            <template v-if="menuFor === todo.id">
-              <div class="menu-scrim" aria-hidden="true" @click="closeMenu()" />
-              <div class="menu">
-                <p :id="`todo-menu-title-${todo.id}`" class="menu__title">
-                  {{ todo.title }}
-                </p>
-                <div
-                  :id="`todo-menu-${todo.id}`"
-                  class="menu__list"
-                  role="menu"
-                  :aria-labelledby="`todo-menu-title-${todo.id}`"
-                  @keydown="moveMenuFocus"
-                >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    class="btn btn--quiet menu__item"
-                    :disabled="timerDisabled(todo)"
-                    :aria-label="timerLabel(todo)"
-                    @click="startTimer(todo)"
-                  >
-                    <AppIcon name="timer" />Timer starten
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    class="btn btn--quiet menu__item"
-                    :disabled="busy"
-                    :aria-label="`Unter-Quest zu ${todo.title} hinzufügen`"
-                    @click="fromMenu(() => open('create', todo))"
-                  >
-                    <AppIcon name="child" />Unter-Quest hinzufügen
-                  </button>
-                  <button
-                    v-if="todo.parentId === null"
-                    type="button"
-                    role="menuitem"
-                    class="btn btn--quiet menu__item"
-                    :disabled="busy"
-                    :aria-label="`Fortschritt von ${todo.title} anzeigen`"
-                    @click="fromMenu(() => showProgress(todo))"
-                  >
-                    <AppIcon name="chart" />Fortschritt anzeigen
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    class="btn btn--quiet menu__item"
-                    :disabled="busy"
-                    :aria-label="`${todo.title} verschieben`"
-                    @click="fromMenu(() => open('move', todo))"
-                  >
-                    <AppIcon name="move" />Verschieben
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    class="btn btn--quiet menu__item menu__item--danger"
-                    :disabled="busy"
-                    :aria-label="`${todo.title} mit allen Unter-Quests löschen`"
-                    @click="fromMenu(() => requestDelete(todo))"
-                  >
-                    <AppIcon name="trash" />Löschen
-                  </button>
-                </div>
-              </div>
-            </template>
-          </div>
+          <ActionMenu
+            :title="todo.title"
+            :entries="rowMenu(todo)"
+            :disabled="busy"
+            :trigger-key="todo.id"
+          />
         </li>
       </ul>
       <div
@@ -889,67 +815,6 @@ useShortcutHandlers({
   transform: rotate(-90deg);
 }
 
-.row__check {
-  display: grid;
-  width: var(--tap);
-  height: var(--tap);
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--color-on-action);
-  cursor: pointer;
-  transition: transform 420ms var(--spring);
-}
-
-.row__check:active:not(:disabled) {
-  transform: scale(0.86);
-  transition-duration: 90ms;
-}
-
-.row__ring {
-  display: grid;
-  width: 1.875rem;
-  height: 1.875rem;
-  place-items: center;
-  border: 2.5px solid var(--color-action);
-  border-radius: 50%;
-  transition:
-    background-color 240ms var(--ease-out),
-    border-color 240ms var(--ease-out);
-}
-
-.row__ring :deep(svg) {
-  width: 1.125rem;
-  height: 1.125rem;
-  stroke-width: 3;
-  animation: check-pop 420ms var(--spring);
-}
-
-@keyframes check-pop {
-  from {
-    transform: scale(0.4);
-    opacity: 0;
-  }
-}
-
-.row--done .row__ring {
-  background: var(--color-action);
-}
-
-.row__check:disabled {
-  cursor: progress;
-}
-
-.row__check:disabled .row__ring {
-  border-color: var(--color-ink-soft);
-}
-
-.row--done .row__check:disabled .row__ring {
-  background: var(--color-ink-soft);
-}
-
 .row__content {
   min-width: 0;
   padding-top: 0.55rem;
@@ -1050,90 +915,6 @@ useShortcutHandlers({
   font-size: 0.875rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-}
-
-.row__more {
-  position: relative;
-}
-
-.menu-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 35;
-}
-
-/* Mehr-Menü: a white popover next to the button, a bottom sheet on phones. */
-.menu {
-  position: fixed;
-  inset: auto 0 0;
-  z-index: 40;
-  display: grid;
-  gap: var(--space-1);
-  padding: var(--space-3) var(--space-3)
-    calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
-  border-radius: var(--radius-card) var(--radius-card) 0 0;
-  background: var(--color-surface);
-  box-shadow: var(--shadow-popover);
-}
-
-@media (max-width: 39.99rem) {
-  .menu-scrim {
-    background: var(--color-scrim-light);
-  }
-}
-
-.menu__title {
-  margin: 0;
-  padding: var(--space-1) var(--space-3) var(--space-2);
-  color: var(--color-ink);
-  font-size: 0.875rem;
-  font-weight: 800;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.menu__list {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.menu__item {
-  justify-content: flex-start;
-  width: 100%;
-  color: var(--color-ink);
-}
-
-.menu__item:disabled {
-  color: var(--color-ink-soft);
-}
-
-.menu__item--danger {
-  position: relative;
-  margin-top: var(--space-2);
-}
-
-.menu__item--danger:not(:disabled) {
-  color: var(--color-ink);
-}
-
-.menu__item--danger::before {
-  position: absolute;
-  top: calc(-1 * var(--space-1) - 1px);
-  right: var(--space-2);
-  left: var(--space-2);
-  height: 1px;
-  background: var(--color-line);
-  content: "";
-}
-
-@media (min-width: 40rem) {
-  .menu {
-    position: absolute;
-    inset: calc(100% + var(--space-1)) 0 auto auto;
-    min-width: 15rem;
-    padding: var(--space-2);
-    border-radius: var(--radius-card);
-  }
 }
 
 .root-target {

@@ -13,13 +13,17 @@ import {
   updateOccurrenceStatus,
 } from "../api/day-planner.api";
 import { formatStopwatch } from "../utils/stopwatch";
+import type { MenuEntry } from "../utils/row-actions";
+import ActionMenu from "./ActionMenu.vue";
 import TimerIconButton from "./TimerIconButton.vue";
 import ModalDialog from "./ModalDialog.vue";
 
 /**
  * Holds the one stopwatch of the signed-in user for everything below it and
  * shows it in a bar that stays in view. A view that shows the stopwatch large
- * itself hides the bar; the dialogs stay available either way.
+ * itself hides the bar; the dialogs stay available either way. On a phone
+ * the bar is one line (title, time, pause or resume); Soll ändern,
+ * erledigen and beenden wait in its menu.
  */
 defineProps<{ hideBar?: boolean }>();
 
@@ -73,6 +77,36 @@ async function complete(): Promise<void> {
     completing.value = false;
   }
 }
+/* The phone's menu: the same steps as the round buttons beside the time. */
+const moreActions = computed<MenuEntry[]>(() => {
+  const current = timer.value;
+  if (!current) return [];
+  return [
+    {
+      id: "target",
+      label: "Soll ändern",
+      icon: "edit",
+      disabled: busy.value,
+      run: openTarget,
+    },
+    {
+      id: "complete",
+      label: "Erledigen",
+      icon: "check",
+      ariaLabel: `${current.title} erledigen`,
+      disabled: busy.value || completing.value,
+      run: () => void complete(),
+    },
+    {
+      id: "stop",
+      label: "Beenden",
+      icon: "stop",
+      ariaLabel: "Timer beenden",
+      disabled: busy.value || completing.value,
+      run: () => void controller.action("stop"),
+    },
+  ];
+});
 let ticker: ReturnType<typeof setInterval>;
 let poller: ReturnType<typeof setInterval>;
 function refresh(): void {
@@ -132,23 +166,33 @@ onUnmounted(() => {
           @click="controller.action('resume')"
         />
         <TimerIconButton
+          class="timer-bar__wide"
           icon="edit"
           label="Soll ändern"
           :disabled="busy"
           @click="openTarget"
         />
         <TimerIconButton
+          class="timer-bar__wide"
           icon="check"
           :label="`${timer.title} erledigen`"
           :disabled="busy || completing"
           @click="complete"
         />
         <TimerIconButton
+          class="timer-bar__wide"
           icon="stop"
           label="Timer beenden"
           :disabled="busy || completing"
           @click="controller.action('stop')"
         />
+        <span class="timer-bar__more">
+          <ActionMenu
+            :title="timer.title"
+            :entries="moreActions"
+            label="Weitere Aktionen der Stoppuhr"
+          />
+        </span>
       </div>
     </div>
     <p v-if="error" role="alert" class="timer-bar__error">
@@ -311,13 +355,64 @@ input {
   color: var(--color-ink);
   font: inherit;
 }
-@media (max-width: 32rem) {
+.timer-bar__more {
+  display: none;
+}
+/*
+ * A phone keeps the bar to one line: state and title (cut with an ellipsis),
+ * the time, pause or resume, and the menu with the rarer steps.
+ */
+@media (max-width: 39.99rem) {
   .timer-bar {
     width: calc(100% - 1rem);
-    padding: 0.75rem;
+    margin-top: 0.5rem;
+    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  }
+  .timer-bar__row {
+    flex-wrap: nowrap;
+    gap: var(--space-2);
+  }
+  .timer-bar__text {
+    min-width: 0;
+    overflow-wrap: normal;
+  }
+  .timer-bar__text small,
+  .timer-bar__text strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .timer-bar__text small {
+    font-size: 0.8125rem;
+    line-height: 1.3;
+  }
+  .timer-bar__text strong {
+    line-height: 1.3;
+  }
+  .timer-bar__time {
+    font-size: 1.25rem;
+  }
+  .timer-bar__target {
+    font-size: 0.75rem;
   }
   .timer-bar__controls {
+    gap: 0;
     margin-left: auto;
+  }
+  .timer-bar__wide {
+    display: none;
+  }
+  .timer-bar__more {
+    display: contents;
+  }
+  /* Still announced; the state above the title says it in one word. */
+  .timer-bar__hint {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 </style>

@@ -66,9 +66,14 @@ export only, as Logbuch events (see `logbook.md`).
   unless an appointment is running right now (its time until its duration, or
   30 minutes); appointments and calendar events sit on the time axis.
 - Heute sorts by drag and drop: the focus card and the rows after it are one
-  list (`useSortable`, SortableJS). The grip also takes Arrow Up/Down, and a
-  status line announces the new place. The new order shows at once and is
-  confirmed, or taken back, by the reload after the write.
+  list (`useSortable`, SortableJS). The grip (in a row's time column, at the
+  focus card's top right) also takes Arrow Up/Down, and a status line
+  announces the new place. The new order shows at once and is confirmed, or
+  taken back, by the reload after the write.
+- Moving a single entry sits in its menu "Aktionen für …" (Morgen, Nächste
+  Woche, "Anderer Tag …"; an appointment only "Termin verschieben …", where
+  the move is confirmed). The quick days run the same step as D and W
+  (`utils/row-actions.ts` `quickMoves` decides which days apply).
 - `QuickAddQuest.vue`: type a title, press Enter, the quest is planned for
   today, at the end or at the head of the order. The week plan uses it per day,
   always at the end.

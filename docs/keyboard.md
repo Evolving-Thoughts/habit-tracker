@@ -99,6 +99,14 @@ Per row kind:
 | Plan: Daily, done quest | nothing | nothing | nothing |
 | Questlog: open quest | stopwatch | tick, undo toast | plans it for that day with the editor's own save (`PATCH /todos/:id`), message in the status line |
 | Questlog: ticked here | nothing | nothing | nothing |
+| Plan: row of the Questlog column | stopwatch | tick, undo toast in Plan | onto that day of the board like dropping it (end of the day's order); next Monday beyond the board with the editor's save |
+
+The row menus "Aktionen für …" (Heute, Questlog, Kalender) name the same
+keys on their entries: Heute/Morgen/Nächste Woche carry `aria-keyshortcuts`
+(T, D, W) and show them as key caps where a keyboard is likely, and they run
+the same code as the key. While a menu is open its scrim lies over the page,
+so a row key under the pointer does nothing; inside the menu the arrow keys,
+Home, End, Escape and Tab belong to the menu.
 
 N: Heute focuses its quick add; Plan focuses today's quick add, or the first
 day's when the shown week lies ahead; Questlog opens its "Quest erstellen"

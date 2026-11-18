@@ -1,10 +1,11 @@
 import { PLANNER_HABIT_FIELDS, PLANNER_TODO_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, mount } from "@vue/test-utils";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   DayPlannerHabitItem,
   DayPlannerTodoItem,
 } from "../types/day-planner";
+import type { MenuEntry } from "../utils/row-actions";
 import PlannerItem from "./PlannerItem.vue";
 
 enableAutoUnmount(afterEach);
@@ -111,13 +112,13 @@ describe("PlannerItem", () => {
       },
     });
     expect(wrapper.get(".planner-item__campaign").text()).toBe("Halbmarathon");
-    expect(wrapper.classes()).toContain("planner-item--campaign");
+    expect(wrapper.classes()).toContain("item-row--campaign");
     expect(wrapper.attributes("style")).toContain("--campaign-mark");
 
     const loose = mount(PlannerItem, {
       props: { item: makeTodo(), isUpdating: false },
     });
-    expect(loose.classes()).not.toContain("planner-item--campaign");
+    expect(loose.classes()).not.toContain("item-row--campaign");
   });
 
   it("offers a grip that also sorts with the arrow keys", async () => {
@@ -149,7 +150,8 @@ describe("PlannerItem", () => {
       },
     });
     expect(wrapper.get(".planner-item__time").text()).toBe("28.09.");
-    expect(wrapper.find(".planner-item__skip-button").exists()).toBe(false);
+    expect(wrapper.find('[aria-haspopup="menu"]').exists()).toBe(false);
+    expect(wrapper.find(".timer-icon").exists()).toBe(false);
   });
 
   it("offers no Play for a completed Quest", () => {
@@ -184,19 +186,33 @@ describe("PlannerItem", () => {
     expect(wrapper.emitted("toggle")).toEqual([[item]]);
   });
 
-  it("emits skip for a pending habit", async () => {
-    const item = makeHabit();
-
-    const wrapper = mount(PlannerItem, {
-      props: {
-        item,
-        isUpdating: false,
+  it("keeps only ring, title and ▶ in the row and the rest in its menu", async () => {
+    const skip = vi.fn();
+    const menu: MenuEntry[] = [
+      {
+        id: "skip",
+        label: "Überspringen",
+        icon: "skip",
+        ariaLabel: "Joggen überspringen",
+        run: skip,
       },
+    ];
+    const wrapper = mount(PlannerItem, {
+      props: { item: makeHabit(), isUpdating: false, menu },
     });
 
-    await wrapper.get(".planner-item__skip-button").trigger("click");
-
-    expect(wrapper.emitted("skip")).toEqual([[item]]);
+    // No permanent text buttons: the row's buttons are ring, title, ▶ and "…".
+    expect(
+      wrapper.findAll("button").map((b) => b.attributes("aria-label")),
+    ).toEqual([
+      "Joggen erledigen",
+      "Joggen bearbeiten",
+      "Timer für Joggen starten",
+      "Aktionen für Joggen",
+    ]);
+    await wrapper.get('[aria-label="Aktionen für Joggen"]').trigger("click");
+    await wrapper.get('[aria-label="Joggen überspringen"]').trigger("click");
+    expect(skip).toHaveBeenCalledOnce();
   });
 
   it("emits edit for a todo", async () => {
@@ -235,10 +251,9 @@ describe("PlannerItem", () => {
     expect(wrapper.emitted("edit")).toEqual([[item]]);
 
     expect(wrapper.emitted("toggle")).toBeUndefined();
-    expect(wrapper.emitted("skip")).toBeUndefined();
   });
 
-  it("does not offer a skip action for todos", () => {
+  it("shows no menu button when the view offers no actions", () => {
     const wrapper = mount(PlannerItem, {
       props: {
         item: makeTodo(),
@@ -246,7 +261,7 @@ describe("PlannerItem", () => {
       },
     });
 
-    expect(wrapper.find(".planner-item__skip-button").exists()).toBe(false);
+    expect(wrapper.find('[aria-haspopup="menu"]').exists()).toBe(false);
   });
 
   it.each(["completed", "skipped"] as const)(
@@ -256,14 +271,19 @@ describe("PlannerItem", () => {
         props: {
           item: makeHabit({ status }),
           isUpdating: false,
+          menu: [
+            { id: "skip", label: "Überspringen", icon: "skip", run: () => {} },
+          ],
         },
       });
 
-      expect(wrapper.get(".planner-item__check").attributes("aria-label")).toBe(
+      expect(wrapper.get(".check-ring").attributes("aria-label")).toBe(
         "Joggen wieder öffnen",
       );
 
-      expect(wrapper.find(".planner-item__skip-button").exists()).toBe(false);
+      // Resolved rows have nothing to start or move.
+      expect(wrapper.find('[aria-haspopup="menu"]').exists()).toBe(false);
+      expect(wrapper.find(".timer-icon").exists()).toBe(false);
 
       expect(
         wrapper.find('button[aria-label="Joggen bearbeiten"]').exists(),
@@ -287,35 +307,21 @@ describe("PlannerItem", () => {
       props: {
         item: makeHabit(),
         isUpdating: true,
+        menu: [
+          { id: "skip", label: "Überspringen", icon: "skip", run: () => {} },
+        ],
       },
     });
 
     const buttons = wrapper.findAll("button");
 
-    // Abhaken, Bearbeiten, Timer und Überspringen.
+    // Abhaken, Bearbeiten, Timer und das Menü.
     expect(buttons).toHaveLength(4);
 
     for (const button of buttons) {
       expect(button.element.disabled).toBe(true);
     }
 
-    expect(
-      wrapper.get(".planner-item__check").attributes("aria-busy"),
-    ).toBe("true");
-  });
-
-  it("names each action after its item for screen readers", () => {
-    const wrapper = mount(PlannerItem, {
-      props: {
-        item: makeHabit({ moveUntil: "2026-10-04" }),
-        isUpdating: false,
-      },
-    });
-    expect(
-      wrapper.find('button[aria-label="Joggen überspringen"]').exists(),
-    ).toBe(true);
-    expect(
-      wrapper.find('button[aria-label="Joggen verschieben"]').exists(),
-    ).toBe(true);
+    expect(wrapper.get(".check-ring").attributes("aria-busy")).toBe("true");
   });
 });

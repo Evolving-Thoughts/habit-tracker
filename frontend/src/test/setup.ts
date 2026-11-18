@@ -1,3 +1,9 @@
+import { config } from "@vue/test-utils";
+
+// Menus teleport to the end of the page; in tests they stay in place, so a
+// wrapper finds them like any other part of the component.
+config.global.stubs = { ...config.global.stubs, teleport: true };
+
 // Browser mocks are not needed by Node-environment IndexedDB tests.
 if (typeof HTMLDialogElement !== "undefined") {
   // jsdom has no native top layer. Browser QA verifies real modal/focus behavior.

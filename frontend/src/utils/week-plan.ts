@@ -1,3 +1,4 @@
+import type { TodoResponse } from "../types/todo";
 import type {
   WeekPlanDay,
   WeekPlanEntry,
@@ -99,25 +100,34 @@ const withOpen = (day: WeekPlanDay, open: WeekPlanEntry[]): WeekPlanDay => ({
  * day it is not planned for (another day, or today for an overdue quest),
  * the quest moves there; an untimed quest then takes its place in that
  * day's order. Returns null when the drop changes nothing.
+ *
+ * `incoming` is a quest from the Questlog column: it has no day yet, so it
+ * comes from no column of the board and always moves.
  */
 export function dropOnDay(
   plan: WeekPlanResponse,
   drop: Drop,
+  incoming?: WeekPlanTodoEntry,
 ): { plan: WeekPlanResponse; write: DropWrite } | null {
-  const source = plan.days.find((day) =>
-    day.entries.some(
-      (entry) => entry.type === "todo" && entry.todoId === drop.todoId,
-    ),
-  );
+  const source = incoming
+    ? undefined
+    : plan.days.find((day) =>
+        day.entries.some(
+          (entry) => entry.type === "todo" && entry.todoId === drop.todoId,
+        ),
+      );
   const target = plan.days.find((day) => day.date === drop.toDate);
-  const entry = source?.entries.find(
-    (item): item is WeekPlanTodoEntry =>
-      item.type === "todo" && item.todoId === drop.todoId,
-  );
-  if (!source || !target || !entry || !isMovable(entry)) return null;
+  const entry =
+    incoming ??
+    source?.entries.find(
+      (item): item is WeekPlanTodoEntry =>
+        item.type === "todo" && item.todoId === drop.todoId,
+    );
+  if ((!source && !incoming) || !target || !entry || !isMovable(entry))
+    return null;
   if (drop.toDate < plan.today) return null;
 
-  const moves = entry.scheduledDate !== drop.toDate;
+  const moves = !!incoming || entry.scheduledDate !== drop.toDate;
   const placed: WeekPlanTodoEntry = moves
     ? { ...entry, scheduledDate: drop.toDate, isOverdue: false }
     : entry;
@@ -186,6 +196,30 @@ export function arrowDrop(
   const neighbour = sequence[sequence.indexOf(entry) + (key === "up" ? -1 : 1)];
   if (!neighbour) return null;
   return { todoId, toDate: day.date, index: open.indexOf(neighbour) };
+}
+
+/**
+ * A quest of the Questlog as a row of the board, so the column shows it like
+ * the days do and a drop can place it before the server answers.
+ */
+export function questlogEntry(
+  todo: Pick<
+    TodoResponse,
+    "id" | "title" | "plannedDurationMinutes" | "campaign"
+  >,
+  date: string,
+): WeekPlanTodoEntry {
+  return {
+    type: "todo",
+    todoId: todo.id,
+    status: "pending",
+    scheduledDate: date,
+    title: todo.title,
+    timeOfDay: null,
+    plannedDurationMinutes: todo.plannedDurationMinutes,
+    campaign: todo.campaign,
+    isOverdue: false,
+  };
 }
 
 /** "3 offen · 1 Std. 30 Min.": what is still open on a day; empty when nothing is. */

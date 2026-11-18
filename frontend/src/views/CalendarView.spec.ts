@@ -1,6 +1,7 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getHistory } from "../api/history.api";
+import { rescheduleTodo, updateTodoCompletion } from "../api/day-planner.api";
 import { notifyViewsChanged } from "../composables/data-sync";
 import { HISTORY_ITEM_FIELDS, PLANNED_FIELDS } from "../types/fixtures";
 import type {
@@ -16,6 +17,7 @@ vi.mock("../api/history.api", () => ({ getHistory: vi.fn() }));
 vi.mock("../api/day-planner.api", () => ({
   rescheduleTodo: vi.fn(),
   rescheduleOccurrence: vi.fn(),
+  updateTodoCompletion: vi.fn(),
 }));
 vi.mock("../api/work-logs.api", () => ({
   createWorkLog: vi.fn(),
@@ -227,19 +229,73 @@ describe("CalendarView month", () => {
     expect(wrapper.get(".selected-day h2").text()).toBe("Mittwoch, 7. Okt.");
   });
 
-  it("marks forecasts and offers moving only for stored entries", async () => {
+  it("gives an open quest the ring and its moves a menu; a forecast only shows", async () => {
     const wrapper = await render();
     const rows = wrapper.findAll(".planned-item");
     expect(rows[0]!.text()).toContain("Saugen");
-    expect(rows[0]!.find("button").text()).toBe("Verschieben");
+    expect(rows[0]!.find('[aria-label="Saugen erledigen"]').exists()).toBe(
+      true,
+    );
+    expect(rows[0]!.find('[aria-label="Aktionen für Saugen"]').exists()).toBe(
+      true,
+    );
+    // No lone "Verschieben" button any more.
+    expect(
+      rows[0]!.findAll("button").some((b) => b.text() === "Verschieben"),
+    ).toBe(false);
     expect(rows[1]!.text()).toContain("voraussichtlich");
-    expect(rows[1]!.find("button").exists()).toBe(false);
+    expect(rows[1]!.find(".check-ring").exists()).toBe(false);
+    expect(rows[1]!.find('[aria-haspopup="menu"]').exists()).toBe(false);
   });
 
-  it("opens the move dialog for a planned entry", async () => {
+  it("opens the move dialog for a planned entry from its menu", async () => {
     const wrapper = await render();
+    await wrapper.get('[aria-label="Aktionen für Saugen"]').trigger("click");
+    expect(
+      wrapper
+        .findAll("[role=menuitem] .action-menu__label")
+        .map((entry) => entry.text()),
+    ).toEqual(["Morgen", "Nächste Woche", "Anderer Tag …"]);
     await wrapper.get('[aria-label="Saugen verschieben"]').trigger("click");
-    expect(wrapper.text()).toContain("Morgen");
+    expect(wrapper.text()).toContain("Nächster Montag");
+  });
+
+  it("moves a planned quest to tomorrow in one tap from the menu", async () => {
+    const wrapper = await render();
+    await wrapper.get('[aria-label="Aktionen für Saugen"]').trigger("click");
+    await wrapper.get('[aria-label="Saugen auf morgen"]').trigger("click");
+    await flushPromises();
+    expect(rescheduleTodo).toHaveBeenCalledWith(1, "2026-10-31", false);
+    expect(mock).toHaveBeenCalledTimes(2);
+  });
+
+  it("ticks an open quest with the ring and takes it back with the toast", async () => {
+    const wrapper = await render();
+    await wrapper.get('[aria-label="Saugen erledigen"]').trigger("click");
+    await flushPromises();
+    expect(updateTodoCompletion).toHaveBeenCalledWith(1, true);
+    expect(wrapper.text()).toContain("„Saugen“ erledigt");
+    await button(wrapper, "Rückgängig").trigger("click");
+    await flushPromises();
+    expect(updateTodoCompletion).toHaveBeenLastCalledWith(1, false);
+  });
+
+  it("opens the editor from a planned title", async () => {
+    const wrapper = mount(CalendarView, {
+      global: {
+        stubs: {
+          ModalDialog: { template: "<div><slot /></div>" },
+          EditItemDialog: {
+            props: ["kind", "entityId"],
+            template:
+              '<div class="editor-stub">{{ kind }} {{ entityId }}</div>',
+          },
+        },
+      },
+    });
+    await flushPromises();
+    await wrapper.get('[aria-label="Saugen bearbeiten"]').trigger("click");
+    expect(wrapper.get(".editor-stub").text()).toBe("todo 1");
   });
 
   it("shows main calendar events read-only on their day", async () => {
@@ -676,8 +732,9 @@ describe("CalendarView day", () => {
     expect(wrapper.find("form.day-reflection").exists()).toBe(false);
     expect(wrapper.find('select[name="target"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain("Logbuch");
+    await wrapper.get('[aria-label="Aktionen für Saugen"]').trigger("click");
     expect(wrapper.get('[aria-label="Saugen verschieben"]').text()).toBe(
-      "Verschieben",
+      "Anderer Tag …",
     );
   });
 

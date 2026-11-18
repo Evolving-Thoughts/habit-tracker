@@ -58,6 +58,35 @@ The board has no write endpoint of its own.
 - The day's order sent to the server holds the open untimed entries that are
   stored: quests and stored habit runs, not appointments, not carried-over
   entries, not forecast runs (`utils/week-plan.ts` `dayOrder`).
+- **From the Questlog column** (below) a quest has no day yet, and
+  `reschedule` refuses quests without one. It is planned with the Questlog
+  editor's own save (`PATCH /todos/:id` with title, day, no time and its
+  duration; `api/questlog.api.ts` `planQuest`, which the Questlog and its
+  T/D/W use too), then the target day's order is stored, so it lands where
+  it was dropped.
+
+## The Questlog column
+
+From 56rem the board has the Questlog on its left: the open quests without
+a day (`GET /todos/backlog`, which now names each quest's `campaign` like
+Heute's items do, so the column draws the stripe). It is a drag source in
+the board's SortableJS group (`put: false`, so nothing is dropped back);
+dropping a quest on a day applies `dropOnDay` with the quest as `incoming`
+(it comes from no column and always moves), shows it there and removes it
+from the column at once, then writes as above. A failed write puts both
+back and reloads quietly, like any other drop.
+
+The keyboard and touch alternative is each row's menu "Aktionen für …" with
+"Einplanen auf …" for every day of the board from today on; it puts the
+quest at the end of that day's order through the same path. T, D and W on
+a column row do the same (beyond the board, next Monday is planned with the
+editor's save alone), X ticks it with the undo toast and Space runs its
+stopwatch.
+
+Collapsed it is a slim rail with the count; open or collapsed is stored per
+device in `localStorage` (`plan:questlog` = `closed`). Open, the day columns
+narrow to at least 8.75rem (9.5rem collapsed), so a 1280px window shows the
+whole week. A phone has no column and loads nothing for it.
 
 ## Frontend
 
@@ -70,10 +99,16 @@ The board has no write endpoint of its own.
 - `components/PlanEntry.vue`: a compact row. A quest's title opens
   `EditItemDialog`; its grip is its one move control: drag it, use Arrow
   Up/Down (place in the day) and Left/Right (day before/after), or tap it for
-  `MoveItemDialog`. Dailies are fixed rows without controls.
+  `MoveItemDialog`. Dailies are fixed rows without controls. In the
+  Questlog column the same row takes a `menu` and a drag-only grip.
+- `components/PlanQuestlog.vue`: the Questlog column (list, drag source,
+  menus, collapse toggle); `composables/useMediaQuery.ts` decides whether it
+  exists.
 - `utils/week-plan.ts`: the pure rules: `dropOnDay` applies a drop to the plan
-  at once and says what to write, `arrowDrop` turns arrow keys into drops,
-  `arrangeOpen` mirrors the server's sorting for the optimistic view.
+  at once and says what to write (also for an `incoming` quest from the
+  Questlog column), `arrowDrop` turns arrow keys into drops, `arrangeOpen`
+  mirrors the server's sorting for the optimistic view, `questlogEntry` shows
+  a Questlog quest as a row of the board.
 - Writes go through `useWrites` (one at a time, then `notifyDataChanged` and a
   quiet reload). A failed write puts the old plan back at once, shows the
   error and reloads quietly to show what the server kept.

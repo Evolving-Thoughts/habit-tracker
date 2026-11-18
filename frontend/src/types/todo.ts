@@ -43,6 +43,13 @@ export type TodoResponse = Required<TodoGoalInput> & {
   why: string | null;
   /** What it takes over from a quest above it while it has none. */
   inheritedWhy: InheritedWhy | null;
+  /** The campaign it works towards (the topmost quest above); null when loose. */
+  campaign: {
+    id: number;
+    title: string;
+    color: string | null;
+    icon: string | null;
+  } | null;
   title: string;
   completed: boolean;
   completedAt: string | null;

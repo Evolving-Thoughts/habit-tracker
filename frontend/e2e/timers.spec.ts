@@ -6,6 +6,7 @@ import {
   today,
   openView,
   showResolved,
+  timerBarAction,
 } from "./helpers";
 import { API_URL } from "./environment";
 import type { TimerResponse } from "../src/api/timers.api";
@@ -45,9 +46,7 @@ test("Quest timer: direct play, sticky bar, reload, second device, pause/target/
     .click();
   await expect(bar).toContainText("Pausiert");
   await expect(device.getByRole("complementary")).toContainText("Pausiert");
-  await page
-    .getByRole("button", { name: "Soll ändern", exact: true })
-    .click();
+  await timerBarAction(page, "Soll ändern");
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Geplante Minuten").fill("35");
   await dialog
@@ -60,9 +59,7 @@ test("Quest timer: direct play, sticky bar, reload, second device, pause/target/
     .click();
   await expect(bar).toContainText("Stoppuhr läuft");
   // Ending needs no confirmation: the time worked is in the logbook.
-  await page
-    .getByRole("button", { name: "Timer beenden", exact: true })
-    .click();
+  await timerBarAction(page, "Timer beenden");
   await expect(bar).toHaveCount(0);
   await expect(device.getByRole("complementary")).toHaveCount(0);
   await other.close();
@@ -115,10 +112,7 @@ test("switching requires confirmation and completing a Questlog Quest persists i
   await expect(dialog).not.toBeVisible();
   await expect(page.getByRole("complementary")).toContainText("Zweite Quest");
   // The bar completes what its stopwatch runs on, from any view.
-  await page
-    .getByRole("complementary", { name: "Aktueller Timer" })
-    .getByRole("button", { name: "Zweite Quest erledigen", exact: true })
-    .click();
+  await timerBarAction(page, "Zweite Quest erledigen");
   await expect(
     page.getByRole("heading", { name: "Zweite Quest", exact: true }),
   ).toHaveCount(0);
@@ -178,9 +172,7 @@ test("Daily play availability and occurrence-only timer duration", async ({
   await page
     .getByRole("button", { name: "Timer pausieren", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Soll ändern", exact: true })
-    .click();
+  await timerBarAction(page, "Soll ändern");
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("nur an dieser Daily-Ausführung");
   await dialog.getByLabel("Geplante Minuten").fill("7");
@@ -213,7 +205,8 @@ test("timer bar remains visible during long scrolling and icons have symmetric 4
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   const bar = page.getByRole("complementary");
   await expect(bar).toBeInViewport();
-  for (const button of await bar.locator(".timer-icon").all()) {
+  // The phone keeps the rarer steps in the bar's menu; measure what shows.
+  for (const button of await bar.locator(".timer-icon:visible").all()) {
     const box = await button.boundingBox();
     expect(box!.width).toBeGreaterThanOrEqual(44);
     expect(box!.height).toEqual(box!.width);
@@ -249,7 +242,7 @@ test("a remote replacement closes an old local target dialog", async ({
   // authoritative response to render before reading its replacement ID.
   await expect(page.getByRole("complementary")).toContainText("Erster Timer");
   const old = (await read(request)).timer!;
-  await page.getByRole("button", { name: "Soll ändern", exact: true }).click();
+  await timerBarAction(page, "Soll ändern");
   await expect(page.getByRole("dialog")).toBeVisible();
   const todos = (await (await request.get(`${API_URL}/todos`)).json()) as {
     id: number;

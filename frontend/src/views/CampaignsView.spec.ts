@@ -146,14 +146,15 @@ describe("CampaignsView", () => {
     await openMenu(w, "Quest 1");
     const trigger = w.get('[data-menu-trigger="1"]');
     expect(trigger.attributes("aria-expanded")).toBe("true");
-    const menu = w.get("#todo-menu-1");
+    const menuId = trigger.attributes("aria-controls")!;
+    const menu = w.get(`#${menuId}`);
     const heading = w.get(`#${menu.attributes("aria-labelledby")}`);
     expect(heading.text()).toBe("Quest 1");
     expect(
       w.get('[aria-label="Quest 1 mit allen Unter-Quests löschen"]').classes(),
     ).not.toContain("btn--danger");
     expect(
-      w.findAll("#todo-menu-1 [role=menuitem]").map((b) => b.text()),
+      w.findAll(`#${menuId} [role=menuitem]`).map((b) => b.text()),
     ).toEqual([
       "Timer starten",
       "Unter-Quest hinzufügen",
@@ -163,7 +164,7 @@ describe("CampaignsView", () => {
     ]);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     await flushPromises();
-    expect(w.find("#todo-menu-1").exists()).toBe(false);
+    expect(w.find(`#${menuId}`).exists()).toBe(false);
   });
   it("collapses and expands without changing data", async () => {
     const w = view();

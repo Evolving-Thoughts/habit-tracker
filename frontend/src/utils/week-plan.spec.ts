@@ -13,6 +13,7 @@ import {
   dropOnDay,
   entryKey,
   openSummary,
+  questlogEntry,
   weekFromQuery,
 } from "./week-plan";
 
@@ -197,6 +198,36 @@ describe("dropOnDay", () => {
     expect(dropOnDay(plan, { todoId: 1, toDate: MONDAY, index: 0 })).toBeNull();
     expect(dropOnDay(plan, { todoId: 2, toDate: TODAY, index: 0 })).toBeNull();
     expect(dropOnDay(plan, { todoId: 1, toDate: TODAY, index: 0 })).toBeNull();
+  });
+
+  it("places a quest from the Questlog column, which comes from no day", () => {
+    const plan = week({
+      [WEDNESDAY]: [quest(2, { scheduledDate: WEDNESDAY })],
+    });
+    const incoming = questlogEntry(
+      { id: 7, title: "Neu", plannedDurationMinutes: 20, campaign: null },
+      WEDNESDAY,
+    );
+    const result = dropOnDay(
+      plan,
+      { todoId: 7, toDate: WEDNESDAY, index: 1 },
+      incoming,
+    )!;
+    expect(result.write).toEqual({
+      todoId: 7,
+      moveTo: WEDNESDAY,
+      confirmFixed: false,
+      order: [
+        { type: "todo", id: 2 },
+        { type: "todo", id: 7 },
+      ],
+    });
+    const day = result.plan.days.find((item) => item.date === WEDNESDAY)!;
+    expect(day.entries.map((entry) => entry.title)).toEqual(["Quest 2", "Neu"]);
+    // Never into the past, not even from the Questlog.
+    expect(
+      dropOnDay(plan, { todoId: 7, toDate: MONDAY, index: 0 }, incoming),
+    ).toBeNull();
   });
 });
 
