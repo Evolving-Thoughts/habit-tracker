@@ -178,10 +178,11 @@ function menu(todo: TodoResponse): MenuEntry[] {
   font-size: 0.875rem;
 }
 
-/* Collapsed: a slim rail with the count, the toggle on top. */
+/* Collapsed: a rail as wide as its toggle, the count below it. */
 .plan-questlog--closed {
   align-items: center;
-  padding-inline: var(--space-1);
+  width: var(--tap);
+  padding-inline: 0;
 }
 
 .plan-questlog--closed .plan-questlog__header {

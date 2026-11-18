@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, nextTick, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { getQuestHours } from "../api/quest-hours.api";
 import { getWeekReview } from "../api/week-review.api";
@@ -22,7 +22,11 @@ import type {
 import { getCurrentDateInTimeZone } from "../utils/date";
 import { weekLabel } from "../utils/history";
 import { isQuietWeek, weekDistance } from "../utils/week-review";
-import { neighbourWeek, weekFromQuery } from "../utils/week-plan";
+import {
+  neighbourWeek,
+  offersWayBack,
+  weekFromQuery,
+} from "../utils/week-plan";
 
 const route = useRoute();
 const router = useRouter();
@@ -34,10 +38,19 @@ const week = computed(() =>
 /** Asked fresh each time: the app may stay open into the next week. */
 const thisWeek = (): string =>
   weekFromQuery(null, getCurrentDateInTimeZone());
-function showWeek(start: string): void {
-  void router.push({
+function showWeek(start: string): Promise<unknown> {
+  return router.push({
     query: start === thisWeek() ? {} : { woche: start },
   });
+}
+/** "Diese Woche" only shows away from it, as "Heute" in the Kalender. */
+const offersThisWeek = computed(() => offersWayBack(week.value, thisWeek()));
+const range = ref<HTMLElement | null>(null);
+async function showThisWeek(): Promise<void> {
+  await showWeek(thisWeek());
+  // The button leaves with the step; the range names where it went.
+  await nextTick();
+  range.value?.focus();
 }
 
 /* Two reads side by side: one failing keeps the other on the page. */
@@ -105,7 +118,16 @@ function onSaved(answers: WeekReviewAnswers): void {
         <h1 class="page-title">Wochenrückblick</h1>
         <p class="page-lead">Wie weit die Woche deine Kampagnen gebracht hat.</p>
       </div>
+      <!-- "Diese Woche" first, so the arrows keep their place when it leaves. -->
       <div class="week-review__nav">
+        <button
+          v-if="offersThisWeek"
+          type="button"
+          class="btn"
+          @click="showThisWeek"
+        >
+          Diese Woche
+        </button>
         <button
           type="button"
           class="btn btn--icon"
@@ -114,7 +136,7 @@ function onSaved(answers: WeekReviewAnswers): void {
         >
           <AppIcon name="chevron-left" />
         </button>
-        <p class="week-review__range">
+        <p ref="range" class="week-review__range" tabindex="-1">
           <strong>{{ weekLabel(week) }}</strong> <span>{{ distance }}</span>
         </p>
         <button
@@ -124,9 +146,6 @@ function onSaved(answers: WeekReviewAnswers): void {
           @click="showWeek(neighbourWeek(week, 1))"
         >
           <AppIcon name="chevron" />
-        </button>
-        <button type="button" class="btn" @click="showWeek(thisWeek())">
-          Diese Woche
         </button>
       </div>
     </header>

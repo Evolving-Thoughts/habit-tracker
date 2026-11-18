@@ -4,6 +4,7 @@ import type { QuestHoursResponse } from "../types/quest-hours";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
 import {
   againstTarget,
+  againstTargetParts,
   campaignTiles,
   hoursToMinutes,
   minutesToHours,
@@ -46,6 +47,11 @@ describe("againstTarget", () => {
     expect(againstTarget(45, null)).toBe("45 Min.");
     // More than the goal is just a bigger number.
     expect(againstTarget(400, 360)).toBe("6 Std. 40 Min. von 6 Std.");
+  });
+
+  it("keeps each figure with its words, so a line wraps only between them", () => {
+    expect(againstTargetParts(60, 240)).toEqual(["1 Std.", "von 4 Std."]);
+    expect(againstTargetParts(45, null)).toEqual(["45 Min."]);
   });
 });
 

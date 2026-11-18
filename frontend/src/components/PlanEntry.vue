@@ -72,7 +72,12 @@ const campaignName = computed(() => {
   >
     <div class="plan-entry__body">
       <!-- The heading keeps the plain title; the button inside says "bearbeiten". -->
-      <h3 class="plan-entry__title" :aria-label="entry.title">
+      <!-- Clamped to three lines; the tooltip and the names keep the full title. -->
+      <h3
+        class="plan-entry__title"
+        :aria-label="entry.title"
+        :title="entry.type === 'todo' ? undefined : entry.title"
+      >
         <button
           v-if="entry.type === 'todo'"
           class="plan-entry__edit"
@@ -80,6 +85,7 @@ const campaignName = computed(() => {
           type="button"
           :disabled="busy"
           :aria-label="`${entry.title} bearbeiten`"
+          :title="entry.title"
           @click="emit('edit')"
         >
           {{ entry.title }}
@@ -87,16 +93,21 @@ const campaignName = computed(() => {
         <template v-else>{{ entry.title }}</template>
       </h3>
       <p
-        v-if="entry.type === 'habit' || details.length || campaignName"
+        v-if="entry.type === 'habit' || details.length"
         class="plan-entry__details"
       >
         <span v-if="entry.type === 'habit'" class="plan-entry__daily">
           <AppIcon name="dailies" />Daily
         </span>
         <span v-for="part in details" :key="part">{{ part }}</span>
-        <span v-if="campaignName" class="plan-entry__campaign">
-          {{ campaignName }}
-        </span>
+      </p>
+      <!-- One line with an ellipsis: the stripe already shows whose it is. -->
+      <p
+        v-if="campaignName"
+        class="plan-entry__campaign"
+        :title="campaignName"
+      >
+        {{ campaignName }}
       </p>
       <span
         v-if="movable && dragOnly"
@@ -147,18 +158,22 @@ const campaignName = computed(() => {
 }
 
 /*
- * Narrow columns give the title the whole width and put the grip beside the
- * details; a wide row (a phone's single day) keeps the grip on the right.
+ * Narrow columns give the title and the campaign the whole width and put
+ * the grip below them, beside the details if there are any: a grip beside
+ * the title would leave a desktop column too little room for one German
+ * word. A wide row (a phone's single day) keeps the grip on the right and
+ * the campaign on the details' line.
  */
 .plan-entry__body {
   display: grid;
   grid-template-areas:
     "title title"
+    "campaign campaign"
     "details grip";
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   min-height: var(--tap);
-  padding: var(--space-2) var(--space-1) var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-1) var(--space-2) 0.625rem;
 }
 
 .plan-entry__body:has(.plan-entry__grip) {
@@ -169,36 +184,30 @@ const campaignName = computed(() => {
   .plan-entry__body,
   .plan-entry__body:has(.plan-entry__grip) {
     grid-template-areas:
-      "title grip"
-      "details grip";
+      "title title grip"
+      "details campaign grip";
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-content: center;
     padding-block: var(--space-2);
+    padding-left: var(--space-3);
   }
 
   .plan-entry__body:has(.plan-entry__grip) {
     padding-block: var(--space-1);
   }
-}
 
-/* Without details the grip sits beside the title at any width. */
-.plan-entry__body:not(:has(.plan-entry__details)) {
-  grid-template-areas: "title grip";
-  padding-block: var(--space-1);
+  .plan-entry__details + .plan-entry__campaign {
+    margin-left: var(--space-2);
+  }
 }
 
 /* With a menu (the Questlog column) the menu follows the grip. */
 .plan-entry__body:has(.plan-entry__menu) {
   grid-template-areas:
     "title title title"
+    "campaign campaign campaign"
     "details grip menu";
   grid-template-columns: minmax(0, 1fr) auto auto;
-  padding-bottom: 0;
-}
-
-.plan-entry__body:has(.plan-entry__menu):not(:has(.plan-entry__details)) {
-  grid-template-areas:
-    "title title title"
-    ". grip menu";
   padding-bottom: 0;
 }
 
@@ -206,17 +215,36 @@ const campaignName = computed(() => {
   grid-area: menu;
 }
 
+/*
+ * Titles wrap between words; only a word longer than the whole line breaks
+ * inside. Hyphenation helps where the platform has a German dictionary
+ * (Android, macOS); desktop Chromium on Windows has none, so the columns are
+ * wide enough not to need it. Three lines at most, then an ellipsis.
+ */
 .plan-entry__title {
+  display: -webkit-box;
+  overflow: hidden;
   grid-area: title;
   margin: 0;
-  padding-right: var(--space-2);
+  padding-right: 0.125rem;
   color: var(--color-ink);
   font-size: 0.9375rem;
   font-weight: 700;
   line-height: 1.3;
-  overflow-wrap: anywhere;
-  /* Long German words break at a syllable in the narrow columns. */
+  overflow-wrap: break-word;
   hyphens: auto;
+  /* Only long compounds; a short word moves to the next line whole. */
+  hyphenate-limit-chars: 10 4 4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+/* The narrowest desktop columns: a step smaller, so common words still fit. */
+@container (max-width: 8.25rem) {
+  .plan-entry__title {
+    font-size: 0.875rem;
+  }
 }
 
 .plan-entry--done .plan-entry__title {
@@ -263,6 +291,11 @@ const campaignName = computed(() => {
   font-variant-numeric: tabular-nums;
 }
 
+/* "seit 16. Nov." stays one piece; the parts wrap as wholes. */
+.plan-entry__details > span {
+  white-space: nowrap;
+}
+
 .plan-entry__daily {
   display: inline-flex;
   gap: 0.25rem;
@@ -276,8 +309,15 @@ const campaignName = computed(() => {
 }
 
 .plan-entry__campaign {
+  grid-area: campaign;
+  min-width: 0;
+  margin: 0.125rem 0 0;
+  overflow: hidden;
+  color: var(--color-ink-muted);
+  font-size: 0.8125rem;
   font-weight: 700;
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .plan-entry__grip {

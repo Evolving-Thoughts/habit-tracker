@@ -62,6 +62,10 @@ test("Wochenrückblick: the week in numbers, its campaigns, what was done, and t
   await expect(
     view.getByRole("status", { name: "Wochenrückblick wird geladen" }),
   ).toHaveCount(0);
+  // On the current week the way back to it would change nothing.
+  await expect(
+    view.getByRole("button", { name: "Diese Woche", exact: true }),
+  ).toHaveCount(0);
 
   // Key figures: the week against the overall goal.
   const questHours = view.locator(".figures__item--hours");

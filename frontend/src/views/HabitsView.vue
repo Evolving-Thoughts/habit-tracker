@@ -244,6 +244,8 @@ async function onCreated(): Promise<void> {
               Pausierte Dailies stehen nicht in Heute.
             </p>
           </template>
+          <!-- Unseen, but the cards' h3 need an h2 above them. -->
+          <h2 v-else class="visually-hidden">{{ group.title }}</h2>
           <ul class="habit-group__items">
             <li
               v-for="habit in group.items"

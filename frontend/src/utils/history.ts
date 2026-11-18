@@ -129,6 +129,24 @@ export function dayCounts(day: {
   };
 }
 
+/**
+ * Appointments of a day for the month's marker: the app's own (quests with a
+ * time, open or done) and the events from Google Kalender.
+ */
+export function appointmentCount(day: {
+  items: HistoryItem[];
+  planned?: HistoryPlannedItem[];
+  external?: unknown[];
+}): number {
+  const timed = (entry: { type: string; timeOfDay: string | null }) =>
+    entry.type === "todo" && entry.timeOfDay !== null;
+  return (
+    day.items.filter(timed).length +
+    (day.planned ?? []).filter(timed).length +
+    (day.external?.length ?? 0)
+  );
+}
+
 /** Whether a day has anything to show: entries, events or measured work. */
 export function hasEntries(day: {
   items: HistoryItem[];

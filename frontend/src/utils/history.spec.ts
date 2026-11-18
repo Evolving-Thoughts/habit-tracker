@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addDays,
+  appointmentCount,
   weekStart,
   dayCounts,
   dayLabel,
@@ -108,4 +109,36 @@ describe("fullStop", () => {
       "Steht am Freitag, 1. Mai.",
     );
   });
+});
+
+it("counts the app's own appointments and Google's events for the month's marker", () => {
+  const planned = {
+    key: "todo-1",
+    type: "todo" as const,
+    id: 1,
+    habitId: null,
+    title: "Zahnarzt",
+    categoryName: null,
+    why: null,
+    date: "2026-11-19",
+    scheduledDate: "2026-11-19",
+    isOverdue: false,
+    plannedDurationMinutes: 45,
+    timeOfDay: "08:15",
+    moveUntil: null,
+  };
+  expect(appointmentCount({ items: [], planned: [planned] })).toBe(1);
+  // A quest without a time is no appointment, nor is a daily with one.
+  expect(
+    appointmentCount({
+      items: [],
+      planned: [
+        { ...planned, timeOfDay: null },
+        { ...planned, type: "habit", habitId: 3 },
+      ],
+    }),
+  ).toBe(0);
+  expect(
+    appointmentCount({ items: [], planned: [planned], external: [{}, {}] }),
+  ).toBe(3);
 });

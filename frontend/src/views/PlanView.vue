@@ -39,14 +39,18 @@ import {
 } from "../utils/history";
 import {
   arrowDrop,
+  boardScroll,
   dropOnDay,
   entryKey,
   isMovable,
   neighbourWeek,
+  offersWayBack,
   openEntries,
   questlogEntry,
+  questlogStartsOpen,
   weekFromQuery,
   type Drop,
+  type QuestlogChoice,
 } from "../utils/week-plan";
 
 const route = useRoute();
@@ -54,6 +58,7 @@ const router = useRouter();
 
 const page = ref<HTMLElement | null>(null);
 const board = ref<HTMLElement | null>(null);
+const heading = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
 
 /** The quest whose editor is open, from the board or from the Questlog column. */
@@ -68,10 +73,18 @@ const week = computed(() =>
 /** Asked fresh each time: the app may stay open into the next week. */
 const thisWeek = (): string =>
   weekFromQuery(null, getCurrentDateInTimeZone());
-function showWeek(start: string): void {
-  void router.push({
+function showWeek(start: string): Promise<unknown> {
+  return router.push({
     query: start === thisWeek() ? {} : { woche: start },
   });
+}
+/** "Diese Woche" only shows away from it; on it, the button would change nothing. */
+const offersThisWeek = computed(() => offersWayBack(week.value, thisWeek()));
+async function showThisWeek(): Promise<void> {
+  await showWeek(thisWeek());
+  // The button leaves with the step; the heading names where it went.
+  await nextTick();
+  heading.value?.focus();
 }
 
 const {
@@ -113,20 +126,25 @@ const {
   },
 );
 const QUESTLOG_KEY = "plan:questlog";
-function readQuestlogOpen(): boolean {
+function readQuestlogChoice(): string | null {
   try {
-    return localStorage.getItem(QUESTLOG_KEY) !== "closed";
+    return localStorage.getItem(QUESTLOG_KEY);
   } catch {
-    return true;
+    return null;
   }
 }
-/** Open or collapsed, remembered per device. */
-const questlogOpen = ref(readQuestlogOpen());
+/* From 80rem seven days still fit beside the open column. */
+const roomy = useMediaQuery("(min-width: 80rem)");
+/** A choice made on this device; until then the window's width decides. */
+const questlogChoice = ref<string | null>(readQuestlogChoice());
+const questlogOpen = computed(() =>
+  questlogStartsOpen(questlogChoice.value, roomy.value),
+);
 function toggleQuestlog(): void {
-  questlogOpen.value = !questlogOpen.value;
+  const choice: QuestlogChoice = questlogOpen.value ? "closed" : "open";
+  questlogChoice.value = choice;
   try {
-    if (questlogOpen.value) localStorage.removeItem(QUESTLOG_KEY);
-    else localStorage.setItem(QUESTLOG_KEY, "closed");
+    localStorage.setItem(QUESTLOG_KEY, choice);
   } catch {
     // Without storage the choice lasts until the page is left.
   }
@@ -281,16 +299,25 @@ async function onDialogDone(): Promise<void> {
   closeDialogs();
 }
 
-/* A phone shows one day at a time; a freshly shown current week opens on today. */
+/*
+ * A freshly shown board starts at Monday while today is in view from there;
+ * otherwise (a phone's single day, a narrow window) it scrolls just far
+ * enough for today, onto a column's start.
+ */
 watch(
   board,
   (scroller) => {
-    const column = scroller?.querySelector<HTMLElement>(
-      `.plan-day[data-date="${plan.value?.today}"]`,
-    );
-    if (!scroller || !column) return;
+    if (!scroller || !plan.value) return;
+    const columns = [...scroller.querySelectorAll<HTMLElement>(".plan-day")];
     const padding = parseFloat(getComputedStyle(scroller).scrollPaddingLeft);
-    scroller.scrollLeft = column.offsetLeft - (padding || 0);
+    scroller.scrollLeft = boardScroll(
+      columns.map((column) => ({
+        start: column.offsetLeft,
+        end: column.offsetLeft + column.offsetWidth,
+      })),
+      columns.findIndex((column) => column.dataset.date === plan.value!.today),
+      { width: scroller.clientWidth, padding: padding || 0 },
+    );
   },
   { flush: "post" },
 );
@@ -478,10 +505,19 @@ useShortcutHandlers({
 <template>
   <main ref="page" class="page plan-view">
     <header class="page-header">
-      <h1 class="page-title">
+      <h1 ref="heading" class="page-title" tabindex="-1">
         <span class="visually-hidden">Plan für </span>{{ weekLabel(week) }}
       </h1>
+      <!-- "Diese Woche" before the arrows, so they keep their place when it leaves. -->
       <div class="plan-view__nav">
+        <button
+          v-if="offersThisWeek"
+          type="button"
+          class="btn"
+          @click="showThisWeek"
+        >
+          Diese Woche
+        </button>
         <button
           type="button"
           class="btn btn--icon"
@@ -489,9 +525,6 @@ useShortcutHandlers({
           @click="showWeek(neighbourWeek(week, -1))"
         >
           <AppIcon name="chevron-left" />
-        </button>
-        <button type="button" class="btn" @click="showWeek(thisWeek())">
-          Diese Woche
         </button>
         <button
           type="button"
@@ -534,12 +567,21 @@ useShortcutHandlers({
     </div>
     <p class="visually-hidden" role="status">{{ status }}</p>
 
+    <!-- Bones in the board's own layout; they never scroll sideways. -->
     <div
       v-if="isLoading"
-      class="plan-view__board"
+      class="plan-view__skeleton"
+      :class="{
+        'plan-view__skeleton--questlog': wide,
+        'plan-view__skeleton--questlog-open': wide && questlogOpen,
+      }"
       role="status"
       aria-label="Plan wird geladen"
     >
+      <span
+        v-if="wide"
+        class="plan-view__bone plan-view__bone--questlog"
+      />
       <span v-for="index in 7" :key="index" class="plan-view__bone" />
     </div>
     <div v-else-if="loadError" class="alert" role="alert">
@@ -620,7 +662,9 @@ useShortcutHandlers({
 
 /*
  * Seven columns where they fit; otherwise the days scroll sideways inside
- * the board, never the page.
+ * the board, never the page. A column is never narrower than common German
+ * words need (see PlanEntry): 10.5rem on a tablet, where the board scrolls
+ * anyway, 8.5rem beside the Questlog column from 56rem.
  */
 .plan-view__board {
   position: relative;
@@ -640,6 +684,22 @@ useShortcutHandlers({
   scroll-snap-align: start;
 }
 
+/* The bones take the board's columns but are clipped, never scrolled. */
+.plan-view__skeleton {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-2);
+  overflow: hidden;
+}
+
+.plan-view__skeleton--questlog {
+  grid-template-columns: var(--tap) repeat(7, minmax(0, 1fr));
+}
+
+.plan-view__skeleton--questlog-open {
+  grid-template-columns: 12rem repeat(7, minmax(0, 1fr));
+}
+
 .plan-view__bone {
   height: 14rem;
   border-radius: var(--radius-card);
@@ -654,8 +714,9 @@ useShortcutHandlers({
 }
 
 /*
- * From 56rem the Questlog column stands left of the board. Open, the days
- * narrow a little, so a usual window still shows the whole week.
+ * From 56rem the Questlog column stands left of the board, open (12rem) or
+ * as a rail. The days narrow to 8.5rem, so from about 1100px the whole week
+ * fits beside the rail, and from 80rem beside the open column.
  */
 .plan-view__layout--questlog {
   display: grid;
@@ -665,15 +726,11 @@ useShortcutHandlers({
 }
 
 .plan-view__layout--questlog .plan-view__board {
-  grid-auto-columns: minmax(9.5rem, 1fr);
+  grid-auto-columns: minmax(8.5rem, 1fr);
 }
 
 .plan-view__layout--questlog-open {
   grid-template-columns: 12rem minmax(0, 1fr);
-}
-
-.plan-view__layout--questlog-open .plan-view__board {
-  grid-auto-columns: minmax(8.75rem, 1fr);
 }
 
 .plan-view__quiet {
@@ -690,6 +747,14 @@ useShortcutHandlers({
     padding-inline: 1rem;
     scroll-padding-inline: 1rem;
     scroll-snap-type: x mandatory;
+  }
+
+  .plan-view__skeleton {
+    grid-template-columns: none;
+    grid-auto-columns: 85%;
+    grid-auto-flow: column;
+    margin-inline: -1rem;
+    padding-inline: 1rem;
   }
 }
 </style>

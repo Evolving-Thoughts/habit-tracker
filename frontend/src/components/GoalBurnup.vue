@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { getBurnup } from "../api/todo-hierarchy.api";
 import type { BurnupPoint } from "../types/todo-hierarchy";
 import { formatDateForGermanDisplay } from "../utils/date";
+import { questWord } from "../utils/todo-hierarchy";
 import AppIcon from "./AppIcon.vue";
 
 const props = defineProps<{ todoId: number }>();
@@ -28,8 +29,9 @@ const series = computed(() =>
 const latest = computed(() => series.value[series.value.length - 1]);
 /** One day is a number, not yet a line. */
 const hasHistory = computed(() => series.value.length > 1);
+/* "1 von 1 Quest": the noun follows the total. */
 const unitLabel = computed(() =>
-  unit.value === "count" ? "Quests" : "Min.",
+  unit.value === "count" ? questWord(latest.value?.total ?? 0) : "Min.",
 );
 const top = computed(() =>
   Math.max(1, ...series.value.map((point) => point.total)),

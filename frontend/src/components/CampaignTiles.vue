@@ -2,7 +2,7 @@
 import { computed, ref } from "vue";
 import { campaignMark } from "../utils/category-mark";
 import { formatDuration } from "../utils/today-agenda";
-import { againstTarget, type CampaignTile } from "../utils/quest-hours";
+import { againstTargetParts, type CampaignTile } from "../utils/quest-hours";
 import AppIcon from "./AppIcon.vue";
 import QuestTrend from "./QuestTrend.vue";
 
@@ -78,11 +78,20 @@ const share = (tile: CampaignTile): number =>
           </h3>
         </div>
         <template v-if="counted">
+          <!-- Wraps between the figures, never inside one ("diese / Woche"). -->
           <p class="campaign-tile__week">
-            <strong>{{
-              againstTarget(tile.minutes, tile.weeklyTargetMinutes)
-            }}</strong>
-            diese Woche
+            <strong
+              ><template
+                v-for="(part, index) in againstTargetParts(
+                  tile.minutes,
+                  tile.weeklyTargetMinutes,
+                )"
+                :key="index"
+                >{{ index ? " " : "" }}<span class="campaign-tile__figure">{{
+                  part
+                }}</span></template
+              ></strong
+            >{{ " " }}<span class="campaign-tile__figure">diese Woche</span>
           </p>
           <span
             v-if="tile.weeklyTargetMinutes !== null"
@@ -214,6 +223,10 @@ const share = (tile: CampaignTile): number =>
   color: var(--color-ink);
   font-size: 1rem;
   font-weight: 800;
+}
+
+.campaign-tile__figure {
+  white-space: nowrap;
 }
 
 .campaign-tile__bar {

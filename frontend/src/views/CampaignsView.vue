@@ -45,7 +45,7 @@ import {
   weekStart,
 } from "../utils/date";
 import { formatDuration } from "../utils/today-agenda";
-import { againstTarget, campaignTiles } from "../utils/quest-hours";
+import { againstTargetParts, campaignTiles } from "../utils/quest-hours";
 import type { QuestHoursResponse } from "../types/quest-hours";
 import type { MenuEntry } from "../utils/row-actions";
 const page = ref<HTMLElement | null>(null),
@@ -558,11 +558,22 @@ useShortcutHandlers({
           </div>
           <template v-if="questHours">
             <p class="campaign-detail__week">
-              <strong>{{
-                againstTarget(openTile.minutes, openTile.weeklyTargetMinutes)
-              }}</strong>
-              Quest-Stunden diese Woche · insgesamt
-              {{ formatDuration(openTile.totalMinutes) }}
+              <strong
+                ><template
+                  v-for="(part, index) in againstTargetParts(
+                    openTile.minutes,
+                    openTile.weeklyTargetMinutes,
+                  )"
+                  :key="index"
+                  >{{ index ? " " : "" }}<span class="campaign-detail__figure">{{
+                    part
+                  }}</span></template
+                ></strong
+              >
+              Quest-Stunden diese Woche ·
+              <span class="campaign-detail__figure"
+                >insgesamt {{ formatDuration(openTile.totalMinutes) }}</span
+              >
             </p>
             <QuestTrend
               class="campaign-detail__trend"
@@ -1093,6 +1104,10 @@ useShortcutHandlers({
   color: var(--color-ink);
   font-size: 1rem;
   font-weight: 800;
+}
+
+.campaign-detail__figure {
+  white-space: nowrap;
 }
 
 .campaign-detail__trend {

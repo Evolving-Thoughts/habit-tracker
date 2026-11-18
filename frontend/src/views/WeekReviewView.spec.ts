@@ -186,14 +186,23 @@ describe("WeekReviewView", () => {
       MONDAY,
       expect.any(AbortSignal),
     );
+    // On it, the way back would change nothing, so it does not show.
+    const wayBack = () =>
+      wrapper.findAll("button").filter((button) => button.text() === "Diese Woche");
+    expect(wayBack()).toHaveLength(0);
 
     await wrapper.get('button[aria-label="Vorige Woche"]').trigger("click");
     await flushPromises();
     expect(router.currentRoute.value.query).toEqual({ woche: LAST_MONDAY });
 
-    await wrapper.get("button.btn:not(.btn--icon)").trigger("click");
+    await wayBack()[0]!.trigger("click");
     await flushPromises();
     expect(router.currentRoute.value.query).toEqual({});
+    expect(wayBack()).toHaveLength(0);
+    // The range that names the week takes the focus from the leaving button.
+    expect(document.activeElement).toBe(
+      wrapper.get(".week-review__range").element,
+    );
   });
 
   it("holds the dashboard's shape with bones while loading", async () => {

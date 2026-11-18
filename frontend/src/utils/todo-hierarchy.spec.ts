@@ -6,6 +6,7 @@ import {
   openBelow,
   progressText,
   progressWords,
+  questWord,
   visibleHierarchy,
 } from "./todo-hierarchy";
 import type { HierarchyTodo, TodoProgress } from "../types/todo-hierarchy";
@@ -87,6 +88,15 @@ describe("progress as the server counts it", () => {
     expect(progressText(below)).toBe("1/3");
     expect(progressWords(below)).toBe("1 von 3 Quests darunter erledigt");
     expect(openBelow(below)).toBe(2);
+  });
+
+  it("says one quest below in the singular", () => {
+    const one = progress({ completed: 0, total: 1, todoCount: 1 });
+    expect(progressWords(one)).toBe("0 von 1 Quest darunter erledigt");
+    expect(questWord(1)).toBe("Quest");
+    expect(questWord(-1)).toBe("Quest");
+    expect(questWord(0)).toBe("Quests");
+    expect(questWord(2)).toBe("Quests");
   });
 
   it("names minutes when every quest below has a duration", () => {
