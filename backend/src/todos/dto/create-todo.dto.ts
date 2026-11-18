@@ -1,12 +1,21 @@
 import {
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
   Min,
 } from 'class-validator';
+import {
+  CAMPAIGN_COLORS,
+  CAMPAIGN_ICONS,
+  CampaignColor,
+  CampaignIcon,
+  MAX_WEEKLY_TARGET_MINUTES,
+} from '../campaign-style';
 
 export class CreateTodoDto {
   @IsOptional()
@@ -43,4 +52,19 @@ export class CreateTodoDto {
   @IsInt()
   @Min(1)
   readonly plannedDurationMinutes?: number | null;
+
+  /** Campaign only (no parent): weekly goal of quest minutes. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(MAX_WEEKLY_TARGET_MINUTES)
+  readonly weeklyTargetMinutes?: number | null;
+
+  @IsOptional()
+  @IsIn(CAMPAIGN_COLORS)
+  readonly color?: CampaignColor | null;
+
+  @IsOptional()
+  @IsIn(CAMPAIGN_ICONS)
+  readonly icon?: CampaignIcon | null;
 }

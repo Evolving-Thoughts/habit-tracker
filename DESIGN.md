@@ -18,11 +18,15 @@ colors:
   danger: "#b42318"
   danger-tint: "#fff0ec"
   mark-moss: "#6d8b5a"
-  mark-slate: "#4f7c99"
-  mark-heather: "#9a6b9e"
-  mark-ochre: "#b08a3e"
+  mark-pine: "#3e6650"
   mark-sage: "#5f8f87"
+  mark-slate: "#4f7c99"
+  mark-indigo: "#5b5f9e"
+  mark-heather: "#9a6b9e"
+  mark-plum: "#7a4a6c"
+  mark-berry: "#a8566e"
   mark-walnut: "#8c6b55"
+  mark-ochre: "#b08a3e"
   mark-none: "#cdb4a2"
 typography:
   display:
@@ -231,7 +235,7 @@ Bewegung ist taktil: Antippbares gibt beim Druck leicht nach und federt beim Los
 
 ## Colors
 
-Ein warmes, einstimmiges Apricot-Umfeld mit einer gebrannten Orange-Stimme und sechs leisen Erdtönen für Kategorien.
+Ein warmes, einstimmiges Apricot-Umfeld mit einer gebrannten Orange-Stimme und zehn leisen Tönen für Kategorien und Kampagnen.
 
 ### Primary
 - **Gebranntes Orange** (action): Haken-Ring und gefüllter Haken, Primär-Button "Erledigt", "Alle nachholen", Dialog-Submit, Plus-Button, aktiver Tab, eingeschalteter Schalter. Außerdem `accent-color` und `caret-color`.
@@ -241,8 +245,8 @@ Ein warmes, einstimmiges Apricot-Umfeld mit einer gebrannten Orange-Stimme und s
 - **Auf Aktion** (on-action): Schrift und Icons auf Orange.
 
 ### Secondary
-- **Kategoriemarken** (mark-moss, mark-slate, mark-heather, mark-ochre, mark-sage, mark-walnut): kleine Quadrate (0.625rem, Ecke 0.2rem) vor dem Kategorienamen. Kategorien speichern keine Farbe; der Name wird per FNV-1a-Hash stabil auf eine der sechs Marken abgebildet, damit sich auch häufige Namen über alle sechs verteilen. Kampagnen bekommen ihre Marke auf demselben Weg, immer über `campaignMark()`.
-- **Ohne Kampagne** (mark-none): helles, warmes Neutral für gemessene Zeit ohne Kampagne, im Logbuch neben den sechs Marken.
+- **Marken** (mark-moss, mark-pine, mark-sage, mark-slate, mark-indigo, mark-heather, mark-plum, mark-berry, mark-walnut, mark-ochre): Tokens in `style.css`, nie Orange, in Helligkeit wie Farbton gestaffelt, damit sie auch bei Rot-Grün-Schwäche meist unterscheidbar bleiben; jede Verwendung nennt Kategorie oder Kampagne zusätzlich in Text. Kategorien speichern keine Farbe; der Name wird per FNV-1a-Hash stabil auf eine von sechs Marken abgebildet (Moos, Schiefer, Heide, Ocker, Salbei, Walnuss) und als kleines Quadrat (0.625rem, Ecke 0.2rem) vor den Namen gesetzt. Eine Kampagne kann eine der zehn Marken speichern; ohne gespeicherte nimmt sie die aus ihrem Titel. Die Entscheidung fällt immer in `campaignMark()`.
+- **Ohne Kampagne** (mark-none): helles, warmes Neutral für gemessene Zeit ohne Kampagne, im Logbuch neben den Marken.
 
 ### Neutral
 - **Apricot-Grund** (ground): Seitenhintergrund, Scrollbar-Spur, Hover im Filtermenü.
@@ -294,6 +298,8 @@ Eine zentrierte Spalte: `min(100% - 2rem, 46rem)`, oben 1.5rem, unten 2rem plus 
 
 Anmeldung und Boot-Fehler sind die Ausnahme: eine einzelne Karte (26–27rem breit) mittig auf dem Grund, ohne Tab-Leiste.
 
+Die Kampagnen beginnen mit Kacheln (Raster, je mindestens 14rem, mobil eine Spalte) über dem ganzen Baum; eine geöffnete Kampagne ersetzt Kacheln und Baum durch ihre Detailkarte und nur ihren Teilbaum, darüber "Alle Kampagnen" als leiser Zurück-Button.
+
 Mobil steht unten eine feste Tab-Leiste (4.25rem plus Safe Area) mit vier Zielen (Heute, Questlog, Kampagnen, Kalender) und "Mehr" (Plan, Fokus, Dailies, Kategorien, Einstellungen), das ein Popover über der Leiste mit Scrim öffnet. Die Ziele sind Links mit eigener Adresse; beim Wechsel springt die Ansicht nach oben und nimmt den Fokus; der Body hält per Polsterung Abstand zur Leiste. Ab 56rem wird die Leiste zur oberen Leiste (3.5rem hoch, Innenbreite 64rem), alle Ziele sichtbar, kein "Mehr"; Plan steht dort direkt nach Heute.
 
 Der Kalender-Tag nutzt ab 56rem bis zu 64rem Breite: links die Liste des Tages, rechts die Zeitachse (19–24rem); mobil stehen beide untereinander. Der Plan ist die weitere Ausnahme von der Seitenspalte: Er nutzt bis zu 90rem Breite, damit sieben Tagesspalten (mind. 10.5rem) nebeneinander passen. Reicht die Breite nicht, scrollen die Tage innerhalb des Bretts seitwärts, nie die Seite. Unter 40rem füllt ein Tag 85 % der Breite, der nächste lugt herein, die Spalten rasten ein. Der Plus-Button sitzt mobil über der Leiste rechts, auf breiten Schirmen neben der Seitenspalte; Questlog, Kampagnen und Dailies legen über denselben Plus-Button an. Unter 32rem werden Karten- und Dialogpolster auf 1rem reduziert. Ab 40rem wird das Aktionsmenü vom unteren Blatt zum Popover am Auslöser.
@@ -322,7 +328,7 @@ Weitgehend flach. Tiefe entsteht durch Tonwechsel: weiße Karte auf Apricot, ein
 
 Großzügig gerundet in drei Stufen: Karten, Panels, Leerzustände, Hinweisflächen, Dialoge und Popover 1.375rem (das Aktionsmenü als unteres Blatt nur oben gerundet); Felder, Kalendertage, Filtermenü und der große Primär-Button 0.875rem; alle übrigen Buttons, Segmentwahl, Chips, Fortschrittsbalken, Schalter und Toast als Pille. Runde Icon-Buttons (Timer, Dialog-Schließen, Haken) sind Kreise in Tap-Größe. Der Plus-Button ist ein weiches Quadrat (3.5rem, Ecke 1.125rem). Rahmen kommen fast nicht vor; nur Felder und ungewählte Chips tragen eine 1.5px-Apricot-Linie, Listenzeilen trennt eine 1px-Haarlinie. Gestrichelt ist nur, was nicht stattfindet oder noch nicht ist: Übersprungenes und die Ablagefläche beim Ziehen.
 
-Icons stammen aus einer eigenen Strichfamilie (AppIcon): 24px-Raster, Strich 2, runde Enden und Ecken, `currentColor`. Aktive Tabs heben den Strich auf 2.4, der Haken im Primär-Button auf 2.6, im Ring auf 3. In Buttons messen Icons 1.125rem.
+Icons stammen aus einer eigenen Strichfamilie (AppIcon): 24px-Raster, Strich 2, runde Enden und Ecken, `currentColor`. Dazu gehören die sechzehn Kampagnen-Symbole (Buch, Code, Hantel, Herz, Zuhause, Aktentasche, Doktorhut, Musik, Blatt, Geld, Werkzeug, Füller, Kamera, Globus, Stern, Fahne). Aktive Tabs heben den Strich auf 2.4, der Haken im Primär-Button auf 2.6, im Ring auf 3. In Buttons messen Icons 1.125rem.
 
 ## Components
 
@@ -352,7 +358,7 @@ Weich, griffig, federnd.
 - **Shadow Strategy:** höchstens eine gehobene Karte pro Ansicht (siehe Elevation).
 - **Border:** keine; Zeilen in Listenkarten trennt eine Haarlinie (Kategorien, Kalenderzeilen).
 - **Internal Padding:** Basis 1rem; Fokus 1.5rem (unten 1rem), Quote 1.5rem, Einträge 0.5–1rem.
-- **Einstellungen:** jede Gruppe eine flache Karte mit Abschnittstitel; der Schalter für Benachrichtigungen ist eine Zeile mit kleiner Pillen-Spur (3 × 1.75rem) in Tap-Fläche, aus leise Tinte, an Orange, weißer Daumen federt über.
+- **Einstellungen:** jede Gruppe eine flache Karte mit Abschnittstitel; zuerst "Wochenziel Quest-Stunden" (Satz, Zahlfeld in Stunden, getöntes "Speichern", stille Rückmeldung "Gespeichert."); der Schalter für Benachrichtigungen ist eine Zeile mit kleiner Pillen-Spur (3 × 1.75rem) in Tap-Fläche, aus leise Tinte, an Orange, weißer Daumen federt über.
 
 ### Inputs / Fields
 - **Style:** Label darüber in gedämpfter Tinte 700, 0.875rem. Feld weiß, 1.5px Apricot-Linie, Ecke 0.875rem, Tap-Höhe, Polster 0.75rem, Schrift 1rem 400; Textflächen mit Rundum-Polster und vertikal ziehbar.
@@ -365,6 +371,9 @@ Weich, griffig, federnd.
 
 ### Aktionsmenü
 Ein Menü "Aktionen für …" pro Zeile statt verstreuter Buttons. Unter 40rem ein weißes Blatt von unten (oben Kartenecke, Scrim `rgb(43 29 22 / 18%)`), ab 40rem ein Popover am Auslöser (mind. 15rem, Kartenecke); beide mit dem Titel des Eintrags als Überschrift in Tinte. Einträge sind leise Buttons in Tinte mit Icon links. "Löschen" steht zuletzt, durch eine Haarlinie abgesetzt, ebenfalls in Tinte; erst der Bestätigungsdialog zeigt "Ja, löschen" rot.
+
+### Quest-Stunden in Heute
+Eine leise Zeile im Kopf unter dem Fortschritt, gedämpfte Tinte 600, 0.875rem, Tabellenziffern: "Quest-Stunden heute 1 Std. 20 Min. · Woche 6 Std. von 20 Std.". Ohne Wochenziel nur die Zahlen; ohne gemessene Quest-Zeit und ohne Ziel keine Zeile. Nie farbig, auch nicht unter dem Ziel.
 
 ### Fokuskarte (Signature)
 Die eine große Karte oben auf Heute: Titel als Headline, Warum-Satz in Body Large, Metazeile mit Kategoriemarke, Uhrzeit, Minuten und Zielstand, darunter "Erledigt" (Primär), Timer (runder getönter Icon-Button) und getönte Nebenaktionen. Sie zeigt, was jetzt dran ist: den Kopf der Reihenfolge oder einen gerade laufenden Termin. Rechts in der Aktionszeile sitzt ein leiser Griff.
@@ -384,10 +393,16 @@ Sieben Tagesspalten von Montag bis Sonntag, jede eine flache Fläche in 35 % Wei
 Einträge sind kompakte weiße Zeilen mit Control-Ecke: Titel (700, 0.9375rem) über der ganzen Breite, darunter die Metazeile (Uhrzeit, Soll, "seit 15. Nov." für Liegengebliebenes, Kampagne fett) und rechts der Griff. Der Griff ist die eine Verschiebe-Bedienung: ziehen, mit Pfeil hoch/runter in der Reihenfolge, mit Pfeil links/rechts auf den Nachbartag, antippen öffnet "Verschieben". Ist die Zeile breit genug (Container ab 15rem, also mobil), steht der Griff neben Titel und Metazeile. Dailies liegen in 55 % Weiß, ohne Griff und ohne Aktion, mit Dailies-Icon und "Daily" in der Metazeile. Der Kampagnen-Streifen gilt wie auf Heute. Kopfzeile der Ansicht: der Zeitraum als Seitentitel ("16.–22. Nov."), rechts Vor/Zurück als runde Icon-Buttons und "Diese Woche" als getönte Pille.
 
 ### Kampagnen-Streifen
-Ein Eintrag, der zu einer Kampagne gehört, trägt links einen 5px breiten Streifen in der Marke der Kampagne und nennt sie fett in der Metazeile. Einträge ohne Kampagne bleiben ohne Streifen.
+Ein Eintrag, der zu einer Kampagne gehört, trägt links einen 5px breiten Streifen in der Marke der Kampagne (ihre gespeicherte Farbe, sonst die aus dem Titel) und nennt sie fett in der Metazeile; das Symbol der Kampagne steht nur auf Kachel und Detailkarte, nicht in Einträgen. Einträge ohne Kampagne bleiben ohne Streifen.
 
 ### Eintrag mit Haken-Ring (Signature)
 Zeit (oder Griff) | Ring | Inhalt. Nur Termine und Dailies mit Uhrzeit zeigen eine Zeit. Der Ring ist 1.875rem, 2.5px Orange; erledigt füllt er sich orange und der Haken springt mit `check-pop` (Skalierung von 0.4, --spring) ein, der Titel wird durchgestrichen und gedämpft. Übersprungen: gestrichelter Ring in leiser Tinte. Derselbe Ring trägt den Questlog (Timer neben dem Titel, Erledigtes unter "n erledigt" eingeklappt) und den Kampagnen.
+
+### Kampagnen-Kachel
+Weiße Karte mit dem 5px-Kampagnenstreifen links: runde Plakette in der Marke (Tap-Größe) mit dem Symbol in Weiß (ohne Symbol das Kampagnen-Icon), Titel (800) als Button, dessen Fläche die ganze Karte deckt; Fokus als Ring um die Karte. Darunter der Wochenstand in Tabellenziffern ("3 Std. 30 Min. von 6 Std." fett, "diese Woche" gedämpft), bei Wochenziel ein flacher Tintenbalken (0.375rem) auf tiefem Apricot, der bei Übererfüllung einfach voll ist, dann der Verlauf der letzten acht Wochen als feine Linie in der Marke über einer Apricot-Grundlinie (fest 2.5rem hoch, Text-Alternative mit allen Wochen) und "Insgesamt …" gedämpft. Über den Kacheln die Segmentwahl Aktiv · Abgeschlossen. Die geöffnete Kampagne zeigt dieselben Teile groß in einer flachen Detailkarte, dazu Fortschritt, Burnup und "Bearbeiten".
+
+### Farbe und Symbol wählen
+Im Bearbeiten-Dialog einer obersten Quest: Farben als runde Muster (2rem in Tap-Fläche), gewählt mit weißem Haken und Tintenring; "Automatisch aus dem Titel" als Ring in der abgeleiteten Marke. Symbole als Kacheln in Control-Ecke mit Apricot-Linie, gewählt Tinte auf Weiß. Unter jeder Gruppe steht die Wahl in Worten ("Beere", "Füller"), jede Option hat einen gesprochenen Namen. Darunter "Wochenziel in Stunden" als Zahlfeld in halben Stunden.
 
 ### Kampagnen-Zeile
 Weiße Karte je Quest: Einrückungslinie, Chevron zum Auf- und Zuklappen (sonst Platzhalter in Tap-Breite), Haken-Ring, Titel als Button, Metazeile mit Kategoriemarke. Nur Quests mit Unter-Quests zeigen Fortschritt als flachen Balken mit Zähler. Rechts der Auslöser des Aktionsmenüs. Beim Ziehen wird das Ziel mit 2px gestrichelter gedämpfter Tinte umrandet.

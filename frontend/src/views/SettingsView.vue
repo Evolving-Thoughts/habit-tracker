@@ -2,6 +2,7 @@
 import AppIcon from "../components/AppIcon.vue";
 import CalendarConnection from "../components/CalendarConnection.vue";
 import PushSettings from "../components/PushSettings.vue";
+import QuestTargetSetting from "../components/QuestTargetSetting.vue";
 
 defineProps<{ email: string }>();
 defineEmits<{ signOut: [] }>();
@@ -14,6 +15,13 @@ defineEmits<{ signOut: [] }>();
     </header>
 
     <div class="settings-view__sections">
+      <section class="card" aria-labelledby="settings-quest-hours">
+        <h2 id="settings-quest-hours" class="section-title">
+          Wochenziel Quest-Stunden
+        </h2>
+        <QuestTargetSetting />
+      </section>
+
       <section class="card" aria-labelledby="settings-push">
         <h2 id="settings-push" class="section-title">Benachrichtigungen</h2>
         <PushSettings />

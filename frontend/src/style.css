@@ -23,6 +23,21 @@
   --color-danger: #b42318;
   --color-danger-tint: #fff0ec;
 
+  /*
+   * Quiet marks for categories and campaigns, never the action orange. They
+   * differ in lightness as well as hue, so red-green weakness still tells
+   * most apart; every use also names its campaign or category in text.
+   */
+  --color-mark-moss: #6d8b5a;
+  --color-mark-pine: #3e6650;
+  --color-mark-sage: #5f8f87;
+  --color-mark-slate: #4f7c99;
+  --color-mark-indigo: #5b5f9e;
+  --color-mark-heather: #9a6b9e;
+  --color-mark-plum: #7a4a6c;
+  --color-mark-berry: #a8566e;
+  --color-mark-walnut: #8c6b55;
+  --color-mark-ochre: #b08a3e;
   /* Measured work without a campaign: a warm neutral beside the marks. */
   --color-mark-none: #cdb4a2;
 

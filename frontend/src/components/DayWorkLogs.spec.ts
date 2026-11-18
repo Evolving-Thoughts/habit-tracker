@@ -25,7 +25,7 @@ const log: HistoryWorkLog = {
   todoId: 1,
   occurrenceId: null,
   habitId: null,
-  campaign: { id: 9, title: "Buch" },
+  campaign: { id: 9, title: "Buch", color: null, icon: null },
 };
 const reload = vi.fn(() => Promise.resolve());
 

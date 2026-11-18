@@ -86,10 +86,27 @@ describe("PlannerItem", () => {
     expect(wrapper.text()).toContain("45/60 Min.");
   });
 
+  it("draws the stripe in the campaign's stored colour, without its icon", () => {
+    const wrapper = mount(PlannerItem, {
+      props: {
+        item: makeTodo({
+          campaign: { id: 4, title: "Halbmarathon", color: "plum", icon: "star" },
+        }),
+        isUpdating: false,
+      },
+    });
+    expect(wrapper.attributes("style")).toContain(
+      "--campaign-mark: var(--color-mark-plum)",
+    );
+    expect(wrapper.find(".planner-item__campaign svg").exists()).toBe(false);
+  });
+
   it("marks the campaign an item works towards", () => {
     const wrapper = mount(PlannerItem, {
       props: {
-        item: makeTodo({ campaign: { id: 4, title: "Halbmarathon" } }),
+        item: makeTodo({
+          campaign: { id: 4, title: "Halbmarathon", color: null, icon: null },
+        }),
         isUpdating: false,
       },
     });

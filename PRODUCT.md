@@ -26,6 +26,7 @@ Vier Dinge zusammen, die andere Tracker meist getrennt halten:
 - **Planen nach Tag und Reihenfolge:** Eine Quest hat ihren Tag, nur ein Termin hat eine Uhrzeit. Was heute ansteht, zieht man in die Reihenfolge, in der man es angehen will; Offenes wandert mit einem Schritt auf morgen. Termine stehen in beide Richtungen im eigenen Google Kalender.
 - **Reflexion und Warum:** Quests und Dailies tragen ein persönliches Warum. Ohne eigenes übernehmen sie das der Quest oder Kampagne darüber, und zwar live: Ändert sich das Warum der Kampagne, ändert es sich überall darunter; dazu kommen Tagesreflexion, Wochenquote und Perfect Week je Kategorie.
 - **Zeit erfassen:** Eine Stoppuhr misst die echte Arbeitszeit; die geplante Dauer ist nur ein Soll, das die Stoppuhr nicht anhält. Im Fokus-Modus steht eine einzige Quest im Blick. Was gemessen wurde, steht als Logbuch im Kalender neben dem Plan und, ab fünf Minuten, auch im eigenen Google Kalender.
+- **Quest-Stunden statt Punkte:** Zeit auf Quests einer Kampagne zählt als Quest-Stunden, gemessen an einem Wochenziel in den Einstellungen und, wenn gewünscht, einem eigenen je Kampagne. Heute nennt den Stand in einer ruhigen Zeile; die Kampagnen stehen als Kacheln mit Farbe, Symbol, Wochenstand, Verlauf der letzten acht Wochen und Gesamtzeit. Ein verfehltes Ziel ist eine Zahl, keine Warnung; es gibt keine Punkte, Stufen oder Abzeichen.
 - **Notizen:** Jede Quest hat Notizen als formatierten Text (Überschriften, Listen, Checklisten, Zitate, Code, Links). Sie stehen im Fokus-Modus und im Bearbeiten-Dialog und speichern sich von selbst.
 
 ## Operating Context
@@ -36,7 +37,7 @@ Oberflächensprache ist Deutsch.
 
 ## Capabilities and Constraints
 
-- Ansichten: Heute, Plan (die Woche als Brett aus sieben Tagen), Fokus-Modus, Questlog, Kampagnen, Kalender (Monat, Woche, Tag; neben dem Geplanten das Logbuch: am Tag die gemessenen Abschnitte auf einer Zeitachse, in der Woche die Zeit je Kampagne, im Monat die Zeit je Tag), Dailies, Kategorien, Einstellungen. Jede hat eine eigene Adresse (`#/heute`, `#/plan`, `#/questlog`, …), sodass Zurück und Neuladen funktionieren; der Plan hält auch die gezeigte Woche in der Adresse.
+- Ansichten: Heute, Plan (die Woche als Brett aus sieben Tagen), Fokus-Modus, Questlog, Kampagnen (Kacheln je Kampagne über dem ganzen Baum; eine Kachel öffnet ihre Kampagne), Kalender (Monat, Woche, Tag; neben dem Geplanten das Logbuch: am Tag die gemessenen Abschnitte auf einer Zeitachse, in der Woche die Zeit je Kampagne, im Monat die Zeit je Tag), Dailies, Kategorien, Einstellungen. Jede hat eine eigene Adresse (`#/heute`, `#/plan`, `#/questlog`, …), sodass Zurück und Neuladen funktionieren; der Plan hält auch die gezeigte Woche in der Adresse, die Kampagnen die geöffnete Kampagne.
 - Fachbegriffe: siehe Glossar. Daily und Ausführung (einzelner Lauf eines Dailys) sind zu unterscheiden.
 - Technik: Vue 3, NestJS, PostgreSQL; Android über Capacitor als Hülle um die Web-App.
 - Offen: ob und wann die App öffentlich wird.
@@ -50,7 +51,7 @@ Die Oberfläche spricht das Vokabular links. Code, API und Datenbank behalten di
 | Quest | Einzelne Aufgabe, einmal zu erledigen | `todo` |
 | Unter-Quest | Quest unterhalb einer anderen | `todo` mit `parentId` |
 | Questreihe | Quest unterhalb einer Kampagne, die selbst Unter-Quests hat | `todo` mit Eltern und Kindern |
-| Kampagne | Oberste Quest mit Unter-Quests: das längerfristige Ziel | Wurzel-`todo` |
+| Kampagne | Oberste Quest mit Unter-Quests, Farbe, Symbol oder Wochenziel: das längerfristige Ziel | Wurzel-`todo` |
 | Daily | Gewohnheit mit veränderbarem Zeitplan | `habit` |
 | Ausführung | Einzelner Lauf eines Dailys | `habit occurrence` |
 | Questlog | Offene Quests ohne Tag | Backlog (`scheduledDate` leer) |
@@ -59,8 +60,10 @@ Die Oberfläche spricht das Vokabular links. Code, API und Datenbank behalten di
 | Logbuch | Was erledigt und wie lange gearbeitet wurde | `history`, `work_logs` |
 | Fokus-Modus | Eine Quest im Blick, mit Stoppuhr | – |
 | Soll | Geplante Dauer; die Stoppuhr läuft darüber hinaus | `plannedDurationMinutes`, `targetMinutes` |
+| Quest-Stunden | Gemessene Zeit auf Quests, die zu einer Kampagne gehören | `quest-hours` |
+| Wochenziel | Quest-Stunden, die man pro Woche erreichen will, insgesamt oder je Kampagne | `weeklyQuestTargetMinutes`, `weeklyTargetMinutes` |
 
-Eine Quest wird zur Kampagne, sobald sie Unter-Quests hat; es gibt dafür kein eigenes Feld.
+Eine oberste Quest wird zur Kampagne, sobald sie Unter-Quests hat oder eine Farbe, ein Symbol oder ein Wochenziel bekommt; ein eigenes Kampagnen-Feld gibt es nicht. Farbe, Symbol und Wochenziel gibt es nur für oberste Quests; wandert eine Kampagne unter eine andere Quest, verliert sie alle drei.
 
 ## Evidence on Hand
 

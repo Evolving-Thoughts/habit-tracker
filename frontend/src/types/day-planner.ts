@@ -16,7 +16,13 @@ type DayPlannerItemContext = {
   why: string | null;
   goal: DayPlannerGoal | null;
   /** The campaign the item works towards; null for a loose item. */
-  campaign: { id: number; title: string } | null;
+  /** Colour and icon are keys from `campaign.ts`. */
+  campaign: {
+    id: number;
+    title: string;
+    color: string | null;
+    icon: string | null;
+  } | null;
   workedMinutes: number;
 };
 
@@ -64,4 +70,10 @@ export type DayPlannerResponse = {
     end: string;
   }[];
   workedMinutes: number;
+  /** Quest minutes today and this week, against the overall goal. */
+  questHours: {
+    todayMinutes: number;
+    weekMinutes: number;
+    weeklyTargetMinutes: number | null;
+  };
 };

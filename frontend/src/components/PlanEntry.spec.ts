@@ -15,7 +15,7 @@ const quest: WeekPlanEntry = {
   scheduledDate: "2026-11-17",
   timeOfDay: "14:30:00",
   plannedDurationMinutes: 45,
-  campaign: { id: 1, title: "Gesund bleiben" },
+  campaign: { id: 1, title: "Gesund bleiben", color: null, icon: null },
 };
 
 const mountEntry = (entry: WeekPlanEntry, busy = false) =>
@@ -32,6 +32,16 @@ describe("PlanEntry", () => {
     expect(parts(wrapper)).toEqual(["14:30", "45 Min.", "Gesund bleiben"]);
     expect(wrapper.classes()).toContain("plan-entry--campaign");
     expect(wrapper.attributes("style")).toContain("--campaign-mark");
+  });
+
+  it("draws the stripe in the campaign's stored colour", () => {
+    const wrapper = mountEntry({
+      ...quest,
+      campaign: { ...quest.campaign!, color: "sage", icon: "leaf" },
+    });
+    expect(wrapper.attributes("style")).toContain(
+      "--campaign-mark: var(--color-mark-sage)",
+    );
   });
 
   it("names the day an overdue quest was planned for, without alarm", () => {

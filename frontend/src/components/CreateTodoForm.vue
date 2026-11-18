@@ -3,6 +3,9 @@ import { ref } from "vue";
 import { createTodo } from "../api/day-planner.api";
 import type { CreateTodoInput, InheritedWhy } from "../types/todo";
 import { buildTodoInput } from "../utils/todo-input";
+import type { CampaignColor, CampaignIcon } from "../types/campaign";
+import { hoursToMinutes } from "../utils/quest-hours";
+import CampaignFields from "./CampaignFields.vue";
 import CategorySelect, { type CategoryChoice } from "./CategorySelect.vue";
 import PlanFields from "./PlanFields.vue";
 import WhyField from "./WhyField.vue";
@@ -12,6 +15,8 @@ const props = defineProps<{
   parentId?: number | null;
   /** What the new quest inherits from the quest it is created below. */
   parentWhy?: InheritedWhy | null;
+  /** A new campaign: offers colour, icon and weekly goal. */
+  campaign?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -25,6 +30,9 @@ const time = ref("");
 const durationMinutes = ref<string | number>("");
 const category = ref<CategoryChoice>("default");
 const why = ref("");
+const color = ref<CampaignColor | null>(null);
+const icon = ref<CampaignIcon | null>(null);
+const weeklyTarget = ref<string | number>("");
 
 const isSubmitting = ref(false);
 const errorMessage = ref<string | null>(null);
@@ -46,6 +54,9 @@ function resetForm(): void {
   durationMinutes.value = "";
   category.value = "default";
   why.value = "";
+  color.value = null;
+  icon.value = null;
+  weeklyTarget.value = "";
 }
 
 async function submit(): Promise<void> {
@@ -61,6 +72,12 @@ async function submit(): Promise<void> {
     if (props.parentId !== undefined) input.parentId = props.parentId;
     if (category.value !== "default") input.categoryId = category.value;
     if (why.value.trim()) input.why = why.value.trim();
+    if (props.campaign) {
+      const minutes = hoursToMinutes(weeklyTarget.value);
+      if (minutes !== null) input.weeklyTargetMinutes = minutes;
+      if (color.value) input.color = color.value;
+      if (icon.value) input.icon = icon.value;
+    }
 
     isSubmitting.value = true;
     emit("busy", true);
@@ -135,6 +152,15 @@ async function submit(): Promise<void> {
             />
           </label>
         </div>
+
+        <CampaignFields
+          v-if="campaign"
+          v-model:color="color"
+          v-model:icon="icon"
+          v-model:target="weeklyTarget"
+          id-prefix="todo-campaign"
+          :title="title"
+        />
 
         <p v-if="errorMessage" class="form-error" role="alert">
           {{ errorMessage }}

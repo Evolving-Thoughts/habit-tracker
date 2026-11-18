@@ -157,6 +157,68 @@ describe("PlannerItemEditor", () => {
     expect(wrapper.emitted("changed")).toEqual([[]]);
   });
 
+  it("sets colour, icon and weekly goal of a campaign and sends only those", async () => {
+    vi.mocked(getTodo).mockResolvedValue({
+      ...todo,
+      color: "moss",
+      weeklyTargetMinutes: 120,
+    });
+    const wrapper = mount(PlannerItemEditor, {
+      props: { kind: "todo", entityId: 1 },
+    });
+    await flushPromises();
+    expect(
+      wrapper.get<HTMLInputElement>('input[name="weeklyTarget"]').element.value,
+    ).toBe("2");
+    expect(
+      wrapper.get<HTMLInputElement>('input[type="radio"][value="moss"]').element
+        .checked,
+    ).toBe(true);
+    await wrapper.get('input[type="radio"][value="berry"]').setValue(true);
+    await wrapper.get('input[type="radio"][value="book"]').setValue(true);
+    await wrapper.get('input[name="weeklyTarget"]').setValue("3.5");
+    await save(wrapper);
+    expect(updateTodo).toHaveBeenCalledWith(1, {
+      title: "NestJS lernen",
+      scheduledDate: "2026-10-02",
+      timeOfDay: null,
+      plannedDurationMinutes: 30,
+      color: "berry",
+      icon: "book",
+      weeklyTargetMinutes: 210,
+    });
+  });
+
+  it("names the chosen colour in words and rejects an uneven goal", async () => {
+    const wrapper = mount(PlannerItemEditor, {
+      props: { kind: "todo", entityId: 1 },
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain("Automatisch aus dem Titel");
+    await wrapper.get('input[type="radio"][value="indigo"]').setValue(true);
+    expect(wrapper.text()).toContain("Indigo");
+    expect(
+      wrapper.get('input[type="radio"][value="indigo"]').element.closest("label")
+        ?.textContent,
+    ).toContain("Indigo");
+    await wrapper.get('input[name="weeklyTarget"]').setValue("2.25");
+    await save(wrapper);
+    expect(updateTodo).not.toHaveBeenCalled();
+    expect(wrapper.get('[role="alert"]').text()).toContain("halben Stunden");
+  });
+
+  it("offers colour, icon and goal only for a quest without parent", async () => {
+    vi.mocked(getTodo).mockResolvedValue({ ...todo, parentId: 5 });
+    const wrapper = mount(PlannerItemEditor, {
+      props: { kind: "todo", entityId: 1 },
+    });
+    await flushPromises();
+    expect(wrapper.find('input[name="weeklyTarget"]').exists()).toBe(false);
+    expect(wrapper.find('input[type="radio"][value="moss"]').exists()).toBe(
+      false,
+    );
+  });
+
   it("shows the current schedule without enabling schedule writes", async () => {
     const wrapper = mountHabitEditor();
     await flushPromises();

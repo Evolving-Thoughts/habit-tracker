@@ -7,6 +7,9 @@ export const TODO_FIELDS = {
   periodEnd: null,
   goalHabitId: null,
   goalTarget: null,
+  weeklyTargetMinutes: null,
+  color: null,
+  icon: null,
 };
 
 export const HABIT_FIELDS = {
@@ -33,6 +36,13 @@ export const PLANNER_HABIT_FIELDS = {
   categoryName: null,
   timeOfDay: null,
   ...PLANNER_CONTEXT,
+};
+
+/** Heute without measured quest time and without a weekly goal. */
+export const NO_QUEST_HOURS = {
+  todayMinutes: 0,
+  weekMinutes: 0,
+  weeklyTargetMinutes: null,
 };
 
 export const WEEK_ENTRY_FIELDS = {

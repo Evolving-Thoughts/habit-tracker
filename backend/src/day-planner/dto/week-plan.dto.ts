@@ -1,4 +1,5 @@
 import { IsString, Matches } from 'class-validator';
+import type { Campaign } from '../../todos/todo-ancestry';
 
 /** GET /day-planner/week?start=YYYY-MM-DD; `start` must be a Monday. */
 export class WeekPlanQueryDto {
@@ -14,7 +15,7 @@ type WeekPlanEntryContext = {
   timeOfDay: string | null;
   plannedDurationMinutes: number | null;
   /** The campaign the entry works towards; null for a loose entry. */
-  campaign: { id: number; title: string } | null;
+  campaign: Campaign | null;
   /** Open and carried to today from an earlier day. */
   isOverdue: boolean;
 };

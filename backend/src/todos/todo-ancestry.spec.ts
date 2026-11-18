@@ -6,7 +6,7 @@ const node = (
   id: number,
   parentId: number | null,
   why: string | null,
-  goal: Partial<Pick<Node, 'goalHabitId' | 'periodStart' | 'periodEnd'>> = {},
+  goal: Partial<Omit<Node, 'id' | 'parentId' | 'why' | 'title'>> = {},
 ): Node => ({
   id,
   parentId,
@@ -15,6 +15,9 @@ const node = (
   goalHabitId: null,
   periodStart: null,
   periodEnd: null,
+  weeklyTargetMinutes: null,
+  color: null,
+  icon: null,
   ...goal,
 });
 
@@ -125,7 +128,12 @@ describe('TodoAncestry', () => {
         node(2, 1, null),
         node(3, 2, null),
       ]);
-      expect(ancestry.campaignOf(at(3, 2))).toEqual({ id: 1, title: 'Todo 1' });
+      expect(ancestry.campaignOf(at(3, 2))).toEqual({
+        id: 1,
+        title: 'Todo 1',
+        color: null,
+        icon: null,
+      });
       expect(ancestry.campaignOf(at(2, 1))?.id).toBe(1);
     });
 
@@ -137,6 +145,46 @@ describe('TodoAncestry', () => {
       ]);
       expect(ancestry.campaignOf(at(1, null))?.id).toBe(1);
       expect(ancestry.campaignOf(at(5, null))).toBeNull();
+    });
+
+    it('makes a lone top-level todo a campaign once it has a goal, colour or icon', () => {
+      const ancestry = sources([
+        node(1, null, null, { weeklyTargetMinutes: 120 }),
+        node(2, null, null, { color: 'moss' }),
+        node(3, null, null, { icon: 'book' }),
+        node(4, null, null),
+      ]);
+      expect(ancestry.campaignOf(at(1, null))?.id).toBe(1);
+      expect(ancestry.campaignOf(at(2, null))?.id).toBe(2);
+      expect(ancestry.campaignOf(at(3, null))?.id).toBe(3);
+      expect(ancestry.campaignOf(at(4, null))).toBeNull();
+    });
+
+    it('carries the stored colour and icon of the campaign', () => {
+      const ancestry = sources([
+        node(1, null, null, { color: 'berry', icon: 'music' }),
+        node(2, 1, null),
+      ]);
+      expect(ancestry.todoCampaign(2)).toEqual({
+        id: 1,
+        title: 'Todo 1',
+        color: 'berry',
+        icon: 'music',
+      });
+    });
+
+    it('lists the campaigns with a weekly goal', () => {
+      const ancestry = sources([
+        node(1, null, null, { weeklyTargetMinutes: 300 }),
+        node(2, 1, null),
+        node(3, null, null),
+      ]);
+      expect(ancestry.campaignTargets()).toEqual([
+        {
+          campaign: { id: 1, title: 'Todo 1', color: null, icon: null },
+          minutes: 300,
+        },
+      ]);
     });
 
     it('stops where the chain leaves the snapshot or loops', () => {

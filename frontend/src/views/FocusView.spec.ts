@@ -1,4 +1,8 @@
-import { PLANNER_HABIT_FIELDS, PLANNER_TODO_FIELDS } from "../types/fixtures";
+import {
+  NO_QUEST_HOURS,
+  PLANNER_HABIT_FIELDS,
+  PLANNER_TODO_FIELDS,
+} from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -73,6 +77,7 @@ const planner = (
   items,
   externalEvents: [],
   workedMinutes,
+  questHours: NO_QUEST_HOURS,
 });
 const stopwatch = (overrides: Partial<Timer> = {}): Timer => ({
   id: "t",
@@ -134,7 +139,12 @@ describe("FocusView", () => {
       planner([
         todo({
           why: "Mein Wissen weitergeben",
-          campaign: { id: 9, title: "Buch schreiben" },
+          campaign: {
+            id: 9,
+            title: "Buch schreiben",
+            color: null,
+            icon: null,
+          },
           workedMinutes: 12,
         }),
         todo({ todoId: 2, title: "Einkaufen" }),

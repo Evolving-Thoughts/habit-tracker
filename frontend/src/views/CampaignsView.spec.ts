@@ -1,7 +1,10 @@
 import { TODO_FIELDS } from "../types/fixtures";
 import { mount, flushPromises, enableAutoUnmount } from "@vue/test-utils";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { createMemoryHistory, createRouter, type Router } from "vue-router";
 import CampaignsView from "./CampaignsView.vue";
+import { getQuestHours } from "../api/quest-hours.api";
+import type { QuestHoursResponse } from "../types/quest-hours";
 import {
   getTodoHierarchy,
   getDeletionPreview,
@@ -16,6 +19,9 @@ import type { HierarchyTodo } from "../types/todo-hierarchy";
 vi.mock("../api/todo-hierarchy.api", () => ({
   getTodoHierarchy: vi.fn(),
   getDeletionPreview: vi.fn(),
+}));
+vi.mock("../api/quest-hours.api", () => ({
+  getQuestHours: vi.fn(),
 }));
 vi.mock("../api/categories.api", () => ({
   getCategories: vi.fn(),
@@ -50,19 +56,51 @@ const button = (w: ReturnType<typeof mount>, text: string) =>
   w.findAll("button").find((b) => b.text() === text)!;
 const openMenu = (w: ReturnType<typeof mount>, title: string) =>
   w.get(`[aria-label="Aktionen für ${title}"][aria-haspopup]`).trigger("click");
+const WEEKS = [
+  "2026-09-28",
+  "2026-10-05",
+  "2026-10-12",
+  "2026-10-19",
+  "2026-10-26",
+  "2026-11-02",
+  "2026-11-09",
+  "2026-11-16",
+];
+const questHours = (
+  campaigns: QuestHoursResponse["campaigns"] = [],
+): QuestHoursResponse => ({
+  startDate: "2026-11-16",
+  endDate: "2026-11-22",
+  today: "2026-11-18",
+  weeklyTargetMinutes: null,
+  questMinutes: 0,
+  otherMinutes: 0,
+  days: [],
+  weeks: WEEKS.map((startDate) => ({ startDate, questMinutes: 0 })),
+  campaigns,
+});
+let router: Router;
 const view = () =>
   mount(CampaignsView, {
     global: {
+      plugins: [router],
       stubs: {
         ModalDialog: { template: '<section role="dialog"><slot /></section>' },
         PlannerItemEditor: true,
         CreateTodoForm: true,
+        GoalBurnup: { props: ["todoId"], template: "<p>Burnup {{ todoId }}</p>" },
       },
     },
   });
 describe("CampaignsView", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: "/kampagnen", component: { template: "<div />" } }],
+    });
+    await router.push("/kampagnen");
+    vi.mocked(getQuestHours).mockResolvedValue(questHours());
     vi.mocked(getTodoHierarchy).mockResolvedValue([node(1, null), node(2, 1)]);
     vi.mocked(getCategories).mockResolvedValue([]);
     vi.mocked(updateTodo).mockResolvedValue(node(1, null));
@@ -215,5 +253,96 @@ describe("CampaignsView", () => {
     expect(w.find(".page-header button").exists()).toBe(false);
     await plus.trigger("click");
     expect(w.find("[role=dialog]").exists()).toBe(true);
+  });
+  describe("tiles", () => {
+    const campaignNode = (
+      id: number,
+      changes: Partial<HierarchyTodo> = {},
+    ): HierarchyTodo => ({ ...node(id, null), title: `Kampagne ${id}`, ...changes });
+
+    beforeEach(() => {
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        campaignNode(1, { color: "berry", icon: "book", weeklyTargetMinutes: 360 }),
+        node(2, 1),
+        campaignNode(3, { completed: true, color: "moss" }),
+        // A loose quest is no campaign and gets no tile.
+        { ...node(4, null), title: "Einkaufen" },
+      ]);
+      vi.mocked(getQuestHours).mockResolvedValue(
+        questHours([
+          {
+            campaign: { id: 1, title: "Kampagne 1", color: "berry", icon: "book" },
+            minutes: 210,
+            weeklyTargetMinutes: 360,
+            weeks: [0, 0, 0, 0, 0, 60, 120, 210],
+            totalMinutes: 750,
+          },
+        ]),
+      );
+    });
+
+    it("shows a tile per active campaign with its week, trend and total", async () => {
+      const w = view();
+      await flushPromises();
+      const tiles = w.findAll("[data-campaign-tile]");
+      expect(tiles.map((tile) => tile.attributes("data-campaign-tile"))).toEqual([
+        "1",
+      ]);
+      const tile = tiles[0]!;
+      expect(tile.text()).toContain("Kampagne 1");
+      expect(tile.text()).toContain("3 Std. 30 Min. von 6 Std. diese Woche");
+      expect(tile.text()).toContain("Insgesamt 12 Std. 30 Min.");
+      expect(tile.attributes("style")).toContain("var(--color-mark-berry)");
+      expect(tile.get("svg[role=img]").attributes("aria-label")).toContain(
+        "Woche ab 16.11.: 3 Std. 30 Min.",
+      );
+      // The hierarchy below keeps every quest, loose ones included.
+      expect(w.findAll("[data-todo-id]")).toHaveLength(4);
+    });
+
+    it("lists completed campaigns under their own tab", async () => {
+      const w = view();
+      await flushPromises();
+      await button(w, "Abgeschlossen").trigger("click");
+      const tiles = w.findAll("[data-campaign-tile]");
+      expect(tiles.map((tile) => tile.attributes("data-campaign-tile"))).toEqual([
+        "3",
+      ]);
+      // Without measured time the tile says so honestly.
+      expect(tiles[0]!.text()).toContain("0 Min. diese Woche");
+    });
+
+    it("opens a campaign with its quests, progress and burnup, and goes back", async () => {
+      const w = view();
+      await flushPromises();
+      await button(w, "Kampagne 1").trigger("click");
+      await flushPromises();
+      expect(router.currentRoute.value.query).toEqual({ kampagne: "1" });
+      expect(w.find("[data-campaign-tile]").exists()).toBe(false);
+      expect(w.get("#campaign-detail-title").text()).toBe("Kampagne 1");
+      expect(w.text()).toContain("Burnup 1");
+      expect(
+        w.findAll("[data-todo-id]").map((row) => row.attributes("data-todo-id")),
+      ).toEqual(["1", "2"]);
+      expect(
+        w.find('[aria-label="Fortschritt von Kampagne 1"]').exists(),
+      ).toBe(true);
+
+      await button(w, "Alle Kampagnen").trigger("click");
+      await flushPromises();
+      expect(router.currentRoute.value.query).toEqual({});
+      expect(w.findAll("[data-campaign-tile]")).toHaveLength(1);
+      expect(w.findAll("[data-todo-id]")).toHaveLength(4);
+    });
+
+    it("still opens campaigns when the quest hours cannot be read", async () => {
+      vi.mocked(getQuestHours).mockRejectedValue(new Error("Offline"));
+      const w = view();
+      await flushPromises();
+      expect(w.get("[data-campaign-tile]").text()).not.toContain("diese Woche");
+      await button(w, "Kampagne 1").trigger("click");
+      await flushPromises();
+      expect(w.get("#campaign-detail-title").text()).toBe("Kampagne 1");
+    });
   });
 });

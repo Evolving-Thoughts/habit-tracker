@@ -26,6 +26,8 @@ const series = computed(() =>
   }),
 );
 const latest = computed(() => series.value[series.value.length - 1]);
+/** One day is a number, not yet a line. */
+const hasHistory = computed(() => series.value.length > 1);
 const unitLabel = computed(() =>
   unit.value === "count" ? "Quests" : "Min.",
 );
@@ -106,7 +108,12 @@ onMounted(load);
     </div>
     <template v-else-if="latest">
       <div class="burnup__controls">
-        <div class="segmented" role="group" aria-label="Ansicht">
+        <div
+          v-if="hasHistory"
+          class="segmented"
+          role="group"
+          aria-label="Ansicht"
+        >
           <button
             type="button"
             :aria-pressed="chart === 'done'"
@@ -140,6 +147,7 @@ onMounted(load);
         </div>
       </div>
       <svg
+        v-if="hasHistory"
         :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
         role="img"
         :aria-label="`${latest.done} von ${latest.total} ${unitLabel} erledigt`"
@@ -166,7 +174,7 @@ onMounted(load);
           />
         </template>
       </svg>
-      <ul class="burnup__legend">
+      <ul v-if="hasHistory" class="burnup__legend">
         <li v-for="item in lines" :key="item.name">
           <span
             :class="`burnup__swatch burnup__swatch--${item.tone}`"
@@ -176,8 +184,14 @@ onMounted(load);
       </ul>
       <p class="burnup__summary">
         {{ latest.done }} von {{ latest.total }} {{ unitLabel }} erledigt,
-        {{ latest.remaining }} noch offen. Stand {{ shortDate(latest.date) }},
-        seit {{ shortDate(series[0]!.date) }}.
+        {{ latest.remaining }} noch offen. Stand {{ shortDate(latest.date)
+        }}<template v-if="hasHistory"
+          >, seit {{ shortDate(series[0]!.date) }}</template
+        >
+      </p>
+      <p v-if="!hasHistory" class="burnup__note">
+        Der Verlauf beginnt heute. Ab morgen zeigt hier eine Linie, wie es
+        vorangeht.
       </p>
       <p v-if="unit === 'minutes'" class="burnup__note">
         Minuten zählen nur Quests mit geplanter Dauer.

@@ -39,6 +39,7 @@ import {
   withQueueOrder,
 } from "../utils/today-agenda";
 import { categoryMark } from "../utils/category-mark";
+import { questHoursLine } from "../utils/quest-hours";
 import { hrefOf } from "../routes";
 
 type EditingTarget = {
@@ -100,6 +101,9 @@ const progress = computed(() => {
     parts.push(`${formatDuration(planner.value.workedMinutes)} gearbeitet`);
   return parts;
 });
+const questLine = computed(() =>
+  planner.value ? questHoursLine(planner.value.questHours) : null,
+);
 const hasItems = computed(
   () =>
     (planner.value?.items.length ?? 0) > 0 ||
@@ -396,6 +400,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
         <p v-if="progress.length" class="today-view__progress">
           <span v-for="part in progress" :key="part">{{ part }}</span>
         </p>
+        <p v-if="questLine" class="today-view__quest">{{ questLine }}</p>
       </div>
       <button
         v-if="postponable.length"
@@ -814,6 +819,14 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
   gap: 0 var(--space-3);
   margin: var(--space-1) 0 0;
   color: var(--color-ink-muted);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.today-view__quest {
+  margin: var(--space-1) 0 0;
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }

@@ -1159,6 +1159,11 @@ describe('Habit domain and day planner (e2e)', () => {
         items: [],
         externalEvents: [],
         workedMinutes: 0,
+        questHours: {
+          todayMinutes: 0,
+          weekMinutes: 0,
+          weeklyTargetMinutes: null,
+        },
       });
     });
   });

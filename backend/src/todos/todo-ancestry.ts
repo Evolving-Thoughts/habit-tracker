@@ -1,4 +1,5 @@
 import { EntityManager } from 'typeorm';
+import { CampaignFields, hasCampaignFields } from './campaign-style';
 import { TodoEntity } from './entities/todo.entity';
 import {
   InheritedWhy,
@@ -6,14 +7,22 @@ import {
   WhyNode,
 } from './todo-hierarchy';
 
-type AncestryNode = WhyNode & {
-  goalHabitId: number | null;
-  periodStart: string | null;
-  periodEnd: string | null;
-};
+type AncestryNode = WhyNode &
+  CampaignFields & {
+    goalHabitId: number | null;
+    periodStart: string | null;
+    periodEnd: string | null;
+  };
 
 /** The campaign an entry works towards: the topmost todo above it. */
-export type Campaign = { id: number; title: string };
+export type Campaign = Pick<AncestryNode, 'id' | 'title' | 'color' | 'icon'>;
+
+const campaign = ({ id, title, color, icon }: AncestryNode): Campaign => ({
+  id,
+  title,
+  color,
+  icon,
+});
 
 /**
  * What a todo or habit takes from the todos above it, answered from one
@@ -23,7 +32,8 @@ export type Campaign = { id: number; title: string };
  *   ancestor that states one; a habit takes the one of the goal that counts
  *   it today. Nothing is copied, so a changed reason reaches everything below.
  * - Campaign: the topmost ancestor. A top-level todo is its own campaign once
- *   it has todos below it; a habit belongs to the campaign of its goal.
+ *   it has todos below it or was given a weekly goal, colour or icon; a habit
+ *   belongs to the campaign of its goal.
  */
 export class TodoAncestry {
   private readonly byId: Map<number, AncestryNode>;
@@ -64,15 +74,13 @@ export class TodoAncestry {
     return habit.why ?? this.inheritedHabitWhy(habit.id)?.text ?? null;
   }
 
-  campaignOf(todo: {
-    id: number;
-    title: string;
-    parentId?: number | null;
-  }): Campaign | null {
-    if (todo.parentId == null)
-      return this.parents.has(todo.id)
-        ? { id: todo.id, title: todo.title }
+  campaignOf(todo: { id: number; parentId?: number | null }): Campaign | null {
+    if (todo.parentId == null) {
+      const own = this.byId.get(todo.id);
+      return own && (this.parents.has(own.id) || hasCampaignFields(own))
+        ? campaign(own)
         : null;
+    }
     const seen = new Set<number>([todo.id]);
     let top = this.byId.get(todo.parentId);
     while (top?.parentId != null && !seen.has(top.id)) {
@@ -81,7 +89,16 @@ export class TodoAncestry {
       if (!next) break; // The chain leaves the snapshot: this is the top.
       top = next;
     }
-    return top ? { id: top.id, title: top.title } : null;
+    return top ? campaign(top) : null;
+  }
+
+  /** Every campaign with a weekly goal, and that goal. */
+  campaignTargets(): { campaign: Campaign; minutes: number }[] {
+    return [...this.byId.values()].flatMap((node) =>
+      node.parentId == null && node.weeklyTargetMinutes !== null
+        ? [{ campaign: campaign(node), minutes: node.weeklyTargetMinutes }]
+        : [],
+    );
   }
 
   /** The campaign of a todo known only by id; a deleted todo has none. */
@@ -94,7 +111,7 @@ export class TodoAncestry {
     const goal = this.goalOf(habitId);
     if (!goal) return null;
     // Counting a habit makes even a lone goal something to work towards.
-    return this.campaignOf(goal) ?? { id: goal.id, title: goal.title };
+    return this.campaignOf(goal) ?? campaign(goal);
   }
 
   /** The todo whose habit goal counts `habitId` in a period covering today. */
@@ -127,6 +144,9 @@ export async function loadTodoAncestry(
       goalHabitId: true,
       periodStart: true,
       periodEnd: true,
+      weeklyTargetMinutes: true,
+      color: true,
+      icon: true,
     },
     where: { userId },
   });

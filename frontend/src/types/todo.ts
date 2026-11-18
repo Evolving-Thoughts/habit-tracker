@@ -1,4 +1,12 @@
-export type CreateTodoInput = {
+/** Only a quest without parent may carry these (keys from `campaign.ts`). */
+export type CampaignInput = {
+  /** Minutes of quest time to reach each week. */
+  weeklyTargetMinutes?: number | null;
+  color?: string | null;
+  icon?: string | null;
+};
+
+export type CreateTodoInput = CampaignInput & {
   parentId?: number | null;
   categoryId?: number | null;
   why?: string | null;
@@ -24,6 +32,10 @@ export type InheritedWhy = { text: string; fromId: number; fromTitle: string };
 
 export type TodoResponse = Required<TodoGoalInput> & {
   id: number;
+  /** Campaign only: weekly goal in minutes, colour and icon. */
+  weeklyTargetMinutes: number | null;
+  color: string | null;
+  icon: string | null;
   /** Parent in the todo hierarchy; null for a root. */
   parentId: number | null;
   categoryId: number | null;

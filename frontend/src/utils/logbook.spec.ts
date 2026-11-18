@@ -22,7 +22,7 @@ const log = (overrides: Partial<HistoryWorkLog> = {}): HistoryWorkLog => ({
   todoId: 4,
   occurrenceId: null,
   habitId: null,
-  campaign: { id: 2, title: "Buch" },
+  campaign: { id: 2, title: "Buch", color: null, icon: null },
   ...overrides,
 });
 const block = (key: string, start: number, end: number) => ({

@@ -13,7 +13,7 @@ import { useLoader } from "../composables/useLoader";
 import { useTimer } from "../composables/useTimer";
 import { hrefOf } from "../routes";
 import type { DayPlannerItem, DayPlannerResponse } from "../types/day-planner";
-import { categoryMark } from "../utils/category-mark";
+import { campaignMark } from "../utils/category-mark";
 import { formatStopwatch } from "../utils/stopwatch";
 import {
   arrangeToday,
@@ -232,7 +232,7 @@ function onKeydown(event: KeyboardEvent): void {
       <p v-if="current.campaign" class="focus-view__campaign">
         <i
           class="category-mark"
-          :style="{ background: categoryMark(current.campaign.title) }"
+          :style="{ background: campaignMark(current.campaign) ?? undefined }"
           aria-hidden="true"
         />{{ current.campaign.title }}
       </p>

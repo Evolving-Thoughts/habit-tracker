@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { getTodoHierarchy } from "../api/todo-hierarchy.api";
+import { getQuestHours } from "../api/quest-hours.api";
 import { updateTodo, updateTodoCompletion } from "../api/day-planner.api";
 import { getCategories } from "../api/categories.api";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
@@ -17,13 +19,22 @@ import CreateTodoForm from "../components/CreateTodoForm.vue";
 import PlannerItemEditor from "../components/PlannerItemEditor.vue";
 import GoalBurnup from "../components/GoalBurnup.vue";
 import TodoDeletionSummary from "../components/TodoDeletionSummary.vue";
+import CampaignTiles from "../components/CampaignTiles.vue";
+import QuestTrend from "../components/QuestTrend.vue";
 import { useListFocus } from "../composables/useListFocus";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import { useTodoDeletion } from "../composables/useTodoDeletion";
 import { useTimer } from "../composables/useTimer";
-import { categoryMark } from "../utils/category-mark";
-import { formatDateForGermanDisplay } from "../utils/date";
+import { campaignMark, categoryMark } from "../utils/category-mark";
+import {
+  formatDateForGermanDisplay,
+  getCurrentDateInTimeZone,
+  weekStart,
+} from "../utils/date";
+import { formatDuration } from "../utils/today-agenda";
+import { againstTarget, campaignTiles } from "../utils/quest-hours";
+import type { QuestHoursResponse } from "../types/quest-hours";
 const page = ref<HTMLElement | null>(null),
   listFocus = useListFocus(page);
 const collapsed = ref(new Set<number>());
@@ -59,9 +70,65 @@ const {
   refreshOnChange: () =>
     !busy.value && action.value === null && burnupTodo.value === null,
 });
-const { write, applied, busy: writing } = useWrites(load, error);
+// The tiles' numbers; without them the tiles still open their campaign.
+const { data: questHours, reload: loadQuestHours } =
+  useLoader<QuestHoursResponse | null>(
+    (signal) => getQuestHours(weekStart(getCurrentDateInTimeZone()), signal),
+    {
+      initial: null,
+      fallbackError: "Quest-Stunden konnten nicht geladen werden.",
+      refreshOnChange: () =>
+        !busy.value && action.value === null && burnupTodo.value === null,
+    },
+  );
+const { write, applied, busy: writing } = useWrites(
+  async (showPageLoading) => {
+    await Promise.all([load(showPageLoading), loadQuestHours(false)]);
+  },
+  error,
+);
 const shownError = computed(() => error.value || loadError.value || "");
-const rows = computed(() => visibleHierarchy(todos.value, collapsed.value));
+const tiles = computed(() => campaignTiles(todos.value, questHours.value));
+const trendStarts = computed(
+  () => questHours.value?.weeks.map((week) => week.startDate) ?? [],
+);
+
+/* The open campaign lives in the address (#/kampagnen?kampagne=…), so Back closes it. */
+const route = useRoute();
+const router = useRouter();
+const openTile = computed(() => {
+  const id = Number(route.query.kampagne);
+  return tiles.value.find((tile) => tile.todo.id === id) ?? null;
+});
+const openMark = computed(() =>
+  openTile.value
+    ? campaignMark({
+        title: openTile.value.todo.title,
+        color: openTile.value.color,
+      })!
+    : "",
+);
+async function openCampaign(id: number) {
+  await router.push({ query: { kampagne: String(id) } });
+  await nextTick();
+  page.value?.querySelector<HTMLElement>("#campaign-detail-title")?.focus();
+}
+async function closeCampaign() {
+  const id = openTile.value?.todo.id;
+  await router.push({ query: {} });
+  await nextTick();
+  page.value
+    ?.querySelector<HTMLElement>(`[data-campaign-tile="${id}"] button`)
+    ?.focus();
+}
+const rows = computed(() => {
+  if (!openTile.value) return visibleHierarchy(todos.value, collapsed.value);
+  const inside = descendantIds(todos.value, openTile.value.todo.id);
+  return visibleHierarchy(
+    todos.value.filter((todo) => inside.has(todo.id)),
+    collapsed.value,
+  );
+});
 const children = computed(() => hierarchyChildren(todos.value));
 const titles = computed(
   () => new Map(todos.value.map((todo) => [todo.id, todo.title])),
@@ -374,6 +441,85 @@ async function confirmDelete() {
       <span>Leg mit dem Plus-Button die erste an.</span>
     </div>
     <template v-else-if="todos.length">
+      <template v-if="openTile">
+        <button
+          class="btn btn--quiet campaign-back"
+          type="button"
+          @click="closeCampaign"
+        >
+          <AppIcon name="chevron-left" />Alle Kampagnen
+        </button>
+        <section
+          class="card campaign-detail"
+          :style="{ '--mark': openMark }"
+          aria-labelledby="campaign-detail-title"
+        >
+          <div class="campaign-detail__head">
+            <span class="campaign-detail__badge" aria-hidden="true">
+              <AppIcon :name="openTile.icon ?? 'campaigns'" />
+            </span>
+            <h2 id="campaign-detail-title" tabindex="-1">
+              {{ openTile.todo.title }}
+            </h2>
+          </div>
+          <template v-if="questHours">
+            <p class="campaign-detail__week">
+              <strong>{{
+                againstTarget(openTile.minutes, openTile.weeklyTargetMinutes)
+              }}</strong>
+              Quest-Stunden diese Woche · insgesamt
+              {{ formatDuration(openTile.totalMinutes) }}
+            </p>
+            <QuestTrend
+              class="campaign-detail__trend"
+              :weeks="openTile.weeks"
+              :starts="trendStarts"
+              :mark="openMark"
+            />
+          </template>
+          <div
+            v-if="children.get(openTile.todo.id)?.length"
+            class="row__progress"
+          >
+            <span
+              class="row__bar"
+              role="progressbar"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              :aria-valuenow="Math.round(openTile.todo.progress.percentage)"
+              :aria-valuetext="`${progressText(openTile.todo)} erledigt`"
+              :aria-label="`Fortschritt von ${openTile.todo.title}`"
+            >
+              <span
+                :style="{
+                  width: `${Math.min(100, Math.max(0, openTile.todo.progress.percentage))}%`,
+                }"
+              />
+            </span>
+            <span class="row__count">{{ progressText(openTile.todo) }}</span>
+          </div>
+          <GoalBurnup :todo-id="openTile.todo.id" />
+          <button
+            class="btn campaign-detail__edit"
+            type="button"
+            :disabled="busy"
+            :aria-label="`Kampagne ${openTile.todo.title} bearbeiten`"
+            @click="open('edit', openTile.todo)"
+          >
+            <AppIcon name="edit" />Bearbeiten
+          </button>
+        </section>
+        <h2 class="section-title">Quests der Kampagne</h2>
+      </template>
+      <template v-else>
+        <CampaignTiles
+          :tiles="tiles"
+          :starts="trendStarts"
+          :counted="questHours !== null"
+          @open="openCampaign"
+        />
+        <h2 class="section-title">Alle Quests</h2>
+      </template>
       <ul class="tree" aria-label="Kampagnen">
         <li
           v-for="{ todo, depth } in rows"
@@ -611,6 +757,7 @@ async function confirmDelete() {
           embedded
           :parent-id="selected?.id ?? null"
           :parent-why="selected ? whyBelow(selected) : null"
+          :campaign="!selected"
           @busy="formBusy = $event"
           @created="created"
       /></template>
@@ -991,6 +1138,71 @@ async function confirmDelete() {
   border-radius: var(--radius-card);
   color: var(--color-ink-muted);
   font-weight: 700;
+}
+
+.campaign-back {
+  margin: 0 0 var(--space-3) calc(var(--space-2) * -1);
+}
+
+.campaign-detail {
+  display: grid;
+  gap: var(--space-3);
+  padding-left: calc(var(--space-4) + 0.3125rem);
+  box-shadow: inset 0.3125rem 0 0 var(--mark);
+}
+
+.campaign-detail p {
+  margin: 0;
+}
+
+.campaign-detail__head {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  min-width: 0;
+}
+
+.campaign-detail__head h2 {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.campaign-detail__badge {
+  display: grid;
+  flex: none;
+  width: var(--tap-large);
+  height: var(--tap-large);
+  place-items: center;
+  border-radius: 50%;
+  background: var(--mark);
+  color: var(--color-on-action);
+}
+
+.campaign-detail__week {
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.campaign-detail__week strong {
+  color: var(--color-ink);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.campaign-detail__trend {
+  max-width: 24rem;
+}
+
+.campaign-detail .row__progress {
+  margin-top: 0;
+}
+
+.campaign-detail__edit {
+  justify-self: start;
 }
 
 .burnup-goal {
