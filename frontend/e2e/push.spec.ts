@@ -49,7 +49,9 @@ test("push setting persists explicit opt-out and rebinds opted-in devices after 
   await mockBrowserSubscription(page);
   await page.goto("/");
   await openView(page, "Einstellungen");
-  const toggle = page.getByRole("switch");
+  const toggle = page.getByRole("switch", {
+    name: "Timer-Benachrichtigungen",
+  });
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-checked", "true");
@@ -79,5 +81,7 @@ test("blocked push permission has an actionable hint and never forces a prompt",
   await page.goto("/");
   await openView(page, "Einstellungen");
   await expect(page.getByText(/Website-Einstellungen/)).toBeVisible();
-  await expect(page.getByRole("switch")).toHaveCount(0);
+  await expect(
+    page.getByRole("switch", { name: "Timer-Benachrichtigungen" }),
+  ).toHaveCount(0);
 });

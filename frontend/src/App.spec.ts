@@ -1,3 +1,7 @@
+vi.mock("./api/timers.api", async (original) => ({
+  ...(await original<typeof import("./api/timers.api")>()),
+  getCurrentTimer: vi.fn(async () => ({ serverNow: "", timer: null })),
+}));
 vi.mock("./api/auth.api", () => ({
   getMe: vi.fn(async () => ({ id: "user-a", email: "a@example.test" })),
   logout: vi.fn(async () => undefined),
@@ -8,6 +12,11 @@ import { createMemoryHistory } from "vue-router";
 import App from "./App.vue";
 import { createAppRouter } from "./router";
 import { getMe, logout } from "./api/auth.api";
+import { getCurrentTimer } from "./api/timers.api";
+import {
+  reloadShortcutSettings,
+  setSingleKeys,
+} from "./composables/useShortcuts";
 beforeEach(() => {
   vi.mocked(getMe).mockResolvedValue({ id: "user-a", email: "a@example.test" });
   vi.mocked(logout).mockResolvedValue();
@@ -55,8 +64,12 @@ describe("App navigation", () => {
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
-    // Four tabs and Plan for wide screens, Mehr, and six views behind it.
-    expect(wrapper.findAll("nav a, nav button")).toHaveLength(12);
+    // Four tabs and Plan for wide screens, Mehr, six views behind it, and
+    // the command button of wide screens.
+    expect(wrapper.findAll("nav a, nav button")).toHaveLength(13);
+    expect(tab(wrapper, "Befehle").attributes("aria-keyshortcuts")).toBe(
+      "Control+K",
+    );
   });
   it("puts Plan after Heute on wide screens and first behind Mehr", async () => {
     const wrapper = mountApp();
@@ -229,5 +242,122 @@ describe("App authentication boundary", () => {
     await flushPromises();
     expect(logout).toHaveBeenCalled();
     expect(wrapper.find("[data-view]").exists()).toBe(false);
+  });
+});
+
+describe("App shortcuts", () => {
+  const press = (key: string, init: KeyboardEventInit = {}) => {
+    const event = new KeyboardEvent("keydown", {
+      key,
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    });
+    document.body.dispatchEvent(event);
+    return event;
+  };
+  beforeEach(() => {
+    localStorage.clear();
+    reloadShortcutSettings();
+    vi.mocked(getCurrentTimer).mockResolvedValue({
+      serverNow: "",
+      timer: null,
+    });
+  });
+
+  it("opens the views with their letters and the Fokus-Modus with F", async () => {
+    const wrapper = mountApp();
+    await flushPromises();
+    press("q");
+    await flushPromises();
+    expect(wrapper.find('[data-view="dump"]').exists()).toBe(true);
+    press("k");
+    await flushPromises();
+    expect(wrapper.find('[data-view="calendar"]').exists()).toBe(true);
+    press("f");
+    await flushPromises();
+    expect(wrapper.find('[data-view="focus"]').exists()).toBe(true);
+  });
+
+  it("takes N to Heute where a view has no quest dialog of its own", async () => {
+    const wrapper = mountApp();
+    await flushPromises();
+    await open(wrapper, "Dailies");
+    press("n");
+    await flushPromises();
+    expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
+  });
+
+  it("opens the command menu with Ctrl+K and runs a view from it", async () => {
+    const wrapper = mount(App, {
+      attachTo: document.body,
+      global: {
+        plugins: [createAppRouter(createMemoryHistory())],
+        stubs: {
+          TodayView: { template: '<main data-view="today">Today</main>' },
+          WeekReviewView: {
+            template: '<main data-view="review">Review</main>',
+          },
+        },
+      },
+    });
+    await flushPromises();
+    expect(press("k", { ctrlKey: true }).defaultPrevented).toBe(true);
+    await flushPromises();
+    const input = wrapper.get<HTMLInputElement>('input[role="combobox"]');
+    await input.setValue("ruckblick");
+    await input.trigger("keydown", { key: "Enter" });
+    await flushPromises();
+    expect(wrapper.find('input[role="combobox"]').exists()).toBe(false);
+    expect(wrapper.find('[data-view="review"]').exists()).toBe(true);
+  });
+
+  it("offers to pause the running stopwatch in the command menu", async () => {
+    vi.mocked(getCurrentTimer).mockResolvedValue({
+      serverNow: "2026-10-02T06:00:00Z",
+      timer: {
+        id: "t",
+        kind: "todo",
+        targetId: 1,
+        title: "Lesen",
+        state: "running",
+        elapsedMilliseconds: 0,
+        targetMinutes: null,
+        targetReachedAt: null,
+      },
+    });
+    const wrapper = mountApp();
+    await flushPromises();
+    press("k", { ctrlKey: true });
+    await flushPromises();
+    expect(
+      wrapper.findAll('[role="option"]').map((option) => option.text()),
+    ).toContain("Stoppuhr pausieren: Lesen");
+  });
+
+  it("opens the overview with ?, but not once single keys are off", async () => {
+    const wrapper = mountApp();
+    await flushPromises();
+    press("?", { shiftKey: true });
+    await flushPromises();
+    expect(wrapper.get("dialog").attributes("aria-label")).toBe("Tastenkürzel");
+    await wrapper.get("dialog").trigger("cancel");
+    await flushPromises();
+    expect(wrapper.find("dialog").exists()).toBe(false);
+
+    setSingleKeys(false);
+    press("?", { shiftKey: true });
+    await flushPromises();
+    expect(wrapper.find("dialog").exists()).toBe(false);
+    setSingleKeys(true);
+  });
+
+  it("handles no shortcut before signing in", async () => {
+    vi.mocked(getMe).mockResolvedValueOnce(null);
+    const wrapper = mountApp();
+    await flushPromises();
+    expect(press("q").defaultPrevented).toBe(false);
+    expect(press("k", { ctrlKey: true }).defaultPrevented).toBe(false);
+    expect(wrapper.find('input[role="combobox"]').exists()).toBe(false);
   });
 });

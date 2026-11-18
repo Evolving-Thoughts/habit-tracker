@@ -5,6 +5,7 @@ import {
   getWeekPlan,
   reorderDay,
   rescheduleTodo,
+  updateTodoCompletion,
 } from "../api/day-planner.api";
 import { WEEK_ENTRY_FIELDS } from "../types/fixtures";
 import type {
@@ -14,11 +15,13 @@ import type {
   WeekPlanTodoEntry,
 } from "../types/week-plan";
 import PlanView from "./PlanView.vue";
+import { reloadShortcutSettings } from "../composables/useShortcuts";
 
 vi.mock("../api/day-planner.api", () => ({
   getWeekPlan: vi.fn(),
   reorderDay: vi.fn(),
   rescheduleTodo: vi.fn(),
+  updateTodoCompletion: vi.fn(),
   createTodo: vi.fn(),
 }));
 vi.mock("../utils/date", async (original) => ({
@@ -254,5 +257,135 @@ describe("PlanView", () => {
     await wrapper.get('[role="alert"] button').trigger("click");
     await flushPromises();
     expect(wrapper.findAll("section.plan-day")).toHaveLength(7);
+  });
+});
+
+describe("PlanView keyboard shortcuts", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    localStorage.clear();
+    reloadShortcutSettings();
+    vi.mocked(reorderDay).mockResolvedValue(undefined);
+    vi.mocked(rescheduleTodo).mockResolvedValue({} as never);
+    vi.mocked(updateTodoCompletion).mockResolvedValue(undefined);
+  });
+  afterEach(() => (document.body.innerHTML = ""));
+
+  const row = (key: string) =>
+    document.querySelector<HTMLElement>(`[data-focus-key="${key}"]`)!;
+  function hover(key: string): void {
+    row(key).dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+  }
+  function press(key: string, target: EventTarget = document.body) {
+    const event = new KeyboardEvent("keydown", {
+      key,
+      bubbles: true,
+      cancelable: true,
+    });
+    target.dispatchEvent(event);
+    return event;
+  }
+
+  it("moves the hovered quest to tomorrow with D, the way dragging does", async () => {
+    vi.mocked(getWeekPlan).mockResolvedValue(
+      week(MONDAY, { [TODAY]: [quest(1), quest(2)] }),
+    );
+    const { wrapper } = await mountPlan();
+    vi.mocked(getWeekPlan).mockResolvedValue(
+      week(MONDAY, {
+        [TODAY]: [quest(2)],
+        "2026-11-18": [quest(1, { scheduledDate: "2026-11-18" })],
+      }),
+    );
+    hover("todo-1");
+    expect(press("d").defaultPrevented).toBe(true);
+    await flushPromises();
+    expect(rescheduleTodo).toHaveBeenCalledWith(1, "2026-11-18", false);
+    expect(openTitles(wrapper, "2026-11-18")).toEqual(["Quest 1"]);
+    expect(wrapper.get(".visually-hidden[role='status']").text()).toBe(
+      "„Quest 1“ steht jetzt am Mittwoch, 18. Nov.",
+    );
+  });
+
+  it("moves to next Monday with W, beyond the board", async () => {
+    vi.mocked(getWeekPlan).mockResolvedValue(
+      week(MONDAY, { [TODAY]: [quest(1)] }),
+    );
+    const { wrapper } = await mountPlan();
+    hover("todo-1");
+    press("w");
+    await flushPromises();
+    expect(rescheduleTodo).toHaveBeenCalledWith(1, "2026-11-23", false);
+    expect(wrapper.get(".visually-hidden[role='status']").text()).toBe(
+      "„Quest 1“ steht jetzt am Montag, 23. Nov.",
+    );
+  });
+
+  it("ticks the hovered quest with X and offers undo", async () => {
+    vi.mocked(getWeekPlan).mockResolvedValue(
+      week(MONDAY, { [TODAY]: [quest(1)] }),
+    );
+    const { wrapper } = await mountPlan();
+    hover("todo-1");
+    press("x");
+    await flushPromises();
+    expect(updateTodoCompletion).toHaveBeenCalledWith(1, true);
+    expect(wrapper.get(".undo-toast").text()).toContain("„Quest 1“ erledigt");
+    await wrapper.get(".undo-toast button").trigger("click");
+    await flushPromises();
+    expect(updateTodoCompletion).toHaveBeenLastCalledWith(1, false);
+  });
+
+  it("leaves dailies, done quests and appointments to their own ways", async () => {
+    vi.mocked(getWeekPlan).mockResolvedValue(
+      week(MONDAY, {
+        [TODAY]: [
+          quest(1, { timeOfDay: "09:30" }),
+          daily({ occurrenceId: 9 }),
+          quest(2, { status: "completed" }),
+        ],
+      }),
+    );
+    const { wrapper } = await mountPlan();
+    hover("habit-9");
+    expect(press("x").defaultPrevented).toBe(false);
+    expect(press("d").defaultPrevented).toBe(false);
+    hover("todo-2");
+    expect(press("x").defaultPrevented).toBe(false);
+    // An appointment opens "Verschieben", where its move is confirmed.
+    hover("todo-1");
+    press("d");
+    await flushPromises();
+    expect(rescheduleTodo).not.toHaveBeenCalled();
+    expect(updateTodoCompletion).not.toHaveBeenCalled();
+    expect(wrapper.findComponent({ name: "MoveItemDialog" }).exists()).toBe(
+      true,
+    );
+  });
+
+  it("puts N into today's quick add, or the first day's of a later week", async () => {
+    vi.mocked(getWeekPlan).mockImplementation(async (start) => week(start));
+    await mountPlan();
+    press("n");
+    expect(document.activeElement).toBe(
+      document.querySelector(
+        `section[data-date="${TODAY}"] input[name="quickTitle"]`,
+      ),
+    );
+    document.body.innerHTML = "";
+
+    await mountPlan("/plan?woche=2026-11-23");
+    press("n");
+    expect(document.activeElement).toBe(
+      document.querySelector(
+        'section[data-date="2026-11-23"] input[name="quickTitle"]',
+      ),
+    );
+  });
+
+  it("declines N in a past week, so the app can take it to Heute", async () => {
+    vi.mocked(getWeekPlan).mockImplementation(async (start) => week(start));
+    await mountPlan("/plan?woche=2026-11-09");
+    expect(press("n").defaultPrevented).toBe(false);
   });
 });

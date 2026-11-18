@@ -59,6 +59,11 @@ export function dayLabel(date: string): string {
   return `${weekdayName(date)}, ${shortDate(date)}`;
 }
 
+/** Ends a sentence once: "… am Mittwoch, 18. Nov." needs no second stop. */
+export function fullStop(text: string): string {
+  return text.endsWith(".") ? text : `${text}.`;
+}
+
 /** "12. November", for screen-reader labels of calendar cells. */
 export function longDate(date: string): string {
   return `${day(date)}. ${MONTHS[monthIndex(date)]}`;

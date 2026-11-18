@@ -10,7 +10,8 @@ import AppIcon from "../components/AppIcon.vue";
 import QuestNotes from "../components/QuestNotes.vue";
 import { notifyDataChanged } from "../composables/data-sync";
 import { useLoader } from "../composables/useLoader";
-import { useTimer } from "../composables/useTimer";
+import { toggleTimer, useTimer } from "../composables/useTimer";
+import { useShortcutHandlers } from "../composables/useShortcuts";
 import { hrefOf } from "../routes";
 import type { DayPlannerItem, DayPlannerResponse } from "../types/day-planner";
 import { campaignMark } from "../utils/category-mark";
@@ -45,12 +46,8 @@ const now = ref(nowInBerlin());
 let clock: ReturnType<typeof setInterval> | undefined;
 onMounted(() => {
   clock = setInterval(() => (now.value = nowInBerlin()), 60_000);
-  window.addEventListener("keydown", onKeydown);
 });
-onUnmounted(() => {
-  clearInterval(clock);
-  window.removeEventListener("keydown", onKeydown);
-});
+onUnmounted(() => clearInterval(clock));
 
 const agenda = computed(() =>
   planner.value ? arrangeToday(planner.value, now.value) : null,
@@ -128,16 +125,17 @@ async function act(work: () => Promise<unknown>, fallback: string) {
   }
 }
 
-function toggleStopwatch(): void {
+/** False when there is nothing to start, like the disabled button. */
+function toggleStopwatch(): boolean {
   const item = current.value;
-  if (!item || !timer || timer.busy.value) return;
-  if (!timed.value)
-    void timer.start(
-      item.type === "todo"
-        ? { kind: "todo", targetId: item.todoId, title: item.title }
-        : { kind: "occurrence", targetId: item.occurrenceId, title: item.title },
-    );
-  else void timer.action(running.value ? "pause" : "resume");
+  if (!item || busy.value) return false;
+  return toggleTimer(
+    timer,
+    item.type === "todo"
+      ? { kind: "todo", targetId: item.todoId, title: item.title }
+      : { kind: "occurrence", targetId: item.occurrenceId, title: item.title },
+    item.timerEligible,
+  );
 }
 
 /** Done: the server ends its stopwatch, and the next quest comes into view. */
@@ -182,22 +180,17 @@ function postpone(): Promise<void> {
   }, "Das Verschieben hat nicht geklappt.");
 }
 
-function onKeydown(event: KeyboardEvent): void {
-  const target = event.target as HTMLElement | null;
-  const typing =
-    !!target &&
-    (target.isContentEditable ||
-      ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(target.tagName));
-  if (event.key === "Escape" && !event.defaultPrevented) {
-    window.location.hash = hrefOf("today");
-  } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-    event.preventDefault();
+/* Space and Ctrl+Enter do what the two big buttons do; Escape leads back. */
+useShortcutHandlers({
+  "focus.timer": () => toggleStopwatch(),
+  "focus.done": () => {
+    if (!current.value || busy.value) return false;
     void complete();
-  } else if (event.key === " " && !typing) {
-    event.preventDefault();
-    toggleStopwatch();
-  }
-}
+  },
+  "focus.leave": () => {
+    window.location.hash = hrefOf("today");
+  },
+});
 </script>
 
 <template>

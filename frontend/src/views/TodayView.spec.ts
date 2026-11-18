@@ -24,6 +24,15 @@ import type {
   DayPlannerTodoItem,
 } from "../types/day-planner";
 import TodayView from "./TodayView.vue";
+import {
+  reloadShortcutSettings,
+  setSingleKeys,
+} from "../composables/useShortcuts";
+import {
+  createTimerController,
+  timerKey,
+  type TimerController,
+} from "../composables/useTimer";
 
 vi.mock("../api/categories.api", () => ({
   getCategories: vi.fn().mockResolvedValue([]),
@@ -765,5 +774,214 @@ describe("TodayView creation flow", () => {
       wrapper.get("[data-edit-button]").element,
     );
     wrapper.unmount();
+  });
+});
+
+describe("TodayView keyboard shortcuts", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
+    localStorage.clear();
+    reloadShortcutSettings();
+    getTodayMock.mockResolvedValue(
+      makePlanner([
+        makeTodo({ todoId: 1, title: "Erstens" }),
+        makeTodo({ todoId: 2, title: "Zweitens" }),
+        makeTodo({ todoId: 3, title: "Drittens" }),
+      ]),
+    );
+    updateTodoMock.mockResolvedValue(undefined);
+    updateOccurrenceMock.mockResolvedValue(undefined);
+    vi.mocked(rescheduleTodo).mockResolvedValue(undefined as never);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = "";
+  });
+
+  async function mountToday(controller?: TimerController) {
+    const wrapper = mount(TodayView, {
+      attachTo: document.body,
+      global: controller
+        ? { provide: { [timerKey as symbol]: controller } }
+        : {},
+    });
+    await flushPromises();
+    return wrapper;
+  }
+  const row = (key: string) =>
+    document.querySelector<HTMLElement>(`[data-focus-key="${key}"]`)!;
+  function hover(key: string): void {
+    row(key).dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+  }
+  function press(key: string, target: EventTarget = document.body) {
+    const event = new KeyboardEvent("keydown", {
+      key,
+      bubbles: true,
+      cancelable: true,
+    });
+    target.dispatchEvent(event);
+    return event;
+  }
+
+  it("ticks the hovered row with X, like its ring, and offers undo", async () => {
+    const wrapper = await mountToday();
+    hover("todo-2");
+    expect(press("x").defaultPrevented).toBe(true);
+    await flushPromises();
+    expect(updateTodoMock).toHaveBeenCalledWith(2, true);
+    expect(wrapper.get(".today-view__toast").text()).toContain(
+      "„Zweitens“ erledigt",
+    );
+  });
+
+  it("moves the hovered row to tomorrow with D and says so", async () => {
+    const wrapper = await mountToday();
+    hover("todo-3");
+    press("d");
+    await flushPromises();
+    expect(rescheduleTodo).toHaveBeenCalledWith(3, "2026-10-03", false);
+    expect(wrapper.get('[role="status"].visually-hidden').text()).toBe(
+      "„Drittens“ steht jetzt bei morgen.",
+    );
+  });
+
+  it("moves to next Monday with W and does nothing with T for a row of today", async () => {
+    await mountToday();
+    hover("todo-2");
+    expect(press("t").defaultPrevented).toBe(false);
+    press("w");
+    await flushPromises();
+    // 2 Oct 2026 is a Friday.
+    expect(vi.mocked(rescheduleTodo).mock.calls).toEqual([
+      [2, "2026-10-05", false],
+    ]);
+  });
+
+  it("brings a carried-over quest to today with T", async () => {
+    getTodayMock.mockResolvedValue(
+      makePlanner([
+        makeTodo({ todoId: 1, title: "Heute" }),
+        makeTodo({
+          todoId: 4,
+          title: "Von gestern",
+          scheduledDate: "2026-10-01",
+          isOverdue: true,
+        }),
+      ]),
+    );
+    const wrapper = await mountToday();
+    await wrapper.get(".catch-up__toggle").trigger("click");
+    hover("todo-4");
+    press("t");
+    await flushPromises();
+    expect(rescheduleTodo).toHaveBeenCalledWith(4, "2026-10-02", false);
+  });
+
+  it("opens Verschieben for an appointment instead of moving it", async () => {
+    getTodayMock.mockResolvedValue(
+      makePlanner([
+        makeTodo({ todoId: 1, title: "Erstens" }),
+        makeTodo({ todoId: 5, title: "Zahnarzt", timeOfDay: "18:00" }),
+      ]),
+    );
+    const wrapper = await mountToday();
+    hover("todo-5");
+    press("d");
+    await flushPromises();
+    expect(rescheduleTodo).not.toHaveBeenCalled();
+    expect(wrapper.get("dialog").attributes("aria-label")).toBe("Verschieben");
+  });
+
+  it("ignores a finished row", async () => {
+    getTodayMock.mockResolvedValue(
+      makePlanner([
+        makeTodo({ todoId: 1, title: "Erstens" }),
+        makeTodo({
+          todoId: 6,
+          title: "Fertig",
+          status: "completed",
+          completedAt: "2026-10-02T05:00:00Z",
+        }),
+      ]),
+    );
+    const wrapper = await mountToday();
+    await wrapper.get(".resolved__toggle").trigger("click");
+    hover("todo-6");
+    expect(press("x").defaultPrevented).toBe(false);
+    expect(press("d").defaultPrevented).toBe(false);
+    expect(updateTodoMock).not.toHaveBeenCalled();
+    expect(rescheduleTodo).not.toHaveBeenCalled();
+  });
+
+  it("moves the focus on to the next row when the focused row is ticked", async () => {
+    getTodayMock
+      .mockResolvedValueOnce(
+        makePlanner([
+          makeTodo({ todoId: 1, title: "Erstens" }),
+          makeTodo({ todoId: 2, title: "Zweitens" }),
+          makeTodo({ todoId: 3, title: "Drittens" }),
+        ]),
+      )
+      .mockResolvedValue(
+        makePlanner([
+          makeTodo({ todoId: 1, title: "Erstens" }),
+          makeTodo({
+            todoId: 2,
+            title: "Zweitens",
+            status: "completed",
+            completedAt: "2026-10-02T06:00:00Z",
+          }),
+          makeTodo({ todoId: 3, title: "Drittens" }),
+        ]),
+      );
+    await mountToday();
+    const edit =
+      row("todo-2").querySelector<HTMLElement>("[data-edit-button]")!;
+    edit.focus();
+    press("x", edit);
+    await flushPromises();
+    expect(updateTodoMock).toHaveBeenCalledWith(2, true);
+    expect(document.activeElement).toBe(
+      row("todo-3").querySelector("[data-edit-button]"),
+    );
+  });
+
+  it("starts the hovered row's stopwatch with Space", async () => {
+    const controller = createTimerController();
+    const start = vi.spyOn(controller, "start").mockResolvedValue();
+    await mountToday(controller);
+    hover("todo-3");
+    expect(press(" ").defaultPrevented).toBe(true);
+    expect(start).toHaveBeenCalledWith({
+      kind: "todo",
+      targetId: 3,
+      title: "Drittens",
+    });
+  });
+
+  it("puts N into the quick add field, and keys typed there stay text", async () => {
+    await mountToday();
+    press("n");
+    await flushPromises();
+    const field = document.querySelector<HTMLInputElement>(
+      'input[name="quickTitle"]',
+    )!;
+    expect(document.activeElement).toBe(field);
+    hover("todo-2");
+    expect(press("x", field).defaultPrevented).toBe(false);
+    expect(press("d", field).defaultPrevented).toBe(false);
+    expect(updateTodoMock).not.toHaveBeenCalled();
+  });
+
+  it("does nothing with single keys switched off", async () => {
+    setSingleKeys(false);
+    await mountToday();
+    hover("todo-2");
+    press("x");
+    await flushPromises();
+    expect(updateTodoMock).not.toHaveBeenCalled();
+    setSingleKeys(true);
   });
 });

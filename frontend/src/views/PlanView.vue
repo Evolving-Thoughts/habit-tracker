@@ -5,21 +5,30 @@ import {
   getWeekPlan,
   reorderDay,
   rescheduleTodo,
+  updateTodoCompletion,
 } from "../api/day-planner.api";
 import AppIcon from "../components/AppIcon.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
 import MoveItemDialog from "../components/MoveItemDialog.vue";
 import PlanDay from "../components/PlanDay.vue";
+import UndoToast from "../components/UndoToast.vue";
 import { useListFocus } from "../composables/useListFocus";
 import { useLoader } from "../composables/useLoader";
+import {
+  focusWhenReady,
+  useShortcutHandlers,
+} from "../composables/useShortcuts";
+import { toggleTimer, useTimer } from "../composables/useTimer";
+import { useUndo } from "../composables/useUndo";
 import { useWrites } from "../composables/useWrites";
 import type { WeekPlanResponse, WeekPlanTodoEntry } from "../types/week-plan";
-import { getCurrentDateInTimeZone } from "../utils/date";
-import { dayLabel, weekLabel } from "../utils/history";
+import { addDays, getCurrentDateInTimeZone, weekStart } from "../utils/date";
+import { dayLabel, fullStop, weekLabel } from "../utils/history";
 import {
   arrowDrop,
   dropOnDay,
   entryKey,
+  isMovable,
   neighbourWeek,
   openEntries,
   weekFromQuery,
@@ -93,7 +102,7 @@ async function applyDrop(drop: Drop): Promise<void> {
   )!;
   plan.value = result.plan;
   status.value = write.moveTo
-    ? `„${entry.title}“ steht jetzt am ${dayLabel(drop.toDate)}.`
+    ? fullStop(`„${entry.title}“ steht jetzt am ${dayLabel(drop.toDate)}`)
     : `„${entry.title}“ steht jetzt an Stelle ${
         openEntries(day).indexOf(entry) + 1
       } von ${openEntries(day).length}.`;
@@ -168,6 +177,132 @@ watch(
   },
   { flush: "post" },
 );
+
+/* What the toast takes back after a quest was ticked with X. */
+const { undo, offer: offerUndo, take: takeUndo } = useUndo<WeekPlanTodoEntry>();
+async function complete(entry: WeekPlanTodoEntry): Promise<void> {
+  const done = await writes.write(
+    () => updateTodoCompletion(entry.todoId, true),
+    { key: "plan", fallbackError: "Die Quest konnte nicht erledigt werden." },
+  );
+  if (done) offerUndo(entry, `„${entry.title}“ erledigt`);
+}
+async function undoLast(): Promise<void> {
+  const entry = takeUndo();
+  if (!entry) return;
+  await writes.write(() => updateTodoCompletion(entry.todoId, false), {
+    key: "plan",
+    fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
+  });
+}
+
+/**
+ * Moves a quest by shortcut the way dragging does: onto a day of the board
+ * at the end of its order, shown at once. A day beyond the board goes the
+ * way of "Verschieben"; an appointment opens that dialog to be confirmed.
+ */
+function moveByShortcut(entry: WeekPlanTodoEntry, date: string): boolean {
+  const current = plan.value;
+  if (!current || writes.busy.value || dialogBusy.value) return false;
+  if (date < current.today || entry.scheduledDate === date) return false;
+  if (entry.timeOfDay !== null) {
+    openMoving(entry);
+    return true;
+  }
+  const key = entryKey(entry, "");
+  const day = current.days.find((item) => item.date === date);
+  void listFocus.around(key, async () => {
+    if (day) {
+      await applyDrop({
+        todoId: entry.todoId,
+        toDate: date,
+        index: openEntries(day).length,
+      });
+      return;
+    }
+    const moved = await writes.write(
+      () => rescheduleTodo(entry.todoId, date, false),
+      {
+        key: "plan",
+        fallbackError: "Die Quest konnte nicht verschoben werden.",
+      },
+    );
+    if (moved)
+      status.value = fullStop(
+        `„${entry.title}“ steht jetzt am ${dayLabel(date)}`,
+      );
+  });
+  return true;
+}
+
+/** An open quest of the board by its row key; dailies and done rows give none. */
+function openQuest(key: string | null): WeekPlanTodoEntry | null {
+  for (const day of plan.value?.days ?? [])
+    for (const entry of day.entries)
+      if (isMovable(entry) && entryKey(entry, day.date) === key) return entry;
+  return null;
+}
+
+/** Today's quick add, or the first day's when this week has not begun. */
+function quickAddField(): HTMLElement | null {
+  const current = plan.value;
+  if (!current) return null;
+  const ahead = current.days.filter((day) => day.date >= current.today);
+  const day = ahead.find((item) => item.date === current.today) ?? ahead[0];
+  return day
+    ? (page.value?.querySelector<HTMLElement>(
+        `.plan-day[data-date="${day.date}"] input[name="quickTitle"]`,
+      ) ?? null)
+    : null;
+}
+
+const timer = useTimer();
+useShortcutHandlers({
+  "quest.new": () => {
+    if (isLoading.value) {
+      void focusWhenReady(quickAddField);
+      return;
+    }
+    // A past week takes nothing new; the app-wide default goes to Heute.
+    const field = quickAddField();
+    if (!field) return false;
+    field.focus();
+  },
+  "row.timer": ({ key }) => {
+    const entry = openQuest(key);
+    if (!entry) return false;
+    return toggleTimer(
+      timer,
+      { kind: "todo", targetId: entry.todoId, title: entry.title },
+      true,
+    );
+  },
+  "row.done": ({ key }) => {
+    const entry = openQuest(key);
+    if (!entry || writes.busy.value || dialogBusy.value) return false;
+    void listFocus.around(key!, () => complete(entry));
+  },
+  "row.today": ({ key }) => {
+    const entry = openQuest(key);
+    return !!entry && !!plan.value && moveByShortcut(entry, plan.value.today);
+  },
+  "row.tomorrow": ({ key }) => {
+    const entry = openQuest(key);
+    return (
+      !!entry &&
+      !!plan.value &&
+      moveByShortcut(entry, addDays(plan.value.today, 1))
+    );
+  },
+  "row.nextWeek": ({ key }) => {
+    const entry = openQuest(key);
+    return (
+      !!entry &&
+      !!plan.value &&
+      moveByShortcut(entry, addDays(weekStart(plan.value.today), 7))
+    );
+  },
+});
 </script>
 
 <template>
@@ -257,6 +392,8 @@ watch(
         @created="writes.applied()"
       />
     </div>
+
+    <UndoToast :label="undo?.label ?? null" @undo="undoLast" />
   </main>
 </template>
 

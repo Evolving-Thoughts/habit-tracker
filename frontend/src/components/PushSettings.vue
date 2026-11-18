@@ -82,7 +82,7 @@ onUnmounted(() => {
           (enabled || (config.configured && permission !== 'denied'))
         "
         data-test="push-toggle"
-        class="push-switch"
+        class="switch"
         type="button"
         role="switch"
         aria-labelledby="push-settings-label"
@@ -90,8 +90,8 @@ onUnmounted(() => {
         :disabled="busy"
         @click="toggle"
       >
-        <span class="push-switch__track" aria-hidden="true">
-          <span class="push-switch__thumb" />
+        <span class="switch__track" aria-hidden="true">
+          <span class="switch__thumb" />
         </span>
       </button>
     </div>
@@ -166,54 +166,5 @@ onUnmounted(() => {
 }
 .push-settings__retry {
   margin-top: var(--space-1);
-}
-/* The switch: a 2.75rem tap target around a small track. */
-.push-switch {
-  display: inline-grid;
-  place-items: center;
-  flex: none;
-  min-width: 3.75rem;
-  min-height: var(--tap);
-  margin-inline-end: calc(var(--space-2) * -1);
-  padding: 0 var(--space-2);
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  cursor: pointer;
-  transition: transform 420ms var(--spring);
-}
-.push-switch:active:not(:disabled) {
-  transform: var(--press);
-  transition-duration: 90ms;
-}
-.push-switch:disabled {
-  cursor: progress;
-}
-.push-switch__track {
-  display: flex;
-  align-items: center;
-  width: 3rem;
-  height: 1.75rem;
-  padding: 0.1875rem;
-  border-radius: var(--radius-pill);
-  background: var(--color-ink-soft);
-  transition: background-color 160ms var(--ease-out);
-}
-.push-switch__thumb {
-  width: 1.375rem;
-  height: 1.375rem;
-  border-radius: 50%;
-  background: var(--color-surface);
-  box-shadow: 0 1px 2px rgb(43 29 22 / 20%);
-  transition: transform 320ms var(--spring);
-}
-.push-switch[aria-checked="true"] .push-switch__track {
-  background: var(--color-action);
-}
-.push-switch[aria-checked="true"] .push-switch__thumb {
-  transform: translateX(1.25rem);
-}
-.push-switch:disabled .push-switch__track {
-  opacity: 0.6;
 }
 </style>

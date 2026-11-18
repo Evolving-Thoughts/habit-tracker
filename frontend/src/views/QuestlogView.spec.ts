@@ -12,6 +12,7 @@ import {
 import type { TodoResponse } from "../types/todo";
 import { getCategories } from "../api/categories.api";
 import QuestlogView from "./QuestlogView.vue";
+import { reloadShortcutSettings } from "../composables/useShortcuts";
 
 vi.mock("../api/categories.api", () => ({ getCategories: vi.fn() }));
 vi.mock("../components/QuestNotes.vue", () => import("../test/quest-notes-stub"));
@@ -627,5 +628,98 @@ describe("QuestlogView creation flow", () => {
       wrapper.get('[data-todo-id="2"] [data-edit-button]').element,
     );
     wrapper.unmount();
+  });
+});
+
+describe("QuestlogView keyboard shortcuts", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // Friday, 2 Oct 2026, 08:00 in Berlin.
+    vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
+    localStorage.clear();
+    reloadShortcutSettings();
+    vi.mocked(getCategories).mockResolvedValue([]);
+    backlogMock.mockResolvedValue([
+      makeTodo({ id: 1, title: "Steuer" }),
+      makeTodo({ id: 2, title: "Fahrrad", plannedDurationMinutes: null }),
+    ]);
+    completionMock.mockResolvedValue(undefined);
+    updateTodoMock.mockResolvedValue(makeTodo());
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = "";
+  });
+
+  async function mountAttached() {
+    const wrapper = mount(QuestlogView, {
+      attachTo: document.body,
+      global: { stubs: { CreateTodoForm: true } },
+    });
+    await flushPromises();
+    return wrapper;
+  }
+  function hover(key: string): void {
+    document
+      .querySelector(`[data-focus-key="${key}"]`)!
+      .dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+  }
+  function press(key: string) {
+    const event = new KeyboardEvent("keydown", {
+      key,
+      bubbles: true,
+      cancelable: true,
+    });
+    document.body.dispatchEvent(event);
+    return event;
+  }
+
+  it("ticks the hovered quest with X and offers undo", async () => {
+    const wrapper = await mountAttached();
+    hover("todo-2");
+    press("x");
+    await flushPromises();
+    expect(completionMock).toHaveBeenCalledWith(2, true);
+    expect(wrapper.get(".undo-toast").text()).toContain("„Fahrrad“ erledigt");
+  });
+
+  it("plans the hovered quest for tomorrow with D, as saving a day would", async () => {
+    const wrapper = await mountAttached();
+    hover("todo-2");
+    press("d");
+    await flushPromises();
+    expect(updateTodoMock).toHaveBeenCalledWith(2, {
+      title: "Fahrrad",
+      scheduledDate: "2026-10-03",
+      timeOfDay: null,
+      plannedDurationMinutes: null,
+    });
+    expect(wrapper.get(".questlog__status").text()).toBe(
+      "„Fahrrad“ steht jetzt bei morgen.",
+    );
+  });
+
+  it("plans for today with T and for next Monday with W", async () => {
+    await mountAttached();
+    hover("todo-1");
+    press("t");
+    await flushPromises();
+    hover("todo-1");
+    press("w");
+    await flushPromises();
+    expect(
+      updateTodoMock.mock.calls.map(([id, input]) => [id, input.scheduledDate]),
+    ).toEqual([
+      [1, "2026-10-02"],
+      [1, "2026-10-05"],
+    ]);
+  });
+
+  it("opens the quest dialog with N", async () => {
+    const wrapper = await mountAttached();
+    press("n");
+    await flushPromises();
+    expect(wrapper.find("dialog").exists()).toBe(true);
   });
 });

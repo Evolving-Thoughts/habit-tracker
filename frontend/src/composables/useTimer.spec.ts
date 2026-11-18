@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTimerController } from "./useTimer";
+import { createTimerController, toggleTimer } from "./useTimer";
 import {
   getCurrentTimer,
   startTimer,
@@ -172,5 +172,33 @@ describe("synced Timer controller", () => {
     expect(event).toHaveBeenCalledTimes(2);
     c.dispose();
     window.removeEventListener("timer-data-changed", event);
+  });
+});
+
+describe("toggleTimer", () => {
+  it("starts a stopwatch for an eligible target", () => {
+    const controller = createTimerController();
+    const start = vi.spyOn(controller, "start").mockResolvedValue();
+    expect(toggleTimer(controller, target, true)).toBe(true);
+    expect(start).toHaveBeenCalledWith(target);
+    expect(toggleTimer(controller, { ...target, targetId: 2 }, false)).toBe(
+      false,
+    );
+  });
+  it("pauses and resumes the target's own stopwatch", () => {
+    const controller = createTimerController();
+    const action = vi.spyOn(controller, "action").mockResolvedValue(true);
+    controller.timer.value = response("running").timer;
+    expect(toggleTimer(controller, target, false)).toBe(true);
+    expect(action).toHaveBeenLastCalledWith("pause");
+    controller.timer.value = response("paused").timer;
+    toggleTimer(controller, target, true);
+    expect(action).toHaveBeenLastCalledWith("resume");
+  });
+  it("does nothing without a controller or while one is busy", () => {
+    expect(toggleTimer(null, target, true)).toBe(false);
+    const controller = createTimerController();
+    controller.busy.value = true;
+    expect(toggleTimer(controller, target, true)).toBe(false);
   });
 });

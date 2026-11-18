@@ -173,6 +173,28 @@ export function createTimerController() {
   };
 }
 export type TimerController = ReturnType<typeof createTimerController>;
+
+/**
+ * What the play button and the pause and resume buttons do, as one step:
+ * pauses or resumes the target's own stopwatch, otherwise starts one for it
+ * (which asks first when another stopwatch runs). False when it cannot.
+ */
+export function toggleTimer(
+  controller: TimerController | null,
+  target: TimerTarget,
+  eligible: boolean,
+): boolean {
+  if (!controller || controller.busy.value) return false;
+  const current = controller.timer.value;
+  if (current?.kind === target.kind && current.targetId === target.targetId) {
+    void controller.action(current.state === "running" ? "pause" : "resume");
+    return true;
+  }
+  if (!eligible) return false;
+  void controller.start(target);
+  return true;
+}
+
 export const timerKey: InjectionKey<TimerController> = Symbol("timer");
 export function useTimer(): TimerController | null {
   return inject(timerKey, null);

@@ -12,6 +12,12 @@ import { useListFocus } from "../composables/useListFocus";
 import { useSortable } from "../composables/useSortable";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
+import { useUndo } from "../composables/useUndo";
+import { toggleTimer, useTimer } from "../composables/useTimer";
+import {
+  focusWhenReady,
+  useShortcutHandlers,
+} from "../composables/useShortcuts";
 import AppIcon from "../components/AppIcon.vue";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
@@ -27,7 +33,8 @@ import type {
   DayPlannerItem,
   DayPlannerResponse,
 } from "../types/day-planner";
-import { addDays, formatDateForGermanDisplay } from "../utils/date";
+import { addDays, formatDateForGermanDisplay, weekStart } from "../utils/date";
+import { dayLabel, fullStop } from "../utils/history";
 import {
   arrangeToday,
   formatDayHeading,
@@ -83,10 +90,7 @@ let clock: ReturnType<typeof setInterval> | undefined;
 onMounted(() => {
   clock = setInterval(() => (now.value = nowInBerlin()), 60_000);
 });
-onUnmounted(() => {
-  clearInterval(clock);
-  clearTimeout(undoTimer);
-});
+onUnmounted(() => clearInterval(clock));
 
 const agenda = computed(() =>
   planner.value ? arrangeToday(planner.value, now.value) : null,
@@ -134,14 +138,7 @@ const focusMeta = computed(() => {
   return parts;
 });
 
-type Undo = { item: DayPlannerItem; label: string };
-const undo = ref<Undo | null>(null);
-let undoTimer: ReturnType<typeof setTimeout> | undefined;
-function offerUndo(item: DayPlannerItem, label: string): void {
-  clearTimeout(undoTimer);
-  undo.value = { item, label };
-  undoTimer = setTimeout(() => (undo.value = null), 5000);
-}
+const { undo, offer: offerUndo, take: takeUndo } = useUndo<DayPlannerItem>();
 
 const getItemKey = itemKey;
 
@@ -172,17 +169,15 @@ async function toggleItem(item: DayPlannerItem): Promise<void> {
 }
 
 async function undoLast(): Promise<void> {
-  const last = undo.value;
-  if (!last) return;
-  clearTimeout(undoTimer);
-  undo.value = null;
+  const item = takeUndo();
+  if (!item) return;
   await writes.write(
     () =>
-      last.item.type === "todo"
-        ? updateTodoCompletion(last.item.todoId, false)
-        : updateOccurrenceStatus(last.item.occurrenceId, "pending"),
+      item.type === "todo"
+        ? updateTodoCompletion(item.todoId, false)
+        : updateOccurrenceStatus(item.occurrenceId, "pending"),
     {
-      key: getItemKey(last.item),
+      key: getItemKey(item),
       fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
     },
   );
@@ -383,6 +378,89 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
   await writes.applied();
   creationOpen.value = false;
 }
+
+/*
+ * Keyboard shortcuts on a row run what its buttons run. Done rows and items
+ * whose buttons would not offer the step ignore the key; an appointment opens
+ * "Verschieben", where its move is confirmed.
+ */
+const timer = useTimer();
+function pendingItem(key: string | null): DayPlannerItem | null {
+  const item = planner.value?.items.find((entry) => getItemKey(entry) === key);
+  return item && item.status === "pending" && !isUpdating(item) ? item : null;
+}
+function whereLabel(date: string): string {
+  if (date === planner.value?.date) return "bei heute";
+  if (date === tomorrow.value) return "bei morgen";
+  return `am ${dayLabel(date)}`;
+}
+function moveByKey(key: string | null, date: string): boolean {
+  const item = pendingItem(key);
+  if (!item || !date || item.scheduledDate === date) return false;
+  if (item.type === "todo" && item.timeOfDay !== null) {
+    openMoving(item);
+    return true;
+  }
+  if (!quickMovable(item, date)) return false;
+  void listFocus.around(getItemKey(item), async () => {
+    if (await moveTo(item, date))
+      orderMessage.value = fullStop(
+        `„${item.title}“ steht jetzt ${whereLabel(date)}`,
+      );
+  });
+  return true;
+}
+useShortcutHandlers(
+  {
+    "quest.new": () => {
+      void focusWhenReady(() =>
+        page.value?.querySelector<HTMLElement>('input[name="quickTitle"]'),
+      );
+    },
+    "row.timer": ({ key }) => {
+      const item = pendingItem(key);
+      if (!item) return false;
+      return toggleTimer(
+        timer,
+        item.type === "todo"
+          ? { kind: "todo", targetId: item.todoId, title: item.title }
+          : {
+              kind: "occurrence",
+              targetId: item.occurrenceId,
+              title: item.title,
+            },
+        item.timerEligible,
+      );
+    },
+    "row.done": ({ key }) => {
+      const item = pendingItem(key);
+      if (!item) return false;
+      void listFocus.around(getItemKey(item), () => toggleItem(item));
+    },
+    "row.today": ({ key }) => moveByKey(key, planner.value?.date ?? ""),
+    "row.tomorrow": ({ key }) => moveByKey(key, tomorrow.value),
+    "row.nextWeek": ({ key }) =>
+      moveByKey(
+        key,
+        planner.value ? addDays(weekStart(planner.value.date), 7) : "",
+      ),
+  },
+  {
+    // The same offer as the "Auf morgen" button in the head of the view.
+    commands: () =>
+      postponable.value.length && !writes.busy.value && !editorBusy.value
+        ? [
+            {
+              id: "today.postpone",
+              label: "Offenes auf morgen verschieben",
+              group: "Aktionen",
+              keywords: ["Auf morgen"],
+              run: () => (postponeOpen.value = true),
+            },
+          ]
+        : [],
+  },
+);
 </script>
 
 <template>
@@ -505,7 +583,6 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
     </section>
 
     <template v-else-if="agenda && hasItems">
-      <p class="visually-hidden" role="status">{{ orderMessage }}</p>
       <div ref="order" class="order">
         <section
           v-if="agenda.focus"
@@ -777,6 +854,8 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
       </section>
     </template>
 
+    <!-- Stays mounted, so a move that empties the day is still announced. -->
+    <p class="visually-hidden" role="status">{{ orderMessage }}</p>
     <UndoToast
       class="today-view__toast"
       :label="undo?.label ?? null"
