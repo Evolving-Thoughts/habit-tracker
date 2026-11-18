@@ -111,6 +111,22 @@ export function dayCounts(day: {
   };
 }
 
+/** Whether a day has anything to show: entries, events or measured work. */
+export function hasEntries(day: {
+  items: HistoryItem[];
+  planned?: HistoryPlannedItem[];
+  external?: unknown[];
+  work: { minutes: number; logs?: unknown[] };
+}): boolean {
+  return (
+    day.items.length > 0 ||
+    (day.planned?.length ?? 0) > 0 ||
+    (day.external?.length ?? 0) > 0 ||
+    day.work.minutes > 0 ||
+    (day.work.logs?.length ?? 0) > 0
+  );
+}
+
 /** Only the non-zero counts: "2 erledigt · 1 offen", or "Nichts geplant". */
 export function daySummary(counts: DayCounts): string {
   const parts = [

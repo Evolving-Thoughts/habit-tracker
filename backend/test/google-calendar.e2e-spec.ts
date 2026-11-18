@@ -12,6 +12,7 @@ import {
   GoogleCalendarClient,
   GoogleEvent,
   GoogleEventInput,
+  GoogleEventMissingError,
   GoogleForbiddenError,
 } from '../src/calendar/google-calendar.client';
 import { Clock } from '../src/common/clock';
@@ -19,6 +20,7 @@ import { dayOf } from '../src/common/date/local-day';
 import { configureApp } from '../src/configure-app';
 import { HabitOccurrenceEntity } from '../src/habit-occurrences/entities/habit-occurrence.entity';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
+import { WorkLogEntity } from '../src/work-logs/work-log.entity';
 import { authenticatedRequest as request, seedAuth } from './auth-fixture';
 
 const OWN = 'own-calendar';
@@ -28,6 +30,8 @@ const now = new Date('2026-10-30T06:00:00.000Z');
 class FakeGoogle {
   calendars = new Map<string, GoogleEvent[]>();
   writes: string[] = [];
+  /** Every write call with the calendar it went to. */
+  calls: { method: 'insert' | 'patch' | 'delete'; calendarId: string }[] = [];
   revoked = false;
   withoutList = false;
   private tick = 0;
@@ -76,6 +80,7 @@ class FakeGoogle {
     input: GoogleEventInput,
   ) => {
     this.writes.push(calendarId);
+    this.calls.push({ method: 'insert', calendarId });
     return Promise.resolve({ ...this.add(calendarId, input) });
   };
   patchEvent = (
@@ -85,13 +90,17 @@ class FakeGoogle {
     input: GoogleEventInput,
   ) => {
     this.writes.push(calendarId);
-    const event = this.events(calendarId).find((item) => item.id === eventId)!;
+    this.calls.push({ method: 'patch', calendarId });
+    const event = this.events(calendarId).find((item) => item.id === eventId);
+    if (!event) return Promise.reject(new GoogleEventMissingError());
     Object.assign(event, input, { updated: this.stamp() });
     return Promise.resolve({ ...event });
   };
   deleteEvent = (_token: string, calendarId: string, eventId: string) => {
     this.writes.push(calendarId);
-    const event = this.events(calendarId).find((item) => item.id === eventId)!;
+    this.calls.push({ method: 'delete', calendarId });
+    const event = this.events(calendarId).find((item) => item.id === eventId);
+    if (!event) return Promise.reject(new GoogleEventMissingError());
     event.status = 'cancelled';
     return Promise.resolve();
   };
@@ -151,10 +160,11 @@ describe('Google calendar sync (e2e)', () => {
   });
   beforeEach(async () => {
     await db.query(
-      'TRUNCATE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, timers, todos, habits CASCADE',
+      'TRUNCATE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, work_logs, timers, todos, habits CASCADE',
     );
     google.calendars.clear();
     google.writes = [];
+    google.calls = [];
     google.revoked = false;
     google.withoutList = false;
   });
@@ -501,5 +511,252 @@ describe('Google calendar sync (e2e)', () => {
 
     expect(await db.getRepository(CalendarLinkEntity).count()).toBe(0);
     expect(await todos()).toHaveLength(1);
+  });
+
+  describe('Logbuch', () => {
+    /** A quest without a day: it has no event of its own. */
+    const quest = async (
+      title = 'Schreiben',
+      parentId?: number,
+    ): Promise<number> =>
+      (
+        (
+          await request(server)
+            .post('/todos')
+            .send({ title, parentId })
+            .expect(201)
+        ).body as { id: number }
+      ).id;
+    const addLog = async (
+      todoId: number,
+      startedAt: string,
+      endedAt: string,
+    ): Promise<number> =>
+      (
+        (
+          await request(server)
+            .post('/work-logs')
+            .send({ kind: 'todo', targetId: todoId, startedAt, endedAt })
+            .expect(201)
+        ).body as { id: number }
+      ).id;
+    const correct = (log: number, startedAt: string, endedAt: string) =>
+      request(server)
+        .patch(`/work-logs/${log}`)
+        .send({ startedAt, endedAt })
+        .expect(200);
+    const live = () =>
+      google.events(OWN).filter((event) => event.status !== 'cancelled');
+    const description = (event: GoogleEvent) =>
+      (event as GoogleEvent & { description?: string }).description;
+
+    it('writes a finished stretch of five minutes or more, not a shorter one', async () => {
+      await connect();
+      const id = await quest();
+      await addLog(id, '2026-10-30T05:00:00.000Z', '2026-10-30T05:30:00.000Z');
+      await addLog(id, '2026-10-30T05:40:00.000Z', '2026-10-30T05:44:59.000Z');
+      await sync();
+      await sync();
+
+      // The quest itself has no time, so only the long stretch goes out.
+      expect(google.events(OWN)).toHaveLength(1);
+      const [event] = google.events(OWN);
+      expect(event).toMatchObject({
+        summary: 'Schreiben',
+        start: { dateTime: '2026-10-30T05:00:00.000Z' },
+        end: { dateTime: '2026-10-30T05:30:00.000Z' },
+      });
+      expect(description(event)).toBe('Logbuch · gemessene Arbeitszeit');
+    });
+
+    it('names the campaign of the stretch in the event', async () => {
+      await connect();
+      const chapter = await quest('Kapitel 1', await quest('Buch'));
+      await addLog(
+        chapter,
+        '2026-10-30T05:00:00.000Z',
+        '2026-10-30T05:30:00.000Z',
+      );
+      await sync();
+
+      expect(description(google.events(OWN)[0])).toBe(
+        'Logbuch · gemessene Arbeitszeit\nKampagne: Buch',
+      );
+    });
+
+    it('moves the event with a correction and removes it with the log', async () => {
+      await connect();
+      const id = await quest();
+      const log = await addLog(
+        id,
+        '2026-10-30T05:00:00.000Z',
+        '2026-10-30T05:30:00.000Z',
+      );
+      const short = await addLog(
+        id,
+        '2026-10-30T04:00:00.000Z',
+        '2026-10-30T04:20:00.000Z',
+      );
+      await sync();
+      expect(live()).toHaveLength(2);
+
+      await correct(
+        log,
+        '2026-10-30T05:10:00.000Z',
+        '2026-10-30T05:50:00.000Z',
+      );
+      // Under five minutes it no longer belongs in the calendar.
+      await correct(
+        short,
+        '2026-10-30T04:00:00.000Z',
+        '2026-10-30T04:03:00.000Z',
+      );
+      await sync();
+      expect(live()).toHaveLength(1);
+      expect(live()[0]).toMatchObject({
+        start: { dateTime: '2026-10-30T05:10:00.000Z' },
+        end: { dateTime: '2026-10-30T05:50:00.000Z' },
+      });
+
+      await request(server).delete(`/work-logs/${log}`).expect(204);
+      await sync();
+      expect(live()).toEqual([]);
+      expect(await db.getRepository(CalendarLinkEntity).count()).toBe(0);
+    });
+
+    it('never takes a change from Google and does not bring a deleted event back', async () => {
+      await connect();
+      const id = await quest();
+      const log = await addLog(
+        id,
+        '2026-10-30T05:00:00.000Z',
+        '2026-10-30T05:30:00.000Z',
+      );
+      await sync();
+      const before = await db
+        .getRepository(WorkLogEntity)
+        .findOneByOrFail({ id: log });
+      const calls = google.calls.length;
+
+      Object.assign(google.events(OWN)[0], {
+        summary: 'Umbenannt in Google',
+        ...timed('2026-10-30T09:00:00.000Z', '2026-10-30T10:00:00.000Z'),
+        updated: google.stamp(),
+      });
+      await sync();
+      expect(
+        await db.getRepository(WorkLogEntity).findOneByOrFail({ id: log }),
+      ).toEqual(before);
+      expect((await todos()).map((todo) => todo.title)).toEqual(['Schreiben']);
+      expect(google.calls).toHaveLength(calls);
+
+      google.events(OWN)[0].status = 'cancelled';
+      await sync();
+      await sync();
+      expect(live()).toEqual([]);
+      expect(google.calls).toHaveLength(calls);
+
+      // A later correction does not write it again either.
+      await correct(
+        log,
+        '2026-10-30T05:05:00.000Z',
+        '2026-10-30T05:30:00.000Z',
+      );
+      await sync();
+      expect(google.calls).toHaveLength(calls);
+
+      // Once the log is gone, so is its link, without a call.
+      await request(server).delete(`/work-logs/${log}`).expect(204);
+      await sync();
+      expect(await db.getRepository(CalendarLinkEntity).count()).toBe(0);
+      expect(google.calls).toHaveLength(calls);
+    });
+
+    it('keeps an event deleted in Google outside the read window deleted', async () => {
+      await connect();
+      const id = await quest();
+      const log = await addLog(
+        id,
+        '2026-10-30T05:00:00.000Z',
+        '2026-10-30T05:30:00.000Z',
+      );
+      await sync();
+      // Gone without a trace, like a past event the sync no longer reads.
+      google.calendars.set(OWN, []);
+      await correct(
+        log,
+        '2026-10-30T05:05:00.000Z',
+        '2026-10-30T05:30:00.000Z',
+      );
+      await sync();
+      await sync();
+
+      expect(google.events(OWN)).toEqual([]);
+      expect(
+        await db.getRepository(CalendarLinkEntity).findOneByOrFail({
+          workLogId: log,
+        }),
+      ).toMatchObject({ suppressed: true });
+    });
+
+    it('does not adopt a Logbuch event that lost its link as a quest', async () => {
+      await connect();
+      const id = await quest();
+      await addLog(id, '2026-10-30T05:00:00.000Z', '2026-10-30T05:30:00.000Z');
+      await sync();
+      await db.getRepository(CalendarLinkEntity).clear();
+      await sync();
+
+      expect((await todos()).map((todo) => todo.title)).toEqual(['Schreiben']);
+    });
+
+    it('writes only into its own calendar, also with shared ones connected', async () => {
+      await connect();
+      google.add('shared', {
+        summary: 'Familie',
+        ...timed('2026-10-30T08:00:00.000Z', '2026-10-30T09:00:00.000Z'),
+      });
+      google.add('primary', {
+        summary: 'Besprechung',
+        ...timed('2026-10-30T10:00:00.000Z', '2026-10-30T11:00:00.000Z'),
+      });
+      const appointment = await scheduledTodo();
+      const log = await addLog(
+        await quest(),
+        '2026-10-30T05:00:00.000Z',
+        '2026-10-30T05:30:00.000Z',
+      );
+      await sync();
+      await request(server)
+        .patch(`/todos/${appointment}`)
+        .send({ title: 'Bericht neu' })
+        .expect(200);
+      await correct(
+        log,
+        '2026-10-30T05:10:00.000Z',
+        '2026-10-30T05:30:00.000Z',
+      );
+      await sync();
+      await request(server)
+        .patch(`/todos/${appointment}`)
+        .send({ timeOfDay: null })
+        .expect(200);
+      await request(server).delete(`/work-logs/${log}`).expect(204);
+      await sync();
+
+      expect(google.calls.map(({ method }) => method).sort()).toEqual([
+        'delete',
+        'delete',
+        'insert',
+        'insert',
+        'patch',
+        'patch',
+      ]);
+      expect(google.calls.every(({ calendarId }) => calendarId === OWN)).toBe(
+        true,
+      );
+      expect(google.events('shared')).toHaveLength(1);
+      expect(google.events('primary')).toHaveLength(1);
+    });
   });
 });

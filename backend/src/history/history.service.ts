@@ -27,6 +27,8 @@ import {
   HistoryWeeklyTarget,
 } from './history.dto';
 import { loadTodoAncestry, TodoAncestry } from '../todos/todo-ancestry';
+import { logsOfDays, withCampaigns } from '../work-logs/day-logs';
+import { dayWork } from './history-work';
 
 @Injectable()
 export class HistoryService {
@@ -79,6 +81,7 @@ export class HistoryService {
           scheduledDate: todo.scheduledDate ?? null,
           resolvedAt: todo.completedAt!.toISOString(),
           plannedDurationMinutes: todo.plannedDurationMinutes,
+          timeOfDay: todo.timeOfDay ?? null,
           deleted: todo.deletedAt !== null,
         })),
         ...occurrences.map((occurrence) => ({
@@ -99,6 +102,7 @@ export class HistoryService {
             occurrence,
             occurrence.habit,
           ),
+          timeOfDay: occurrence.habit.timeOfDay ?? null,
           deleted: occurrence.habit.deletedAt !== null,
         })),
       ];
@@ -120,9 +124,18 @@ export class HistoryService {
         ancestry,
       );
       const external =
-        query.view === 'month'
-          ? await eventsOfDays(manager, { userId }, startDate, endDate)
-          : null;
+        query.view === 'week'
+          ? null
+          : await eventsOfDays(manager, { userId }, startDate, endDate);
+      const logs = await withCampaigns(
+        manager,
+        userId,
+        (await logsOfDays(manager, userId, startDate, endDate)).filter(
+          (log) =>
+            filter === 'all' || (filter === 'todos') === (log.todoId !== null),
+        ),
+        ancestry,
+      );
       return {
         ...(query.view === 'week' && filter === 'all'
           ? {
@@ -175,6 +188,7 @@ export class HistoryService {
                   })),
               }
             : {}),
+          work: dayWork(logs, date, query.view !== 'month'),
         })),
       };
     });

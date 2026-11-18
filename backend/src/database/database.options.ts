@@ -4,6 +4,7 @@ import { FixedTodosNeedDate1793600000000 } from './migrations/1793600000000-Fixe
 import { DayOrder1794960000000 } from './migrations/1794960000000-DayOrder';
 import { Stopwatch1795000000000 } from './migrations/1795000000000-Stopwatch';
 import { TodoNotes1795100000000 } from './migrations/1795100000000-TodoNotes';
+import { LogbookEvents1795200000000 } from './migrations/1795200000000-LogbookEvents';
 
 type PostgresOptions = Extract<DataSourceOptions, { type: 'postgres' }>;
 
@@ -30,6 +31,7 @@ export function databaseOptions(
       DayOrder1794960000000,
       Stopwatch1795000000000,
       TodoNotes1795100000000,
+      LogbookEvents1795200000000,
     ],
   };
 }

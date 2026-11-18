@@ -37,6 +37,7 @@ export type GoogleCalendar = {
 
 export type GoogleEventInput = {
   summary: string;
+  description?: string;
   start: GoogleEventTime;
   end: GoogleEventTime;
   extendedProperties: { private: Record<string, string> };

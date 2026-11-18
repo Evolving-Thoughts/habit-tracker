@@ -6,11 +6,6 @@ export type WorkLog = {
   minutes: number;
   source: "timer" | "manual";
 };
-export type WorkDay = {
-  date: string;
-  totalMinutes: number;
-  logs: WorkLog[];
-};
 export type WorkLogTimes = { startedAt: string; endedAt: string };
 export type WorkTarget = {
   kind: "todo" | "occurrence";

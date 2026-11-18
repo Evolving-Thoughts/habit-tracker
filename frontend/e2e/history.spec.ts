@@ -538,7 +538,7 @@ test("Calendar day: date placement, filters, overdue plans and completion refres
   await expect(page.locator(".empty-state")).toBeVisible();
 });
 
-test("Calendar day: reflection saves only after a change and time is logged behind a disclosure", async ({
+test("Calendar day: reflection saves only after a change and time is logged in the Logbuch", async ({
   page,
   request,
 }) => {
@@ -565,19 +565,24 @@ test("Calendar day: reflection saves only after a change and time is logged behi
   await openCalendar(page, "Tag");
   await expect(reflection.getByLabel("Reflexion")).toHaveValue("Ruhiger Tag");
 
-  const toggle = view.getByRole("button", {
-    name: "Zeit nachtragen",
-    exact: true,
-  });
-  await expect(toggle).toHaveAttribute("aria-expanded", "false");
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-expanded", "true");
-  const logs = view.getByRole("region", { name: "Arbeitszeit", exact: true });
-  await logs.locator('[name="target"]').selectOption({ label: "Schreibzeit" });
+  const logbook = view.getByRole("region", { name: /^Logbuch/ });
+  await expect(logbook).toContainText("Heute ist noch nichts im Logbuch.");
+  await logbook
+    .locator('[name="target"]')
+    .selectOption({ label: "Schreibzeit" });
   // Early in the day, so the end is never in the future.
-  await logs.locator('[name="from"]').fill("00:00");
-  await logs.locator('[name="to"]').fill("00:01");
-  await logs.getByRole("button", { name: "Nachtragen", exact: true }).click();
-  await expect(logs).toContainText("Schreibzeit");
-  await expect(logs).toContainText("1 Min.");
+  await logbook.locator('[name="from"]').fill("00:00");
+  await logbook.locator('[name="to"]').fill("00:01");
+  await logbook
+    .getByRole("button", { name: "Nachtragen", exact: true })
+    .click();
+  const entries = logbook.getByRole("list", { name: "Einträge im Logbuch" });
+  await expect(entries).toContainText("Schreibzeit");
+  await expect(entries).toContainText("1 Min.");
+  await expect(
+    logbook
+      .getByRole("list", { name: "Logbuch", exact: true })
+      .getByRole("button", { name: /^Schreibzeit, 00:00 bis 00:01, 1 Min\./ }),
+  ).toBeVisible();
+  await expect(logbook).not.toContainText("nichts im Logbuch");
 });

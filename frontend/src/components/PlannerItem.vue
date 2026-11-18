@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import AppIcon from "./AppIcon.vue";
 import ItemPlayButton from "./ItemPlayButton.vue";
-import { categoryMark } from "../utils/category-mark";
+import { campaignMark as markOf, categoryMark } from "../utils/category-mark";
 import { formatDateForGermanDisplay } from "../utils/date";
 import type { DayPlannerHabitItem, DayPlannerItem } from "../types/day-planner";
 
@@ -57,9 +57,7 @@ const details = computed(() => {
 });
 
 /** Every campaign has its own quiet colour, like categories do. */
-const campaignMark = computed(() =>
-  props.item.campaign ? categoryMark(props.item.campaign.title) : null,
-);
+const campaignMark = computed(() => markOf(props.item.campaign));
 
 const leading = computed(() =>
   props.showDate

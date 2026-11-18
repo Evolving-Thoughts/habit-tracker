@@ -1,4 +1,5 @@
 import {
+  Check,
   Column,
   Entity,
   Index,
@@ -77,9 +78,16 @@ export class CalendarOAuthStateEntity {
   expiresAt!: Date;
 }
 
-/** Ties a todo or a habit run to its event in the app's calendar. */
+/**
+ * Ties a todo, a habit run or a work log to its event in the app's calendar.
+ * Todos and runs are exchanged both ways; a work log is only ever written.
+ */
 @Entity('calendar_links')
 @Index(['userId', 'eventId'], { unique: true })
+@Check(
+  'CHK_calendar_link_target',
+  'num_nonnulls("todoId", "occurrenceId", "workLogId") = 1',
+)
 export class CalendarLinkEntity {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -97,6 +105,9 @@ export class CalendarLinkEntity {
   @Column({ type: 'integer', nullable: true })
   occurrenceId!: number | null;
 
+  @Column({ type: 'integer', nullable: true })
+  workLogId!: number | null;
+
   @Column({ type: 'varchar', length: 1100 })
   eventId!: string;
 
@@ -108,7 +119,7 @@ export class CalendarLinkEntity {
   @Column({ type: 'timestamptz' })
   syncedAt!: Date;
 
-  /** Deleted in Google: the habit run stays and is not written again. */
+  /** Deleted in Google: the habit run or work log stays and is not written again. */
   @Column({ type: 'boolean', default: false })
   suppressed!: boolean;
 }

@@ -7,12 +7,12 @@ import { UserEntity } from '../src/auth/auth.entities';
 import { Clock } from '../src/common/clock';
 import { dayOf } from '../src/common/date/local-day';
 import { configureApp } from '../src/configure-app';
+import { HistoryResponse } from '../src/history/history.dto';
 import { WorkLogEntity } from '../src/work-logs/work-log.entity';
 import { authenticatedRequest as request, seedAuth } from './auth-fixture';
 
 const OTHER_USER = '44444444-4444-4444-8444-444444444444';
 type Log = { id: number; title: string; minutes: number; source: string };
-type Day = { totalMinutes: number; logs: Log[] };
 type Timer = { timer: { id: string } };
 
 describe('Work logs (e2e)', () => {
@@ -23,12 +23,14 @@ describe('Work logs (e2e)', () => {
   };
   const iso = (minutesAgo: number): string =>
     new Date(now.getTime() - minutesAgo * 60_000).toISOString();
-  const day = async (): Promise<Day> =>
-    (
-      await request(server)
-        .get(`/work-logs?date=${dayOf(now)}`)
-        .expect(200)
-    ).body as Day;
+  /** The Logbuch of the current day, as the calendar reads it. */
+  const day = async (date = dayOf(now)) => {
+    const response = await request(server)
+      .get(`/history?date=${date}&view=day`)
+      .expect(200);
+    const { work } = (response.body as HistoryResponse).days[0];
+    return { totalMinutes: work.minutes, logs: work.logs ?? [] };
+  };
   const todo = async (): Promise<number> =>
     (
       (
@@ -134,6 +136,16 @@ describe('Work logs (e2e)', () => {
     await add(id, 60, 30).expect(201);
     await add(id, 45, 15).expect(201);
     expect(await day()).toMatchObject({ totalMinutes: 45 });
+  });
+
+  it('splits a stretch across Berlin midnight onto both days', async () => {
+    now = new Date('2026-10-30T23:30:00.000Z');
+    // 23:30 to 00:15 Berlin time (CET).
+    await add(await todo(), 60, 15).expect(201);
+    expect(await day('2026-10-30')).toMatchObject({ totalMinutes: 30 });
+    const next = await day('2026-10-31');
+    expect(next.totalMinutes).toBe(15);
+    expect(next.logs.map((log) => log.minutes)).toEqual([45]);
   });
 
   it('rejects invalid ranges and foreign data', async () => {
