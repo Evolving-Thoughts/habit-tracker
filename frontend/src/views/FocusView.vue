@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, ref } from "vue";
 import {
   getToday,
   reorderDay,
@@ -9,6 +9,7 @@ import {
 import AppIcon from "../components/AppIcon.vue";
 import QuestNotes from "../components/QuestNotes.vue";
 import { notifyDataChanged } from "../composables/data-sync";
+import { useDayClock } from "../composables/useDayClock";
 import { useLoader } from "../composables/useLoader";
 import { toggleTimer, useTimer } from "../composables/useTimer";
 import { useShortcutHandlers } from "../composables/useShortcuts";
@@ -17,10 +18,12 @@ import type { DayPlannerItem, DayPlannerResponse } from "../types/day-planner";
 import { campaignMark } from "../utils/category-mark";
 import { formatStopwatch } from "../utils/stopwatch";
 import {
+  appointmentWindow,
   arrangeToday,
   formatDuration,
+  formatWindow,
   itemKey,
-  nowInBerlin,
+  nextChangeAt,
 } from "../utils/today-agenda";
 
 /**
@@ -42,12 +45,10 @@ const {
   refreshOnChange: () => !busy.value,
 });
 
-const now = ref(nowInBerlin());
-let clock: ReturnType<typeof setInterval> | undefined;
-onMounted(() => {
-  clock = setInterval(() => (now.value = nowInBerlin()), 60_000);
-});
-onUnmounted(() => clearInterval(clock));
+/* Wakes when an appointment's turn begins or ends, like Heute. */
+const now = useDayClock((minutes) =>
+  planner.value ? nextChangeAt(planner.value, minutes) : null,
+);
 
 const agenda = computed(() =>
   planner.value ? arrangeToday(planner.value, now.value) : null,
@@ -61,7 +62,11 @@ function isTimed(item: DayPlannerItem): boolean {
     : running.kind === "occurrence" && running.targetId === item.occurrenceId;
 }
 
-/** What the stopwatch runs on stays in view; otherwise what is up now. */
+/**
+ * What the stopwatch runs on stays in view; otherwise what is up now, by
+ * the rule Heute's focus card follows (`currentItem`): an appointment
+ * during its turn, else the head of the order.
+ */
 const current = computed<DayPlannerItem | null>(() => {
   const day = agenda.value;
   if (!day) return null;
@@ -89,7 +94,8 @@ const facts = computed(() => {
     parts.push(`Soll ${formatDuration(item.plannedDurationMinutes)}`);
   if (item.workedMinutes > 0)
     parts.push(`heute schon ${formatDuration(item.workedMinutes)}`);
-  if (item.timeOfDay) parts.push(`Termin um ${item.timeOfDay} Uhr`);
+  const window = appointmentWindow(item);
+  if (window) parts.push(`Termin ${formatWindow(window)}`);
   return parts;
 });
 
@@ -104,6 +110,12 @@ const nextAppointment = computed(() => {
   if (!entry) return null;
   return `${entry.time} ${entry.kind === "item" ? entry.item.title : entry.event.title}`;
 });
+/** Open appointments of today that are not their turn now. */
+const waitingAppointments = computed(() =>
+  (agenda.value?.timeline ?? []).some(
+    (entry) => entry.kind === "item" && entry.item.status === "pending",
+  ),
+);
 /** Only what is part of the order can be put behind the rest of it. */
 const canPostpone = computed(
   () =>
@@ -307,6 +319,21 @@ useShortcutHandlers({
       </dl>
     </section>
 
+    <!-- An appointment only comes into view during its turn. -->
+    <section
+      v-else-if="planner && waitingAppointments"
+      class="focus-view__stage focus-view__empty"
+    >
+      <h1 class="focus-view__title">Nichts in der Reihenfolge</h1>
+      <p>
+        {{
+          nextAppointment
+            ? `Nächster Termin: ${nextAppointment}.`
+            : "Was noch offen ist, steht bei den Terminen."
+        }}
+      </p>
+      <a class="btn btn--primary" :href="hrefOf('today')">Zurück zu Heute</a>
+    </section>
     <section v-else-if="planner" class="focus-view__stage focus-view__empty">
       <h1 class="focus-view__title">Alles erledigt</h1>
       <p>

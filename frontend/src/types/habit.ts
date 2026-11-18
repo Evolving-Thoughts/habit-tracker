@@ -77,3 +77,12 @@ export type CreateHabitInput = {
   startDate?: string;
   schedule: HabitScheduleRule;
 };
+
+/** A Daily run as `GET /habit-occurrences/today` answers it (the fields read). */
+export type HabitOccurrenceResponse = {
+  id: number;
+  habitId: number;
+  scheduledDate: string;
+  movedToDate: string | null;
+  status: "pending" | "completed" | "skipped" | "cancelled";
+};

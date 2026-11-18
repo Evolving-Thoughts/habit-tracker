@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { getHabits } from "../api/day-planner.api";
+import { getHabits, updateOccurrenceStatus } from "../api/day-planner.api";
 import { getCategories } from "../api/categories.api";
 import { useListFocus } from "../composables/useListFocus";
+import CheckRing from "../components/CheckRing.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
+import UndoToast from "../components/UndoToast.vue";
 import { useLoader } from "../composables/useLoader";
+import { useUndo } from "../composables/useUndo";
 import { useWrites } from "../composables/useWrites";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
@@ -70,9 +73,56 @@ const {
 } = useLoader(loadAll, {
   initial: [] as HabitResponse[],
   fallbackError: "Die Dailies konnten nicht geladen werden.",
-  refreshOnChange: () => editingId.value === null && !creationOpen.value,
+  refreshOnChange: () =>
+    editingId.value === null && !creationOpen.value && !writes.busy.value,
 });
-const { applied } = useWrites(loadHabits, errorMessage);
+const writes = useWrites(loadHabits, errorMessage);
+const { applied } = writes;
+
+/**
+ * Today's run of a Daily, where one is due or was done today: the open run
+ * the stopwatch would measure, or the completed one the week lists. The
+ * ring ticks it through the same occurrence path as Heute.
+ */
+function runToday(habit: HabitResponse): { id: number; done: boolean } | null {
+  const day = week.value?.days.find((entry) => entry.date === today.value);
+  const done = day?.items.find(
+    (item) =>
+      item.type === "habit" &&
+      item.habitId === habit.id &&
+      item.status === "completed",
+  );
+  if (done) return { id: done.id, done: true };
+  if (habit.isActive && habit.timerOccurrenceId !== null)
+    return { id: habit.timerOccurrenceId, done: false };
+  return null;
+}
+/* Rings line up: a card without a run today keeps the ring's place. */
+const anyRun = computed(() =>
+  habits.value.some((habit) => runToday(habit) !== null),
+);
+const { undo, offer: offerUndo, take: takeUndo } = useUndo<number>();
+const runKey = (habit: HabitResponse) => `run-${habit.id}`;
+async function toggleRun(habit: HabitResponse): Promise<void> {
+  const run = runToday(habit);
+  if (!run) return;
+  const done = await writes.write(
+    () => updateOccurrenceStatus(run.id, run.done ? "pending" : "completed"),
+    {
+      key: runKey(habit),
+      fallbackError: "Das Daily konnte nicht aktualisiert werden.",
+    },
+  );
+  if (done && !run.done) offerUndo(run.id, `„${habit.title}“ erledigt`);
+}
+async function undoLast(): Promise<void> {
+  const id = takeUndo();
+  if (id === null) return;
+  await writes.write(() => updateOccurrenceStatus(id, "pending"), {
+    key: `undo-${id}`,
+    fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
+  });
+}
 
 const isBusy = computed(() => isLoading.value || editorBusy.value);
 const groups = computed(() => [
@@ -169,11 +219,6 @@ async function onCreated(): Promise<void> {
 
 <template>
   <main ref="page" class="page habits-view">
-    <CreateButton
-      label="Daily erstellen"
-      :disabled="isBusy || editingId !== null"
-      @click="openCreation"
-    />
     <header class="page-header">
       <h1 class="page-title">Dailies</h1>
       <p class="page-lead">Was du regelmäßig tun willst, und wie oft.</p>
@@ -253,8 +298,27 @@ async function onCreated(): Promise<void> {
               :data-habit-id="habit.id"
               :data-focus-key="`habit-${habit.id}`"
               class="habit-card"
-              :class="{ 'habit-card--paused': !habit.isActive }"
+              :class="{
+                'habit-card--paused': !habit.isActive,
+                'habit-card--ring': anyRun && group.key === 'active',
+              }"
             >
+              <template v-if="anyRun && group.key === 'active'">
+                <CheckRing
+                  v-if="runToday(habit)"
+                  class="habit-card__ring"
+                  :checked="runToday(habit)!.done"
+                  :label="
+                    runToday(habit)!.done
+                      ? `${habit.title} heute wieder öffnen`
+                      : `${habit.title} heute erledigen`
+                  "
+                  :disabled="isBusy || writes.isWriting(runKey(habit))"
+                  :busy="writes.isWriting(runKey(habit))"
+                  @toggle="toggleRun(habit)"
+                />
+                <span v-else class="habit-card__ring" aria-hidden="true" />
+              </template>
               <div class="habit-card__content">
                 <!-- The heading keeps the plain title; the button says "bearbeiten". -->
                 <h3 :aria-label="habit.title">
@@ -304,6 +368,13 @@ async function onCreated(): Promise<void> {
         </section>
       </template>
     </template>
+    <UndoToast :label="undo?.label ?? null" @undo="undoLast" />
+    <!-- After the content in reading order; fixed in place, it looks the same. -->
+    <CreateButton
+      label="Daily erstellen"
+      :disabled="isBusy || editingId !== null"
+      @click="openCreation"
+    />
   </main>
 </template>
 
@@ -340,6 +411,18 @@ async function onCreated(): Promise<void> {
   padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
   border-radius: var(--radius-card);
   background: var(--color-surface);
+}
+
+/* The ring column sits before the title, as in every other row. */
+.habit-card--ring {
+  grid-template-columns: var(--tap) minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  padding-left: var(--space-2);
+}
+
+.habit-card__ring {
+  width: var(--tap);
+  height: var(--tap);
 }
 
 .habit-card__content {

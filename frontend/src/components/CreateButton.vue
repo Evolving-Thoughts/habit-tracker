@@ -29,12 +29,13 @@ const emit = defineEmits<{ click: [] }>();
   position: fixed;
   right: calc(1rem + env(safe-area-inset-right, 0px));
   bottom: calc(
-    var(--tab-bar-height) + 1rem + env(safe-area-inset-bottom, 0px)
+    var(--tab-bar-height) + var(--fab-offset) +
+      env(safe-area-inset-bottom, 0px)
   );
   z-index: 20;
   display: grid;
-  width: 3.5rem;
-  height: 3.5rem;
+  width: var(--fab-size);
+  height: var(--fab-size);
   place-items: center;
   padding: 0;
   border: 0;

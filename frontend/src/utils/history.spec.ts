@@ -60,16 +60,71 @@ it("counts a day and names only the non-zero counts", () => {
     timeOfDay: null,
     deleted: false,
   };
-  expect(daySummary(dayCounts({ items: [] }))).toBe("Nichts geplant");
-  const counts = dayCounts({
-    items: [todo, todo, { ...todo, type: "habit", status: "skipped" }],
+  const work = { minutes: 0 };
+  expect(daySummary({ items: [], work }, "past")).toBe("Nichts geplant");
+  const day = {
+    items: [
+      todo,
+      todo,
+      { ...todo, type: "habit" as const, status: "skipped" as const },
+    ],
     external: [{}],
+    work,
+  };
+  expect(dayCounts(day)).toEqual({
+    completed: 2,
+    skipped: 1,
+    open: 0,
+    events: 1,
   });
-  expect(counts).toEqual({ completed: 2, skipped: 1, open: 0, events: 1 });
-  expect(daySummary(counts)).toBe("2 erledigt · 1 übersprungen · 1 Termin");
-  // Measured time stands beside the counts as a bar; only alone it is named.
-  expect(daySummary(counts, 130)).toBe(
+  expect(daySummary(day, "past")).toBe(
     "2 erledigt · 1 übersprungen · 1 Termin",
+  );
+  // Measured time stands beside the counts as a bar; only alone it is named.
+  expect(daySummary({ ...day, work: { minutes: 130 } }, "past")).toBe(
+    "2 erledigt · 1 übersprungen · 1 Termin",
+  );
+});
+
+it("counts today like Heute does, with what waits from earlier named apart", () => {
+  const planned = (key: string, isOverdue = false) => ({
+    key,
+    type: "todo" as const,
+    id: 1,
+    habitId: null,
+    title: key,
+    categoryName: null,
+    why: null,
+    date: "2026-10-07",
+    scheduledDate: isOverdue ? "2026-10-05" : "2026-10-07",
+    isOverdue,
+    plannedDurationMinutes: null,
+    timeOfDay: null,
+    moveUntil: null,
+  });
+  const done = {
+    type: "todo" as const,
+    id: 9,
+    habitId: null,
+    title: "Erledigt",
+    categoryName: null,
+    why: null,
+    status: "completed" as const,
+    date: "2026-10-07",
+    scheduledDate: "2026-10-07",
+    resolvedAt: null,
+    plannedDurationMinutes: null,
+    timeOfDay: null,
+    deleted: false,
+  };
+  const day = {
+    items: [done],
+    planned: [planned("a"), planned("b"), planned("alt", true)],
+    work: { minutes: 0 },
+  };
+  expect(daySummary(day, "today")).toBe("1 von 3 erledigt · 1 von früher");
+  expect(daySummary({ ...day, items: [] }, "future")).toBe(
+    "2 geplant · 1 von früher",
   );
 });
 
@@ -86,11 +141,13 @@ it("knows whether the shown range holds a day", () => {
 });
 
 it("says honestly that time was measured on a day without plans", () => {
-  const nothing = dayCounts({ items: [] });
-  expect(daySummary(nothing, 130)).toBe(
+  const nothing = { items: [] };
+  expect(daySummary({ ...nothing, work: { minutes: 130 } }, "today")).toBe(
     "Nichts geplant · 2 Std. 10 Min. gemessen",
   );
-  expect(daySummary(nothing, 0)).toBe("Nichts geplant");
+  expect(daySummary({ ...nothing, work: { minutes: 0 } }, "today")).toBe(
+    "Nichts geplant",
+  );
 });
 
 it("counts measured work as something to show on a day", () => {

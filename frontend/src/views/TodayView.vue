@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import {
   getToday,
   reorderDay,
@@ -41,12 +41,14 @@ import { dayLabel, fullStop } from "../utils/history";
 import {
   arrangeToday,
   formatDayHeading,
+  formatWindow,
   itemKey,
   moved,
-  nowInBerlin,
-  plannedClock,
+  nextChangeAt,
   withQueueOrder,
 } from "../utils/today-agenda";
+import { tallyLine } from "../utils/day-tally";
+import { useDayClock } from "../composables/useDayClock";
 import { categoryMark } from "../utils/category-mark";
 import { workLine } from "../utils/quest-hours";
 import { hrefOf } from "../routes";
@@ -92,13 +94,14 @@ const {
 });
 const writes = useWrites(loadToday, errorMessage);
 
-/* The clock moves the focus and the "now" line along through the day. */
-const now = ref(nowInBerlin());
-let clock: ReturnType<typeof setInterval> | undefined;
-onMounted(() => {
-  clock = setInterval(() => (now.value = nowInBerlin()), 60_000);
-});
-onUnmounted(() => clearInterval(clock));
+/*
+ * The clock moves the focus and the "now" line along through the day: it
+ * wakes when an appointment starts or ends, so its turn on the focus card
+ * begins and ends on time while the page stays open.
+ */
+const now = useDayClock((minutes) =>
+  planner.value ? nextChangeAt(planner.value, minutes) : null,
+);
 
 const agenda = computed(() =>
   planner.value ? arrangeToday(planner.value, now.value) : null,
@@ -106,11 +109,11 @@ const agenda = computed(() =>
 const heading = computed(() =>
   planner.value ? formatDayHeading(planner.value.date) : "Heute",
 );
+/* Counted like every view counts a day: "1 von 7 erledigt · 1 von früher". */
 const progress = computed(() =>
-  agenda.value?.total
-    ? `${agenda.value.done} von ${agenda.value.total} erledigt`
-    : null,
+  agenda.value ? tallyLine(agenda.value.tally, "today") : null,
 );
+const progressParts = computed(() => progress.value?.split(" · ") ?? []);
 /* Worked time and quest hours in one line that says how they relate. */
 const timeLine = computed(() =>
   planner.value
@@ -132,12 +135,26 @@ const focusGoal = computed(() => {
     : "";
   return `${goal.title}: ${goal.completed} von ${goal.target}${until}`;
 });
+/* An appointment on the focus card names its time range above everything else. */
+const focusSlot = computed(() =>
+  agenda.value?.focusWindow ? formatWindow(agenda.value.focusWindow) : null,
+);
+/** With nothing left in the order: when the next appointment comes. */
+const nextAppointment = computed(() => {
+  const day = agenda.value;
+  const entry = day?.timeline[day.nowIndex];
+  if (!entry) return null;
+  return `${entry.time} ${entry.kind === "item" ? entry.item.title : entry.event.title}`;
+});
+const openAppointments = computed(() =>
+  (agenda.value?.timeline ?? []).some(
+    (entry) => entry.kind === "item" && entry.item.status === "pending",
+  ),
+);
 const focusMeta = computed(() => {
   const focus = agenda.value?.focus;
   if (!focus) return [];
   const parts: string[] = [];
-  const planned = plannedClock(focus);
-  if (planned) parts.push(planned.time);
   if (focus.plannedDurationMinutes != null)
     parts.push(
       focus.workedMinutes > 0
@@ -547,17 +564,18 @@ useShortcutHandlers(
 
 <template>
   <main ref="page" class="today-view">
-    <CreateButton
-      label="Eintrag erstellen"
-      :disabled="
-        isLoading || editorBusy || writes.busy.value || editingTarget !== null
-      "
-      @click="openCreation"
-    />
     <header class="today-view__header">
       <div class="today-view__title">
         <h1>{{ heading }}</h1>
-        <p v-if="progress" class="today-view__progress">{{ progress }}</p>
+        <!-- Breaks only between its parts: "1 von 7 erledigt" · "1 von früher". -->
+        <p v-if="progress" class="today-view__progress">
+          <template v-for="(part, index) in progressParts" :key="part"
+            >{{ index ? " " : ""
+            }}<span class="today-view__progress-part">{{
+              index < progressParts.length - 1 ? `${part} ·` : part
+            }}</span></template
+          >
+        </p>
         <p v-if="timeLine" class="today-view__time">
           <!-- From 40rem each part breaks as a whole, no figure torn apart. -->
           <template v-for="(part, index) in timeParts" :key="part"
@@ -718,17 +736,29 @@ useShortcutHandlers(
               <AppIcon name="grip" />
             </button>
           </div>
+          <p v-if="focusSlot" class="focus__slot">
+            <AppIcon name="calendar" />
+            <span>{{ focusSlot }}</span>
+          </p>
           <p v-if="agenda.focus.why" class="focus__why">
             {{ agenda.focus.why }}
           </p>
           <p
-            v-if="focusMeta.length || focusGoal || focusTimer"
+            v-if="
+              focusMeta.length ||
+              focusGoal ||
+              focusTimer ||
+              agenda.focus.type === 'habit'
+            "
             class="focus__meta"
           >
             <span v-if="focusTimer" class="focus__running">
               <i aria-hidden="true" />{{
                 focusTimer === "running" ? "läuft" : "pausiert"
               }}
+            </span>
+            <span v-if="agenda.focus.type === 'habit'" class="focus__daily">
+              <AppIcon name="dailies" />Daily
             </span>
             <span v-if="agenda.focus.categoryName" class="focus__category">
               <i
@@ -762,7 +792,9 @@ useShortcutHandlers(
               :eligible="agenda.focus.timerEligible"
               :disabled="isUpdating(agenda.focus)"
             />
+            <!-- The Fokus-Modus has no Später or Überspringen for an appointment. -->
             <a
+              v-if="!focusSlot"
               class="focus__mode"
               :href="hrefOf('focus')"
               aria-label="Fokus-Modus"
@@ -778,19 +810,32 @@ useShortcutHandlers(
             />
           </div>
         </section>
+        <!-- Appointments wait on the axis; they never stand in for the order. -->
+        <section v-else-if="openAppointments" class="today-view__empty">
+          <h2>In der Reihenfolge ist nichts mehr offen.</h2>
+          <p>
+            {{
+              nextAppointment
+                ? `Nächster Termin: ${nextAppointment}.`
+                : "Was noch offen ist, steht bei den Terminen."
+            }}
+          </p>
+        </section>
         <section v-else-if="!agenda.carriedOver.length" class="today-view__empty">
           <h2>Alles für heute erledigt.</h2>
           <p>Der Rest des Tages gehört dir.</p>
         </section>
 
+        <!-- On a phone only the next two rows carry their Warum, so the day stays short. -->
         <PlannerItem
-          v-for="item in rows"
+          v-for="(item, index) in rows"
           :key="getItemKey(item)"
           :data-focus-key="getItemKey(item)"
           :data-sort-key="getItemKey(item)"
           :item="item"
           :is-updating="isUpdating(item)"
           :menu="rowMenu(item)"
+          :why-wide-only="index >= 2"
           sortable
           @toggle="toggleItem"
           @edit="openEditing"
@@ -839,6 +884,7 @@ useShortcutHandlers(
             :is-updating="isUpdating(item)"
             show-date
             compact
+            why-wide-only
             @toggle="toggleItem"
             @edit="openEditing"
           >
@@ -917,6 +963,7 @@ useShortcutHandlers(
                 :time="entry.time"
                 :is-updating="isUpdating(entry.item)"
                 :menu="rowMenu(entry.item)"
+                why-wide-only
                 @toggle="toggleItem"
                 @edit="openEditing"
               />
@@ -965,6 +1012,14 @@ useShortcutHandlers(
 
     <!-- Stays mounted, so a move that empties the day is still announced. -->
     <p class="visually-hidden" role="status">{{ orderMessage }}</p>
+    <!-- After the content in reading order; fixed in place, it looks the same. -->
+    <CreateButton
+      label="Eintrag erstellen"
+      :disabled="
+        isLoading || editorBusy || writes.busy.value || editingTarget !== null
+      "
+      @click="openCreation"
+    />
     <CampaignCompletionDialog
       v-if="campaignCompletion.question.value"
       :title="campaignCompletion.question.value.title"
@@ -984,7 +1039,8 @@ useShortcutHandlers(
 .today-view {
   width: min(100% - 2rem, var(--page-width));
   margin: 0 auto;
-  padding: var(--space-5) 0 6rem;
+  /* Below the last row, room for the plus button: its actions stay reachable. */
+  padding: var(--space-5) 0 var(--fab-clearance);
 }
 
 .today-view__header {
@@ -1009,6 +1065,10 @@ useShortcutHandlers(
   color: var(--color-ink-muted);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+.today-view__progress-part {
+  display: inline-block;
 }
 
 .today-view__time {
@@ -1167,6 +1227,36 @@ useShortcutHandlers(
   max-width: 60ch;
   margin: var(--space-2) 0 0;
   font-size: 1.0625rem;
+}
+
+/* An appointment's turn: its time range, in ink and large enough to read at a glance. */
+.focus__slot {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: var(--space-2) 0 0;
+  color: var(--color-ink);
+  font-size: 1.125rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.focus__slot :deep(svg) {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--color-ink-muted);
+}
+
+.focus__daily {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.focus__daily :deep(svg) {
+  width: 1rem;
+  height: 1rem;
 }
 
 /* One line on a phone: Erledigt takes the room, the round buttons follow. */

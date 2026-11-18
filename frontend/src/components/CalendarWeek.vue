@@ -10,7 +10,8 @@ import type {
   HistoryWorkShare,
 } from "../types/history";
 import { campaignMark } from "../utils/category-mark";
-import { dayCounts, dayLabel, daySummary, hasEntries } from "../utils/history";
+import { dayRelation } from "../utils/day-tally";
+import { dayLabel, daySummary, hasEntries } from "../utils/history";
 import { formatDuration } from "../utils/logbook";
 
 type Day = HistoryResponse["days"][number];
@@ -125,7 +126,7 @@ function workDescription(day: Day): string {
             <strong>{{ dayLabel(day.date) }}</strong>
             <span :id="`week-day-${day.date}`" class="week-day__details">
               <span class="week-day__summary">{{
-                daySummary(dayCounts(day), day.work.minutes)
+                daySummary(day, dayRelation(day.date, result.today))
               }}</span>
               <span v-if="day.work.minutes" class="week-day__work">
                 <span class="work-track" aria-hidden="true">

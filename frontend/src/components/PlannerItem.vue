@@ -25,6 +25,11 @@ const props = defineProps<{
   sortable?: boolean;
   /** "Aktionen für …": everything beyond ring, title and ▶. */
   menu?: MenuEntry[];
+  /**
+   * The Warum below the meta line is left out on a phone, so a long day
+   * stays short there; from 40rem every open row shows it.
+   */
+  whyWideOnly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -113,7 +118,19 @@ const measure = computed(() =>
       </button>
       <span v-else class="planner-item__time">{{ leading }}</span>
     </template>
-    <template v-if="item.categoryName || details.length || item.campaign" #meta>
+    <template
+      v-if="
+        item.type === 'habit' ||
+        item.categoryName ||
+        details.length ||
+        item.campaign
+      "
+      #meta
+    >
+      <!-- A Daily says so first, as in the Plan. -->
+      <span v-if="item.type === 'habit'" class="planner-item__daily">
+        <AppIcon name="dailies" />Daily
+      </span>
       <span v-if="item.categoryName" class="planner-item__category">
         <i
           class="category-mark"
@@ -126,6 +143,16 @@ const measure = computed(() =>
         {{ item.campaign.title }}
       </span>
     </template>
+    <!-- What it is for, quietly and on one line; done rows need it no more. -->
+    <template v-if="item.why && state === 'open'" #below>
+      <p
+        class="planner-item__why"
+        :class="{ 'planner-item__why--wide': whyWideOnly }"
+        :title="item.why"
+      >
+        {{ item.why }}
+      </p>
+    </template>
     <template v-if="compact && $slots.default" #default>
       <slot />
     </template>
@@ -135,6 +162,36 @@ const measure = computed(() =>
 <style scoped>
 .planner-item__campaign {
   font-weight: 700;
+}
+
+.planner-item__daily {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  font-weight: 700;
+}
+
+.planner-item__daily :deep(svg) {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+/* One quiet line; its unbroken text must not widen the list it sits in. */
+.planner-item__why {
+  margin: 0.1rem 0 0;
+  overflow: hidden;
+  color: var(--color-ink-muted);
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  contain: inline-size;
+}
+
+@media (max-width: 39.99rem) {
+  .planner-item__why--wide {
+    display: none;
+  }
 }
 
 .planner-item__grip {

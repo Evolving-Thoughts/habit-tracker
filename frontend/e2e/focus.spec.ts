@@ -1,4 +1,4 @@
-import { today } from "./helpers";
+import { berlinTime, today } from "./helpers";
 import { test, expect } from "./fixtures";
 import { API_URL } from "./environment";
 import type { APIRequestContext } from "@playwright/test";
@@ -116,4 +116,33 @@ test("Fokus-Modus: 'Später' puts a quest behind the rest; keys start it and lea
   await expect(
     page.getByRole("complementary", { name: "Aktuelle Stoppuhr" }),
   ).toContainText("Zweites");
+});
+
+test("Fokus-Modus: an appointment comes into view for its turn, by Heute's rule", async ({
+  page,
+  request,
+}) => {
+  const date = await today(request);
+  // The browser's clock: 10:05 on the server's day, during the appointment.
+  await page.clock.install({ time: berlinTime(date, "10:05") });
+  await plan(request, {
+    title: "Teamrunde",
+    scheduledDate: date,
+    timeOfDay: "10:00",
+  });
+  await plan(request, { title: "Kapitel schreiben", scheduledDate: date });
+  await page.goto("/#/fokus");
+
+  const heading = page.getByRole("heading", { level: 1 });
+  await expect(heading).toHaveText("Teamrunde");
+  // Its time range, the default half hour without a planned duration.
+  await expect(page.getByText("Termin 10:00–10:30")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Später" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Starten", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByText("Kapitel schreiben")).toBeVisible();
+
+  await page.clock.fastForward(26 * 60_000);
+  await expect(heading).toHaveText("Kapitel schreiben");
 });

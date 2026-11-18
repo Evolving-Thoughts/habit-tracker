@@ -6,6 +6,7 @@ import HistoryPlannedItems, {
 } from "./HistoryPlannedItems.vue";
 import type { HistoryResponse } from "../types/history";
 import { formatTimeForGermanDisplay } from "../utils/date";
+import { dayRelation, tallyLine, tallyOfHistoryDay } from "../utils/day-tally";
 import {
   appointmentCount,
   dayCounts,
@@ -39,13 +40,16 @@ const selectedDay = computed(() =>
   props.result.days.find((day) => day.date === props.date),
 );
 
+/* The cell says in words what its dots show, counted like every other view. */
 function cellLabel(day: Day): string {
-  const counts = dayCounts(day);
   const appointments = appointmentCount(day);
   const parts = [
-    counts.completed && `${counts.completed} erledigt`,
-    counts.skipped && `${counts.skipped} übersprungen`,
-    counts.open && `${counts.open} offen`,
+    tallyLine(
+      tallyOfHistoryDay(day),
+      dayRelation(day.date, props.result.today),
+    )
+      ?.split(" · ")
+      .join(", "),
     appointments &&
       `${appointments} ${appointments === 1 ? "Termin" : "Termine"}`,
   ].filter(Boolean);

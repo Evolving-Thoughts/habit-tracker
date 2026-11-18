@@ -228,8 +228,9 @@ describe("TodayView", () => {
     await flushPromises();
 
     expect(wrapper.get(".focus").text()).toContain("Offenes Daily");
+    // Skipped counts neither as done nor as planned; earlier work is named.
     expect(wrapper.get(".today-view__progress").text()).toBe(
-      "2 von 3 erledigt",
+      "1 von 2 erledigt · 1 von früher · 1 übersprungen",
     );
     const catchUp = wrapper.get(".catch-up__toggle");
     expect(catchUp.text()).toContain("1 Eintrag von früher");
@@ -1225,5 +1226,174 @@ describe("TodayView rows and focus card", () => {
     await flushPromises();
     expect(wrapper.get(".focus__running").text()).toBe("pausiert");
     controller.dispose();
+  });
+});
+
+describe("TodayView: an appointment's turn on the focus card", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    // 09:50 in Berlin; the clock and its timers are fake, so time can pass.
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(new Date("2026-10-02T07:50:00Z"));
+    updateTodoMock.mockResolvedValue(undefined);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const day = () =>
+    makePlanner([
+      makeTodo({
+        todoId: 7,
+        title: "Teamrunde",
+        timeOfDay: "10:00",
+        plannedDurationMinutes: 45,
+      }),
+      makeTodo({ todoId: 1, title: "Steuer sortieren" }),
+      makeTodo({ todoId: 2, title: "Mails" }),
+    ]);
+
+  it("switches to the appointment at its start and back at its end, without polling", async () => {
+    getTodayMock.mockResolvedValue(day());
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    // Before: the next thing to work on; the appointment waits on the axis.
+    expect(wrapper.get("#focus-title").text()).toBe("Steuer sortieren");
+    expect(wrapper.get(".timeline").text()).toContain("Teamrunde");
+    // One timer, set for the start, not one a minute.
+    expect(vi.getTimerCount()).toBe(1);
+
+    // The timer wakes a moment after the minute turns.
+    vi.advanceTimersByTime(10 * 60_000 + 100);
+    await flushPromises();
+    expect(wrapper.get("#focus-title").text()).toBe("Teamrunde");
+    expect(wrapper.get(".focus__slot").text()).toBe("10:00–10:45");
+    expect(wrapper.find(".timeline").exists()).toBe(false);
+
+    vi.advanceTimersByTime(45 * 60_000);
+    await flushPromises();
+    // After: back to the order; the appointment stays on the axis, as past.
+    expect(wrapper.get("#focus-title").text()).toBe("Steuer sortieren");
+    expect(wrapper.find(".focus__slot").exists()).toBe(false);
+    expect(wrapper.get(".timeline__entry--past").text()).toContain(
+      "Teamrunde",
+    );
+  });
+
+  it("keeps Erledigt, ▶ and Termin verschieben for an appointment, without the Fokus-Modus", async () => {
+    vi.setSystemTime(new Date("2026-10-02T08:10:00Z"));
+    getTodayMock.mockResolvedValue(day());
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    const actions = wrapper.get(".focus__actions");
+    expect(
+      actions
+        .findAll("button, a")
+        .map((control) => control.attributes("aria-label")),
+    ).toEqual([
+      "Teamrunde erledigen",
+      "Stoppuhr für Teamrunde starten",
+      "Aktionen für Teamrunde",
+    ]);
+    // Not part of the order: no grip on the card.
+    expect(wrapper.find(".focus__grip").exists()).toBe(false);
+    await actions.get('[aria-label="Aktionen für Teamrunde"]').trigger("click");
+    expect(texts(wrapper, "[role=menuitem] .action-menu__label")).toEqual([
+      "Termin verschieben …",
+    ]);
+  });
+
+  it("says when the next appointment comes once the order is done", async () => {
+    getTodayMock.mockResolvedValue(
+      makePlanner([
+        makeTodo({ todoId: 7, title: "Teamrunde", timeOfDay: "10:00" }),
+        makeTodo({ todoId: 1, title: "Erledigt", status: "completed" }),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.find(".focus").exists()).toBe(false);
+    expect(wrapper.text()).toContain(
+      "In der Reihenfolge ist nichts mehr offen.",
+    );
+    expect(wrapper.text()).toContain("Nächster Termin: 10:00 Teamrunde.");
+    expect(wrapper.text()).not.toContain("Alles für heute erledigt.");
+  });
+
+  function texts(
+    wrapper: ReturnType<typeof mount>,
+    selector: string,
+  ): string[] {
+    return wrapper.findAll(selector).map((element) => element.text());
+  }
+});
+
+describe("TodayView: rows say what they are and what they are for", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("leads a Daily's meta line with the Daily marker and shows the Warum", async () => {
+    getTodayMock.mockResolvedValue(
+      makePlanner([
+        makeTodo({ title: "Kopf", why: "Damit der Tag Luft hat" }),
+        makeHabit({ title: "Joggen", why: "Für einen ruhigen Kopf" }),
+        makeTodo({ todoId: 2, title: "Ohne Warum" }),
+        makeTodo({ todoId: 3, title: "Dritte", why: "Später im Tag" }),
+        makeTodo({
+          todoId: 4,
+          title: "Erledigt",
+          why: "Vorbei",
+          status: "completed",
+        }),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    // The focus card keeps its Warum as a sentence.
+    expect(wrapper.get(".focus__why").text()).toBe("Damit der Tag Luft hat");
+    const daily = wrapper.get('[data-focus-key="habit-20"]');
+    expect(daily.get(".item-row__meta > :first-child").text()).toBe("Daily");
+    expect(daily.get(".planner-item__why").text()).toBe(
+      "Für einen ruhigen Kopf",
+    );
+    // The first two rows show it on a phone too; later rows from 40rem.
+    expect(daily.get(".planner-item__why").classes()).not.toContain(
+      "planner-item__why--wide",
+    );
+    const third = wrapper.get('[data-focus-key="todo-3"]');
+    expect(third.get(".planner-item__why").classes()).toContain(
+      "planner-item__why--wide",
+    );
+    const plain = wrapper.get('[data-focus-key="todo-2"]');
+    expect(plain.find(".planner-item__why").exists()).toBe(false);
+    // A quest's meta line has no Daily marker.
+    expect(third.text()).not.toContain("Daily");
+  });
+
+  it("marks a Daily on the focus card, too", async () => {
+    getTodayMock.mockResolvedValue(makePlanner([makeHabit()]));
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.get(".focus__meta .focus__daily").text()).toBe("Daily");
+  });
+
+  it("puts the plus button after the content in reading order", async () => {
+    getTodayMock.mockResolvedValue(makePlanner([makeTodo()]));
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    const buttons = wrapper.findAll("main button");
+    expect(buttons[0]!.classes()).not.toContain("create-button");
+    const plus = wrapper.get(".create-button");
+    const heading = wrapper.get("h1");
+    expect(
+      heading.element.compareDocumentPosition(plus.element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      wrapper.get(".order").element.compareDocumentPosition(plus.element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

@@ -336,3 +336,58 @@ describe("FocusView", () => {
     expect(wrapper.get("h1").text()).toBe("Kapitel schreiben");
   });
 });
+
+describe("FocusView: appointments by the rule of Heute's focus card", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    // 09:59 in Berlin, with timers that can be moved along.
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(new Date("2026-10-02T07:59:00Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const day = () =>
+    planner([
+      todo({
+        todoId: 7,
+        title: "Teamrunde",
+        timeOfDay: "10:00",
+        plannedDurationMinutes: null,
+      }),
+      todo({ todoId: 1, title: "Kapitel schreiben" }),
+      todo({ todoId: 2, title: "Mails" }),
+    ]);
+
+  it("brings the appointment into view during its turn, then the order again", async () => {
+    vi.mocked(getToday).mockResolvedValue(day());
+    const { wrapper, button } = await mountView();
+    expect(wrapper.get("h1").text()).toBe("Kapitel schreiben");
+    expect(wrapper.text()).toContain("Nächster Termin");
+
+    vi.advanceTimersByTime(60_000 + 100);
+    await flushPromises();
+    expect(wrapper.get("h1").text()).toBe("Teamrunde");
+    // Its time range in the facts; no "Später" for an appointment.
+    expect(wrapper.get(".focus-view__state").text()).toContain(
+      "Termin 10:00–10:30",
+    );
+    expect(button("Später")).toBeUndefined();
+    expect(wrapper.get(".focus-view__ahead").text()).toContain(
+      "Kapitel schreiben",
+    );
+
+    // Without a duration its turn lasts the default half hour.
+    vi.advanceTimersByTime(30 * 60_000);
+    await flushPromises();
+    expect(wrapper.get("h1").text()).toBe("Kapitel schreiben");
+  });
+
+  it("does not call the day done while an appointment still waits", async () => {
+    vi.mocked(getToday).mockResolvedValue(
+      planner([todo({ todoId: 7, title: "Teamrunde", timeOfDay: "15:00" })]),
+    );
+    const { wrapper } = await mountView();
+    expect(wrapper.get("h1").text()).toBe("Nichts in der Reihenfolge");
+    expect(wrapper.text()).toContain("Nächster Termin: 15:00 Teamrunde.");
+  });
+});

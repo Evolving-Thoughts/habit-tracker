@@ -5,6 +5,7 @@ import type {
 import type {
   ChangeHabitScheduleInput,
   CreateHabitInput,
+  HabitOccurrenceResponse,
   HabitResponse,
   UpdateHabitInput,
 } from "../types/habit";
@@ -109,6 +110,28 @@ export function updateOccurrenceStatus(
       status,
     }),
   });
+}
+
+/** Today's Daily runs; the server first creates the ones that are due. */
+export function getTodaysOccurrences(): Promise<HabitOccurrenceResponse[]> {
+  return request<HabitOccurrenceResponse[]>("/habit-occurrences/today");
+}
+
+/**
+ * The stored run of a Daily that is open today. A view that only knows the
+ * forecast (the Kalender reads without writing) asks for it right before
+ * completing, so a ring there runs the same occurrence path as on Heute.
+ */
+export async function openRunToday(
+  habitId: number,
+  scheduledDate?: string,
+): Promise<number | null> {
+  const open = (await getTodaysOccurrences()).filter(
+    (run) => run.habitId === habitId && run.status === "pending",
+  );
+  const run =
+    open.find((entry) => entry.scheduledDate === scheduledDate) ?? open[0];
+  return run?.id ?? null;
 }
 
 export function getTodo(todoId: number): Promise<TodoResponse> {

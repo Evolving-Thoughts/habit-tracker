@@ -89,6 +89,10 @@
   --tap-large: 3rem;
   --tab-bar-height: 4.25rem;
   --page-width: 46rem;
+  /* The plus button, and the room a page leaves below its last row for it. */
+  --fab-size: 3.5rem;
+  --fab-offset: 1rem;
+  --fab-clearance: calc(var(--fab-size) + var(--fab-offset) + var(--space-5));
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   /* A light spring: overshoots a touch on release, then settles. */
@@ -280,7 +284,7 @@ body:has(.tab-bar) {
 .page {
   width: min(100% - 2rem, var(--page-width));
   margin: 0 auto;
-  padding: var(--space-5) 0 calc(var(--space-6) + 4rem);
+  padding: var(--space-5) 0 var(--fab-clearance);
   color: var(--color-ink);
 }
 

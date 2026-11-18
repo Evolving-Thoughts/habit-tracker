@@ -30,7 +30,7 @@ import {
 } from '../todos/todo-agenda';
 import { resolvedOccurrences } from '../habit-occurrences/resolved-occurrences';
 import { loadHabitForecast } from '../history/habit-forecast';
-import { plannedHabits } from '../history/history-planning';
+import { openTargetRuns, plannedHabits } from '../history/history-planning';
 import { weeklyQuestTarget } from '../quest-hours/quest-hours.service';
 import { questSoFar } from '../quest-hours/quest-time';
 import { compareInDay } from './day-order';
@@ -197,12 +197,23 @@ export class DayPlannerService {
         ]),
       );
       const planned = forecast
-        ? plannedHabits(
-            forecast.habits,
-            forecast.slots,
-            forecast.occurrences,
-            today,
-          )
+        ? [
+            ...plannedHabits(
+              forecast.habits,
+              forecast.slots,
+              forecast.occurrences,
+              today,
+            ),
+            // Today's run of a weekly target, as Heute lists it.
+            ...(dates.includes(today)
+              ? openTargetRuns(
+                  forecast.habits,
+                  forecast.versions,
+                  forecast.occurrences,
+                  today,
+                )
+              : []),
+          ]
             // A stable start for runs that were never sorted.
             .sort((first, second) =>
               first.title.localeCompare(second.title, 'de'),

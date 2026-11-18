@@ -18,6 +18,7 @@ import {
 } from '../habits/scheduling/occurrence-lifecycle';
 import { HistoryPlannedItem, HistoryWeeklyTarget } from './history.dto';
 import { effectiveDuration } from '../timers/timer-target';
+import { compareInDay } from '../day-planner/day-order';
 
 export type ForecastSlot = {
   version: HabitScheduleVersionEntity;
@@ -136,6 +137,59 @@ export function plannedHabits(
     ];
   });
 }
+/**
+ * Today's open runs of Dailies with a weekly target. A weekly target has no
+ * slots to forecast; the generator stores one run a day until the target is
+ * reached, and Heute lists that run. Kalender and Plan show the same run on
+ * today, so all of them count the same day (see the frontend's day tally).
+ * Runs moved into a day are already slots (`movedSlots`).
+ */
+export function openTargetRuns(
+  habits: HabitEntity[],
+  versions: HabitScheduleVersionEntity[],
+  occurrences: HabitOccurrenceEntity[],
+  today: string,
+  categoryName: (id: number | null) => string | null = () => null,
+  habitWhy: (habit: HabitEntity) => string | null = (habit) =>
+    habit.why ?? null,
+): HistoryPlannedItem[] {
+  return occurrences.flatMap((occurrence) => {
+    const habit = habits.find((item) => item.id === occurrence.habitId);
+    const version = versions.find(
+      (item) => item.id === occurrence.scheduleVersionId,
+    );
+    if (
+      !habit ||
+      !habit.isActive ||
+      habit.deletedAt !== null ||
+      !version ||
+      version.cancelledAt !== null ||
+      version.type !== HabitScheduleType.WEEKLY_TARGET ||
+      occurrence.status !== Status.PENDING ||
+      occurrence.movedToDate !== null ||
+      occurrence.scheduledDate !== today
+    )
+      return [];
+    return [
+      {
+        key: `habit:${version.id}:${occurrence.scheduledDate}`,
+        type: 'habit' as const,
+        id: occurrence.id,
+        habitId: habit.id,
+        title: habit.title,
+        categoryName: categoryName(habit.categoryId),
+        why: habitWhy(habit),
+        date: today,
+        scheduledDate: occurrence.scheduledDate,
+        isOverdue: false,
+        timeOfDay: habit.timeOfDay ?? null,
+        moveUntil: lastMovableDate(version, occurrence.scheduledDate),
+        plannedDurationMinutes: effectiveDuration(occurrence, habit),
+      },
+    ];
+  });
+}
+
 export function weeklyTargets(
   habits: HabitEntity[],
   versions: HabitScheduleVersionEntity[],
@@ -189,4 +243,28 @@ export function weeklyTargets(
     });
   }
   return result;
+}
+/**
+ * Open entries sorted the way Heute and the Plan sort a day (day-order.ts):
+ * what waits from an earlier day first, then appointments by clock, then
+ * the order the user sorted the day into; forecast runs, never sorted, come
+ * last by title. Completed and skipped entries keep their own order, the
+ * time they were resolved.
+ */
+export function sortedLikeToday(
+  items: HistoryPlannedItem[],
+  positions: ReadonlyMap<string, number | null>,
+): HistoryPlannedItem[] {
+  const order = (item: HistoryPlannedItem) => ({
+    scheduledDate: item.isOverdue ? item.scheduledDate : item.date,
+    timeOfDay: item.timeOfDay,
+    dayPosition: positions.get(item.key) ?? null,
+    id: item.id ?? Number.MAX_SAFE_INTEGER,
+  });
+  return [...items].sort(
+    (first, second) =>
+      compareInDay(order(first), order(second)) ||
+      first.title.localeCompare(second.title, 'de') ||
+      first.key.localeCompare(second.key),
+  );
 }

@@ -22,9 +22,15 @@ Nothing is completed automatically.
   pause/resume, change target, complete, end. The label reads "Stoppuhr läuft",
   "Pausiert" or "Soll erreicht".
 - Completing by a ring offers the undo toast everywhere (Heute, Questlog, Plan,
-  Kalender, Kampagnen); a campaign with open quests asks first (see
+  Kalender, Kampagnen, Dailies); a campaign with open quests asks first (see
   `todo-hierarchy.md`). The bar's "Erledigen" and the Fokus-Modus' "Erledigt"
   have no toast: the stopwatch ends with it and the next quest follows.
+- Daily runs are completed through `PATCH /habit-occurrences/:id/status`
+  wherever they have a ring: Heute, Kalender › Tag (today's runs; a forecast
+  run first looks up its stored occurrence via `GET /habit-occurrences/today`)
+  and the Dailies view (today's run: the pending `timerOccurrenceId`, or the
+  run the week lists as completed today, which the ring opens again). Undo
+  sets the run back to `pending`. There is no second completion path.
 - Ending needs no confirmation: every stretch is in the logbook already.
   Switching to another target still asks, and checks the exact old timer ID, so a
   stale device cannot end a newer stopwatch.
@@ -36,8 +42,14 @@ Nothing is completed automatically.
   `backend/src/timers/timer-target.ts`).
 - **Fokus-Modus** (`#/fokus`, `FocusView.vue`): one quest in view with its campaign,
   its why and the stopwatch large; no navigation and no timer bar. What the
-  stopwatch runs on stays in view; otherwise it is the head of the day's order, or
-  an appointment that is running. "Erledigt" brings up the next one, "Später" puts
+  stopwatch runs on stays in view; otherwise `currentItem` decides, the rule of
+  Heute's focus card (`docs/day-order.md`): an appointment from its start until
+  its end (planned duration, or 30 minutes), else the head of the day's order.
+  The view switches by itself at those moments. An appointment shows its time
+  range ("Termin 10:00–10:30") and has no "Später"; Heute's focus card leaves
+  out the link to the Fokus-Modus while an appointment is on it. With an empty
+  order and an appointment still to come, it says "Nichts in der Reihenfolge"
+  and names the next appointment instead of "Alles erledigt". "Erledigt" brings up the next one, "Später" puts
   the quest behind the rest of the order and ends its stopwatch. Space
   starts/pauses, Ctrl+Enter completes, Escape leads back to Heute. A quest
   shows its notes below the actions (see `quest-notes.md`); while typing there,

@@ -1,6 +1,7 @@
 import type { HistoryItem, HistoryPlannedItem } from "../types/history";
 import { addDays, isValidIsoDate, weekStart } from "./date";
 import { formatDuration } from "./today-agenda";
+import { tallyLine, tallyOfHistoryDay, type DayRelation } from "./day-tally";
 export { addDays, weekStart };
 
 /* Own tables: ICU versions disagree on abbreviations ("Okt" vs "Okt."). */
@@ -164,21 +165,29 @@ export function hasEntries(day: {
 }
 
 /**
- * Only the non-zero counts: "2 erledigt · 1 offen". A day without any says
- * "Nichts geplant", and when time was measured anyway it says that too
- * ("Nichts geplant · 2 Std. 10 Min. gemessen"), so the bar beside it does
- * not contradict the words.
+ * The day's line in the Kalender week: the day counted by the shared rule
+ * (`tallyLine`: "1 von 7 erledigt · 1 von früher" today, "4 erledigt" on a
+ * past day, "3 geplant" on a coming one), then its Google events. A day
+ * without any says "Nichts geplant", and when time was measured anyway it
+ * says that too ("Nichts geplant · 2 Std. 10 Min. gemessen"), so the bar
+ * beside it does not contradict the words.
  */
-export function daySummary(counts: DayCounts, workedMinutes = 0): string {
+export function daySummary(
+  day: {
+    items: HistoryItem[];
+    planned?: HistoryPlannedItem[];
+    external?: unknown[];
+    work: { minutes: number };
+  },
+  relation: DayRelation,
+): string {
+  const events = day.external?.length ?? 0;
   const parts = [
-    counts.completed && `${counts.completed} erledigt`,
-    counts.skipped && `${counts.skipped} übersprungen`,
-    counts.open && `${counts.open} offen`,
-    counts.events &&
-      `${counts.events} ${counts.events === 1 ? "Termin" : "Termine"}`,
+    tallyLine(tallyOfHistoryDay(day), relation),
+    events && `${events} ${events === 1 ? "Termin" : "Termine"}`,
   ].filter(Boolean);
   if (parts.length) return parts.join(" · ");
-  return workedMinutes > 0
-    ? `Nichts geplant · ${formatDuration(workedMinutes)} gemessen`
+  return day.work.minutes > 0
+    ? `Nichts geplant · ${formatDuration(day.work.minutes)} gemessen`
     : "Nichts geplant";
 }

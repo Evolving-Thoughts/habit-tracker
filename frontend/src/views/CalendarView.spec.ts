@@ -3,7 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getHistory } from "../api/history.api";
 import { ApiError, ConnectionError } from "../api/http";
 import { deleteWorkLog } from "../api/work-logs.api";
-import { rescheduleTodo, updateTodoCompletion } from "../api/day-planner.api";
+import {
+  openRunToday,
+  rescheduleTodo,
+  updateOccurrenceStatus,
+  updateTodoCompletion,
+} from "../api/day-planner.api";
 import { notifyViewsChanged } from "../composables/data-sync";
 import { HISTORY_ITEM_FIELDS, PLANNED_FIELDS } from "../types/fixtures";
 import type {
@@ -17,8 +22,10 @@ import CalendarView from "./CalendarView.vue";
 
 vi.mock("../api/history.api", () => ({ getHistory: vi.fn() }));
 vi.mock("../api/day-planner.api", () => ({
+  openRunToday: vi.fn(),
   rescheduleTodo: vi.fn(),
   rescheduleOccurrence: vi.fn(),
+  updateOccurrenceStatus: vi.fn(),
   updateTodoCompletion: vi.fn(),
 }));
 vi.mock("../api/work-logs.api", () => ({
@@ -202,8 +209,9 @@ describe("CalendarView month", () => {
     const selected = wrapper.get('.month-day[aria-pressed="true"]');
     expect(selected.attributes("data-date")).toBe(TODAY);
     expect(selected.classes()).toContain("month-day--today");
+    // Counted like Heute counts the day.
     expect(selected.attributes("aria-label")).toBe(
-      "30. Oktober, heute, 2 offen",
+      "30. Oktober, heute, 0 von 2 erledigt",
     );
     expect(selected.findAll(".mark--open")).toHaveLength(1);
   });
@@ -231,7 +239,7 @@ describe("CalendarView month", () => {
     expect(wrapper.get(".selected-day h2").text()).toBe("Mittwoch, 7. Okt.");
   });
 
-  it("gives an open quest the ring and its moves a menu; a forecast only shows", async () => {
+  it("gives an open quest the ring and its moves a menu; today's forecast run only the ring", async () => {
     const wrapper = await render();
     const rows = wrapper.findAll(".planned-item");
     expect(rows[0]!.text()).toContain("Saugen");
@@ -246,7 +254,8 @@ describe("CalendarView month", () => {
       rows[0]!.findAll("button").some((b) => b.text() === "Verschieben"),
     ).toBe(false);
     expect(rows[1]!.text()).toContain("voraussichtlich");
-    expect(rows[1]!.find(".check-ring").exists()).toBe(false);
+    // A Daily run due today can be ticked; moving a forecast is not possible.
+    expect(rows[1]!.find(".check-ring").exists()).toBe(true);
     expect(rows[1]!.find('[aria-haspopup="menu"]').exists()).toBe(false);
   });
 
@@ -346,7 +355,9 @@ describe("CalendarView month", () => {
     const selected = wrapper.get('.month-day[aria-pressed="true"]');
     expect(selected.findAll(".mark--event")).toHaveLength(1);
     expect(selected.findAll(".mark--open")).toHaveLength(1);
-    expect(selected.attributes("aria-label")).toContain("1 offen, 1 Termin");
+    expect(selected.attributes("aria-label")).toContain(
+      "0 von 1 erledigt, 1 Termin",
+    );
   });
 
   it("changes the month and selects today when going back", async () => {
@@ -640,7 +651,7 @@ describe("CalendarView day", () => {
     expect(wrapper.find("[data-history-key]").exists()).toBe(false);
   });
 
-  it("lists done, skipped and open entries in that order with counts", async () => {
+  it("lists open, done and skipped entries in that order with counts", async () => {
     const data = dayResponse([
       item({ deleted: true }),
       item({
@@ -664,9 +675,9 @@ describe("CalendarView day", () => {
     const wrapper = await renderDay(data);
     const sections = wrapper.findAll("section[aria-label]");
     expect(sections.map((s) => s.attributes("aria-label"))).toEqual([
+      "Offen / geplant",
       "Erledigt",
       "Übersprungen",
-      "Offen / geplant",
     ]);
     const done = wrapper.get('section[aria-label="Erledigt"]');
     expect(done.findAll("li")).toHaveLength(2);
@@ -767,14 +778,15 @@ describe("CalendarView day", () => {
       },
     ];
     const wrapper = await renderDay(data);
+    // What waits from an earlier day has its own group, like Nachholen.
     const planned = wrapper.get('section[aria-label="Offen / geplant"]');
-    expect(planned.get(".count").text()).toBe("2");
-    expect(planned.text()).toContain("noch offen seit 5. Okt.");
-    expect(planned.text()).not.toContain("überfällig");
-    expect(planned.text()).toContain("15 Min. geplant");
-    expect(planned.findAll(".planned-item")[1]!.text()).toContain(
-      "voraussichtlich",
-    );
+    expect(planned.get(".count").text()).toBe("1");
+    expect(planned.text()).toContain("voraussichtlich");
+    const earlier = wrapper.get('section[aria-label="Von früher"]');
+    expect(earlier.get(".count").text()).toBe("1");
+    expect(earlier.text()).toContain("noch offen seit 5. Okt.");
+    expect(earlier.text()).not.toContain("überfällig");
+    expect(earlier.text()).toContain("15 Min. geplant");
     const targets = wrapper.get('section[aria-label="Wochenziele"]').text();
     expect(targets).toContain("Noch 2 von 3 · 1 erledigt");
     expect(targets).not.toContain("Gültig");
@@ -811,8 +823,13 @@ describe("CalendarView day", () => {
     expect(logbook.get("h2").text()).toBe("Logbuch");
     expect(logbook.text()).toContain("Heute wurde noch keine Zeit gemessen.");
     // The completion stands on the axis at the time it was ticked off.
-    expect(logbook.get('ol[aria-label="Geplant"]').text()).toContain(
+    // Read as one phrase; the visible title is not read a second time.
+    const mark = logbook.get('ol[aria-label="Geplant"] .done-mark');
+    expect(mark.get(".visually-hidden").text()).toBe(
       "Artikel, erledigt um 14:32",
+    );
+    expect(mark.get(".day-timeline__title").attributes("aria-hidden")).toBe(
+      "true",
     );
     expect(logbook.find('select[name="target"]').exists()).toBe(false);
     await logbook.get('button[aria-controls="work-log-add"]').trigger("click");
@@ -840,7 +857,7 @@ describe("CalendarView week", () => {
     expect(rows).toHaveLength(7);
     expect(rows[0]!.attributes("aria-label")).toBe("Montag, 5. Okt. öffnen");
     expect(rows[0]!.text()).toContain("Nichts geplant");
-    expect(rows[2]!.text()).toContain("1 erledigt · 1 übersprungen");
+    expect(rows[2]!.text()).toContain("1 von 1 erledigt · 1 übersprungen");
     await rows[2]!.trigger("click");
     await flushPromises();
     expect(mock).toHaveBeenLastCalledWith(
@@ -1166,5 +1183,119 @@ describe("CalendarView Logbuch", () => {
       wrapper.get('.month-day[data-date="2026-10-08"]').find(".month-day__work")
         .exists(),
     ).toBe(false);
+  });
+});
+
+describe("CalendarView: Daily runs, counting and order of a day", () => {
+  const run = (overrides: Partial<HistoryPlannedItem> = {}) =>
+    plannedItem({
+      key: "habit:4:2026-10-07",
+      type: "habit",
+      id: 5,
+      habitId: 4,
+      title: "Lesen",
+      date: "2026-10-07",
+      scheduledDate: "2026-10-07",
+      ...overrides,
+    });
+
+  it("ticks today's Daily run in Tag through its occurrence, with undo", async () => {
+    const data = dayResponse();
+    data.days[0]!.planned = [run()];
+    const wrapper = await renderDay(data);
+    const row = wrapper.get('[data-focus-key="habit:4:2026-10-07"]');
+    expect(row.text()).toContain("Daily");
+    await row.get('[aria-label="Lesen erledigen"]').trigger("click");
+    await flushPromises();
+    expect(updateOccurrenceStatus).toHaveBeenCalledWith(5, "completed");
+    expect(openRunToday).not.toHaveBeenCalled();
+    expect(wrapper.get(".undo-toast").text()).toContain("„Lesen“ erledigt");
+    await button(wrapper, "Rückgängig").trigger("click");
+    await flushPromises();
+    expect(updateOccurrenceStatus).toHaveBeenLastCalledWith(5, "pending");
+  });
+
+  it("finds the stored run of a forecast first, then ticks it", async () => {
+    vi.mocked(openRunToday).mockResolvedValue(9);
+    const data = dayResponse();
+    data.days[0]!.planned = [run({ id: null })];
+    const wrapper = await renderDay(data);
+    await wrapper.get('[aria-label="Lesen erledigen"]').trigger("click");
+    await flushPromises();
+    expect(openRunToday).toHaveBeenCalledWith(4, "2026-10-07");
+    expect(updateOccurrenceStatus).toHaveBeenCalledWith(9, "completed");
+  });
+
+  it("gives a run of a coming day no ring: it is not due yet", async () => {
+    const future = dayResponse([], "2026-10-09");
+    future.days[0]!.planned = [
+      run({ date: "2026-10-09", scheduledDate: "2026-10-09" }),
+    ];
+    const wrapper = await renderDay(future);
+    expect(wrapper.find('[aria-label="Lesen erledigen"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it("counts the day like Heute and keeps the server's order of the day", async () => {
+    const data = dayResponse([item({ date: "2026-10-07" })]);
+    const open = (id: number, title: string, more = {}) =>
+      plannedItem({
+        key: `todo:${id}`,
+        id,
+        title,
+        date: "2026-10-07",
+        scheduledDate: "2026-10-07",
+        ...more,
+      });
+    // As the server sorts it: appointments by time, then the day's order.
+    data.days[0]!.planned = [
+      open(3, "Zahnarzt", { timeOfDay: "09:00" }),
+      open(4, "Zebra"),
+      open(5, "Apfel"),
+      open(6, "Alt", { scheduledDate: "2026-10-05", isOverdue: true }),
+    ];
+    const wrapper = await renderDay(data);
+    expect(wrapper.get(".calendar-day__tally").text()).toBe(
+      "1 von 4 erledigt · 1 von früher",
+    );
+    const own = wrapper.get('section[aria-label="Offen / geplant"]');
+    expect(own.findAll("h3").map((title) => title.text())).toEqual([
+      "Zahnarzt",
+      "Zebra",
+      "Apfel",
+    ]);
+  });
+
+  it("names the week's day by the same rule", async () => {
+    const wrapper = await render();
+    const week = weekResponse();
+    week.days[2]!.planned = [
+      plannedItem({ date: "2026-10-07", scheduledDate: "2026-10-07" }),
+      plannedItem({
+        key: "todo:2",
+        id: 2,
+        date: "2026-10-07",
+        scheduledDate: "2026-10-01",
+        isOverdue: true,
+      }),
+    ];
+    week.days[3]!.planned = [
+      plannedItem({
+        key: "todo:3",
+        id: 3,
+        date: "2026-10-08",
+        scheduledDate: "2026-10-08",
+      }),
+    ];
+    mock.mockResolvedValue(week);
+    await wrapper.get('[name="historyDate"]').setValue("2026-10-07");
+    await chooseMode(wrapper, "Woche");
+    const rows = wrapper.findAll(".week-day__summary");
+    expect(rows[1]!.text()).toBe("Nichts geplant");
+    expect(rows[2]!.text()).toBe(
+      "1 von 2 erledigt · 1 von früher · 1 übersprungen",
+    );
+    expect(rows[3]!.text()).toBe("1 geplant");
   });
 });

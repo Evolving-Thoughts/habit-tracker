@@ -540,6 +540,87 @@ describe('History API (e2e)', () => {
       beforeHabits,
     );
   });
+  it('sorts open entries like Heute and lists the open run of a weekly target on today', async () => {
+    const date = getCurrentDateInTimeZone();
+    const open = (title: string, overrides: Partial<TodoEntity> = {}) =>
+      todo({
+        title,
+        completed: false,
+        completedAt: null,
+        scheduledDate: date,
+        ...overrides,
+      });
+    await open('Zebra', { dayPosition: 0 });
+    await open('Apfel', { dayPosition: 1 });
+    await open('Termin', { timeOfDay: '07:30' });
+    await open('Alt', { scheduledDate: addHistoryDays(date, -2) });
+    const habit = await db.getRepository(HabitEntity).save({
+      userId: TEST_USER,
+      title: 'Lesen',
+      isActive: true,
+      plannedDurationMinutes: 15,
+    });
+    const version = await db.getRepository(HabitScheduleVersionEntity).save({
+      habitId: habit.id,
+      type: HabitScheduleType.WEEKLY_TARGET,
+      weeklyTarget: 3,
+      effectiveAt: new Date('2026-01-01T00:00:00Z'),
+      missedOccurrencePolicy: MissedOccurrencePolicy.SKIP,
+    });
+    const run = await db.getRepository(HabitOccurrenceEntity).save({
+      habitId: habit.id,
+      scheduleVersionId: version.id,
+      scheduledDate: date,
+      status: Status.PENDING,
+      dayPosition: 2,
+    });
+
+    const day = (await get(`date=${date}`)).days[0];
+    // Carried over first, the appointment by clock, then the day's order.
+    expect(day.planned!.map((item) => item.title)).toEqual([
+      'Alt',
+      'Termin',
+      'Zebra',
+      'Apfel',
+      'Lesen',
+    ]);
+    expect(day.planned!.find((item) => item.title === 'Lesen')).toMatchObject({
+      type: 'habit',
+      id: run.id,
+      habitId: habit.id,
+      date,
+      isOverdue: false,
+      plannedDurationMinutes: 15,
+    });
+    // The target still stands apart with its count.
+    expect((await get(`date=${date}`)).weeklyTargets).toEqual([
+      expect.objectContaining({ habitId: habit.id, target: 3 }),
+    ]);
+    // Only today: the run is not invented for any other day of the week.
+    const week = await get(`date=${date}&view=week`);
+    expect(
+      week.days
+        .filter((entry) =>
+          entry.planned?.some((item) => item.title === 'Lesen'),
+        )
+        .map((entry) => entry.date),
+    ).toEqual([date]);
+    // The Plan shows the same run on today.
+    const plan = await request(server)
+      .get(`/day-planner/week?start=${historyRange(date, 'week')[0]}`)
+      .expect(200);
+    const today = (
+      plan.body as {
+        days: {
+          date: string;
+          entries: { title: string; occurrenceId?: number }[];
+        }[];
+      }
+    ).days.find((entry) => entry.date === date)!;
+    expect(today.entries.filter((entry) => entry.title === 'Lesen')).toEqual([
+      expect.objectContaining({ occurrenceId: run.id }),
+    ]);
+  });
   it('shows a weekly target separately and counts completions under previous schedules', async () => {
     const date = getCurrentDateInTimeZone();
     const dates = historyRange(date, 'week');
