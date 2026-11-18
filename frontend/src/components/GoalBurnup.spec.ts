@@ -53,6 +53,36 @@ describe("GoalBurnup", () => {
     expect(wrapper.text()).toContain("30 von 90 Min. erledigt");
   });
 
+  it("shows the numbers without a chart while there is only one day", async () => {
+    vi.mocked(getBurnup).mockResolvedValueOnce([
+      {
+        date: "2026-10-30",
+        doneCount: 0,
+        totalCount: 3,
+        doneMinutes: 0,
+        totalMinutes: 0,
+      },
+    ]);
+    const wrapper = await render();
+    expect(wrapper.find("svg").exists()).toBe(false);
+    expect(wrapper.find(".burnup__legend").exists()).toBe(false);
+    expect(wrapper.find(".burnup__summary").text()).toBe(
+      "0 von 3 Quests erledigt, 3 noch offen. Stand 30.10.",
+    );
+    expect(wrapper.text()).toContain("Der Verlauf beginnt heute.");
+    expect(wrapper.findAll("button").map((item) => item.text())).toEqual([
+      "Anzahl",
+      "Minuten",
+    ]);
+  });
+
+  it("ends the summary with the date's own full stop", async () => {
+    const wrapper = await render();
+    expect(wrapper.find(".burnup__summary").text()).toBe(
+      "1 von 4 Quests erledigt, 3 noch offen. Stand 31.10., seit 30.10.",
+    );
+  });
+
   it("shows why loading failed", async () => {
     vi.mocked(getBurnup).mockRejectedValueOnce(new Error("Offline"));
     const wrapper = await render();
