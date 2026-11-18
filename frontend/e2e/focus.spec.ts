@@ -114,6 +114,6 @@ test("Fokus-Modus: 'Später' puts a quest behind the rest; keys start it and lea
   await expect(page).toHaveURL(/#\/heute$/);
   // Back in the app, the running stopwatch shows in the bar again.
   await expect(
-    page.getByRole("complementary", { name: "Aktueller Timer" }),
+    page.getByRole("complementary", { name: "Aktuelle Stoppuhr" }),
   ).toContainText("Zweites");
 });

@@ -8,7 +8,11 @@ import { getCategories } from "../api/categories.api";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
 import { whyBelow } from "../utils/why";
 import {
+  hasProgress,
   hierarchyChildren,
+  openBelow,
+  progressText,
+  progressWords,
   visibleHierarchy,
   descendantIds,
 } from "../utils/todo-hierarchy";
@@ -22,11 +26,15 @@ import PlannerItemEditor from "../components/PlannerItemEditor.vue";
 import GoalBurnup from "../components/GoalBurnup.vue";
 import TodoDeletionSummary from "../components/TodoDeletionSummary.vue";
 import CampaignTiles from "../components/CampaignTiles.vue";
+import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
+import UndoToast from "../components/UndoToast.vue";
 import QuestTrend from "../components/QuestTrend.vue";
 import { useListFocus } from "../composables/useListFocus";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import { useTodoDeletion } from "../composables/useTodoDeletion";
+import { useUndo } from "../composables/useUndo";
+import { useCampaignCompletion } from "../composables/useCampaignCompletion";
 import { useTimer } from "../composables/useTimer";
 import { useShortcutHandlers } from "../composables/useShortcuts";
 import { campaignMark, categoryMark } from "../utils/category-mark";
@@ -61,6 +69,12 @@ const {
 const dragged = ref<number | null>(null),
   dropTarget = ref<number | null | undefined>(undefined);
 const busy = computed(() => saving.value || formBusy.value || writing.value);
+const campaignCompletion = useCampaignCompletion();
+const quiet = () =>
+  !busy.value &&
+  action.value === null &&
+  burnupTodo.value === null &&
+  campaignCompletion.question.value === null;
 // Refreshes after timer and other views' changes, unless a dialog is open.
 const {
   data: todos,
@@ -70,8 +84,7 @@ const {
 } = useLoader(getTodoHierarchy, {
   initial: [] as HierarchyTodo[],
   fallbackError: "Quests konnten nicht geladen werden.",
-  refreshOnChange: () =>
-    !busy.value && action.value === null && burnupTodo.value === null,
+  refreshOnChange: quiet,
 });
 // The tiles' numbers; without them the tiles still open their campaign.
 const { data: questHours, reload: loadQuestHours } =
@@ -80,8 +93,7 @@ const { data: questHours, reload: loadQuestHours } =
     {
       initial: null,
       fallbackError: "Quest-Stunden konnten nicht geladen werden.",
-      refreshOnChange: () =>
-        !busy.value && action.value === null && burnupTodo.value === null,
+      refreshOnChange: quiet,
     },
   );
 const { write, applied, busy: writing } = useWrites(
@@ -172,24 +184,17 @@ function details(todo: HierarchyTodo): string[] {
     );
   return parts;
 }
-function progressText(todo: HierarchyTodo) {
-  const { completed, total, mode } = todo.progress;
-  return mode === "duration"
-    ? `${completed}/${total} Min.`
-    : `${completed}/${total}`;
-}
-
-// Timer entry in the menu follows the same rules as ItemPlayButton.
+// The stopwatch entry in the menu follows the same rules as ItemPlayButton.
 function timerActive(todo: HierarchyTodo) {
   const current = timer?.timer.value;
   return current?.kind === "todo" && current.targetId === todo.id;
 }
 function timerLabel(todo: HierarchyTodo) {
   return timerActive(todo)
-    ? `Timer für ${todo.title} ist bereits aktiv`
+    ? `Stoppuhr für ${todo.title} läuft bereits`
     : !todo.timerEligible
-      ? `Timer für ${todo.title}: keine offene fällige Ausführung`
-      : `Timer für ${todo.title} starten`;
+      ? `Stoppuhr für ${todo.title}: keine offene fällige Ausführung`
+      : `Stoppuhr für ${todo.title} starten`;
 }
 function timerDisabled(todo: HierarchyTodo) {
   return (
@@ -212,7 +217,7 @@ function rowMenu(todo: HierarchyTodo): MenuEntry[] {
   const entries: MenuEntry[] = [
     {
       id: "timer",
-      label: "Timer starten",
+      label: "Stoppuhr starten",
       icon: "timer",
       ariaLabel: timerLabel(todo),
       disabled: timerDisabled(todo),
@@ -268,17 +273,18 @@ function close() {
     cancelDeletion();
   }
 }
+/** Resolves to whether the write went through. */
 async function run(
   fn: () => Promise<unknown>,
   text: string,
-  { notify = true } = {},
-) {
-  if (busy.value) return;
+  { notify = true, fallbackError = "Änderung fehlgeschlagen." } = {},
+): Promise<boolean> {
+  if (busy.value) return false;
   const activeLabel = document.activeElement?.getAttribute("aria-label");
   const hadDialog = action.value !== null;
   success.value = "";
   const done = await write(fn, {
-    fallbackError: "Änderung fehlgeschlagen.",
+    fallbackError,
     ...(notify ? {} : { notify: null }),
   });
   if (done && !loadError.value) {
@@ -291,26 +297,43 @@ async function run(
     page.value?.querySelectorAll<HTMLElement>("[aria-label]").forEach((el) => {
       if (el.getAttribute("aria-label") === activeLabel) el.focus();
     });
+  return done;
 }
 // The ring fills on tap; the reload afterwards confirms or resets it.
 const pendingCompletion = ref(new Map<number, boolean>());
 function checked(todo: HierarchyTodo) {
   return pendingCompletion.value.get(todo.id) ?? todo.completed;
 }
+/* A completion can be taken back in the toast, as on Heute. */
+const { undo, offer: offerUndo, take: takeUndo } = useUndo<HierarchyTodo>();
 async function toggleCompletion(todo: HierarchyTodo) {
   if (busy.value) return;
   const next = !checked(todo);
+  // A campaign with open quests asks first; they stay open either way.
+  const open = next && todo.parentId === null ? openBelow(todo.progress) : 0;
+  if (!(await campaignCompletion.confirm(todo.title, open))) return;
   pendingCompletion.value = new Map(pendingCompletion.value).set(todo.id, next);
   try {
-    await run(
-      () => updateTodoCompletion(todo.id, next),
-      "Erledigung gespeichert.",
-    );
+    const done = await run(() => updateTodoCompletion(todo.id, next), "", {
+      fallbackError: "Die Quest konnte nicht aktualisiert werden.",
+    });
+    if (done && next)
+      offerUndo(
+        todo,
+        open > 0 ? `„${todo.title}“ abgeschlossen` : `„${todo.title}“ erledigt`,
+      );
   } finally {
     const rest = new Map(pendingCompletion.value);
     rest.delete(todo.id);
     pendingCompletion.value = rest;
   }
+}
+async function undoLast() {
+  const todo = takeUndo();
+  if (!todo) return;
+  await run(() => updateTodoCompletion(todo.id, false), "", {
+    fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
+  });
 }
 function toggleCollapse(id: number) {
   const next = new Set(collapsed.value);
@@ -490,17 +513,14 @@ useShortcutHandlers({
               :mark="openMark"
             />
           </template>
-          <div
-            v-if="children.get(openTile.todo.id)?.length"
-            class="row__progress"
-          >
+          <div v-if="hasProgress(openTile.todo.progress)" class="row__progress">
             <span
               class="row__bar"
               role="progressbar"
               aria-valuemin="0"
               aria-valuemax="100"
               :aria-valuenow="Math.round(openTile.todo.progress.percentage)"
-              :aria-valuetext="`${progressText(openTile.todo)} erledigt`"
+              :aria-valuetext="progressWords(openTile.todo.progress)"
               :aria-label="`Fortschritt von ${openTile.todo.title}`"
             >
               <span
@@ -509,7 +529,9 @@ useShortcutHandlers({
                 }"
               />
             </span>
-            <span class="row__count">{{ progressText(openTile.todo) }}</span>
+            <span class="row__count">{{
+              progressText(openTile.todo.progress)
+            }}</span>
           </div>
           <GoalBurnup :todo-id="openTile.todo.id" />
           <button
@@ -621,14 +643,14 @@ useShortcutHandlers({
               <span v-for="part in details(todo)" :key="part">{{ part }}</span>
             </p>
             <p v-if="todo.why" class="row__why">{{ todo.why }}</p>
-            <div v-if="children.get(todo.id)?.length" class="row__progress">
+            <div v-if="hasProgress(todo.progress)" class="row__progress">
               <span
                 class="row__bar"
                 role="progressbar"
                 aria-valuemin="0"
                 aria-valuemax="100"
                 :aria-valuenow="Math.round(todo.progress.percentage)"
-                :aria-valuetext="`${progressText(todo)} erledigt`"
+                :aria-valuetext="progressWords(todo.progress)"
                 :aria-label="`Fortschritt darunter für ${todo.title}`"
               >
                 <span
@@ -637,7 +659,7 @@ useShortcutHandlers({
                   }"
                 />
               </span>
-              <span class="row__count">{{ progressText(todo) }}</span>
+              <span class="row__count">{{ progressText(todo.progress) }}</span>
             </div>
           </div>
           <ActionMenu
@@ -715,7 +737,8 @@ useShortcutHandlers({
           </select></label
         >
         <p class="dialog-lead">
-          Alle Unter-Quests ziehen mit. Termine und Timer bleiben erhalten.
+          Alle Unter-Quests ziehen mit. Termine und eine laufende Stoppuhr
+          bleiben erhalten.
         </p>
         <button class="btn btn--primary" type="submit" :disabled="busy">
           Verschieben
@@ -752,8 +775,17 @@ useShortcutHandlers({
         </div></template
       >
     </ModalDialog>
+    <CampaignCompletionDialog
+      v-if="campaignCompletion.question.value"
+      :title="campaignCompletion.question.value.title"
+      :open="campaignCompletion.question.value.open"
+      @confirm="campaignCompletion.reply(true)"
+      @cancel="campaignCompletion.reply(false)"
+    />
+    <UndoToast :label="undo?.label ?? null" @undo="undoLast" />
   </main>
 </template>
+
 <style scoped>
 .status-line {
   margin: 0 0 var(--space-3);

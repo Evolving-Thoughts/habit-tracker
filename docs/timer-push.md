@@ -6,7 +6,7 @@ Das Erreichen des Solls einer Stoppuhr kann auch bei geschlossener PWA oder gesp
 
 - Ein Timer pro Nutzer wie bisher. Todos und konkrete Habit-Ausführungen werden unterstützt.
 - Meldungen an alle **angemeldeten Geräte/Browser mit ausdrücklich aktiviertem Push**. Andere Nutzer erhalten keine Meldung.
-- Nachricht immer neutral: **„Du hast dein Soll erreicht“**, dazu „Öffne die App, um fortzufahren.“ Keine Aufgaben-/Habit-Titel, E-Mails oder Nutzerinformationen im Payload.
+- Nachricht immer neutral: **„Du hast dein Soll erreicht“**, dazu „Die Stoppuhr läuft weiter.“ Keine Aufgaben-/Habit-Titel, E-Mails oder Nutzerinformationen im Payload.
 - Antippen öffnet die App oder fokussiert ein bereits offenes App-Fenster, ohne dessen Formular zu verwerfen. Es markiert nichts als erledigt.
 - Opt-in ist pro Origin und Browserprofil. Keine automatische Berechtigungsanfrage bei Login/Seitenaufruf.
 - Nach Logout wird die Session samt Gerätezuordnung und ausstehenden Lieferungen serverseitig entfernt. Die Browser-Erlaubnis und lokale Opt-in-Einstellung bleiben bestehen. Bei erneutem Login wird ein weiterhin aktiviertes Gerät ohne erneuten Prompt zugeordnet.

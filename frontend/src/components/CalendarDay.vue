@@ -13,6 +13,7 @@ import type {
   HistoryFilter,
   HistoryResponse,
   HistoryWeeklyTarget,
+  HistoryWorkLog,
 } from "../types/history";
 import { hasEntries } from "../utils/history";
 import { formatDuration, logBlocks, planBlocks } from "../utils/logbook";
@@ -27,8 +28,10 @@ const props = defineProps<{
   filterLabel: string;
   actions: PlannedActions;
   reload: (showPageLoading?: boolean) => Promise<void>;
+  /** Stretches whose delete waits behind the undo toast: already out of view. */
+  hiddenLogs?: ReadonlySet<number>;
 }>();
-const emit = defineEmits<{ showAll: [] }>();
+const emit = defineEmits<{ showAll: []; removeLog: [log: HistoryWorkLog] }>();
 
 const completedItems = computed(() =>
   props.day.items.filter((item) => item.status === "completed"),
@@ -44,9 +47,21 @@ const isEmpty = computed(
 const isPastOrToday = computed(() => props.day.date <= props.today);
 
 const plan = computed(() => planBlocks(props.day));
-const logs = computed(() => props.day.work.logs ?? []);
+const logs = computed(() =>
+  (props.day.work.logs ?? []).filter((log) => !props.hiddenLogs?.has(log.id)),
+);
+/*
+ * The day's total comes from the server, which still counts a stretch whose
+ * delete is held back. Until the delete went through, the head shows no
+ * figure rather than one that is about to be wrong.
+ */
+const holdsBack = computed(() =>
+  (props.day.work.logs ?? []).some((log) => props.hiddenLogs?.has(log.id)),
+);
 const blocks = computed(() =>
-  isPastOrToday.value ? logBlocks(props.day.work, props.day.date) : null,
+  isPastOrToday.value
+    ? logBlocks({ ...props.day.work, logs: logs.value }, props.day.date)
+    : null,
 );
 const hasAxis = computed(() => plan.value.length > 0 || logs.value.length > 0);
 const hasAside = computed(() => isPastOrToday.value || plan.value.length > 0);
@@ -129,10 +144,10 @@ watch(
       class="calendar-day__axis"
       aria-labelledby="day-axis-title"
     >
-      <h2 id="day-axis-title" class="section-title">
+      <h2 id="day-axis-title" class="section-title" tabindex="-1">
         <template v-if="isPastOrToday">
           Logbuch
-          <span v-if="day.work.minutes" class="count">{{
+          <span v-if="day.work.minutes && !holdsBack" class="count">{{
             formatDuration(day.work.minutes)
           }}</span>
         </template>
@@ -159,6 +174,7 @@ watch(
             :logs="logs"
             :targets="workTargets"
             :reload="reload"
+            @remove="emit('removeLog', $event)"
           />
         </div>
       </template>

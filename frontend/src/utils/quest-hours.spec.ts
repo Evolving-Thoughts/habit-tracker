@@ -7,7 +7,7 @@ import {
   campaignTiles,
   hoursToMinutes,
   minutesToHours,
-  questHoursLine,
+  workLine,
   trendText,
 } from "./quest-hours";
 
@@ -49,45 +49,52 @@ describe("againstTarget", () => {
   });
 });
 
-describe("questHoursLine", () => {
-  it("names today and the week against the goal", () => {
-    expect(
-      questHoursLine({
-        todayMinutes: 80,
-        weekMinutes: 360,
-        weeklyTargetMinutes: 1200,
-      }),
-    ).toBe("Quest-Stunden heute 1 Std. 20 Min. · Woche 6 Std. von 20 Std.");
+describe("workLine", () => {
+  const hours = (
+    todayMinutes: number,
+    weekMinutes: number,
+    weeklyTargetMinutes: number | null = 1200,
+  ) => ({ todayMinutes, weekMinutes, weeklyTargetMinutes });
+
+  it("relates today's quest hours to what was worked, then the week", () => {
+    expect(workLine(100, hours(80, 251))).toBe(
+      "1 Std. 40 Min. gearbeitet, davon 1 Std. 20 Min. auf Kampagnen · Woche 4 Std. 11 Min. von 20 Std.",
+    );
   });
 
-  it("shows just the numbers without a goal", () => {
-    expect(
-      questHoursLine({
-        todayMinutes: 0,
-        weekMinutes: 95,
-        weeklyTargetMinutes: null,
-      }),
-    ).toBe("Quest-Stunden heute 0 Min. · Woche 1 Std. 35 Min.");
+  it("says so when all of today went to campaigns", () => {
+    expect(workLine(80, hours(80, 80, null))).toBe(
+      "1 Std. 20 Min. gearbeitet, alles auf Kampagnen · Woche 1 Std. 20 Min.",
+    );
   });
 
-  it("shows a goal before any time is measured", () => {
-    expect(
-      questHoursLine({
-        todayMinutes: 0,
-        weekMinutes: 0,
-        weeklyTargetMinutes: 600,
-      }),
-    ).toBe("Quest-Stunden heute 0 Min. · Woche 0 Min. von 10 Std.");
+  it("names the week by what it counts when today had no quest time", () => {
+    expect(workLine(40, hours(0, 251))).toBe(
+      "40 Min. gearbeitet · Kampagnen diese Woche 4 Std. 11 Min. von 20 Std.",
+    );
   });
 
-  it("says nothing without measured quest time and without a goal", () => {
-    expect(
-      questHoursLine({
-        todayMinutes: 0,
-        weekMinutes: 0,
-        weeklyTargetMinutes: null,
-      }),
-    ).toBeNull();
+  it("shows only the week before anything was worked today", () => {
+    expect(workLine(0, hours(0, 95, null))).toBe(
+      "Kampagnen diese Woche 1 Std. 35 Min.",
+    );
+    expect(workLine(0, hours(0, 0, 600))).toBe(
+      "Kampagnen diese Woche 0 Min. von 10 Std.",
+    );
+  });
+
+  it("shows only the work without week time and without a goal", () => {
+    expect(workLine(25, hours(0, 0, null))).toBe("25 Min. gearbeitet");
+  });
+
+  it("says nothing without any time and without a goal", () => {
+    expect(workLine(0, hours(0, 0, null))).toBeNull();
+  });
+
+  it("never claims more on campaigns than was worked", () => {
+    expect(workLine(30, hours(45, 45, null))).toBe(
+      "30 Min. gearbeitet, alles auf Kampagnen · Woche 45 Min.",
+    );
   });
 });
 
@@ -110,10 +117,11 @@ describe("campaignTiles", () => {
     progress: {
       mode: "count",
       completed: 0,
-      total: 1,
+      total: 0,
       percentage: 0,
       knownDurationMinutes: 0,
-      todoCount: 1,
+      todoCount: 0,
+      doneCount: 0,
     },
     ...changes,
   });

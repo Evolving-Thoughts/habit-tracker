@@ -55,7 +55,7 @@ describe("DayWorkLogs", () => {
     const row = wrapper.get('[aria-label="Einträge im Logbuch"] li');
     expect(row.text()).toContain("09:00–09:30");
     expect(row.text()).toContain("30 Min.");
-    expect(row.text()).toContain("Timer");
+    expect(row.text()).toContain("Stoppuhr");
     expect(row.text()).toContain("Buch");
   });
 
@@ -76,7 +76,7 @@ describe("DayWorkLogs", () => {
     expect(reload).toHaveBeenCalledWith(false);
   });
 
-  it("corrects and deletes an entry", async () => {
+  it("corrects an entry and asks the calendar to delete one", async () => {
     const wrapper = await render();
     await button(wrapper, "Korrigieren").trigger("click");
     await flushPromises();
@@ -90,7 +90,22 @@ describe("DayWorkLogs", () => {
     });
     await button(wrapper, "Löschen").trigger("click");
     await flushPromises();
-    expect(deleteWorkLog).toHaveBeenCalledWith(5);
+    // The calendar holds the delete behind its undo toast; nothing goes yet.
+    expect(wrapper.emitted("remove")).toEqual([[log]]);
+    expect(deleteWorkLog).not.toHaveBeenCalled();
+  });
+
+  it("moves the focus to the next stretch when one is removed", async () => {
+    const later = { ...log, id: 6, title: "Lesen" };
+    const wrapper = await render([log, later]);
+    await wrapper
+      .get('[aria-label="Schreiben 09:00 löschen"]')
+      .trigger("click");
+    await wrapper.setProps({ logs: [later] });
+    await flushPromises();
+    expect(document.activeElement).toBe(
+      wrapper.get('[data-log="6"] button').element,
+    );
   });
 
   it("opens a stretch for correcting from outside and keeps its days", async () => {

@@ -24,6 +24,7 @@ import type {
   DayPlannerTodoItem,
 } from "../types/day-planner";
 import TodayView from "./TodayView.vue";
+import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import {
   reloadShortcutSettings,
   setSingleKeys,
@@ -37,6 +38,7 @@ import {
 vi.mock("../api/categories.api", () => ({
   getCategories: vi.fn().mockResolvedValue([]),
 }));
+vi.mock("../api/todo-hierarchy.api", () => ({ getTodoHierarchy: vi.fn() }));
 vi.mock("../api/day-planner.api", () => ({
   getToday: vi.fn(),
   reorderDay: vi.fn(),
@@ -160,27 +162,31 @@ describe("TodayView", () => {
     expect(wrapper.findAll(".planner-item")).toHaveLength(0);
   });
 
-  it("shows the quest hours of today and the week in the head", async () => {
+  it("relates worked time and quest hours in one line in the head", async () => {
     getTodayMock.mockResolvedValue({
       ...makePlanner([makeTodo()]),
+      workedMinutes: 100,
       questHours: {
         todayMinutes: 80,
-        weekMinutes: 360,
+        weekMinutes: 251,
         weeklyTargetMinutes: 1200,
       },
     });
     const wrapper = mount(TodayView);
     await flushPromises();
-    expect(wrapper.get(".today-view__quest").text()).toBe(
-      "Quest-Stunden heute 1 Std. 20 Min. · Woche 6 Std. von 20 Std.",
+    expect(wrapper.get(".today-view__progress").text()).toBe(
+      "0 von 1 erledigt",
+    );
+    expect(wrapper.get(".today-view__time").text()).toBe(
+      "1 Std. 40 Min. gearbeitet, davon 1 Std. 20 Min. auf Kampagnen · Woche 4 Std. 11 Min. von 20 Std.",
     );
   });
 
-  it("leaves the quest hours out without measured time and goal", async () => {
+  it("leaves the time line out without measured time and goal", async () => {
     getTodayMock.mockResolvedValue(makePlanner([makeTodo()]));
     const wrapper = mount(TodayView);
     await flushPromises();
-    expect(wrapper.find(".today-view__quest").exists()).toBe(false);
+    expect(wrapper.find(".today-view__time").exists()).toBe(false);
   });
 
   it("shows an error when loading fails", async () => {
@@ -385,6 +391,46 @@ describe("TodayView", () => {
       [1, "2026-10-03", false],
       [2, "2026-10-03", false],
     ]);
+  });
+
+  it("asks before completing a campaign planned for today with open quests", async () => {
+    const book = { id: 1, title: "NestJS lernen", color: null, icon: null };
+    getTodayMock.mockResolvedValue(makePlanner([makeTodo({ campaign: book })]));
+    vi.mocked(getTodoHierarchy).mockResolvedValue([
+      { id: 1, progress: { todoCount: 2, doneCount: 0 } } as never,
+    ]);
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    await wrapper
+      .get('button[aria-label="NestJS lernen erledigen"]')
+      .trigger("click");
+    await flushPromises();
+    expect(wrapper.get(".campaign-completion__lead").text()).toContain(
+      "2 Quests in „NestJS lernen“ sind noch offen. Sie bleiben offen",
+    );
+    expect(updateTodoMock).not.toHaveBeenCalled();
+    await wrapper.get("[data-campaign-confirm]").trigger("click");
+    await flushPromises();
+    expect(updateTodoMock).toHaveBeenCalledWith(1, true);
+    expect(wrapper.get(".today-view__toast").text()).toContain(
+      "„NestJS lernen“ abgeschlossen",
+    );
+  });
+
+  it("offers to load Heute again after a failure", async () => {
+    getTodayMock
+      .mockRejectedValueOnce(new Error("Der Server hatte gerade einen Fehler."))
+      .mockResolvedValue(makePlanner([makeTodo()]));
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    const retry = wrapper
+      .findAll("button")
+      .find((button) => button.text() === "Erneut versuchen")!;
+    await retry.trigger("click");
+    await flushPromises();
+    expect(getTodayMock).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("NestJS lernen");
   });
 
   it("completes the focus, reloads and offers undo", async () => {
@@ -1030,7 +1076,7 @@ describe("TodayView rows and focus card", () => {
         .map((control) => control.attributes("aria-label")),
     ).toEqual([
       "Joggen erledigen",
-      "Timer für Joggen starten",
+      "Stoppuhr für Joggen starten",
       "Fokus-Modus",
       "Aktionen für Joggen",
     ]);
@@ -1091,7 +1137,7 @@ describe("TodayView rows and focus card", () => {
       "Zweitens in der Reihenfolge verschieben",
       "Zweitens erledigen",
       "Zweitens bearbeiten",
-      "Timer für Zweitens starten",
+      "Stoppuhr für Zweitens starten",
       "Aktionen für Zweitens",
     ]);
     expect(row.text()).not.toContain("Verschieben");

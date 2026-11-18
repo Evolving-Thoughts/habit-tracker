@@ -92,13 +92,46 @@ and other calendars are only read.
   without campaign), title and duration; a block is never smaller than a tap
   target, its label names title, real times, duration and campaign, and a tap
   opens it for correcting. Below the axis `DayWorkLogs.vue` lists the stretches
-  in words (correct, delete) and adds time by hand. A day without a stretch
-  says so in one quiet line. Days ahead have no Logbuch.
+  in words (correct, delete; the source reads "Stoppuhr" or "Nachtrag") and
+  adds time by hand. A day without a stretch says so in one quiet line. Days
+  ahead have no Logbuch.
+- **Deleting a stretch** has an undo, the toast of the calendar ("Abschnitt
+  „Lesen“ gelöscht · Rückgängig", see below).
 - **Week**: a legend of the week's work by campaign, then per day a stacked bar
   in the campaigns' marks, scaled to the longest day, with the total as text and
   the split in words for screen readers.
 - **Month**: the day's worked time as a small figure in the cell ("2 Std. 15
   Min.", on a phone "2:15 h"); the cell's label says it in full.
+## Deleting with undo
+
+"Löschen" in the day's list does not send the `DELETE` at once. The stretch
+leaves the list and the axis immediately (`CalendarView` keeps a set of
+held-back ids and `CalendarDay` filters them), the focus moves to the
+neighbouring row, and the calendar's `UndoToast` offers "Rückgängig" for
+five seconds. The `DELETE` goes out when that offer ends without being
+taken: the time is up, the next offer replaces it (another delete, a tick),
+the view is left (unmount) or the page closes (`pagehide`; the request uses
+`keepalive` so it outlives the page). This is `useUndo`'s `commit` step.
+
+- **Why held back, not deleted and created again:** re-creating through
+  `POST /work-logs` would make a different log: a new id, `source: 'manual'`
+  instead of `'timer'`, the title copied from the quest as it is now, and a
+  404 when the quest was deleted in the meantime. In Google it would delete
+  the old event and insert a new one, and a log whose event the user had
+  deleted in Google (`suppressed` link) would be exported again, against the
+  rule below. Holding the delete back changes nothing on the server until it
+  is final, so undo is exact and Google never sees a step that was taken
+  back.
+- While a delete is held back, the head shows "Logbuch" without its total:
+  the server's figure still counts the stretch, and a figure that is about to
+  be wrong is not shown.
+- If the `DELETE` fails, the stretch comes back with the error next to the
+  calendar; a 404 (already deleted elsewhere) counts as done. If the page is
+  killed before `pagehide` (a crashed tab), the stretch simply stays: the
+  failure mode keeps data, it never loses it.
+
+## Frontend rules
+
 - Pure rules in `utils/logbook.ts` (positions on the axis, side-by-side layout
   of overlapping blocks, the axis range, labels). The colour of a campaign comes
   from `campaignMark` in `utils/category-mark.ts`: its stored colour, else one

@@ -9,7 +9,10 @@ const stateLabel = {
 };
 </script>
 <template>
-  <section class="deletion-summary" aria-label="Betroffene Quests und Timer">
+  <section
+    class="deletion-summary"
+    aria-label="Betroffene Quests und Stoppuhren"
+  >
     <p>
       <strong>{{
         preview.todos.length === 1
@@ -30,8 +33,8 @@ const stateLabel = {
       <p>
         <strong>{{
           preview.timers.length === 1
-            ? "1 Timer wird ebenfalls gelöscht."
-            : `${preview.timers.length} Timer werden ebenfalls gelöscht.`
+            ? "1 Stoppuhr wird ebenfalls gelöscht."
+            : `${preview.timers.length} Stoppuhren werden ebenfalls gelöscht.`
         }}</strong>
       </p>
       <ul>

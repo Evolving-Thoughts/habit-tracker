@@ -142,7 +142,8 @@ async function submit(): Promise<void> {
             aria-describedby="habit-duration-hint"
           />
           <small id="habit-duration-hint" class="create-habit__hint"
-            >Mit einer Dauer kannst du den Timer starten.</small
+            >Die Dauer ist das Soll der Stoppuhr; sie läuft darüber
+            hinaus.</small
           >
         </div>
         <label class="field">

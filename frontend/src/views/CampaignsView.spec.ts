@@ -15,7 +15,7 @@ import {
   deleteTodo,
 } from "../api/day-planner.api";
 import { getCategories } from "../api/categories.api";
-import type { HierarchyTodo } from "../types/todo-hierarchy";
+import type { HierarchyTodo, TodoProgress } from "../types/todo-hierarchy";
 vi.mock("../api/todo-hierarchy.api", () => ({
   getTodoHierarchy: vi.fn(),
   getDeletionPreview: vi.fn(),
@@ -32,7 +32,31 @@ vi.mock("../api/day-planner.api", () => ({
   deleteTodo: vi.fn(),
 }));
 enableAutoUnmount(afterEach);
-const node = (id: number, parentId: number | null): HierarchyTodo => ({
+/** A quest without quests below: the server sends no progress for it. */
+const LEAF: TodoProgress = {
+  mode: "count",
+  completed: 0,
+  total: 0,
+  percentage: 0,
+  knownDurationMinutes: 0,
+  todoCount: 0,
+  doneCount: 0,
+};
+/** Quests of 30 minutes below a quest, never the quest itself. */
+const below = (todoCount: number, doneCount = 0): TodoProgress => ({
+  mode: "duration",
+  completed: doneCount * 30,
+  total: todoCount * 30,
+  percentage: (doneCount / todoCount) * 100,
+  knownDurationMinutes: todoCount * 30,
+  todoCount,
+  doneCount,
+});
+const node = (
+  id: number,
+  parentId: number | null,
+  progress: TodoProgress = LEAF,
+): HierarchyTodo => ({
   ...TODO_FIELDS,
   id,
   parentId,
@@ -43,14 +67,7 @@ const node = (id: number, parentId: number | null): HierarchyTodo => ({
   scheduledDate: null,
   timeOfDay: null,
   plannedDurationMinutes: 30,
-  progress: {
-    mode: "duration",
-    completed: 0,
-    total: 30,
-    percentage: 0,
-    knownDurationMinutes: 30,
-    todoCount: 1,
-  },
+  progress,
 });
 const button = (w: ReturnType<typeof mount>, text: string) =>
   w.findAll("button").find((b) => b.text() === text)!;
@@ -101,7 +118,10 @@ describe("CampaignsView", () => {
     });
     await router.push("/kampagnen");
     vi.mocked(getQuestHours).mockResolvedValue(questHours());
-    vi.mocked(getTodoHierarchy).mockResolvedValue([node(1, null), node(2, 1)]);
+    vi.mocked(getTodoHierarchy).mockResolvedValue([
+      node(1, null, below(1)),
+      node(2, 1),
+    ]);
     vi.mocked(getCategories).mockResolvedValue([]);
     vi.mocked(updateTodo).mockResolvedValue(node(1, null));
     vi.mocked(updateTodoCompletion).mockResolvedValue();
@@ -122,6 +142,9 @@ describe("CampaignsView", () => {
     // Only todos with sub-tasks show a progress bar; leaves stay calm.
     expect(w.findAll("[role=progressbar]")).toHaveLength(1);
     expect(w.get('[data-todo-id="1"]').text()).toContain("0/30 Min.");
+    expect(w.get("[role=progressbar]").attributes("aria-valuetext")).toBe(
+      "0 von 30 Minuten darunter erledigt",
+    );
     expect(w.get('[data-todo-id="2"]').find(".row__progress").exists()).toBe(
       false,
     );
@@ -156,7 +179,7 @@ describe("CampaignsView", () => {
     expect(
       w.findAll(`#${menuId} [role=menuitem]`).map((b) => b.text()),
     ).toEqual([
-      "Timer starten",
+      "Stoppuhr starten",
       "Unter-Quest hinzufügen",
       "Fortschritt anzeigen",
       "Verschieben",
@@ -177,10 +200,73 @@ describe("CampaignsView", () => {
   it("toggles only the selected Quest and reloads computed progress", async () => {
     const w = view();
     await flushPromises();
-    await w.get("[role=checkbox]").trigger("click");
+    await w.findAll("[role=checkbox]")[1]!.trigger("click");
+    await flushPromises();
+    expect(updateTodoCompletion).toHaveBeenCalledWith(2, true);
+    expect(getTodoHierarchy).toHaveBeenCalledTimes(2);
+  });
+  it("offers to take a completion back, as Heute does", async () => {
+    const w = view();
+    await flushPromises();
+    await w.findAll("[role=checkbox]")[1]!.trigger("click");
+    await flushPromises();
+    expect(w.get(".undo-toast").text()).toContain("„Quest 2“ erledigt");
+    await button(w, "Rückgängig").trigger("click");
+    await flushPromises();
+    expect(updateTodoCompletion).toHaveBeenLastCalledWith(2, false);
+    expect(w.get(".undo-toast").text()).toBe("");
+  });
+  it("asks before completing a campaign with open quests", async () => {
+    vi.mocked(getTodoHierarchy).mockResolvedValue([
+      node(1, null, below(3, 1)),
+      node(2, 1),
+      node(3, 1),
+      { ...node(4, 1), completed: true },
+    ]);
+    const w = view();
+    await flushPromises();
+    await w.get('[data-todo-id="1"] [role=checkbox]').trigger("click");
+    await flushPromises();
+    expect(w.get("[role=dialog]").text()).toContain(
+      "2 Quests in „Quest 1“ sind noch offen. Sie bleiben offen",
+    );
+    expect(updateTodoCompletion).not.toHaveBeenCalled();
+    await button(w, "Abbrechen").trigger("click");
+    await flushPromises();
+    expect(w.find("[role=dialog]").exists()).toBe(false);
+    expect(updateTodoCompletion).not.toHaveBeenCalled();
+
+    await w.get('[data-todo-id="1"] [role=checkbox]').trigger("click");
+    await flushPromises();
+    await button(w, "Kampagne abschließen").trigger("click");
     await flushPromises();
     expect(updateTodoCompletion).toHaveBeenCalledWith(1, true);
-    expect(getTodoHierarchy).toHaveBeenCalledTimes(2);
+    expect(w.get(".undo-toast").text()).toContain("„Quest 1“ abgeschlossen");
+  });
+  it("completes a campaign whose quests are all done without asking", async () => {
+    vi.mocked(getTodoHierarchy).mockResolvedValue([
+      node(1, null, below(1, 1)),
+      { ...node(2, 1), completed: true },
+    ]);
+    const w = view();
+    await flushPromises();
+    await w.get('[data-todo-id="1"] [role=checkbox]').trigger("click");
+    await flushPromises();
+    expect(w.find("[role=dialog]").exists()).toBe(false);
+    expect(updateTodoCompletion).toHaveBeenCalledWith(1, true);
+  });
+  it("never asks when a campaign is reopened", async () => {
+    vi.mocked(getTodoHierarchy).mockResolvedValue([
+      { ...node(1, null, below(1)), completed: true },
+      node(2, 1),
+    ]);
+    const w = view();
+    await flushPromises();
+    await w.get('[data-todo-id="1"] [role=checkbox]').trigger("click");
+    await flushPromises();
+    expect(w.find("[role=dialog]").exists()).toBe(false);
+    expect(updateTodoCompletion).toHaveBeenCalledWith(1, false);
+    expect(w.get(".undo-toast").text()).toBe("");
   });
   it("excludes self and descendants from move choices and allows root", async () => {
     const w = view();
@@ -263,7 +349,13 @@ describe("CampaignsView", () => {
 
     beforeEach(() => {
       vi.mocked(getTodoHierarchy).mockResolvedValue([
-        campaignNode(1, { color: "berry", icon: "book", weeklyTargetMinutes: 360 }),
+        campaignNode(1, {
+          color: "berry",
+          icon: "book",
+          weeklyTargetMinutes: 360,
+          progress: below(1),
+        }),
+
         node(2, 1),
         campaignNode(3, { completed: true, color: "moss" }),
         // A loose quest is no campaign and gets no tile.

@@ -74,7 +74,7 @@ onUnmounted(() => {
   <div class="push-settings">
     <div class="push-settings__row">
       <span id="push-settings-label" class="push-settings__label">
-        Timer-Benachrichtigungen
+        Benachrichtigen, wenn das Soll erreicht ist
       </span>
       <button
         v-if="
@@ -96,8 +96,8 @@ onUnmounted(() => {
       </button>
     </div>
     <p class="push-settings__text">
-      Meldet auf diesem Gerät, wenn ein Timer abläuft, ohne Quest- oder
-      Daily-Titel.
+      Meldet sich auf diesem Gerät, sobald eine Stoppuhr ihr Soll erreicht, ohne
+      Quest- oder Daily-Titel. Die Stoppuhr läuft dabei weiter.
     </p>
     <p class="visually-hidden" role="status">
       {{

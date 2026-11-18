@@ -86,7 +86,7 @@ self.addEventListener("push", (event) => {
         if (!latest.enabled || latest.subscriptionId !== data.subscriptionId)
           return;
         await self.registration.showNotification("Du hast dein Soll erreicht", {
-          body: "Öffne die App, um fortzufahren.",
+          body: "Die Stoppuhr läuft weiter.",
           icon: "/icon-192.svg",
           tag: `habit-timer-${data.timerId}`,
           renotify: false,

@@ -113,7 +113,7 @@ const share = computed(() =>
   margin: 0;
   padding: var(--space-5) var(--space-4) var(--space-4);
   border-radius: var(--radius-card);
-  background: var(--color-surface);
+  background: var(--color-surface-raised);
   box-shadow: var(--shadow-card);
 }
 
@@ -208,6 +208,7 @@ const share = computed(() =>
   }
 
   .figures__item--hours {
+    background: var(--color-surface-raised);
     box-shadow: var(--shadow-card);
   }
 

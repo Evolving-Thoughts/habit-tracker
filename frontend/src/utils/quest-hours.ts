@@ -41,16 +41,45 @@ export function againstTarget(minutes: number, target: number | null): string {
 }
 
 /**
- * The quiet line in the head of Heute. Nothing while there is neither
- * measured quest time this week nor a goal.
+ * The one time line in the head of Heute. It puts the two figures in
+ * relation instead of side by side: what was worked today, how much of it
+ * went to campaigns (the quest hours), then the quest hours of the week
+ * against the goal. Both figures come from the same stretches, so the part
+ * on campaigns is never more than the whole.
+ *
+ * - "1 Std. 40 Min. gearbeitet, davon 1 Std. 20 Min. auf Kampagnen · Woche
+ *   4 Std. 11 Min. von 20 Std."
+ * - all of it on campaigns: "…, alles auf Kampagnen"; none: just "40 Min.
+ *   gearbeitet", and the week names what it counts ("Kampagnen diese Woche").
+ * - nothing worked today: only the week; neither week time nor a goal: null.
  */
-export function questHoursLine(hours: {
-  todayMinutes: number;
-  weekMinutes: number;
-  weeklyTargetMinutes: number | null;
-}): string | null {
-  if (!hours.weekMinutes && hours.weeklyTargetMinutes === null) return null;
-  return `Quest-Stunden heute ${formatDuration(hours.todayMinutes)} · Woche ${againstTarget(hours.weekMinutes, hours.weeklyTargetMinutes)}`;
+export function workLine(
+  workedMinutes: number,
+  hours: {
+    todayMinutes: number;
+    weekMinutes: number;
+    weeklyTargetMinutes: number | null;
+  },
+): string | null {
+  const parts: string[] = [];
+  const onCampaigns = Math.min(hours.todayMinutes, workedMinutes);
+  if (workedMinutes > 0) {
+    const worked = `${formatDuration(workedMinutes)} gearbeitet`;
+    parts.push(
+      onCampaigns === 0
+        ? worked
+        : onCampaigns === workedMinutes
+          ? `${worked}, alles auf Kampagnen`
+          : `${worked}, davon ${formatDuration(onCampaigns)} auf Kampagnen`,
+    );
+  }
+  if (hours.weekMinutes > 0 || hours.weeklyTargetMinutes !== null) {
+    const week = againstTarget(hours.weekMinutes, hours.weeklyTargetMinutes);
+    parts.push(
+      onCampaigns > 0 ? `Woche ${week}` : `Kampagnen diese Woche ${week}`,
+    );
+  }
+  return parts.length ? parts.join(" · ") : null;
 }
 
 /** A campaign as its tile shows it. */

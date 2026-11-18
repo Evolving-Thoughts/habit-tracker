@@ -1,5 +1,8 @@
 import { TODO_FIELDS } from "../types/fixtures";
-import { getDeletionPreview } from "../api/todo-hierarchy.api";
+import {
+  getDeletionPreview,
+  getTodoHierarchy,
+} from "../api/todo-hierarchy.api";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -16,7 +19,10 @@ import { reloadShortcutSettings } from "../composables/useShortcuts";
 
 vi.mock("../api/categories.api", () => ({ getCategories: vi.fn() }));
 vi.mock("../components/QuestNotes.vue", () => import("../test/quest-notes-stub"));
-vi.mock("../api/todo-hierarchy.api", () => ({ getDeletionPreview: vi.fn() }));
+vi.mock("../api/todo-hierarchy.api", () => ({
+  getDeletionPreview: vi.fn(),
+  getTodoHierarchy: vi.fn(),
+}));
 vi.mock("../api/day-planner.api", () => ({
   getBacklogTodos: vi.fn(),
   createTodo: vi.fn(),
@@ -100,6 +106,93 @@ describe("QuestlogView", () => {
     expect(wrapper.get(".undo-toast").text()).toContain(
       "„NestJS lernen“ erledigt",
     );
+  });
+
+  describe("a campaign as a row", () => {
+    const campaign = makeTodo({
+      campaign: { id: 1, title: "NestJS lernen", color: null, icon: null },
+    });
+    const tree = (todoCount: number, doneCount: number) =>
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        {
+          ...campaign,
+          progress: {
+            mode: "count",
+            completed: doneCount,
+            total: todoCount,
+            percentage: 0,
+            knownDurationMinutes: 0,
+            todoCount,
+            doneCount,
+          },
+        },
+      ]);
+
+    it("asks before completing it while quests below are open", async () => {
+      backlogMock.mockResolvedValue([campaign]);
+      tree(3, 1);
+      const wrapper = mountView();
+      await flushPromises();
+      await wrapper
+        .get('button[aria-label="NestJS lernen erledigen"]')
+        .trigger("click");
+      await flushPromises();
+      const dialog = wrapper.get(".campaign-completion__lead");
+      expect(dialog.text()).toBe(
+        "2 Quests in „NestJS lernen“ sind noch offen. Sie bleiben offen; die Kampagne steht danach unter „Abgeschlossen“.",
+      );
+      expect(completionMock).not.toHaveBeenCalled();
+      await wrapper.get("[data-campaign-confirm]").trigger("click");
+      await flushPromises();
+      expect(completionMock).toHaveBeenCalledWith(1, true);
+      expect(wrapper.get(".undo-toast").text()).toContain(
+        "„NestJS lernen“ abgeschlossen",
+      );
+    });
+
+    it("leaves it open when the question is cancelled", async () => {
+      backlogMock.mockResolvedValue([campaign]);
+      tree(1, 0);
+      const wrapper = mountView();
+      await flushPromises();
+      await wrapper
+        .get('button[aria-label="NestJS lernen erledigen"]')
+        .trigger("click");
+      await flushPromises();
+      expect(wrapper.text()).toContain("1 Quest in „NestJS lernen“ ist noch offen");
+      const cancel = wrapper
+        .findAll("button")
+        .find((button) => button.text() === "Abbrechen")!;
+      await cancel.trigger("click");
+      await flushPromises();
+      expect(wrapper.find(".campaign-completion__lead").exists()).toBe(false);
+      expect(completionMock).not.toHaveBeenCalled();
+    });
+
+    it("completes it at once when everything below is done", async () => {
+      backlogMock.mockResolvedValue([campaign]);
+      tree(2, 2);
+      const wrapper = mountView();
+      await flushPromises();
+      await wrapper
+        .get('button[aria-label="NestJS lernen erledigen"]')
+        .trigger("click");
+      await flushPromises();
+      expect(wrapper.find(".campaign-completion__lead").exists()).toBe(false);
+      expect(completionMock).toHaveBeenCalledWith(1, true);
+    });
+
+    it("never reads the tree for a loose quest", async () => {
+      backlogMock.mockResolvedValue([makeTodo()]);
+      const wrapper = mountView();
+      await flushPromises();
+      await wrapper
+        .get('button[aria-label="NestJS lernen erledigen"]')
+        .trigger("click");
+      await flushPromises();
+      expect(getTodoHierarchy).not.toHaveBeenCalled();
+      expect(completionMock).toHaveBeenCalledWith(1, true);
+    });
   });
 
   it("folds ticked todos under a disclosure and can reopen them", async () => {

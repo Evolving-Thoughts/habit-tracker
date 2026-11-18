@@ -24,8 +24,8 @@ const label = computed(() =>
     : own.value === "paused"
       ? `Stoppuhr für ${props.title} fortsetzen`
       : !props.eligible
-        ? `Timer für ${props.title}: keine offene fällige Ausführung`
-        : `Timer für ${props.title} starten`,
+        ? `Stoppuhr für ${props.title}: keine offene fällige Ausführung`
+        : `Stoppuhr für ${props.title} starten`,
 );
 function press(): void {
   if (props.targetId === null) return;

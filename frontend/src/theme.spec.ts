@@ -6,6 +6,7 @@ import { THEME_COLORS } from "./composables/useTheme";
 import { CAMPAIGN_COLORS } from "./types/campaign";
 import {
   blockTokens,
+  layeredContrast,
   themeTokens,
   tokenColor,
   tokenContrast,
@@ -74,12 +75,37 @@ const PAIRS: Pair[] = [
   ]),
   // Logbook stripes and the split bar without a campaign lie on cards.
   pair("mark-none", "surface", NON_TEXT, "time without a campaign"),
+  // The one lifted card of a view: focus card, quota, quest hours, sign-in.
+  ...["ink", "ink-muted", "ink-soft", "action", "action-strong"].map((ink) =>
+    pair(ink, "surface-raised", TEXT, "text on the lifted card"),
+  ),
+  pair("action", "surface-raised", NON_TEXT, "Erledigt on the focus card"),
+  pair("line-strong", "surface-raised", NON_TEXT, "field on the sign-in card"),
+  // Placeholders (ink-soft) on the field itself: fields are surface.
+  pair("ink-soft", "surface", TEXT, "placeholder in a field"),
+];
+
+/**
+ * Text on stacked translucent surfaces, bottom first. The Plan's quick add
+ * is a field in surface-quiet on a day column in surface-faint.
+ */
+const LAYERED: { foreground: string; layers: string[]; use: string }[] = [
+  {
+    foreground: "ink-soft",
+    layers: ["ground", "surface-faint", "surface-quiet"],
+    use: "placeholder of the Plan's quick add",
+  },
+  {
+    foreground: "ink",
+    layers: ["ground", "surface-faint", "surface-quiet"],
+    use: "typing in the Plan's quick add",
+  },
 ];
 
 const themes = themeTokens(css);
 
 function failures(tokens: Tokens): string[] {
-  return PAIRS.flatMap(({ foreground, background, min, use }) => {
+  const flat = PAIRS.flatMap(({ foreground, background, min, use }) => {
     const ratio = tokenContrast(
       tokens,
       `color-${foreground}`,
@@ -89,6 +115,17 @@ function failures(tokens: Tokens): string[] {
       ? [`${foreground} on ${background}: ${ratio.toFixed(2)} < ${min} (${use})`]
       : [];
   });
+  const stacked = LAYERED.flatMap(({ foreground, layers, use }) => {
+    const ratio = layeredContrast(
+      tokens,
+      `color-${foreground}`,
+      layers.map((layer) => `color-${layer}`),
+    );
+    return ratio + 1e-9 < TEXT
+      ? [`${foreground} on ${layers.join(" + ")}: ${ratio.toFixed(2)} (${use})`]
+      : [];
+  });
+  return [...flat, ...stacked];
 }
 
 describe("theme tokens", () => {
@@ -101,6 +138,19 @@ describe("theme tokens", () => {
     expect(names(themes.light).filter((name) => !own.includes(name))).toEqual(
       [],
     );
+  });
+
+  it("lifts the one raised card a step above the rows at night only", () => {
+    // By day the card shadow does it; the colour stays the rows' white.
+    expect(tokenColor(themes.light, "color-surface-raised")).toBe(
+      tokenColor(themes.light, "color-surface"),
+    );
+    const step = tokenContrast(
+      themes.dark,
+      "color-surface-raised",
+      "color-surface",
+    );
+    expect(step).toBeGreaterThan(1.1);
   });
 
   it("sets color-scheme for each theme", () => {

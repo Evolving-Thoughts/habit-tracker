@@ -78,7 +78,8 @@ test("Wochenrückblick: the week in numbers, its campaigns, what was done, and t
   ).toContainText("45 Min. von 6 Std.");
   // Progress links to the campaign, where its burn-up is.
   const progress = view.locator(`a[data-campaign-id="${book}"]`);
-  await expect(progress).toContainText("1 von 3 Quests");
+  // Two quests below the campaign, one done: the campaign itself does not count.
+  await expect(progress).toContainText("1 von 2 Quests · 50 %");
   await expect(progress).toHaveAttribute(
     "href",
     `#/kampagnen?kampagne=${book}`,

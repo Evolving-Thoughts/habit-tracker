@@ -101,7 +101,7 @@ const moreActions = computed<MenuEntry[]>(() => {
       id: "stop",
       label: "Beenden",
       icon: "stop",
-      ariaLabel: "Timer beenden",
+      ariaLabel: "Stoppuhr beenden",
       disabled: busy.value || completing.value,
       run: () => void controller.action("stop"),
     },
@@ -132,7 +132,7 @@ onUnmounted(() => {
   <aside
     v-if="(timer || error) && !hideBar"
     class="timer-bar"
-    aria-label="Aktueller Timer"
+    aria-label="Aktuelle Stoppuhr"
   >
     <div v-if="timer" class="timer-bar__row">
       <div class="timer-bar__text">
@@ -154,14 +154,14 @@ onUnmounted(() => {
         <TimerIconButton
           v-if="timer.state === 'running'"
           icon="pause"
-          label="Timer pausieren"
+          label="Stoppuhr pausieren"
           :disabled="busy"
           @click="controller.action('pause')"
         />
         <TimerIconButton
           v-if="timer.state === 'paused'"
           icon="play"
-          label="Timer fortsetzen"
+          label="Stoppuhr fortsetzen"
           :disabled="busy"
           @click="controller.action('resume')"
         />
@@ -182,7 +182,7 @@ onUnmounted(() => {
         <TimerIconButton
           class="timer-bar__wide"
           icon="stop"
-          label="Timer beenden"
+          label="Stoppuhr beenden"
           :disabled="busy || completing"
           @click="controller.action('stop')"
         />
@@ -208,18 +208,18 @@ onUnmounted(() => {
   <slot />
   <ModalDialog
     v-if="switching"
-    title="Anderen Timer starten?"
+    title="Andere Stoppuhr starten?"
     :busy="busy"
     focus-selector="[data-confirm-switch]"
     @close="switching = null"
   >
     <p>
-      Den bisherigen Timer beenden und „{{ switching.target.title }}“ starten?
+      Die bisherige Stoppuhr beenden und „{{ switching.target.title }}“ starten?
       Die bisher gearbeitete Zeit bleibt im Logbuch, die Quest bleibt offen.
     </p>
     <div class="timer-dialog-actions">
       <button data-confirm-switch type="button" @click="replace">
-        Timer wechseln</button
+        Stoppuhr wechseln</button
       ><button type="button" @click="switching = null">Abbrechen</button>
     </div>
     <p v-if="error" role="alert">{{ error }}</p>

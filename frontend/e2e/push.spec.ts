@@ -50,7 +50,7 @@ test("push setting persists explicit opt-out and rebinds opted-in devices after 
   await page.goto("/");
   await openView(page, "Einstellungen");
   const toggle = page.getByRole("switch", {
-    name: "Timer-Benachrichtigungen",
+    name: "Benachrichtigen, wenn das Soll erreicht ist",
   });
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   await toggle.click();
@@ -82,6 +82,8 @@ test("blocked push permission has an actionable hint and never forces a prompt",
   await openView(page, "Einstellungen");
   await expect(page.getByText(/Website-Einstellungen/)).toBeVisible();
   await expect(
-    page.getByRole("switch", { name: "Timer-Benachrichtigungen" }),
+    page.getByRole("switch", {
+      name: "Benachrichtigen, wenn das Soll erreicht ist",
+    }),
   ).toHaveCount(0);
 });

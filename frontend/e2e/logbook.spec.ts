@@ -41,11 +41,11 @@ test("Logbuch: a stopwatch stretch and time added by hand show in the day, the w
   await page.goto("/");
   await openView(page, "Heute");
   await page
-    .getByRole("button", { name: "Timer für Mails starten", exact: true })
+    .getByRole("button", { name: "Stoppuhr für Mails starten", exact: true })
     .click();
-  const bar = page.getByRole("complementary", { name: "Aktueller Timer" });
+  const bar = page.getByRole("complementary", { name: "Aktuelle Stoppuhr" });
   await expect(bar).toContainText("Stoppuhr läuft");
-  await timerBarAction(page, "Timer beenden");
+  await timerBarAction(page, "Stoppuhr beenden");
   await expect(bar).toHaveCount(0);
 
   const view = await openCalendar(page, "Tag");
@@ -58,7 +58,7 @@ test("Logbuch: a stopwatch stretch and time added by hand show in the day, the w
   expect((await stretch.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await expect(
     logbook.getByRole("list", { name: "Einträge im Logbuch" }),
-  ).toContainText("Timer");
+  ).toContainText("Stoppuhr");
   await stretch.click();
   await expect(logbook.getByLabel("Start", { exact: true })).toBeFocused();
   await logbook.getByRole("button", { name: "Abbrechen", exact: true }).click();
@@ -92,4 +92,76 @@ test("Logbuch: a stopwatch stretch and time added by hand show in the day, the w
     "aria-label",
     /1 Std\. 30 Min\. im Logbuch$/,
   );
+});
+
+test("Logbuch: a deleted stretch waits behind the undo toast and comes back with Rückgängig", async ({
+  page,
+  request,
+}) => {
+  const yesterday = daysAfter(await today(request), -1);
+  const todo = (
+    (await (
+      await request.post(`${API_URL}/todos`, {
+        data: { title: "Lesen", scheduledDate: yesterday },
+      })
+    ).json()) as { id: number }
+  ).id;
+  for (const [start, end] of [
+    ["12:00", "12:30"],
+    ["14:00", "14:20"],
+  ])
+    expect(
+      (
+        await request.post(`${API_URL}/work-logs`, {
+          data: {
+            kind: "todo",
+            targetId: todo,
+            startedAt: `${yesterday}T${start}:00.000Z`,
+            endedAt: `${yesterday}T${end}:00.000Z`,
+          },
+        })
+      ).status(),
+    ).toBe(201);
+  const stored = async () =>
+    (
+      (await (
+        await request.get(
+          `${API_URL}/history?date=${yesterday}&view=day&filter=all`,
+        )
+      ).json()) as { days: { work: { logs: unknown[] } }[] }
+    ).days[0]!.work.logs.length;
+
+  await page.goto("/");
+  const view = await openCalendar(page, "Tag");
+  await view.getByRole("button", { name: "Voriger Zeitraum" }).click();
+  await expect(page.locator('[name="historyDate"]')).toHaveValue(yesterday);
+  const logbook = view.getByRole("region", { name: /^Logbuch/ });
+  const entries = logbook.getByRole("list", { name: "Einträge im Logbuch" });
+  await expect(entries.getByRole("listitem")).toHaveCount(2);
+  await expect(logbook.locator("#day-axis-title")).toHaveText("Logbuch 50 Min.");
+
+  // Deleting takes the stretch out at once; the DELETE waits for the toast.
+  await entries
+    .getByRole("button", { name: /^Lesen \d\d:\d\d löschen$/ })
+    .first()
+    .click();
+  await expect(entries.getByRole("listitem")).toHaveCount(1);
+  const toast = page.locator(".undo-toast");
+  await expect(toast).toContainText("Abschnitt „Lesen“ gelöscht");
+  await expect(logbook.locator("#day-axis-title")).toHaveText("Logbuch");
+  expect(await stored()).toBe(2);
+  await toast.getByRole("button", { name: "Rückgängig", exact: true }).click();
+  await expect(entries.getByRole("listitem")).toHaveCount(2);
+  await expect(logbook.locator("#day-axis-title")).toHaveText("Logbuch 50 Min.");
+
+  // Without Rückgängig the stretch is gone once the toast has run out.
+  await entries
+    .getByRole("button", { name: /^Lesen \d\d:\d\d löschen$/ })
+    .first()
+    .click();
+  await expect(toast).toContainText("Abschnitt „Lesen“ gelöscht");
+  await expect(toast.getByRole("button")).toHaveCount(0, { timeout: 8000 });
+  await expect.poll(stored).toBe(1);
+  await expect(logbook.locator("#day-axis-title")).toHaveText("Logbuch 20 Min.");
+  await expect(entries.getByRole("listitem")).toHaveCount(1);
 });

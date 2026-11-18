@@ -32,7 +32,7 @@ Vier Dinge zusammen, die andere Tracker meist getrennt halten:
 
 ## Operating Context
 
-Vor allem am Handy, als PWA oder Test-APK, häufig unterwegs und in kurzen Momenten: abhaken, Timer starten, verschieben. Der Desktop ergänzt das, etwa für größere Planung in den Kampagnen oder im Kalender.
+Vor allem am Handy, als PWA oder Test-APK, häufig unterwegs und in kurzen Momenten: abhaken, Stoppuhr starten, verschieben. Der Desktop ergänzt das, etwa für größere Planung in den Kampagnen oder im Kalender.
 
 Oberflächensprache ist Deutsch.
 
@@ -63,8 +63,10 @@ Die Oberfläche spricht das Vokabular links. Code, API und Datenbank behalten di
 | Reihenfolge | In welcher Folge der Tag abgearbeitet wird | `dayPosition` |
 | Logbuch | Was erledigt und wie lange gearbeitet wurde | `history`, `work_logs` |
 | Fokus-Modus | Eine Quest im Blick, mit Stoppuhr | – |
+| Stoppuhr | Misst die echte Arbeitszeit und zählt hoch; nie "Timer" in der Oberfläche | `timer` |
 | Soll | Geplante Dauer; die Stoppuhr läuft darüber hinaus | `plannedDurationMinutes`, `targetMinutes` |
-| Quest-Stunden | Gemessene Zeit auf Quests, die zu einer Kampagne gehören | `quest-hours` |
+| Quest-Stunden | Gemessene Zeit auf Quests, die zu einer Kampagne gehören; Heute nennt sie als Teil der gearbeiteten Zeit ("davon … auf Kampagnen") | `quest-hours` |
+| Fortschritt | Erledigte gegen alle Quests unter einer Kampagne oder Questreihe, nie sie selbst | `progress`, `goal_snapshots` |
 | Wochenziel | Quest-Stunden, die man pro Woche erreichen will, insgesamt oder je Kampagne | `weeklyQuestTargetMinutes`, `weeklyTargetMinutes` |
 | Wochenrückblick | Rückschau auf eine Woche mit Zahlen, Fortschritt der Kampagnen und drei Antworten | `week-review`, `week_reviews` |
 | Dailies im Wochensoll | Erledigte gegen fällige Ausführungen einer Woche; ein Wochenziel zählt mit seiner Sollzahl | `weekQuota` |

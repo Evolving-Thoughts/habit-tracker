@@ -1,11 +1,20 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import {
   rescheduleOccurrence,
   rescheduleTodo,
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { getHistory } from "../api/history.api";
+import { ApiError } from "../api/http";
+import { deleteWorkLog } from "../api/work-logs.api";
 import AppIcon from "../components/AppIcon.vue";
 import CalendarDay from "../components/CalendarDay.vue";
 import CalendarMonth from "../components/CalendarMonth.vue";
@@ -24,6 +33,7 @@ import type {
   HistoryFilter,
   HistoryPlannedItem,
   HistoryResponse,
+  HistoryWorkLog,
 } from "../types/history";
 import { getCurrentDateInTimeZone, isValidIsoDate } from "../utils/date";
 import {
@@ -73,20 +83,7 @@ const {
   async (signal) => {
     if (!supportedHistoryDate(date.value, mode.value))
       throw new Error("Bitte wähle ein gültiges Datum.");
-    try {
-      return await getHistory(
-        requestDate.value,
-        mode.value,
-        filter.value,
-        signal,
-      );
-    } catch (cause) {
-      if (cause instanceof TypeError)
-        throw new Error(
-          "Keine Verbindung zum Server. Prüfe die Verbindung und versuch es noch einmal.",
-        );
-      throw cause;
-    }
+    return getHistory(requestDate.value, mode.value, filter.value, signal);
   },
   {
     initial: null,
@@ -276,8 +273,55 @@ function closeDialogs(): void {
  * The planned rows follow the row contract: open quests get the ring (with
  * undo, as on Heute), the title opens the editor, and moving sits in the
  * menu "Aktionen für …" with the same quick days as Heute.
+ *
+ * Deleting a Logbuch stretch shares the toast. The DELETE waits until the
+ * offer ends (five seconds, the next offer, leaving the view or the page),
+ * so "Rückgängig" only shows the stretch again: nothing was deleted, and its
+ * event in Google, its source and its id stay as they were.
  */
-const { undo, offer: offerUndo, take: takeUndo } = useUndo<number>();
+type Undoable = { kind: "todo" | "log"; id: number };
+const {
+  undo,
+  offer: offerUndo,
+  take: takeUndo,
+  flush: flushUndo,
+} = useUndo<Undoable>();
+const hiddenLogs = ref<ReadonlySet<number>>(new Set());
+function showLog(id: number, shown: boolean): void {
+  const next = new Set(hiddenLogs.value);
+  if (shown) next.delete(id);
+  else next.add(id);
+  hiddenLogs.value = next;
+}
+function removeLog(log: HistoryWorkLog): void {
+  showLog(log.id, false);
+  offerUndo(
+    { kind: "log", id: log.id },
+    `Abschnitt „${log.title}“ gelöscht`,
+    () => void deleteLog(log.id),
+  );
+}
+async function deleteLog(id: number): Promise<void> {
+  await writes.write(
+    async () => {
+      try {
+        await deleteWorkLog(id);
+      } catch (cause) {
+        // Already gone, e.g. deleted on another device: what was asked for.
+        if (!(cause instanceof ApiError && cause.status === 404)) throw cause;
+      }
+    },
+    {
+      key: `log-${id}`,
+      fallbackError: "Der Abschnitt konnte nicht gelöscht werden.",
+    },
+  );
+  // Gone after the reload, or back in the list next to the error.
+  showLog(id, true);
+}
+/* Closing or reloading the page sends a held delete on its way. */
+onMounted(() => window.addEventListener("pagehide", flushUndo));
+onBeforeUnmount(() => window.removeEventListener("pagehide", flushUndo));
 const busyKey = (item: HistoryPlannedItem) => `planned-${item.key}`;
 function quickMove(item: HistoryPlannedItem, date: string): void {
   if (item.id === null) return;
@@ -305,7 +349,7 @@ const plannedActions: PlannedActions = {
         key: busyKey(item),
         fallbackError: "Die Quest konnte nicht erledigt werden.",
       });
-      if (done) offerUndo(id, `„${item.title}“ erledigt`);
+      if (done) offerUndo({ kind: "todo", id }, `„${item.title}“ erledigt`);
     });
   },
   editable: (item) =>
@@ -347,8 +391,11 @@ const plannedActions: PlannedActions = {
   busy: (item) => writes.isWriting(busyKey(item)),
 };
 async function undoLast(): Promise<void> {
-  const id = takeUndo();
-  if (id === null) return;
+  const target = takeUndo();
+  if (target === null) return;
+  // A held delete never went out: the stretch only comes back into view.
+  if (target.kind === "log") return showLog(target.id, true);
+  const id = target.id;
   await writes.write(() => updateTodoCompletion(id, false), {
     key: `undo-${id}`,
     fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
@@ -508,7 +555,9 @@ async function undoLast(): Promise<void> {
         :filter-label="filterLabel"
         :actions="plannedActions"
         :reload="reload"
+        :hidden-logs="hiddenLogs"
         @show-all="filter = 'all'"
+        @remove-log="removeLog"
       />
 
       <MoveItemDialog

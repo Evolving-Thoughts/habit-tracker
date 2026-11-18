@@ -158,7 +158,7 @@ export async function list(
  * an entry of the bar's menu on a phone.
  */
 export async function timerBarAction(page: Page, name: string) {
-  const bar = page.getByRole("complementary", { name: "Aktueller Timer" });
+  const bar = page.getByRole("complementary", { name: "Aktuelle Stoppuhr" });
   await expect(bar).toBeVisible();
   const button = bar.getByRole("button", { name, exact: true });
   if (await button.isVisible()) {
