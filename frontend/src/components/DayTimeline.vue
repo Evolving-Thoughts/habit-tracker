@@ -213,7 +213,7 @@ const stripe = (block: LogBlock) =>
 
 /* Planned, not done: the half-white of appointments elsewhere. */
 .plan-block {
-  background: rgb(255 255 255 / 55%);
+  background: var(--color-surface-flat);
 }
 
 .log-block {

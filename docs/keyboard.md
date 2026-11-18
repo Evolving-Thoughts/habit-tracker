@@ -132,7 +132,9 @@ combobox field controlling a listbox (`aria-activedescendant`, groups
 searching). Entries: every view (the Fokus-Modus as the action "Fokus-Modus
 starten"), "Neue Quest", pausing or resuming a running stopwatch, what the
 open view adds (Heute: "Offenes auf morgen verschieben", which opens the same
-confirmation as its button) and "Tastenkürzel anzeigen". Filtering
+confirmation as its button), the two other looks ("Darstellung: Dunkel",
+"Darstellung: Hell", "Darstellung: Wie das Gerät"; see `theme.md`) and
+"Tastenkürzel anzeigen". Filtering
 (`utils/command-filter.ts`) ignores case and accents, needs every typed word
 and lists matches at word starts before matches inside words. The menu
 closes before a command runs, so the command finds the focus where it was.

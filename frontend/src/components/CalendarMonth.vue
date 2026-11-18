@@ -327,7 +327,7 @@ function cellLabel(day: Day): string {
   gap: 0 calc(var(--tap) + var(--space-4));
   padding: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
   border-radius: var(--radius-card);
-  background: rgb(255 255 255 / 55%);
+  background: var(--color-surface-flat);
 }
 
 .event__time {

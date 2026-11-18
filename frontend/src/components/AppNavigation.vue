@@ -142,9 +142,7 @@ onUnmounted(() => {
   z-index: 30;
   padding: 0 var(--space-2) env(safe-area-inset-bottom, 0px);
   background: var(--color-surface);
-  box-shadow:
-    0 -1px 0 var(--color-line),
-    0 -8px 24px rgb(107 50 18 / 8%);
+  box-shadow: var(--shadow-bar);
 }
 
 .tab-bar__inner {
@@ -221,9 +219,7 @@ onUnmounted(() => {
   padding: var(--space-2);
   border-radius: var(--radius-card);
   background: var(--color-surface);
-  box-shadow:
-    var(--shadow-card),
-    0 12px 32px rgb(107 50 18 / 16%);
+  box-shadow: var(--shadow-popover);
 }
 
 .tab-bar__secondary[data-open] {
@@ -244,7 +240,7 @@ onUnmounted(() => {
   position: fixed;
   inset: 0;
   z-index: 25;
-  background: rgb(43 29 22 / 18%);
+  background: var(--color-scrim-light);
 }
 
 .tab-bar__tab--wide {

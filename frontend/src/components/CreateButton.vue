@@ -41,7 +41,7 @@ const emit = defineEmits<{ click: [] }>();
   border-radius: 1.125rem;
   background: var(--color-action);
   color: var(--color-on-action);
-  box-shadow: 0 4px 14px rgb(154 51 10 / 28%);
+  box-shadow: var(--shadow-fab);
   cursor: pointer;
   transition: transform 420ms var(--spring);
 }

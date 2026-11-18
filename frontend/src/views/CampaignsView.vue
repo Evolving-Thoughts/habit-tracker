@@ -1073,14 +1073,12 @@ useShortcutHandlers({
     calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
   border-radius: var(--radius-card) var(--radius-card) 0 0;
   background: var(--color-surface);
-  box-shadow:
-    var(--shadow-card),
-    0 12px 32px rgb(107 50 18 / 16%);
+  box-shadow: var(--shadow-popover);
 }
 
 @media (max-width: 39.99rem) {
   .menu-scrim {
-    background: rgb(43 29 22 / 18%);
+    background: var(--color-scrim-light);
   }
 }
 

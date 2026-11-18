@@ -4,6 +4,7 @@ import CalendarConnection from "../components/CalendarConnection.vue";
 import PushSettings from "../components/PushSettings.vue";
 import QuestTargetSetting from "../components/QuestTargetSetting.vue";
 import ShortcutSettings from "../components/ShortcutSettings.vue";
+import ThemeSetting from "../components/ThemeSetting.vue";
 import { useKeyboardLikely } from "../composables/useShortcuts";
 
 defineProps<{ email: string }>();
@@ -24,6 +25,11 @@ const keyboardLikely = useKeyboardLikely();
           Wochenziel Quest-Stunden
         </h2>
         <QuestTargetSetting />
+      </section>
+
+      <section class="card" aria-labelledby="settings-theme">
+        <h2 id="settings-theme" class="section-title">Darstellung</h2>
+        <ThemeSetting />
       </section>
 
       <section class="card" aria-labelledby="settings-push">

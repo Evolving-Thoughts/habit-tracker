@@ -116,7 +116,7 @@ const campaignMark = computed(() => markOf(props.entry.campaign));
 
 /* A daily is planned by its schedule: it lies flatter than a quest. */
 .plan-entry--daily {
-  background: rgb(255 255 255 / 55%);
+  background: var(--color-surface-flat);
 }
 
 /*

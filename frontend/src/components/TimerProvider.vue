@@ -305,7 +305,7 @@ input {
   margin-top: 0.5rem;
   min-height: 2.75rem;
   padding: 0 var(--space-3);
-  border: 1.5px solid var(--color-line);
+  border: 1.5px solid var(--color-line-strong);
   border-radius: var(--radius-control);
   background: var(--color-surface);
   color: var(--color-ink);
