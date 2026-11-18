@@ -6,8 +6,8 @@ import GoalBurnup from "./GoalBurnup.vue";
 vi.mock("../api/todo-hierarchy.api", () => ({ getBurnup: vi.fn() }));
 enableAutoUnmount(afterEach);
 
-async function render() {
-  const wrapper = mount(GoalBurnup, { props: { todoId: 1 } });
+async function render(besideBar = false) {
+  const wrapper = mount(GoalBurnup, { props: { todoId: 1, besideBar } });
   await flushPromises();
   return wrapper;
 }
@@ -70,10 +70,48 @@ describe("GoalBurnup", () => {
       "0 von 3 Quests erledigt, 3 noch offen. Stand 30.10.",
     );
     expect(wrapper.text()).toContain("Der Verlauf beginnt heute.");
+    // One point has no line to switch between units or views.
+    expect(wrapper.findAll("button")).toHaveLength(0);
+  });
+
+  it("beside a done/total bar says only that the line starts today", async () => {
+    vi.mocked(getBurnup).mockResolvedValueOnce([
+      {
+        date: "2026-10-30",
+        doneCount: 1,
+        totalCount: 3,
+        doneMinutes: 0,
+        totalMinutes: 0,
+      },
+    ]);
+    const wrapper = await render(true);
+    expect(wrapper.find(".burnup__summary").exists()).toBe(false);
+    expect(wrapper.findAll(".burnup__note").map((note) => note.text())).toEqual([
+      "Der Verlauf beginnt heute. Ab morgen zeigt hier eine Linie, wie es vorangeht.",
+    ]);
+    expect(wrapper.findAll("button")).toHaveLength(0);
+  });
+
+  it("beside a bar offers the switches with two points and keeps only the dates of a count", async () => {
+    const wrapper = await render(true);
     expect(wrapper.findAll("button").map((item) => item.text())).toEqual([
+      "Erledigt",
+      "Noch offen",
       "Anzahl",
       "Minuten",
     ]);
+    expect(wrapper.get(".burnup__summary").text()).toBe(
+      "Stand 31.10., seit 30.10.",
+    );
+    expect(wrapper.get("svg").attributes("aria-label")).toBe(
+      "1 von 4 Quests erledigt",
+    );
+    // Minutes are not on the bar, so they are said in full.
+    await press(wrapper, "Minuten");
+    expect(wrapper.get(".burnup__summary").text()).toBe(
+      "30 von 90 Min. erledigt, 60 noch offen. Stand 31.10., seit 30.10.",
+    );
+    expect(wrapper.text()).not.toContain("Der Verlauf beginnt heute");
   });
 
   it("ends the summary with the date's own full stop", async () => {

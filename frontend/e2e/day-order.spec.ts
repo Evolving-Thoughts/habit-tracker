@@ -238,6 +238,10 @@ test("Quest forms plan a day; only an appointment gets a time", async ({
   await page.locator(".create-button").click();
   const dialog = page.getByRole("dialog");
   await dialog.locator('[name="title"]').fill("Steuerberater");
+  // The time waits behind "Termin (feste Uhrzeit)", and needs a day.
+  const appointment = dialog.getByRole("button", { name: /^Termin/ });
+  await expect(appointment).toHaveAttribute("aria-expanded", "false");
+  await appointment.click();
   await expect(dialog.locator('[name="timeOfDay"]')).toBeDisabled();
   await dialog.getByRole("button", { name: "Heute", exact: true }).click();
   await expect(dialog.locator('[name="scheduledDate"]')).toHaveValue(date);

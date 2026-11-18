@@ -8,7 +8,8 @@ defineProps<{
   returnFocus: () => HTMLElement | null;
 }>();
 const emit = defineEmits<{ close: []; changed: []; busy: [value: boolean] }>();
-const editorBusy = ref(true);
+// The editor reports only its writes; while it loads, Escape still closes.
+const editorBusy = ref(false);
 const refreshing = ref(false);
 const busy = computed(() => editorBusy.value || refreshing.value);
 watch(busy, (value) => emit("busy", value), { immediate: true });

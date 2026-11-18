@@ -3,20 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, ref } from "vue";
 import PlanFields from "./PlanFields.vue";
 
-function mountFields(initialDate = "", initialTime = "") {
+function mountFields(initialDate = "") {
   const date = ref(initialDate);
-  const time = ref(initialTime);
   const wrapper = mount(
     defineComponent({
       components: { PlanFields },
-      setup: () => ({ date, time }),
-      template:
-        '<PlanFields v-model:date="date" v-model:time="time" id-prefix="t" />',
+      setup: () => ({ date }),
+      template: '<PlanFields v-model:date="date" id-prefix="t" />',
     }),
   );
   const chip = (label: string) =>
     wrapper.findAll("button").find((button) => button.text() === label)!;
-  return { wrapper, date, time, chip };
+  return { wrapper, date, chip };
 }
 
 describe("PlanFields", () => {
@@ -43,18 +41,9 @@ describe("PlanFields", () => {
     expect(date.value).toBe("");
   });
 
-  it("only offers a time once there is a day", async () => {
-    const { wrapper, date } = mountFields();
-    const time = wrapper.get<HTMLInputElement>('input[name="timeOfDay"]');
-    expect(time.element.disabled).toBe(true);
-    date.value = "2026-10-05";
-    await wrapper.vm.$nextTick();
-    expect(time.element.disabled).toBe(false);
-  });
-
-  it("drops the time when the day goes", async () => {
-    const { wrapper, time } = mountFields("2026-10-05", "09:30");
-    await wrapper.get('input[name="scheduledDate"]').setValue("");
-    expect(time.value).toBe("");
+  it("asks for the day only; the time belongs to an appointment", () => {
+    const { wrapper } = mountFields();
+    expect(wrapper.find('input[name="timeOfDay"]').exists()).toBe(false);
+    expect(wrapper.get("label").text()).toBe("Tag · optional");
   });
 });

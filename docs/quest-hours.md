@@ -102,18 +102,23 @@ Logbuch, quest hours) carries `{ id, title, color, icon }`.
 - `CampaignFields.vue` edits colour (radio swatches with spoken names, the
   chosen one also named in words), icon (radio group) and "Wochenziel" in
   hours (halves allowed, empty is none). `PlannerItemEditor.vue` offers it for
-  a todo without parent, `CreateTodoForm.vue` when the Kampagnen view creates
-  a new campaign. Hours become minutes in `utils/quest-hours.ts`.
+  a todo without parent, behind the disclosure "Kampagne", which starts open
+  once one of the three is set; `CreateTodoForm.vue` shows it open when the
+  Kampagnen view creates a new campaign. Hours become minutes in `utils/quest-hours.ts`.
 - `CampaignsView.vue` shows a tile per campaign (`CampaignTiles.vue`, tabs
   "Aktiv" and "Abgeschlossen") above the tree of the campaigns and their
   quests (loose quests are not in it): icon, colour stripe, title, this week
   against its goal, an eight-week trend (`QuestTrend.vue`, a small SVG with
   the weeks in words as its label) and the total. A tile opens the campaign in
-  the same view (`#/kampagnen?kampagne=<id>`, so Back closes it): its numbers,
-  the progress of the quests below it (never itself, see
-  `todo-hierarchy.md`), `GoalBurnup.vue`, "Bearbeiten" and "…" with the
-  campaign's own actions, and the quests below it as the tree, with every row
-  action the full list has. The campaign is the card, not a row of the tree.
+  the same view (`#/kampagnen?kampagne=<id>`, so Back closes it): its own
+  `why` under the title, a group "Diese Woche" (this week against its goal as
+  a bar, the eight-week trend labelled "letzte 8 Wochen" and the total), a
+  group "Fortschritt" (the quests below it, never itself, see
+  `todo-hierarchy.md`, as "x von y Quests" with a bar, and `GoalBurnup.vue`,
+  which offers its switches only once it has two days to draw), "Bearbeiten"
+  and "…" with the campaign's own actions, and the quests below it as the
+  tree, with every row action the full list has. The campaign is the card,
+  not a row of the tree.
 - Einstellungen: `QuestTargetSetting.vue` reads and saves the overall goal.
 - Heute: one quiet line in the head that relates the day's quest time to
   what was worked (both from the same stretches, so the part is never more

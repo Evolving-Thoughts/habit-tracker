@@ -146,14 +146,15 @@ describe("CreateTodoForm", () => {
     );
   });
 
-  it("inherits the parent's why unless the text is changed", async () => {
+  it("inherits the parent's why unless an own one is written", async () => {
     createTodoMock.mockResolvedValue(response);
     const parentWhy = { text: "Gesund bleiben", fromId: 4, fromTitle: "Fit" };
     const wrapper = mount(CreateTodoForm, {
       props: { parentId: 4, parentWhy },
     });
-    const why = wrapper.get<HTMLTextAreaElement>('textarea[name="why"]');
-    expect(why.element.value).toBe("Gesund bleiben");
+    // Quoted, not offered as text to edit.
+    expect(wrapper.find('textarea[name="why"]').exists()).toBe(false);
+    expect(wrapper.get("blockquote").text()).toContain("Gesund bleiben");
     await wrapper.get('input[name="title"]').setValue("Laufen");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -161,12 +162,39 @@ describe("CreateTodoForm", () => {
     expect(createTodoMock.mock.calls[0]![0]).not.toHaveProperty("why");
 
     await wrapper.get('input[name="title"]').setValue("Schwimmen");
-    await why.setValue("Schulter stärken");
+    await wrapper.get('[data-test="why-write-own"]').trigger("click");
+    await wrapper.get('textarea[name="why"]').setValue("Schulter stärken");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
     expect(createTodoMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ parentId: 4, why: "Schulter stärken" }),
     );
+    // The reset form quotes the inherited reason again.
+    expect(wrapper.find('textarea[name="why"]').exists()).toBe(false);
+  });
+
+  it("shows title, day, duration and Warum; Termin and Kategorie wait closed", async () => {
+    vi.mocked(getCategories).mockResolvedValue([{ id: 7, name: "Sport" }]);
+    const wrapper = mount(CreateTodoForm, { attachTo: document.body });
+    await flushPromises();
+    for (const field of ["title", "scheduledDate", "duration"])
+      expect(wrapper.get(`input[name="${field}"]`).isVisible()).toBe(true);
+    expect(wrapper.get('textarea[name="why"]').isVisible()).toBe(true);
+    const toggles = wrapper.findAll("button[aria-expanded]");
+    expect(toggles.map((button) => button.text())).toEqual([
+      "Termin (feste Uhrzeit)",
+      "Kategorie",
+    ]);
+    expect(wrapper.get('input[name="timeOfDay"]').isVisible()).toBe(false);
+    expect(wrapper.get('select[name="category"]').isVisible()).toBe(false);
+    await toggles[1]!.trigger("click");
+    expect(document.activeElement).toBe(
+      wrapper.get('select[name="category"]').element,
+    );
+    await wrapper.get('select[name="category"]').setValue(7);
+    await toggles[1]!.trigger("click");
+    expect(toggles[1]!.text()).toBe("Kategorie Sport");
+    wrapper.unmount();
   });
 
   it("rejects a blank title", async () => {

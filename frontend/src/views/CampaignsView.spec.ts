@@ -105,7 +105,11 @@ const view = () =>
         ModalDialog: { template: '<section role="dialog"><slot /></section>' },
         PlannerItemEditor: true,
         CreateTodoForm: true,
-        GoalBurnup: { props: ["todoId"], template: "<p>Burnup {{ todoId }}</p>" },
+        GoalBurnup: {
+          props: { todoId: Number, besideBar: Boolean },
+          template:
+            '<p class="burnup-stub">Burnup {{ todoId }}{{ besideBar ? " beside the bar" : "" }}</p>',
+        },
       },
     },
   });
@@ -464,6 +468,83 @@ describe("CampaignsView", () => {
       expect(router.currentRoute.value.query).toEqual({});
       expect(w.findAll("[data-campaign-tile]")).toHaveLength(1);
       expect(w.findAll("[data-todo-id]")).toHaveLength(3);
+    });
+
+    it("groups the opened campaign: its Warum, this week, then its progress", async () => {
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        campaignNode(1, {
+          color: "berry",
+          weeklyTargetMinutes: 360,
+          why: "Damit die Geschichte endlich fertig wird",
+          progress: below(3, 1),
+        }),
+        node(2, 1),
+        node(3, 1),
+        { ...node(4, 1), completed: true },
+      ]);
+      const w = view();
+      await flushPromises();
+      await button(w, "Kampagne 1").trigger("click");
+      await flushPromises();
+      const card = w.get(".campaign-detail");
+      // Top to bottom: name, Warum, "Diese Woche", "Fortschritt", Bearbeiten.
+      expect(
+        card.element.querySelector(".campaign-detail__head + *")?.textContent?.trim(),
+      ).toBe("Damit die Geschichte endlich fertig wird");
+      const groups = card.findAll(".campaign-detail__group");
+      expect(groups.map((group) => group.get("h3").text())).toEqual([
+        "Diese Woche",
+        "Fortschritt",
+      ]);
+      const [week, progress] = groups;
+      expect(week!.attributes("aria-labelledby")).toBe("campaign-week-title");
+      expect(week!.text()).toContain("3 Std. 30 Min. von 6 Std. Quest-Stunden");
+      expect(
+        week!.get(".campaign-detail__bar > span").attributes("style"),
+      ).toContain("width: 58.3");
+      expect(week!.get(".campaign-detail__trend-head").text()).toMatch(
+        /^letzte 8 Wochen\s*insgesamt 12 Std\. 30 Min\.$/,
+      );
+      expect(week!.get("svg[role=img]").attributes("aria-label")).toContain(
+        "Quest-Stunden der letzten 8 Wochen.",
+      );
+      expect(progress!.get(".campaign-detail__count").text()).toBe(
+        "1 von 3 Quests · 30 von 90 Min.",
+      );
+      expect(progress!.find("[role=progressbar]").exists()).toBe(true);
+      expect(progress!.get(".burnup-stub").text()).toBe(
+        "Burnup 1 beside the bar",
+      );
+      // Each number once: no second "Verlauf" line or loose total.
+      expect(card.text().match(/insgesamt/g)).toHaveLength(1);
+      expect(card.findAll("button").at(-1)!.text()).toBe("Bearbeiten");
+    });
+
+    it("leaves out what a campaign does not have: no Warum, no goal bar, no progress", async () => {
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        campaignNode(1, { color: "berry" }),
+      ]);
+      vi.mocked(getQuestHours).mockResolvedValue(
+        questHours([
+          {
+            campaign: { id: 1, title: "Kampagne 1", color: "berry", icon: null },
+            minutes: 45,
+            weeklyTargetMinutes: null,
+            weeks: [0, 0, 0, 0, 0, 0, 0, 45],
+            totalMinutes: 45,
+          },
+        ]),
+      );
+      const w = view();
+      await flushPromises();
+      await button(w, "Kampagne 1").trigger("click");
+      await flushPromises();
+      const card = w.get(".campaign-detail");
+      expect(card.find(".campaign-detail__why").exists()).toBe(false);
+      expect(card.find(".campaign-detail__bar").exists()).toBe(false);
+      expect(card.text()).toContain("45 Min. Quest-Stunden");
+      expect(card.findAll(".campaign-detail__group")).toHaveLength(1);
+      expect(card.find(".burnup-stub").exists()).toBe(false);
     });
 
     it("keeps the campaign's actions on its detail card", async () => {

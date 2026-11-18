@@ -2,10 +2,12 @@
 import { useTodoDeletion } from "../composables/useTodoDeletion";
 import TodoDeletionSummary from "./TodoDeletionSummary.vue";
 import PlanFields from "./PlanFields.vue";
+import AppointmentFields from "./AppointmentFields.vue";
 import QuestNotes from "./QuestNotes.vue";
 import WhyField from "./WhyField.vue";
 import TodoGoalFields from "./TodoGoalFields.vue";
 import CampaignFields from "./CampaignFields.vue";
+import FormDisclosure from "./FormDisclosure.vue";
 import AppIcon from "./AppIcon.vue";
 
 import {
@@ -40,7 +42,11 @@ import type {
 } from "../types/todo";
 import { buildTodoInput } from "../utils/todo-input";
 import type { CampaignColor, CampaignIcon } from "../types/campaign";
-import { isCampaignColor, isCampaignIcon } from "../utils/campaign-style";
+import {
+  campaignChoices,
+  isCampaignColor,
+  isCampaignIcon,
+} from "../utils/campaign-style";
 import { hoursToMinutes, minutesToHours } from "../utils/quest-hours";
 import {
   emptyScheduleDraft,
@@ -119,6 +125,14 @@ const campaignColor = ref<CampaignColor | null>(null);
 const campaignIcon = ref<CampaignIcon | null>(null);
 const weeklyTarget = ref<string | number>("");
 const isCampaign = computed(() => loadedTodo.value?.parentId === null);
+const campaignSummary = computed(() =>
+  campaignChoices(campaignColor.value, campaignIcon.value, weeklyTarget.value),
+);
+const categoryName = computed(
+  () =>
+    categories.value.find((category) => category.id === categoryId.value)
+      ?.name ?? "",
+);
 
 // Habit-Felder
 const isActive = ref(true);
@@ -156,9 +170,12 @@ function assignmentChanges(): {
   };
 }
 
+/*
+ * Loading is not reported as busy: "busy" keeps a dialog open while a write
+ * is under way, and nothing can be lost by closing an editor that is still
+ * loading. (Reporting it swallowed an early Escape.)
+ */
 async function loadEntity(): Promise<void> {
-  emit("busy", true);
-
   try {
     categories.value = await getCategories();
 
@@ -199,7 +216,6 @@ async function loadEntity(): Promise<void> {
         : "Der Eintrag konnte nicht geladen werden.";
   } finally {
     isLoading.value = false;
-    emit("busy", false);
   }
 }
 
@@ -401,7 +417,7 @@ onMounted(loadEntity);
 <template>
   <section
     class="item-editor"
-    :class="{ card: !embedded }"
+    :class="{ card: !embedded, 'item-editor--embedded': embedded }"
     :aria-labelledby="embedded ? undefined : 'item-editor-heading'"
   >
     <h2 v-if="!embedded" id="item-editor-heading">
@@ -439,28 +455,12 @@ onMounted(loadEntity);
           <input v-model="title" name="title" maxlength="200" required />
         </label>
 
-        <label class="field">
-          Kategorie · optional
-          <select v-model="categoryId" name="category">
-            <option :value="null">Keine</option>
-            <option
-              v-for="category in categories"
-              :key="category.id"
-              :value="category.id"
-            >
-              {{ category.name }}
-            </option>
-          </select>
-        </label>
-
-        <WhyField id="planner-edit-why" v-model="why" :inherited="inheritedWhy" />
-
+        <!--
+          A quest shows what most edits touch; the rarer groups wait behind
+          disclosures that open by themselves when they hold a value.
+        -->
         <template v-if="kind === 'todo'">
-          <PlanFields
-            v-model:date="todoDate"
-            v-model:time="todoTime"
-            id-prefix="planner-edit"
-          />
+          <PlanFields v-model:date="todoDate" id-prefix="planner-edit" />
 
           <div class="item-editor__row">
             <label class="field">
@@ -475,26 +475,87 @@ onMounted(loadEntity);
             </label>
           </div>
 
-          <CampaignFields
-            v-if="isCampaign"
-            v-model:color="campaignColor"
-            v-model:icon="campaignIcon"
-            v-model:target="weeklyTarget"
-            id-prefix="planner-edit-campaign"
-            :title="title"
+          <WhyField
+            id="planner-edit-why"
+            v-model="why"
+            :inherited="inheritedWhy"
           />
 
-          <TodoGoalFields
-            v-model:period-start="periodStart"
-            v-model:period-end="periodEnd"
-            v-model:habit-id="goalHabitId"
-            v-model:target="goalTarget"
-          />
+          <div class="item-editor__more">
+            <FormDisclosure
+              v-if="isCampaign"
+              label="Kampagne"
+              detail="Farbe, Symbol, Wochenziel"
+              :summary="campaignSummary"
+              :start-open="!!campaignSummary"
+            >
+              <CampaignFields
+                v-model:color="campaignColor"
+                v-model:icon="campaignIcon"
+                v-model:target="weeklyTarget"
+                id-prefix="planner-edit-campaign"
+                :title="title"
+              />
+            </FormDisclosure>
+
+            <AppointmentFields
+              v-model:time="todoTime"
+              :date="todoDate"
+              id-prefix="planner-edit"
+            />
+
+            <TodoGoalFields
+              v-model:period-start="periodStart"
+              v-model:period-end="periodEnd"
+              v-model:habit-id="goalHabitId"
+              v-model:target="goalTarget"
+            />
+
+            <FormDisclosure
+              label="Kategorie"
+              :summary="categoryName"
+              :start-open="categoryId !== null"
+            >
+              <label class="field">
+                Kategorie
+                <select v-model="categoryId" name="category">
+                  <option :value="null">Keine</option>
+                  <option
+                    v-for="category in categories"
+                    :key="category.id"
+                    :value="category.id"
+                  >
+                    {{ category.name }}
+                  </option>
+                </select>
+              </label>
+            </FormDisclosure>
+          </div>
 
           <QuestNotes :todo-id="entityId" />
         </template>
 
         <template v-else>
+          <label class="field">
+            Kategorie · optional
+            <select v-model="categoryId" name="category">
+              <option :value="null">Keine</option>
+              <option
+                v-for="category in categories"
+                :key="category.id"
+                :value="category.id"
+              >
+                {{ category.name }}
+              </option>
+            </select>
+          </label>
+
+          <WhyField
+            id="planner-edit-why"
+            v-model="why"
+            :inherited="inheritedWhy"
+          />
+
           <div class="item-editor__row">
             <label class="field">
               Uhrzeit · optional
@@ -670,18 +731,21 @@ onMounted(loadEntity);
           </fieldset>
         </template>
 
-        <p v-if="errorMessage" class="form-error" role="alert">
-          {{ errorMessage }}
-        </p>
+        <!-- In a dialog it sticks to the bottom, so saving never needs a scroll. -->
+        <div class="item-editor__footer" data-test="editor-actions">
+          <p v-if="errorMessage" class="form-error" role="alert">
+            {{ errorMessage }}
+          </p>
 
-        <div class="item-editor__actions">
-          <button class="btn btn--primary" type="submit">
-            {{ isSaving ? "Bitte warten …" : "Speichern" }}
-          </button>
+          <div class="item-editor__actions">
+            <button class="btn btn--primary" type="submit">
+              {{ isSaving ? "Bitte warten …" : "Speichern" }}
+            </button>
 
-          <button class="btn" type="button" @click="emit('close')">
-            Abbrechen
-          </button>
+            <button class="btn" type="button" @click="emit('close')">
+              Abbrechen
+            </button>
+          </div>
         </div>
 
         <div class="item-editor__delete">
@@ -782,6 +846,37 @@ onMounted(loadEntity);
   align-items: center;
 }
 
+/* The optional groups read as one list between hairlines. */
+.item-editor__more {
+  display: grid;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.item-editor__footer {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/*
+ * Inside the dialog the actions stick to its bottom edge, across its padding,
+ * so Speichern and Abbrechen stay in reach above a long form on a phone.
+ */
+.item-editor--embedded .item-editor__footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: 0 calc(-1 * var(--dialog-padding, 0px));
+  padding: var(--space-3) var(--dialog-padding, 0px)
+    var(--dialog-padding, 0px);
+  border-top: 1px solid var(--color-line);
+  background: var(--color-surface);
+}
+
+/* A field reached with Tab never hides behind the sticky actions. */
+:global(.modal-dialog:has(.item-editor--embedded)) {
+  scroll-padding-bottom: 7rem;
+}
+
 .item-editor__hint {
   margin: 0;
   color: var(--color-ink-muted);
@@ -859,6 +954,23 @@ onMounted(loadEntity);
 
 .item-editor__delete p {
   margin: 0;
+}
+
+/* Below the sticky actions, whose edge already sets it apart. */
+.item-editor--embedded .item-editor__delete {
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* The way to deletion stays quiet ink; only "Ja, löschen" is red. */
+.item-editor button.btn--quiet:not(:disabled) {
+  background: transparent;
+  color: var(--color-ink-muted);
+}
+
+.item-editor button.btn--quiet:hover:not(:disabled) {
+  background: var(--color-action-tint);
+  color: var(--color-action-strong);
 }
 
 /* ModalDialog tints every button; destructive ones keep the danger tint. */

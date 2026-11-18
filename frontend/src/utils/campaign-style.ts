@@ -45,6 +45,25 @@ export const isCampaignColor = (value: unknown): value is CampaignColor =>
 export const isCampaignIcon = (value: unknown): value is CampaignIcon =>
   (CAMPAIGN_ICONS as readonly unknown[]).includes(value);
 
+/**
+ * "Beere · Buch · 6 Std. pro Woche": what a campaign's look and goal are set
+ * to, in words, for a closed disclosure; empty while nothing is chosen.
+ */
+export function campaignChoices(
+  color: CampaignColor | null,
+  icon: CampaignIcon | null,
+  targetHours: string | number,
+): string {
+  const hours = String(targetHours).trim();
+  return [
+    color ? COLOR_NAMES[color] : "",
+    icon ? ICON_NAMES[icon] : "",
+    hours ? `${hours.replace(".", ",")} Std. pro Woche` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 /** The colour token of a key, from style.css. */
 export const markToken = (color: CampaignColor): string =>
   `var(--color-mark-${color})`;

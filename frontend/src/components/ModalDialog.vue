@@ -146,8 +146,10 @@ onUnmounted(() => {
   overflow-y: auto;
   overscroll-behavior: contain;
   box-sizing: border-box;
+  /* Content that reaches the edges (a sticky footer) reads this. */
+  --dialog-padding: var(--space-5);
   margin: auto;
-  padding: var(--space-5);
+  padding: var(--dialog-padding);
   border: 0;
   border-radius: var(--radius-card);
   background: var(--color-surface);
@@ -228,7 +230,7 @@ onUnmounted(() => {
 }
 @media (max-width: 32rem) {
   .modal-dialog {
-    padding: var(--space-4);
+    --dialog-padding: var(--space-4);
   }
 }
 </style>

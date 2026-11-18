@@ -5,7 +5,7 @@ import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import { getQuestHours } from "../api/quest-hours.api";
 import { updateTodo, updateTodoCompletion } from "../api/day-planner.api";
 import { getCategories } from "../api/categories.api";
-import type { HierarchyTodo } from "../types/todo-hierarchy";
+import type { HierarchyTodo, TodoProgress } from "../types/todo-hierarchy";
 import type { TodoResponse } from "../types/todo";
 import { whyBelow } from "../utils/why";
 import {
@@ -14,6 +14,7 @@ import {
   openBelow,
   progressText,
   progressWords,
+  questWord,
   visibleHierarchy,
   descendantIds,
 } from "../utils/todo-hierarchy";
@@ -124,6 +125,19 @@ const openMark = computed(() =>
       })!
     : "",
 );
+/** This week against the campaign's goal, for its bar; full when exceeded. */
+const weekShare = computed(() => {
+  const tile = openTile.value;
+  if (!tile?.weeklyTargetMinutes) return 0;
+  return Math.min(100, (tile.minutes / tile.weeklyTargetMinutes) * 100);
+});
+/** "1 von 3 Quests", with the minutes when the bar counts them. */
+function questCount(progress: TodoProgress): string {
+  const quests = `${progress.doneCount} von ${progress.todoCount} ${questWord(progress.todoCount)}`;
+  return progress.mode === "duration"
+    ? `${quests} · ${progress.completed} von ${progress.total} Min.`
+    : quests;
+}
 async function openCampaign(id: number) {
   await router.push({ query: { kampagne: String(id) } });
   await nextTick();
@@ -551,7 +565,17 @@ useShortcutHandlers({
               :trigger-key="openTile.todo.id"
             />
           </div>
-          <template v-if="questHours">
+          <!-- Its own reason under its name: what the campaign is for. -->
+          <p v-if="openTile.todo.why" class="campaign-detail__why">
+            {{ openTile.todo.why }}
+          </p>
+          <section
+            v-if="questHours"
+            class="campaign-detail__group"
+            aria-labelledby="campaign-week-title"
+          >
+            <h3 id="campaign-week-title" class="card-title">Diese Woche</h3>
+            <!-- Wraps between the figures, never inside one. -->
             <p class="campaign-detail__week">
               <strong
                 ><template
@@ -565,39 +589,57 @@ useShortcutHandlers({
                   }}</span></template
                 ></strong
               >
-              Quest-Stunden diese Woche ·
-              <span class="campaign-detail__figure"
-                >insgesamt {{ formatDuration(openTile.totalMinutes) }}</span
-              >
+              Quest-Stunden
             </p>
-            <QuestTrend
-              class="campaign-detail__trend"
-              :weeks="openTile.weeks"
-              :starts="trendStarts"
-              :mark="openMark"
-            />
-          </template>
-          <div v-if="hasProgress(openTile.todo.progress)" class="row__progress">
             <span
-              class="row__bar"
-              role="progressbar"
-              aria-valuemin="0"
-              aria-valuemax="100"
-              :aria-valuenow="Math.round(openTile.todo.progress.percentage)"
-              :aria-valuetext="progressWords(openTile.todo.progress)"
-              :aria-label="`Fortschritt von ${openTile.todo.title}`"
+              v-if="openTile.weeklyTargetMinutes !== null"
+              class="campaign-detail__bar"
+              aria-hidden="true"
             >
-              <span
-                :style="{
-                  width: `${Math.min(100, Math.max(0, openTile.todo.progress.percentage))}%`,
-                }"
-              />
+              <span :style="{ width: `${weekShare}%` }" />
             </span>
-            <span class="row__count">{{
-              progressText(openTile.todo.progress)
-            }}</span>
-          </div>
-          <GoalBurnup :todo-id="openTile.todo.id" />
+            <div class="campaign-detail__trend">
+              <p class="campaign-detail__trend-head">
+                <span>letzte {{ openTile.weeks.length }} Wochen</span>
+                <span class="campaign-detail__figure"
+                  >insgesamt {{ formatDuration(openTile.totalMinutes) }}</span
+                >
+              </p>
+              <QuestTrend
+                :weeks="openTile.weeks"
+                :starts="trendStarts"
+                :mark="openMark"
+              />
+            </div>
+          </section>
+          <section
+            v-if="hasProgress(openTile.todo.progress)"
+            class="campaign-detail__group"
+            aria-labelledby="campaign-progress-title"
+          >
+            <h3 id="campaign-progress-title" class="card-title">Fortschritt</h3>
+            <p class="campaign-detail__count">
+              {{ questCount(openTile.todo.progress) }}
+            </p>
+            <div class="row__progress">
+              <span
+                class="row__bar"
+                role="progressbar"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                :aria-valuenow="Math.round(openTile.todo.progress.percentage)"
+                :aria-valuetext="progressWords(openTile.todo.progress)"
+                :aria-label="`Fortschritt von ${openTile.todo.title}`"
+              >
+                <span
+                  :style="{
+                    width: `${Math.min(100, Math.max(0, openTile.todo.progress.percentage))}%`,
+                  }"
+                />
+              </span>
+            </div>
+            <GoalBurnup :todo-id="openTile.todo.id" beside-bar />
+          </section>
           <button
             class="btn campaign-detail__edit"
             type="button"
@@ -765,7 +807,9 @@ useShortcutHandlers({
             ? 'Quest verschieben'
             : action === 'delete'
               ? 'Quest löschen'
-              : 'Quest bearbeiten'
+              : selected && campaignIds.has(selected.id)
+                ? 'Kampagne bearbeiten'
+                : 'Quest bearbeiten'
       "
       :busy="busy"
       :return-focus="listFocus.returnFocus"
@@ -1095,7 +1139,29 @@ useShortcutHandlers({
   color: var(--color-on-action);
 }
 
-.campaign-detail__week {
+/* Body large and quiet, like the Warum on the focus card. */
+.campaign-detail__why {
+  max-width: 60ch;
+  color: var(--color-ink-muted);
+  font-size: 1.0625rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+/* "Diese Woche" and "Fortschritt": each a labelled group under a hairline. */
+.campaign-detail__group {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-line);
+}
+
+.campaign-detail__group > .card-title {
+  margin: 0;
+}
+
+.campaign-detail__week,
+.campaign-detail__count {
   color: var(--color-ink-muted);
   font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
@@ -1107,16 +1173,55 @@ useShortcutHandlers({
   font-weight: 800;
 }
 
+.campaign-detail__count {
+  color: var(--color-ink);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
 .campaign-detail__figure {
   white-space: nowrap;
 }
 
+.campaign-detail__bar {
+  display: block;
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--color-ground-deep);
+}
+
+.campaign-detail__bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-ink);
+  transition: width 240ms var(--ease-out);
+}
+
 .campaign-detail__trend {
-  max-width: 24rem;
+  display: grid;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.campaign-detail__trend-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  justify-content: space-between;
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .campaign-detail .row__progress {
   margin-top: 0;
+}
+
+.campaign-detail .row__bar {
+  height: 0.5rem;
 }
 
 .campaign-detail__edit {
