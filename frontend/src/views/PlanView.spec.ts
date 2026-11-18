@@ -164,6 +164,12 @@ describe("PlanView", () => {
     await flushPromises();
     expect(router.currentRoute.value.query).toEqual({});
     expect(getWeekPlan).toHaveBeenLastCalledWith(MONDAY, expect.any(AbortSignal));
+    // On the current week the way back would change nothing: it leaves, and
+    // the heading that names the week takes the focus.
+    expect(
+      wrapper.findAll("button").some((button) => button.text() === "Diese Woche"),
+    ).toBe(false);
+    expect(document.activeElement).toBe(wrapper.get("h1").element);
   });
 
   it("sorts a day with the grip's arrow keys and keeps the grip focused", async () => {
@@ -414,13 +420,18 @@ describe("PlanView Questlog column", () => {
     ...overrides,
   });
   let wide = true;
+  /** From 80rem: room for seven days beside the open column. */
+  let roomy = true;
 
   beforeEach(() => {
     vi.resetAllMocks();
     localStorage.clear();
     wide = true;
+    roomy = true;
     vi.stubGlobal("matchMedia", (query: string) => ({
-      matches: wide && query === "(min-width: 56rem)",
+      matches:
+        (wide && query === "(min-width: 56rem)") ||
+        (wide && roomy && query === "(min-width: 80rem)"),
       media: query,
       addEventListener: () => {},
       removeEventListener: () => {},
@@ -565,6 +576,33 @@ describe("PlanView Questlog column", () => {
     ).toBe("none");
     // The rail still says how many quests wait.
     expect(wrapper.get(".plan-questlog .count").text()).toBe("1");
+  });
+
+  it("starts collapsed below 80rem, so the whole week shows first", async () => {
+    roomy = false;
+    const first = await mountPlan();
+    const toggle = first.wrapper.get(".plan-questlog__toggle");
+    expect(toggle.attributes("aria-expanded")).toBe("false");
+    expect(localStorage.getItem("plan:questlog")).toBeNull();
+
+    // Opened by hand, it stays open on this device even in a small window.
+    await toggle.trigger("click");
+    expect(toggle.attributes("aria-expanded")).toBe("true");
+    expect(localStorage.getItem("plan:questlog")).toBe("open");
+    first.wrapper.unmount();
+    const { wrapper } = await mountPlan();
+    expect(
+      wrapper.get(".plan-questlog__toggle").attributes("aria-expanded"),
+    ).toBe("true");
+  });
+
+  it("keeps the loading bones in the board's columns", async () => {
+    vi.mocked(getWeekPlan).mockReturnValue(new Promise(() => {}));
+    const { wrapper } = await mountPlan();
+    const bones = wrapper.get('[aria-label="Plan wird geladen"]');
+    expect(bones.classes()).toContain("plan-view__skeleton");
+    expect(bones.classes()).toContain("plan-view__skeleton--questlog-open");
+    expect(bones.findAll(".plan-view__bone")).toHaveLength(8);
   });
 
   it("plans a column row with T like its menu", async () => {

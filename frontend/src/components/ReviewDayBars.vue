@@ -70,11 +70,6 @@ const label = computed(() => dayBarsText(bars.value));
   border-radius: var(--radius-control);
 }
 
-/* Today wears the calendar's ink frame, not the orange of what can be tapped. */
-.day-bars__day--today {
-  box-shadow: inset 0 0 0 2px var(--color-ink);
-}
-
 .day-bars__value {
   color: var(--color-ink);
   font-size: 0.75rem;
@@ -95,6 +90,14 @@ const label = computed(() => dayBarsText(bars.value));
   border-bottom: 1px solid var(--color-line);
 }
 
+/*
+ * Today is marked quietly, so the bars lead: a firmer baseline under its
+ * column and "Heute" in ink 800 below. Never orange, never a frame.
+ */
+.day-bars__day--today .day-bars__track {
+  border-bottom: 2px solid var(--color-ink);
+}
+
 .day-bars__bar {
   display: block;
   width: 100%;
@@ -103,7 +106,7 @@ const label = computed(() => dayBarsText(bars.value));
   transition: height 240ms var(--ease-out);
 }
 
-/* Small enough that "Heute" keeps clear of its frame in a phone's column. */
+/* Small enough that "Heute" fits a phone's column. */
 .day-bars__weekday {
   color: var(--color-ink-muted);
   font-size: 0.75rem;

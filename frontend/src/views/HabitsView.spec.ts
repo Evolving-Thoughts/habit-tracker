@@ -153,7 +153,11 @@ describe("HabitsView", () => {
     expect(wrapper.text()).toContain("Mo, Do");
     expect(wrapper.text()).toContain("Alle 2 Tage");
     expect(wrapper.text()).not.toContain("Gültig seit");
-    expect(wrapper.text()).not.toContain("Aktiv");
+    // The active group's heading is only for screen readers; nothing shows it.
+    const hidden = wrapper.get('[data-group="active"] h2');
+    expect(hidden.text()).toBe("Aktiv");
+    expect(hidden.classes()).toContain("visually-hidden");
+    expect(wrapper.findAll("[data-habit-id] h3")).toHaveLength(2);
     expect(wrapper.findAll("[data-habit-id]")).toHaveLength(2);
   });
   it("shows a future-only habit so it can be edited before it is due", async () => {

@@ -29,7 +29,11 @@ const grip = (wrapper: ReturnType<typeof mountEntry>) =>
 describe("PlanEntry", () => {
   it("shows time, planned duration and the campaign with its stripe", () => {
     const wrapper = mountEntry(quest);
-    expect(parts(wrapper)).toEqual(["14:30", "45 Min.", "Gesund bleiben"]);
+    expect(parts(wrapper)).toEqual(["14:30", "45 Min."]);
+    // The campaign has a line of its own; cut short, its tooltip names it.
+    const campaign = wrapper.get(".plan-entry__campaign");
+    expect(campaign.text()).toBe("Gesund bleiben");
+    expect(campaign.attributes("title")).toBe("Gesund bleiben");
     expect(wrapper.classes()).toContain("plan-entry--campaign");
     expect(wrapper.attributes("style")).toContain("--campaign-mark");
   });
@@ -54,6 +58,16 @@ describe("PlanEntry", () => {
       scheduledDate: "2026-11-15",
     });
     expect(parts(wrapper)).toEqual(["seit 15. Nov."]);
+  });
+
+  it("keeps the full title in the names and the tooltip of a clamped title", () => {
+    const title =
+      "Steuererklärung vorbereiten und alle Belege aus dem Ordner im Keller zusammensuchen";
+    const wrapper = mountEntry({ ...quest, title });
+    expect(wrapper.get("h3").attributes("aria-label")).toBe(title);
+    const edit = wrapper.get("[data-edit-button]");
+    expect(edit.attributes("aria-label")).toBe(`${title} bearbeiten`);
+    expect(edit.attributes("title")).toBe(title);
   });
 
   it("opens the editor from the title and moves through the grip", async () => {
@@ -101,5 +115,6 @@ describe("PlanEntry", () => {
     expect(parts(wrapper)).toEqual(["Daily", "30 Min."]);
     expect(wrapper.find("button").exists()).toBe(false);
     expect(wrapper.get("h3").text()).toBe("Laufen");
+    expect(wrapper.get("h3").attributes("title")).toBe("Laufen");
   });
 });

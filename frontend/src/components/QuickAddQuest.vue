@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onBeforeUnmount, onMounted, ref, useId } from "vue";
 import { createTodo, reorderDay } from "../api/day-planner.api";
+import { firstThatFits } from "../utils/fit-text";
 
 type OrderedItem = { type: "todo" | "habit"; id: number };
 
@@ -27,6 +28,43 @@ const title = ref("");
 const place = ref<"top" | "bottom">("bottom");
 const busy = ref(false);
 const errorMessage = ref<string | null>(null);
+const placeLabelId = useId();
+
+/*
+ * The placeholder says as much as its field holds: a narrow day column of the
+ * Plan gets the short form instead of one cut off in the middle of a word.
+ */
+const PLACEHOLDERS = ["Quest hinzufügen …", "Hinzufügen …"];
+const placeholder = ref(PLACEHOLDERS[0]!);
+const field = ref<HTMLInputElement | null>(null);
+let observer: ResizeObserver | null = null;
+let context: CanvasRenderingContext2D | null = null;
+function fitPlaceholder(): void {
+  const input = field.value;
+  if (!input) return;
+  context ??= document.createElement("canvas").getContext("2d");
+  if (!context) return;
+  const style = getComputedStyle(input);
+  context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  const available =
+    input.clientWidth -
+    parseFloat(style.paddingLeft) -
+    parseFloat(style.paddingRight);
+  placeholder.value = firstThatFits(
+    PLACEHOLDERS,
+    available,
+    (text) => context!.measureText(text).width,
+  );
+}
+onMounted(() => {
+  // Browsers only: without layout (tests) the full placeholder stays.
+  if (typeof ResizeObserver === "undefined" || !field.value) return;
+  observer = new ResizeObserver(fitPlaceholder);
+  observer.observe(field.value);
+  // The web font changes the widths once it has arrived.
+  void document.fonts?.ready.then(fitPlaceholder);
+});
+onBeforeUnmount(() => observer?.disconnect());
 
 async function add(): Promise<void> {
   const text = title.value.trim();
@@ -65,6 +103,7 @@ async function add(): Promise<void> {
   <form class="quick-add" @submit.prevent="add">
     <div class="quick-add__row">
       <input
+        ref="field"
         v-model="title"
         class="input quick-add__title"
         name="quickTitle"
@@ -72,30 +111,36 @@ async function add(): Promise<void> {
         maxlength="200"
         enterkeyhint="done"
         autocomplete="off"
-        placeholder="Quest hinzufügen …"
+        :placeholder="placeholder"
         :aria-label="label"
         :disabled="busy"
       />
+      <!-- Said in words, not left to guess: where a new quest joins the day. -->
       <div
         v-if="choosePlace"
-        class="segmented quick-add__place"
+        class="quick-add__place"
         role="group"
-        aria-label="Einreihen"
+        :aria-labelledby="placeLabelId"
       >
-        <button
-          type="button"
-          :aria-pressed="place === 'top'"
-          @click="place = 'top'"
-        >
-          Oben
-        </button>
-        <button
-          type="button"
-          :aria-pressed="place === 'bottom'"
-          @click="place = 'bottom'"
-        >
-          Unten
-        </button>
+        <span :id="placeLabelId" class="quick-add__place-label">
+          Neue Quests
+        </span>
+        <div class="segmented">
+          <button
+            type="button"
+            :aria-pressed="place === 'top'"
+            @click="place = 'top'"
+          >
+            Oben
+          </button>
+          <button
+            type="button"
+            :aria-pressed="place === 'bottom'"
+            @click="place = 'bottom'"
+          >
+            Unten
+          </button>
+        </div>
       </div>
     </div>
     <p v-if="errorMessage" class="form-error" role="alert">
@@ -122,7 +167,41 @@ async function add(): Promise<void> {
   min-width: 0;
 }
 
+/* On a phone the label sits small above the choice, so the field keeps its width. */
 .quick-add__place {
+  display: flex;
   flex: none;
+  flex-direction: column;
+  gap: 0.125rem;
+  align-items: flex-end;
+}
+
+.quick-add__place-label {
+  padding-right: var(--space-3);
+  color: var(--color-ink-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.quick-add__row:has(.quick-add__place) {
+  align-items: flex-end;
+}
+
+@media (min-width: 40rem) {
+  .quick-add__place {
+    flex-direction: row;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .quick-add__place-label {
+    padding-right: 0;
+    font-size: 0.875rem;
+  }
+
+  .quick-add__row:has(.quick-add__place) {
+    align-items: center;
+  }
 }
 </style>

@@ -34,11 +34,22 @@ export function minutesToHours(minutes: number | null): string {
   return String(Math.round((minutes / 60) * 100) / 100);
 }
 
+/**
+ * ["3 Std. 30 Min.", "von 6 Std."]: the figures with their words, so a line
+ * may wrap between them but never inside one; just the time without a goal.
+ */
+export function againstTargetParts(
+  minutes: number,
+  target: number | null,
+): string[] {
+  return target === null
+    ? [formatDuration(minutes)]
+    : [formatDuration(minutes), `von ${formatDuration(target)}`];
+}
+
 /** "3 Std. 30 Min. von 6 Std."; just the time without a goal. */
 export function againstTarget(minutes: number, target: number | null): string {
-  return target === null
-    ? formatDuration(minutes)
-    : `${formatDuration(minutes)} von ${formatDuration(target)}`;
+  return againstTargetParts(minutes, target).join(" ");
 }
 
 /**

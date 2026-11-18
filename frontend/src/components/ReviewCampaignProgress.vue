@@ -4,9 +4,11 @@ import AppIcon from "./AppIcon.vue";
 import { hrefOf } from "../routes";
 import type { WeekReviewCampaign } from "../types/week-review";
 import { campaignMark } from "../utils/category-mark";
+import { questWord } from "../utils/todo-hierarchy";
 import {
   dailyGoalText,
   progressChange,
+  questCount,
   questsGained,
 } from "../utils/week-review";
 
@@ -23,6 +25,7 @@ const rows = computed(() =>
       mark: campaignMark(row.campaign)!,
       change: progressChange(row),
       gained: questsGained(row),
+      count: questCount(end.doneCount, end.totalCount),
       beforeWidth: (before / total) * 100,
       addedWidth: (Math.max(0, end.doneCount - before) / total) * 100,
     };
@@ -75,15 +78,14 @@ const href = (id: number): string =>
                 row.campaign.title
               }}</strong>
               <span class="campaign-progress__count"
-                >{{ row.end.doneCount }} von {{ row.end.totalCount }} Quests ·
-                {{ row.end.percentage }} %</span
+                >{{ row.count }} · {{ row.end.percentage }} %</span
               >
             </span>
             <span class="campaign-progress__change">{{ row.change }}</span>
             <span
               class="campaign-progress__track"
               role="img"
-              :aria-label="`${row.end.percentage} % erledigt, davon ${Math.max(0, row.gained)} ${row.gained === 1 ? 'Quest' : 'Quests'} in dieser Woche`"
+              :aria-label="`${row.end.percentage} % erledigt, davon ${Math.max(0, row.gained)} ${questWord(Math.max(0, row.gained))} in dieser Woche`"
             >
               <span
                 class="campaign-progress__before"

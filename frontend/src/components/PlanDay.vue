@@ -71,7 +71,14 @@ useSortable(list, {
         <span class="plan-day__date">{{ shortDate(day.date) }}</span>
         <span v-if="isToday" class="plan-day__today">Heute</span>
       </h2>
-      <p v-if="summary" class="plan-day__summary">{{ summary }}</p>
+      <!-- Each figure stays with its words when a narrow column wraps the line. -->
+      <p v-if="summary" class="plan-day__summary">
+        <template v-for="(part, index) in summary.split(' · ')" :key="index"
+          >{{ index ? " · " : "" }}<span class="plan-day__figure">{{
+            part
+          }}</span></template
+        >
+      </p>
     </header>
 
     <ol
@@ -130,12 +137,13 @@ useSortable(list, {
 </template>
 
 <style scoped>
+/* Slim side padding: in a desktop column every pixel goes to the titles. */
 .plan-day {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   min-width: 0;
-  padding: var(--space-3) var(--space-2) var(--space-2);
+  padding: var(--space-3) 0.375rem 0.375rem;
   border-radius: var(--radius-card);
   background: var(--color-surface-faint);
 }
@@ -145,8 +153,9 @@ useSortable(list, {
   box-shadow: inset 0 0 0 2px var(--color-ink);
 }
 
+/* Text lines up with the titles of the rows below. */
 .plan-day__header {
-  padding: 0 var(--space-2);
+  padding: 0 0.625rem;
 }
 
 .plan-day__title {
@@ -180,6 +189,10 @@ useSortable(list, {
   font-variant-numeric: tabular-nums;
 }
 
+.plan-day__figure {
+  white-space: nowrap;
+}
+
 .plan-day__list {
   display: grid;
   gap: var(--space-2);
@@ -199,7 +212,7 @@ useSortable(list, {
 }
 
 .plan-day__empty {
-  padding: var(--space-2);
+  padding: var(--space-2) 0.625rem;
   color: var(--color-ink-muted);
   font-size: 0.875rem;
 }

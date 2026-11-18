@@ -9,11 +9,14 @@ import type {
 import {
   arrangeOpen,
   arrowDrop,
+  boardScroll,
   dayOrder,
   dropOnDay,
   entryKey,
+  offersWayBack,
   openSummary,
   questlogEntry,
+  questlogStartsOpen,
   weekFromQuery,
 } from "./week-plan";
 
@@ -274,5 +277,64 @@ describe("openSummary", () => {
 
   it("stays empty for a day without anything open", () => {
     expect(openSummary({ date: TODAY, entries: [] })).toBe("");
+  });
+});
+
+describe("offersWayBack", () => {
+  it("offers the way back to now only away from the current week", () => {
+    expect(offersWayBack(MONDAY, MONDAY)).toBe(false);
+    expect(offersWayBack("2026-11-23", MONDAY)).toBe(true);
+    expect(offersWayBack("2026-11-09", MONDAY)).toBe(true);
+  });
+});
+
+describe("questlogStartsOpen", () => {
+  it("follows a choice made on this device", () => {
+    expect(questlogStartsOpen("open", false)).toBe(true);
+    expect(questlogStartsOpen("closed", true)).toBe(false);
+  });
+
+  it("opens by itself only where seven days still fit beside it", () => {
+    expect(questlogStartsOpen(null, true)).toBe(true);
+    expect(questlogStartsOpen(null, false)).toBe(false);
+    expect(questlogStartsOpen("something else", false)).toBe(false);
+  });
+});
+
+describe("boardScroll", () => {
+  /** Seven columns of `width` with 8px between them, from `offset`. */
+  const columns = (width: number, offset = 0) =>
+    Array.from({ length: 7 }, (_, index) => {
+      const start = offset + index * (width + 8);
+      return { start, end: start + width };
+    });
+
+  it("stays at Monday when the whole week fits", () => {
+    expect(boardScroll(columns(140), 6, { width: 1028, padding: 0 })).toBe(0);
+  });
+
+  it("stays at Monday while today is in view from there", () => {
+    // 900px show Monday to Thursday whole.
+    expect(boardScroll(columns(140), 3, { width: 900, padding: 0 })).toBe(0);
+  });
+
+  it("scrolls as little as needed for today, onto a column's start", () => {
+    // Sunday ends at 1028; 900px from Tuesday's start (148) end at 1048.
+    expect(boardScroll(columns(140), 6, { width: 900, padding: 0 })).toBe(148);
+    // Friday ends at 732; from Monday it ends at 700: one column on.
+    expect(boardScroll(columns(140), 4, { width: 700, padding: 0 })).toBe(148);
+  });
+
+  it("puts today at the start where only one day fits, minus the gutter", () => {
+    // A phone: 85 % columns behind a 16px gutter.
+    const phone = columns(291, 16);
+    expect(boardScroll(phone, 2, { width: 375, padding: 16 })).toBe(
+      phone[2]!.start - 16,
+    );
+    expect(boardScroll(phone, 0, { width: 375, padding: 16 })).toBe(0);
+  });
+
+  it("stays at the start of a week without today", () => {
+    expect(boardScroll(columns(140), -1, { width: 500, padding: 0 })).toBe(0);
   });
 });

@@ -64,6 +64,18 @@ describe("QuickAddQuest", () => {
     ).toBe("");
   });
 
+  it("says in words what Oben and Unten decide", () => {
+    const { wrapper } = mountField();
+    const group = wrapper.get('[role="group"]');
+    const label = wrapper.get(`#${group.attributes("aria-labelledby")}`);
+    expect(label.text()).toBe("Neue Quests");
+    expect(label.classes()).not.toContain("visually-hidden");
+    expect(group.findAll("button").map((button) => button.text())).toEqual([
+      "Oben",
+      "Unten",
+    ]);
+  });
+
   it("puts the quest in front of the day's order when asked", async () => {
     const { wrapper, type } = mountField();
     await wrapper
@@ -87,7 +99,7 @@ describe("QuickAddQuest", () => {
         choosePlace: false,
       },
     });
-    expect(wrapper.find('[aria-label="Einreihen"]').exists()).toBe(false);
+    expect(wrapper.find('[role="group"]').exists()).toBe(false);
     const field = wrapper.get('input[name="quickTitle"]');
     expect(field.attributes("aria-label")).toBe(
       "Quest für Donnerstag, 19. Nov. hinzufügen",

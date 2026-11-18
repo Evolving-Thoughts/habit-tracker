@@ -45,12 +45,12 @@ const label = computed(() =>
         :style="{ flexGrow: part.minutes }"
       />
     </div>
+    <!-- The share is the Quest-Arbeit figure above; here the two times. -->
     <ul class="quest-split__legend" aria-hidden="true">
       <li v-for="part in parts" :key="part.key">
         <i :class="`quest-split__key quest-split__part--${part.key}`" />
         <span class="quest-split__name">{{ part.name }}</span>
         <strong>{{ formatDuration(part.minutes) }}</strong>
-        <span class="quest-split__share">{{ part.share }} %</span>
       </li>
     </ul>
     <p class="quest-split__note">Sonstiges ist gemessene Zeit ohne Kampagne.</p>
@@ -90,7 +90,7 @@ const label = computed(() =>
 
 .quest-split__legend li {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto 3rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: var(--space-2);
   align-items: center;
   font-variant-numeric: tabular-nums;
@@ -104,12 +104,6 @@ const label = computed(() =>
 
 .quest-split__name {
   font-weight: 700;
-}
-
-.quest-split__share {
-  color: var(--color-ink-muted);
-  font-weight: 700;
-  text-align: right;
 }
 
 .quest-split__note {

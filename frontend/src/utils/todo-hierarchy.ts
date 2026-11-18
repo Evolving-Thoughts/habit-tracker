@@ -17,11 +17,16 @@ export function progressText(progress: TodoProgress): string {
     : `${progress.completed}/${progress.total}`;
 }
 
+/** "Quest" for one, "Quests" otherwise: the noun follows the number it counts. */
+export function questWord(count: number): string {
+  return Math.abs(count) === 1 ? "Quest" : "Quests";
+}
+
 /** The same in words for screen readers: "1 von 3 Quests darunter erledigt". */
 export function progressWords(progress: TodoProgress): string {
   return progress.mode === "duration"
-    ? `${progress.completed} von ${progress.total} Minuten darunter erledigt`
-    : `${progress.completed} von ${progress.total} Quests darunter erledigt`;
+    ? `${progress.completed} von ${progress.total} ${progress.total === 1 ? "Minute" : "Minuten"} darunter erledigt`
+    : `${progress.completed} von ${progress.total} ${questWord(progress.total)} darunter erledigt`;
 }
 
 /** Quests below that are still open. */

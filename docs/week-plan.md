@@ -84,16 +84,49 @@ a column row do the same (beyond the board, next Monday is planned with the
 editor's save alone), X ticks it with the undo toast and Space runs its
 stopwatch.
 
-Collapsed it is a slim rail with the count; open or collapsed is stored per
-device in `localStorage` (`plan:questlog` = `closed`). Open, the day columns
-narrow to at least 8.75rem (9.5rem collapsed), so a 1280px window shows the
-whole week. A phone has no column and loads nothing for it.
+Collapsed it is a rail as wide as its toggle (2.75rem) with the count.
+Without a choice it starts open from 80rem and collapsed below
+(`utils/week-plan.ts` `questlogStartsOpen`, reactive to the window); toggling
+stores the explicit choice per device in `localStorage` (`plan:questlog` =
+`open` or `closed`), which then wins at any width. Beside it a day column is
+at least 8.5rem wide, enough for common German words at the entries' type
+size, so the whole week fits from about 1100px beside the rail and from
+1280px beside the open column. A phone has no column and loads nothing for
+it.
+
+## Widths, wrapping and where the board opens
+
+- A day column has slim side padding (0.375rem); an entry gives its title
+  the full width and puts the grip below it (beside the details, if any).
+  From a 15rem entry (a phone's single day) the grip sits beside title and
+  details again. Below an 8.25rem entry the title is 0.875rem instead of
+  0.9375rem.
+- Titles wrap between words (`overflow-wrap: break-word`); only a word
+  longer than the whole line breaks inside. `hyphens: auto` (words of ten
+  characters and more) helps where the platform has a German dictionary, but
+  the widths never rely on it. A title is clamped to three lines; its tooltip
+  and accessible names keep it whole. The campaign has its own line with an
+  ellipsis in narrow columns.
+- The quick add's placeholder is "Quest hinzufügen …" where it fits and
+  "Hinzufügen …" where not, measured against the field (`utils/fit-text.ts`,
+  re-measured on resize and once the web font is in).
+- Where the days do not fit, the board scrolls sideways inside itself and
+  snaps to column starts. It opens at Monday while today is fully visible
+  from there (always when the week fits); otherwise it scrolls as little as
+  needed for today to be fully visible, landing on a column's start
+  (`utils/week-plan.ts` `boardScroll`). A phone, where one day fills the
+  view, thus opens on today.
+- The loading bones take the board's columns (with the Questlog column
+  where it exists) and are clipped, never scrolled.
 
 ## Frontend
 
 - `views/PlanView.vue` (`#/plan`, the week in `?woche=<Monday>`; the current
   week has the plain address). Week switcher, the range as heading, loading
   skeleton, load error with retry, a lead when an upcoming week is empty.
+  "Diese Woche" stands before the arrows and shows only away from the
+  current week (`offersWayBack`; the Wochenrückblick and the Kalender's
+  "Heute" follow the same rule); after it the focus goes to the heading.
 - `components/PlanDay.vue`: one column (heading, "n offen · Dauer", the open
   list as a SortableJS list in the group `week-plan`, quick add, then what is
   done). Past columns take no drops and offer no quick add.
@@ -118,4 +151,4 @@ whole week. A phone has no column and loads nothing for it.
 - `QuickAddQuest` takes `choosePlace: false` for the board: Enter creates the
   quest on that day at the end of its order.
 - A phone shows one day at a time (scroll snapping); the current week opens
-  scrolled to today. The page itself never scrolls sideways.
+  scrolled to today (see above). The page itself never scrolls sideways.

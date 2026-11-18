@@ -510,18 +510,29 @@ useShortcutHandlers({
         <span>Tippe auf Plus, um etwas abzulegen.</span>
       </div>
 
+      <!-- Each list opens with an h2, so the rows' h3 never skip a level. -->
       <template v-for="list in lists" :key="list.key">
-        <button
+        <h2
           v-if="list.key === 'done' && done.length"
-          class="dump-done__toggle"
-          type="button"
-          :aria-expanded="doneOpen"
-          aria-controls="dump-done-list"
-          @click="doneOpen = !doneOpen"
+          class="dump-done__heading"
         >
-          {{ done.length }} erledigt
-          <AppIcon name="chevron" />
-        </button>
+          <button
+            class="dump-done__toggle"
+            type="button"
+            :aria-expanded="doneOpen"
+            aria-controls="dump-done-list"
+            @click="doneOpen = !doneOpen"
+          >
+            {{ done.length }} erledigt
+            <AppIcon name="chevron" />
+          </button>
+        </h2>
+        <h2
+          v-else-if="list.key !== 'done' && list.items.length"
+          class="visually-hidden"
+        >
+          Offene Quests
+        </h2>
 
         <ul
           v-if="list.items.length"
@@ -676,7 +687,12 @@ useShortcutHandlers({
   border-radius: 0.2rem;
 }
 
-/* Finished items fold away, like on Heute. */
+/* Finished items fold away, like on Heute; the heading only carries the level. */
+.dump-done__heading {
+  margin: 0;
+  font: inherit;
+}
+
 .dump-done__toggle {
   display: inline-flex;
   gap: var(--space-2);

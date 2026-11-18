@@ -55,6 +55,10 @@ test("Plan: open it from the navigation, add a quest to a day and keep the week 
   await loaded(page);
   await expect(column(page, date)).toHaveAttribute("aria-current", "date");
   await expect(column(page, date)).toBeInViewport();
+  // On the current week the way back to it would change nothing.
+  await expect(
+    page.getByRole("button", { name: "Diese Woche", exact: true }),
+  ).toHaveCount(0);
   expect(
     await page.evaluate(
       () =>
@@ -100,6 +104,11 @@ test("Plan: open it from the navigation, add a quest to a day and keep the week 
   await expect(page).toHaveURL(/#\/plan$/);
   await loaded(page);
   await expect(column(page, date)).toHaveAttribute("aria-current", "date");
+  // The button left with the step; the heading names the week and has the focus.
+  await expect(
+    page.getByRole("button", { name: "Diese Woche", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
 });
 
 test("Plan: sort a day and move a quest to the next day with the grip's arrow keys", async ({
@@ -374,4 +383,106 @@ test("Plan: plan a Questlog quest by keyboard from its menu; the column remember
         document.documentElement.clientWidth,
     ),
   ).toBe(0);
+});
+
+/**
+ * Words of the board's titles that the browser split across two lines: for
+ * each word a Range, whose rectangles all share one line when it is whole.
+ */
+const splitWords = (page: Page) =>
+  page.evaluate(() => {
+    const split: string[] = [];
+    for (const title of document.querySelectorAll(".plan-day .plan-entry__title")) {
+      const walker = document.createTreeWalker(title, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        for (const match of (node.textContent ?? "").matchAll(/\S+/g)) {
+          const range = document.createRange();
+          range.setStart(node, match.index);
+          range.setEnd(node, match.index + match[0].length);
+          const tops = [...range.getClientRects()]
+            .filter((rect) => rect.width > 0)
+            .map((rect) => Math.round(rect.top));
+          if (new Set(tops).size > 1) split.push(match[0]);
+        }
+      }
+    }
+    return split;
+  });
+
+/** Quick-add placeholders wider than the room their field gives them. */
+const cutPlaceholders = (page: Page) =>
+  page.evaluate(() => {
+    const context = document.createElement("canvas").getContext("2d")!;
+    return [...document.querySelectorAll<HTMLInputElement>(".plan-day input[name=quickTitle]")]
+      .filter((input) => {
+        const style = getComputedStyle(input);
+        context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+        const room =
+          input.clientWidth -
+          parseFloat(style.paddingLeft) -
+          parseFloat(style.paddingRight);
+        return context.measureText(input.placeholder).width > room;
+      })
+      .map((input) => input.placeholder);
+  });
+
+test("Plan: at common desktop widths the week fits, titles wrap between words and Montag shows", async ({
+  page,
+  request,
+}, info) => {
+  test.skip(
+    info.project.name !== "chromium",
+    "Desktop widths with the Questlog column; the phone shows one day at a time.",
+  );
+  const monday = mondayOf(await today(request));
+  // Usual German titles, spread over the week (earlier days carry over to today).
+  const titles = [
+    "Steuererklärung vorbereiten",
+    "Halbmarathon im März",
+    "Kapitel 2 überarbeiten",
+    "Einkaufen",
+    "Wohnung aufräumen und Fenster putzen",
+    "Präsentation für Montag vorbereiten",
+    "Wochenplanung",
+  ];
+  for (const [index, title] of titles.entries())
+    await plan(request, { title, scheduledDate: daysAfter(monday, index) });
+  await plan(request, { title: "Versicherung kündigen" });
+
+  for (const width of [1164, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/#/plan");
+    await loaded(page);
+    // Below 80rem the Questlog column starts as a rail, from there it is open.
+    await expect(
+      page.getByRole("button", {
+        name: width < 1280 ? "Questlog einblenden" : "Questlog ausblenden",
+        exact: true,
+      }),
+    ).toBeVisible();
+    // Judge the widths alone: where a German dictionary exists the browser
+    // may hyphenate, and the board must not depend on that.
+    await page.addStyleTag({
+      content: ".plan-entry__title { hyphens: manual !important; }",
+    });
+    expect(await splitWords(page), `split words at ${width}px`).toEqual([]);
+    expect(await cutPlaceholders(page), `cut placeholders at ${width}px`).toEqual([]);
+
+    // The whole week fits: Montag is fully in view, right of the column.
+    const board = page.locator(".plan-view__board");
+    expect(
+      await board.evaluate((element) => element.scrollWidth - element.clientWidth),
+    ).toBe(0);
+    await expect(column(page, monday)).toBeInViewport({ ratio: 1 });
+    const boardBox = (await board.boundingBox())!;
+    const mondayBox = (await column(page, monday).boundingBox())!;
+    expect(mondayBox.x).toBeGreaterThanOrEqual(boardBox.x);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      ),
+    ).toBe(0);
+  }
 });

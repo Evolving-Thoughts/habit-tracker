@@ -18,6 +18,7 @@ import {
   isQuietWeek,
   percentOf,
   progressChange,
+  questCount,
   reviewFigures,
   weekTrend,
   weekDistance,
@@ -252,6 +253,28 @@ describe("dailyGoalText", () => {
     expect(dailyGoalText({ ...goal, before: 12 })).toBe(
       "Laufen: 12 von 20 Ausführungen, keine diese Woche",
     );
+  });
+
+  it("says one run in the singular", () => {
+    expect(
+      dailyGoalText({
+        todoId: 1,
+        habitId: 4,
+        habitTitle: "Laufen",
+        target: 1,
+        before: 0,
+        after: 0,
+      }),
+    ).toBe("Laufen: 0 von 1 Ausführung, keine diese Woche");
+  });
+});
+
+describe("questCount", () => {
+  it("lets the noun follow the total", () => {
+    expect(questCount(0, 1)).toBe("0 von 1 Quest");
+    expect(questCount(1, 1)).toBe("1 von 1 Quest");
+    expect(questCount(9, 12)).toBe("9 von 12 Quests");
+    expect(questCount(0, 0)).toBe("0 von 0 Quests");
   });
 });
 

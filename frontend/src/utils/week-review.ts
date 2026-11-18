@@ -10,6 +10,7 @@ import { campaignMark } from "./category-mark";
 import { addDays } from "./date";
 import { dayLabel, shortDate } from "./history";
 import { formatDuration } from "./today-agenda";
+import { questWord } from "./todo-hierarchy";
 
 const WEEKDAY_SHORT = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
@@ -168,6 +169,11 @@ export function campaignHourRows(hours: QuestHoursResponse): CampaignHoursRow[] 
   }));
 }
 
+/** "0 von 1 Quest", "9 von 12 Quests": the noun follows the total. */
+export function questCount(done: number, total: number): string {
+  return `${done} von ${total} ${questWord(total)}`;
+}
+
 /** Quests done this week: the end against the start. */
 export function questsGained(row: WeekReviewCampaign): number {
   return row.end.doneCount - row.start.doneCount;
@@ -186,16 +192,17 @@ export function progressChange(row: WeekReviewCampaign): string {
     return `Keine Quest erledigt, ${from === to ? `${to} %` : moved}`;
   const count = Math.abs(gained);
   const sign = gained > 0 ? "+" : "−";
-  const quests = `${sign}${count} ${count === 1 ? "Quest" : "Quests"}`;
+  const quests = `${sign}${count} ${questWord(count)}`;
   return `${quests}, ${from === to ? `weiter ${to} %` : moved}`;
 }
 
-/** "Laufen: 12 von 20 Ausführungen, +3 diese Woche". */
+/** "Laufen: 12 von 20 Ausführungen, +3 diese Woche"; "0 von 1 Ausführung". */
 export function dailyGoalText(goal: WeekReviewDailyGoal): string {
   const gained = goal.after - goal.before;
   const name = goal.habitTitle ? `${goal.habitTitle}: ` : "";
   const change = gained > 0 ? `, +${gained} diese Woche` : ", keine diese Woche";
-  return `${name}${goal.after} von ${goal.target} Ausführungen${change}`;
+  const runs = goal.target === 1 ? "Ausführung" : "Ausführungen";
+  return `${name}${goal.after} von ${goal.target} ${runs}${change}`;
 }
 
 export type WeekBar = {

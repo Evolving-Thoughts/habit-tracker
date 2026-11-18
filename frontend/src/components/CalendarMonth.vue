@@ -7,6 +7,7 @@ import HistoryPlannedItems, {
 import type { HistoryResponse } from "../types/history";
 import { formatTimeForGermanDisplay } from "../utils/date";
 import {
+  appointmentCount,
   dayCounts,
   dayLabel,
   hasEntries,
@@ -40,12 +41,13 @@ const selectedDay = computed(() =>
 
 function cellLabel(day: Day): string {
   const counts = dayCounts(day);
+  const appointments = appointmentCount(day);
   const parts = [
     counts.completed && `${counts.completed} erledigt`,
     counts.skipped && `${counts.skipped} übersprungen`,
     counts.open && `${counts.open} offen`,
-    counts.events &&
-      `${counts.events} ${counts.events === 1 ? "Termin" : "Termine"}`,
+    appointments &&
+      `${appointments} ${appointments === 1 ? "Termin" : "Termine"}`,
   ].filter(Boolean);
   const today = day.date === props.result.today ? ", heute" : "";
   const work = day.work.minutes
@@ -84,7 +86,8 @@ function cellLabel(day: Day): string {
       <span class="month-day__marks" aria-hidden="true">
         <i v-if="dayCounts(day).completed" class="mark mark--done" />
         <i v-if="dayCounts(day).open" class="mark mark--open" />
-        <i v-if="dayCounts(day).events" class="mark mark--event" />
+        <!-- A quest with a time is an appointment too, not only Google's. -->
+        <i v-if="appointmentCount(day)" class="mark mark--event" />
       </span>
       <!-- Measured work as a quiet figure; the label above says it in full. -->
       <span v-if="day.work.minutes" class="month-day__work" aria-hidden="true">

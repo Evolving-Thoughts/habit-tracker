@@ -105,8 +105,11 @@ Monday that has begun; a week ahead is 400. The answer is the stored
 - `views/WeekReviewView.vue` at `#/rueckblick`, the week in `?woche=<Monday>`
   (the current week has the plain address). The header holds the title, a
   one-line lead ("Wie weit die Woche deine Kampagnen gebracht hat.") and the
-  switcher: Vorige Woche, the range with "diese Woche", "vorige Woche",
-  "vor 3 Wochen" below it, Nächste Woche, Diese Woche. On the phone it sits
+  switcher: Diese Woche, Vorige Woche, the range with "diese Woche",
+  "vorige Woche", "vor 3 Wochen" below it, Nächste Woche. "Diese Woche"
+  shows only away from the current week (`utils/week-plan.ts`
+  `offersWayBack`, the same rule as the Plan and the Kalender's "Heute");
+  after it the focus goes to the range. On the phone it sits
   behind Mehr after Plan; on wide screens it sits behind Mehr up to 70rem and
   has its own tab in the right-hand group from there (`tabFrom: "wider"` in
   `router.ts`, see `DESIGN.md` for the steps of the bar).
@@ -118,10 +121,12 @@ Monday that has begun; a week ahead is 400. The answer is the stored
      the overall goal ("von 20 Std. Wochenziel", "11 % vom Ziel", a flat bar;
      just the hours without a goal), the daily average over the days begun,
      the share of quest work in all measured time. The quest hours are the
-     view's one lifted card.
+     view's one lifted card. The share is said only here: the split card
+     below shows the two times, not their percentages again.
   2. `ReviewDayBars` (about three fifths) beside a column with
      `ReviewCampaignHours` and `ReviewQuestSplit`; on a phone one below the
-     other.
+     other. Today is marked quietly in the day bars: "Heute" in ink 800 and a
+     2px ink baseline under its column, no frame, so the bars lead.
   3. `ReviewWeekTrend`, full width: eight weeks, the running one marked
      "bisher"; the line is the average of the seven weeks before the shown
      one, its value top right, so the shown week is compared with it.
@@ -149,4 +154,7 @@ Monday that has begun; a week ahead is 400. The answer is the stored
   line that the questions open once it begins.
 - Pure rules in `utils/week-review.ts` (figures and their units, bar
   heights, the running week, the change in words "+4 Quests, 62 % → 71 %",
-  texts for screen readers).
+  texts for screen readers). Counts let the noun follow the number:
+  `questCount` gives "0 von 1 Quest" and "9 von 12 Quests", `dailyGoalText`
+  "0 von 1 Ausführung" (`questWord` in `utils/todo-hierarchy.ts` is shared
+  with the campaign progress and the burn-up).

@@ -329,6 +329,26 @@ describe("CalendarView month", () => {
     expect(entries).toContain("09:00");
   });
 
+  it("marks a day with the app's own appointment in the month", async () => {
+    mock.mockResolvedValue({
+      ...month,
+      days: month.days.map((day) =>
+        day.date === TODAY
+          ? {
+              ...day,
+              items: [],
+              planned: [plannedItem({ title: "Zahnarzt", timeOfDay: "08:15" })],
+            }
+          : day,
+      ),
+    });
+    const wrapper = await render();
+    const selected = wrapper.get('.month-day[aria-pressed="true"]');
+    expect(selected.findAll(".mark--event")).toHaveLength(1);
+    expect(selected.findAll(".mark--open")).toHaveLength(1);
+    expect(selected.attributes("aria-label")).toContain("1 offen, 1 Termin");
+  });
+
   it("changes the month and selects today when going back", async () => {
     const wrapper = await render();
     await wrapper.get('[aria-label="Nächster Zeitraum"]').trigger("click");

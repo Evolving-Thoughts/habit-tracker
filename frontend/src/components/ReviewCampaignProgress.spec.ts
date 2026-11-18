@@ -71,6 +71,19 @@ describe("ReviewCampaignProgress", () => {
     );
   });
 
+  it("counts a single quest in the singular", () => {
+    const wrapper = mount(ReviewCampaignProgress, {
+      props: {
+        campaigns: [
+          campaignRow({ start: standing(0, 1), end: standing(0, 1) }),
+        ],
+      },
+    });
+    expect(wrapper.get(".campaign-progress__count").text()).toBe(
+      "0 von 1 Quest · 0 %",
+    );
+  });
+
   it("shows nothing without active campaigns", () => {
     const wrapper = mount(ReviewCampaignProgress, { props: { campaigns: [] } });
     expect(wrapper.find("section").exists()).toBe(false);

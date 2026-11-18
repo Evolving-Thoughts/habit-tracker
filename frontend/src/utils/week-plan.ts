@@ -239,3 +239,57 @@ export function openSummary(day: WeekPlanDay): string {
 export function neighbourWeek(start: string, direction: -1 | 1): string {
   return addDays(start, direction * 7);
 }
+
+/**
+ * The way back to now ("Diese Woche" in Plan and Wochenrückblick, "Heute"
+ * in the Kalender) only shows once the shown range has left today: on the
+ * current week it would change nothing.
+ */
+export function offersWayBack(shownWeek: string, currentWeek: string): boolean {
+  return shownWeek !== currentWeek;
+}
+
+/** What `localStorage` keeps under `plan:questlog`: an explicit choice. */
+export type QuestlogChoice = "open" | "closed";
+
+/**
+ * Whether the Questlog column starts open. A choice made on this device
+ * wins; without one it opens only where seven days still fit beside it
+ * (`roomy`, from 80rem), so a smaller window shows the whole week first.
+ */
+export function questlogStartsOpen(
+  stored: string | null,
+  roomy: boolean,
+): boolean {
+  if (stored === "open") return true;
+  if (stored === "closed") return false;
+  return roomy;
+}
+
+/** A day column's horizontal extent inside the board, in pixels. */
+export type ColumnSpan = { start: number; end: number };
+
+/**
+ * Where the board opens when its days do not all fit. It stays at the start
+ * while today is fully visible from there (always so when the week fits).
+ * Otherwise it scrolls as little as it must for today to be fully visible,
+ * landing on a column's start, so no day is cut at the left edge and the
+ * days before today stay in view as far as they can. `padding` is the
+ * board's scroll padding on each side (a phone's gutter).
+ */
+export function boardScroll(
+  columns: readonly ColumnSpan[],
+  todayIndex: number,
+  view: { width: number; padding: number },
+): number {
+  const today = columns[todayIndex];
+  if (!today) return 0;
+  const shows = (left: number): boolean =>
+    today.end <= left + view.width - view.padding;
+  if (shows(0)) return 0;
+  for (const column of columns.slice(0, todayIndex + 1)) {
+    const left = Math.max(0, column.start - view.padding);
+    if (shows(left)) return left;
+  }
+  return Math.max(0, today.start - view.padding);
+}
