@@ -354,11 +354,6 @@ useShortcutHandlers({
 
 <template>
   <main ref="page" class="page questlog">
-    <CreateButton
-      label="Quest erstellen"
-      :disabled="isBusy || selectedTodo !== null"
-      @click="openCreation"
-    />
     <header class="page-header">
       <h1 class="page-title">Questlog</h1>
       <p class="page-lead">Quests ohne Tag, an denen du arbeiten kannst.</p>
@@ -599,6 +594,12 @@ useShortcutHandlers({
     </template>
 
     <UndoToast :label="undo?.label ?? null" @undo="undoLast" />
+    <!-- After the content in reading order; fixed in place, it looks the same. -->
+    <CreateButton
+      label="Quest erstellen"
+      :disabled="isBusy || selectedTodo !== null"
+      @click="openCreation"
+    />
   </main>
 </template>
 

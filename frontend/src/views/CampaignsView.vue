@@ -471,11 +471,6 @@ useShortcutHandlers({
 </script>
 <template>
   <main ref="page" class="page hierarchy">
-    <CreateButton
-      label="Neue Kampagne"
-      :disabled="busy"
-      @click="open('create')"
-    />
     <header class="page-header">
       <h1 class="page-title">Kampagnen</h1>
       <p class="page-lead">Kampagnen, Questreihen und ihre Quests.</p>
@@ -867,6 +862,12 @@ useShortcutHandlers({
       @cancel="campaignCompletion.reply(false)"
     />
     <UndoToast :label="undo?.label ?? null" @undo="undoLast" />
+    <!-- After the content in reading order; fixed in place, it looks the same. -->
+    <CreateButton
+      label="Neue Kampagne"
+      :disabled="busy"
+      @click="open('create')"
+    />
   </main>
 </template>
 

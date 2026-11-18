@@ -170,3 +170,23 @@ export async function timerBarAction(page: Page, name: string) {
     .click();
   await page.getByRole("menuitem", { name, exact: true }).click();
 }
+
+/**
+ * The instant at which Berlin's clock shows `time` on `date`, for
+ * `page.clock`: tests set the time of day themselves, so they hold at any
+ * hour the suite runs. The server keeps its own clock; only the day must
+ * match, which `today()` gives.
+ */
+export function berlinTime(date: string, time: string): Date {
+  const guess = new Date(`${date}T${time}:00Z`);
+  const shown = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Berlin",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(guess);
+  const minutes = (clock: string) =>
+    Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3, 5));
+  const offset = (minutes(shown) - minutes(time) + 1440) % 1440;
+  return new Date(guess.getTime() - offset * 60_000);
+}

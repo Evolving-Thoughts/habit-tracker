@@ -8,8 +8,10 @@ import {
   watch,
 } from "vue";
 import {
+  openRunToday,
   rescheduleOccurrence,
   rescheduleTodo,
+  updateOccurrenceStatus,
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { getHistory } from "../api/history.api";
@@ -288,7 +290,7 @@ function closeDialogs(): void {
  * so "Rückgängig" only shows the stretch again: nothing was deleted, and its
  * event in Google, its source and its id stay as they were.
  */
-type Undoable = { kind: "todo" | "log"; id: number };
+type Undoable = { kind: "todo" | "occurrence" | "log"; id: number };
 const {
   undo,
   offer: offerUndo,
@@ -348,10 +350,41 @@ function quickMove(item: HistoryPlannedItem, date: string): void {
     ),
   );
 }
+/*
+ * A Daily run can be ticked where it is due: today (the server refuses
+ * runs of later days). A forecast run has no stored occurrence yet; the
+ * ring asks for today's runs first, so it runs the occurrence path Heute
+ * runs, with the same undo.
+ */
+function completeRun(item: HistoryPlannedItem): void {
+  const habitId = item.habitId;
+  if (habitId === null) return;
+  void listFocus.around(item.key, async () => {
+    let id = item.id;
+    const done = await writes.write(
+      async () => {
+        id ??= await openRunToday(habitId, item.scheduledDate);
+        if (id === null)
+          throw new Error("Dieses Daily ist heute nicht mehr fällig.");
+        await updateOccurrenceStatus(id, "completed");
+      },
+      {
+        key: busyKey(item),
+        fallbackError: "Das Daily konnte nicht erledigt werden.",
+      },
+    );
+    if (done && id !== null)
+      offerUndo({ kind: "occurrence", id }, `„${item.title}“ erledigt`);
+  });
+}
 const plannedActions: PlannedActions = {
-  checkable: (item) => item.type === "todo" && item.id !== null,
+  checkable: (item) =>
+    item.type === "todo"
+      ? item.id !== null
+      : item.habitId !== null && item.date === result.value?.today,
   complete: (item) => {
-    if (item.type !== "todo" || item.id === null) return;
+    if (item.type === "habit") return completeRun(item);
+    if (item.id === null) return;
     const id = item.id;
     void listFocus.around(item.key, async () => {
       const done = await writes.write(() => updateTodoCompletion(id, true), {
@@ -405,10 +438,16 @@ async function undoLast(): Promise<void> {
   // A held delete never went out: the stretch only comes back into view.
   if (target.kind === "log") return showLog(target.id, true);
   const id = target.id;
-  await writes.write(() => updateTodoCompletion(id, false), {
-    key: `undo-${id}`,
-    fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
-  });
+  await writes.write(
+    () =>
+      target.kind === "todo"
+        ? updateTodoCompletion(id, false)
+        : updateOccurrenceStatus(id, "pending"),
+    {
+      key: `undo-${target.kind}-${id}`,
+      fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
+    },
+  );
 }
 </script>
 

@@ -15,6 +15,7 @@ import type {
   HistoryWeeklyTarget,
   HistoryWorkLog,
 } from "../types/history";
+import { dayRelation, tallyLine, tallyOfHistoryDay } from "../utils/day-tally";
 import { hasEntries } from "../utils/history";
 import { formatDuration, logBlocks, planBlocks } from "../utils/logbook";
 
@@ -40,6 +41,24 @@ const skippedItems = computed(() =>
   props.day.items.filter((item) => item.status === "skipped"),
 );
 const plannedItems = computed(() => props.day.planned ?? []);
+/*
+ * The server sorts open entries like Heute: appointments by time, the rest
+ * in the day's order. What waits from an earlier day has its own group, as
+ * Heute's Nachholen, so the day's own count stays the day's own.
+ */
+const ownItems = computed(() =>
+  plannedItems.value.filter((item) => !item.isOverdue),
+);
+const carriedItems = computed(() =>
+  plannedItems.value.filter((item) => item.isOverdue),
+);
+/** The day counted by the rule every view shares. */
+const tally = computed(() =>
+  tallyLine(
+    tallyOfHistoryDay(props.day),
+    dayRelation(props.day.date, props.today),
+  ),
+);
 const isEmpty = computed(
   () => !props.weeklyTargets.length && !hasEntries(props.day),
 );
@@ -104,6 +123,20 @@ watch(
         </template>
       </div>
 
+      <p v-if="tally" class="calendar-day__tally">{{ tally }}</p>
+      <section v-if="ownItems.length" aria-label="Offen / geplant">
+        <h2 class="section-title">
+          Offen / geplant <span class="count">{{ ownItems.length }}</span>
+        </h2>
+        <HistoryPlannedItems :items="ownItems" :actions="actions" />
+      </section>
+      <section v-if="carriedItems.length" aria-label="Von früher">
+        <h2 class="section-title">
+          Von früher <span class="count">{{ carriedItems.length }}</span>
+        </h2>
+        <HistoryPlannedItems :items="carriedItems" :actions="actions" />
+      </section>
+      <!-- Past days keep what happened in the order it happened. -->
       <section v-if="completedItems.length" aria-label="Erledigt">
         <h2 class="section-title">
           Erledigt <span class="count">{{ completedItems.length }}</span>
@@ -127,12 +160,6 @@ watch(
             :item="item"
           />
         </ul>
-      </section>
-      <section v-if="plannedItems.length" aria-label="Offen / geplant">
-        <h2 class="section-title">
-          Offen / geplant <span class="count">{{ plannedItems.length }}</span>
-        </h2>
-        <HistoryPlannedItems :items="plannedItems" :actions="actions" />
       </section>
 
       <WeeklyTargets v-if="weeklyTargets.length" :targets="weeklyTargets" />
@@ -185,6 +212,13 @@ watch(
 <style scoped>
 .calendar-day__empty {
   margin-top: var(--space-5);
+}
+
+.calendar-day__tally {
+  margin: var(--space-4) 0 0;
+  color: var(--color-ink-muted);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .entries {

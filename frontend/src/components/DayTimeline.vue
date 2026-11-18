@@ -88,12 +88,17 @@ const stripe = (block: LogBlock) =>
           :style="place(block)"
         >
           <!-- A record of a moment, not a control: the dot of the history rows. -->
+          <!-- Read as one phrase: "Titel, erledigt um 15:59". -->
           <div v-if="block.source === 'done'" class="done-mark">
             <span class="done-mark__dot" aria-hidden="true"
               ><AppIcon name="check"
             /></span>
-            <span class="day-timeline__title">{{ block.title }}</span>
-            <span class="visually-hidden">, erledigt um {{ block.time }}</span>
+            <span class="day-timeline__title" aria-hidden="true">{{
+              block.title
+            }}</span>
+            <span class="visually-hidden"
+              >{{ block.title }}, erledigt um {{ block.time }}</span
+            >
           </div>
           <div v-else class="plan-block">
             <strong class="day-timeline__title">{{ block.title }}</strong>

@@ -8,6 +8,7 @@ import {
   getHabit,
   getHabits,
   updateHabit,
+  updateOccurrenceStatus,
 } from "../api/day-planner.api";
 import type {
   HabitResponse,
@@ -34,6 +35,7 @@ vi.mock("../api/day-planner.api", () => ({
   getTodo: vi.fn(),
   updateTodo: vi.fn(),
   deleteTodo: vi.fn(),
+  updateOccurrenceStatus: vi.fn(),
 }));
 enableAutoUnmount(afterEach);
 afterEach(() => vi.useRealTimers());
@@ -326,6 +328,46 @@ describe("HabitsView", () => {
       expect(status(4).text()).toBe("morgen fällig");
       expect(status(5).text()).toBe("diese Woche nicht mehr fällig");
       expect(status(6).exists()).toBe(false);
+    });
+
+    it("gives today's run a ring: ticked through its occurrence, with undo", async () => {
+      vi.mocked(updateOccurrenceStatus).mockResolvedValue(undefined);
+      vi.mocked(getHabits).mockResolvedValue([
+        habit({ id: 2, title: "Lesen" }),
+        habit({ id: 3, title: "Joggen", timerOccurrenceId: 31 }),
+        habit({ id: 4, title: "Gießen" }),
+      ]);
+      vi.mocked(getHistory).mockResolvedValue(
+        week({
+          [TODAY]: { items: [run(2, "completed")], planned: [due(3, TODAY)] },
+        }),
+      );
+      const wrapper = mount(HabitsView);
+      await flushPromises();
+      const card = (id: number) => wrapper.get(`[data-habit-id="${id}"]`);
+      // Done today: a filled ring that opens the run again.
+      const done = card(2).get('[aria-label="Lesen heute wieder öffnen"]');
+      expect(done.classes()).toContain("check-ring--checked");
+      // Nothing due today: no ring, but its place, so the titles line up.
+      expect(card(4).find(".check-ring").exists()).toBe(false);
+      expect(card(4).find(".habit-card__ring").exists()).toBe(true);
+
+      await card(3)
+        .get('[aria-label="Joggen heute erledigen"]')
+        .trigger("click");
+      await flushPromises();
+      expect(updateOccurrenceStatus).toHaveBeenCalledWith(31, "completed");
+      expect(wrapper.get(".undo-toast").text()).toContain("„Joggen“ erledigt");
+      await wrapper
+        .findAll("button")
+        .find((button) => button.text() === "Rückgängig")!
+        .trigger("click");
+      await flushPromises();
+      expect(updateOccurrenceStatus).toHaveBeenLastCalledWith(31, "pending");
+
+      await done.trigger("click");
+      await flushPromises();
+      expect(updateOccurrenceStatus).toHaveBeenLastCalledWith(52, "pending");
     });
 
     it("keeps the list without a status when the week does not load", async () => {

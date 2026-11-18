@@ -10,11 +10,15 @@ import type {
   DayPlannerTodoItem,
 } from "../types/day-planner";
 import {
+  DEFAULT_APPOINTMENT_MINUTES,
   arrangeToday,
+  currentItem,
   formatDayHeading,
   formatDuration,
+  formatWindow,
   itemKey,
   moved,
+  nextChangeAt,
   withQueueOrder,
 } from "./today-agenda";
 
@@ -105,11 +109,25 @@ describe("arrangeToday", () => {
     );
   });
 
-  it("falls back to the next appointment, then to a missed one", () => {
+  it("never lets a coming or a missed appointment stand in for an empty order", () => {
     const missed = todo({ todoId: 1, timeOfDay: "08:00" });
     const next = habit({ occurrenceId: 2, timeOfDay: "18:00" });
-    expect(arrangeToday(planner([missed, next]), at(12)).focus).toBe(next);
-    expect(arrangeToday(planner([missed]), at(12)).focus).toBe(missed);
+    const agenda = arrangeToday(planner([missed, next]), at(12));
+    expect(agenda.focus).toBeNull();
+    expect(agenda.focusWindow).toBeNull();
+    // Both wait on the axis: the missed one behind "now", the next one after it.
+    expect(agenda.timeline.map((entry) => entry.time)).toEqual([
+      "08:00",
+      "18:00",
+    ]);
+    expect(agenda.nowIndex).toBe(1);
+  });
+
+  it("gives the focus the window of a running appointment", () => {
+    const meeting = habit({ timeOfDay: "07:00", plannedDurationMinutes: 20 });
+    const agenda = arrangeToday(planner([meeting]), at(7, 5));
+    expect(agenda.focus).toBe(meeting);
+    expect(agenda.focusWindow).toEqual({ start: at(7), end: at(7, 20) });
   });
 
   it("shows calendar events on the axis with timed items", () => {
@@ -142,9 +160,15 @@ describe("arrangeToday", () => {
     const agenda = arrangeToday(planner([overdue, done, open]), at(8));
     expect(agenda.carriedOver).toEqual([overdue]);
     expect(agenda.resolved).toEqual([done]);
-    expect(agenda.focus).toBe(open);
+    // The daily at 18:00 waits for its turn on the axis.
+    expect(agenda.focus).toBeNull();
     expect(agenda.queue).toEqual([]);
-    expect([agenda.done, agenda.total]).toEqual([1, 2]);
+    expect(agenda.tally).toEqual({
+      completed: 1,
+      open: 1,
+      carriedOver: 1,
+      skipped: 0,
+    });
   });
 
   it("has no focus when everything is resolved", () => {
@@ -154,6 +178,92 @@ describe("arrangeToday", () => {
     );
     expect(agenda.focus).toBeNull();
     expect(agenda.queue).toEqual([]);
+  });
+});
+
+describe("currentItem: what is up now, for Heute and the Fokus-Modus", () => {
+  const first = todo({ todoId: 1, title: "Erstes" });
+  const second = todo({ todoId: 2, title: "Zweites" });
+  const call = todo({
+    todoId: 3,
+    title: "Anruf",
+    timeOfDay: "10:00",
+    plannedDurationMinutes: 45,
+  });
+
+  it("is the head of the order before an appointment starts", () => {
+    expect(currentItem([call, first, second], [first, second], at(9, 59))).toBe(
+      first,
+    );
+  });
+
+  it("is the appointment from its start until its end", () => {
+    const pending = [call, first, second];
+    expect(currentItem(pending, [first, second], at(10))).toBe(call);
+    expect(currentItem(pending, [first, second], at(10, 44))).toBe(call);
+    expect(currentItem(pending, [first, second], at(10, 45))).toBe(first);
+  });
+
+  it("gives an appointment without a duration its default turn", () => {
+    const short = todo({ todoId: 4, timeOfDay: "10:00" });
+    expect(DEFAULT_APPOINTMENT_MINUTES).toBe(30);
+    expect(currentItem([short, first], [first], at(10, 29))).toBe(short);
+    expect(currentItem([short, first], [first], at(10, 30))).toBe(first);
+  });
+
+  it("takes the appointment that began last when several overlap", () => {
+    const later = habit({
+      occurrenceId: 5,
+      timeOfDay: "10:15",
+      plannedDurationMinutes: 10,
+    });
+    const pending = [call, later, first];
+    expect(currentItem(pending, [first], at(10, 20))).toBe(later);
+    // Once the short one is over, the longer one is up again.
+    expect(currentItem(pending, [first], at(10, 25))).toBe(call);
+  });
+
+  it("is nothing when the order is empty and no appointment is up", () => {
+    expect(currentItem([call], [], at(9))).toBeNull();
+    expect(currentItem([call], [], at(11))).toBeNull();
+    expect(currentItem([], [], at(11))).toBeNull();
+  });
+});
+
+describe("nextChangeAt: when the focus card can change", () => {
+  it("names the next start, the minute after it and the end", () => {
+    const call = todo({ timeOfDay: "10:00", plannedDurationMinutes: 45 });
+    const day = planner([call, todo({ todoId: 2 })]);
+    expect(nextChangeAt(day, at(9))).toBe(at(10));
+    expect(nextChangeAt(day, at(10))).toBe(at(10, 1));
+    expect(nextChangeAt(day, at(10, 1))).toBe(at(10, 45));
+    expect(nextChangeAt(day, at(10, 45))).toBeNull();
+  });
+
+  it("waits for calendar events passing \"now\", ignores what is done", () => {
+    const done = todo({ timeOfDay: "09:00", status: "completed" });
+    const day = planner(
+      [done],
+      [
+        {
+          id: 1,
+          title: "Zahnarzt",
+          start: "2026-10-02T12:00:00Z",
+          end: "2026-10-02T13:00:00Z",
+        },
+      ],
+    );
+    // 14:00 in Berlin; the line passes it a minute later.
+    expect(nextChangeAt(day, at(8))).toBe(at(14, 1));
+  });
+
+  it("writes a window as a time range", () => {
+    expect(formatWindow({ start: at(9), end: at(10, 30) })).toBe(
+      "09:00–10:30",
+    );
+    expect(formatWindow({ start: at(23, 30), end: at(24, 15) })).toBe(
+      "23:30–00:15",
+    );
   });
 });
 

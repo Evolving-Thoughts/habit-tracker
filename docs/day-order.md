@@ -62,9 +62,23 @@ export only, as Logbuch events (see `logbook.md`).
 
 - `PlanFields.vue`: the day (with "Heute" / "Morgen") and an optional fixed time,
   used by every quest form. `utils/todo-input.ts` validates them.
-- `utils/today-agenda.ts` arranges Heute: the focus is the head of the order,
-  unless an appointment is running right now (its time until its duration, or
-  30 minutes); appointments and calendar events sit on the time axis.
+- `utils/today-agenda.ts` arranges Heute. `currentItem` is the one rule for
+  what is up now, shared by Heute's focus card and the Fokus-Modus: an
+  appointment (a todo or habit with a time) from its start until its end, the
+  start plus its planned duration or `DEFAULT_APPOINTMENT_MINUTES` (30) without
+  one; when several overlap, the one that began last. Otherwise the head of the
+  order. Before its start and after its end an appointment only sits on the
+  time axis with the calendar events; it never stands in for an empty order
+  (Heute then says "In der Reihenfolge ist nichts mehr offen." and names the
+  next appointment). `nextChangeAt` names the next minute at which this can
+  change (a start, an end, an entry passing the "now" line), and
+  `composables/useDayClock.ts` sets one timeout for exactly that minute
+  instead of polling; it catches up when a hidden tab becomes visible again.
+- The Kalender lists a day's open entries in the same order: `GET /history`
+  sorts `days[].planned` with `compareInDay` (`sortedLikeToday` in
+  `history-planning.ts`): carried-over first, appointments by clock, then the
+  stored `dayPosition`, forecast runs (never sorted) last by title. See
+  `history.md`.
 - Heute sorts by drag and drop: the focus card and the rows after it are one
   list (`useSortable`, SortableJS). The grip (in a row's time column, at the
   focus card's top right) also takes Arrow Up/Down, and a status line

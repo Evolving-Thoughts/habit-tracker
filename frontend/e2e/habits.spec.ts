@@ -207,3 +207,63 @@ test("Dailies: each Daily shows its why and where it stands this week", async ({
     "heute erledigt",
   );
 });
+
+test("Dailies: today's run has a ring there, ticked and taken back like on Heute", async ({
+  page,
+  request,
+}) => {
+  for (const data of [
+    { title: "Lesen", schedule: { type: "interval", intervalDays: 1 } },
+    {
+      title: "Krafttraining",
+      schedule: { type: "weekly_target", weeklyTarget: 3 },
+    },
+    {
+      title: "Später",
+      startDate: daysAfter(await today(request), 3),
+      schedule: { type: "interval", intervalDays: 1 },
+    },
+  ])
+    expect((await request.post(`${API_URL}/habits`, { data })).status()).toBe(
+      201,
+    );
+
+  await visit(page, "Dailies");
+  const card = (title: string) =>
+    page.locator(".habit-card").filter({
+      has: page.getByRole("heading", { name: title, exact: true }),
+    });
+  // Due today: a ring. Not due yet: only its place, so the titles line up.
+  await expect(
+    card("Krafttraining").getByRole("button", {
+      name: "Krafttraining heute erledigen",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(card("Später").locator(".check-ring")).toHaveCount(0);
+
+  await card("Lesen")
+    .getByRole("button", { name: "Lesen heute erledigen", exact: true })
+    .click();
+  const toast = page.locator(".undo-toast");
+  await expect(toast).toContainText("„Lesen“ erledigt");
+  await expect(card("Lesen").locator(".habit-card__status")).toHaveText(
+    "heute erledigt",
+  );
+  await expect(
+    card("Lesen").getByRole("button", {
+      name: "Lesen heute wieder öffnen",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await toast.getByRole("button", { name: "Rückgängig", exact: true }).click();
+  await expect(card("Lesen").locator(".habit-card__status")).toHaveText(
+    "heute fällig",
+  );
+
+  // Heute agrees: the run is still open there.
+  await openView(page, "Heute");
+  await expect(
+    page.getByRole("button", { name: "Lesen erledigen", exact: true }),
+  ).toBeVisible();
+});

@@ -292,28 +292,35 @@ test("Calendar week: open plans, overdue Quests and weekly targets stay calm", a
   );
   await view.getByRole("button", { name: "Woche", exact: true }).click();
   const day = page.locator(`.week-day[data-date="${date}"]`);
-  await expect(day).toContainText("3 offen");
+  // Counted like Heute: today's own (with the weekly target's run Heute
+  // lists) and, apart, what waits from an earlier day.
+  await expect(day).toContainText("0 von 3 erledigt · 1 von früher");
   await expect(targets).toContainText("Leseziel");
   await expect(targets).toContainText("Noch 3 von 3 · 0 erledigt");
   await expect(targets).not.toContainText("Gültig");
   await day.click();
-  await expect(planned).toContainText(
+  const earlier = page.getByRole("region", { name: "Von früher", exact: true });
+  await expect(earlier).toContainText(
     `noch offen seit ${shortDate(overdueDate)}`,
   );
-  await expect(planned).not.toContainText("überfällig");
+  await expect(earlier).not.toContainText("überfällig");
+  await expect(planned).not.toContainText("noch offen seit");
   await expect(planned).toContainText("Tägliche Gitarre");
-  // Open quests get the ring, as on Heute; a daily run is ticked on its day.
+  // Open quests and today's Daily runs get the ring, as on Heute.
   await expect(planned.getByRole("button", { name: /erledigen$/ })).toHaveCount(
-    2,
+    3,
   );
   await expect(
     planned.getByRole("button", {
       name: "Tägliche Gitarre erledigen",
       exact: true,
     }),
-  ).toHaveCount(0);
+  ).toHaveCount(1);
+  await expect(earlier.getByRole("button", { name: /erledigen$/ })).toHaveCount(
+    1,
+  );
   // Moving sits in the row's menu, not on a lone button.
-  await planned
+  await earlier
     .getByRole("button", {
       name: "Aktionen für Überfälliger Artikel",
       exact: true,
@@ -342,9 +349,9 @@ test("Calendar week: open plans, overdue Quests and weekly targets stay calm", a
   });
   await filterCalendar(page, "Quests");
   await expect(targets).toHaveCount(0);
-  await expect(day).toContainText("2 offen");
+  await expect(day).toContainText("0 von 1 erledigt · 1 von früher");
   await filterCalendar(page, "Dailies");
-  await expect(day).toContainText("1 offen");
+  await expect(day).toContainText("0 von 2 erledigt");
   await expect(targets).toBeVisible();
   await page.locator('[name="historyDate"]').fill(daysAfter(date, -14));
   await expect(page.locator(".week-day")).toHaveCount(0);
@@ -434,7 +441,7 @@ test("Calendar forecast: future date placement, schedule change, pause and delet
       page.locator(`.week-day[data-date="${dates[index]}"]`),
     ).toContainText(
       expected[index]!.length
-        ? `${expected[index]!.length} offen`
+        ? `${expected[index]!.length} geplant`
         : "Nichts geplant",
     );
   await page
@@ -499,18 +506,25 @@ test("Calendar day: date placement, filters, overdue plans and completion refres
     name: "Offen / geplant",
     exact: true,
   });
+  // What waits from an earlier day stands apart, like Heute's Nachholen.
+  const earlier = page.getByRole("region", { name: "Von früher", exact: true });
   await expect(planned.locator(".planned-item h3")).toHaveText([
-    "Überfälliges Quest",
     "Täglicher Daily",
   ]);
-  await expect(planned).toContainText(`noch offen seit ${shortDate(old)}`);
-  // The open quest has its ring, as on Heute; the daily run has none here.
-  await expect(planned.getByRole("button", { name: /erledigen$/ })).toHaveCount(
-    1,
-  );
+  await expect(earlier.locator(".planned-item h3")).toHaveText([
+    "Überfälliges Quest",
+  ]);
+  await expect(earlier).toContainText(`noch offen seit ${shortDate(old)}`);
+  // The open quest and today's Daily run have their ring, as on Heute.
+  await expect(
+    earlier.getByRole("button", {
+      name: "Überfälliges Quest erledigen",
+      exact: true,
+    }),
+  ).toBeVisible();
   await expect(
     planned.getByRole("button", {
-      name: "Überfälliges Quest erledigen",
+      name: "Täglicher Daily erledigen",
       exact: true,
     }),
   ).toBeVisible();
@@ -618,4 +632,110 @@ test("Calendar day: reflection saves only after a change and time is logged in t
   await expect(logbook).not.toContainText("keine Zeit gemessen");
   // Saved, the form folds away again.
   await expect(logbook.locator('[name="target"]')).toHaveCount(0);
+});
+
+test("Calendar day: sorted like Heute, counted like Heute, and Dailies are ticked with undo", async ({
+  page,
+  request,
+}) => {
+  const date = await today(request);
+  const quest = async (data: object) => {
+    const response = await request.post(`${API_URL}/todos`, { data });
+    expect(response.status()).toBe(201);
+    return (await response.json()) as { id: number };
+  };
+  const zebra = await quest({ title: "Zebra füttern", scheduledDate: date });
+  const apple = await quest({ title: "Äpfel kaufen", scheduledDate: date });
+  await quest({ title: "Arzt", scheduledDate: date, timeOfDay: "23:55" });
+  await quest({ title: "Altlast", scheduledDate: daysAfter(date, -3) });
+  const done = await quest({ title: "Gliederung", scheduledDate: date });
+  const created = await request.post(`${API_URL}/habits`, {
+    data: {
+      title: "Lesen",
+      why: "Für ruhige Abende",
+      schedule: { type: "interval", intervalDays: 1 },
+    },
+  });
+  expect(created.status()).toBe(201);
+  // Heute creates today's run; the order puts Zebra before Äpfel.
+  await page.goto("/");
+  await expect(page.locator("#focus-title")).toBeVisible();
+  const planner = (await (
+    await request.get(`${API_URL}/day-planner/today`)
+  ).json()) as { items: { type: string; occurrenceId?: number }[] };
+  const run = planner.items.find((item) => item.type === "habit")!;
+  expect(
+    (
+      await request.put(`${API_URL}/day-planner/order`, {
+        data: {
+          items: [
+            { type: "todo", id: zebra.id },
+            { type: "habit", id: run.occurrenceId },
+            { type: "todo", id: apple.id },
+          ],
+        },
+      })
+    ).status(),
+  ).toBe(204);
+  expect(
+    (
+      await request.patch(`${API_URL}/todos/${done.id}`, {
+        data: { completed: true },
+      })
+    ).status(),
+  ).toBe(200);
+
+  await page.reload();
+  await expect(page.locator(".today-view__progress")).toHaveText(
+    "1 von 5 erledigt · 1 von früher",
+  );
+  await openCalendar(page, "Tag");
+  // The same words for the same day as on Heute.
+  await expect(page.locator(".calendar-day__tally")).toHaveText(
+    "1 von 5 erledigt · 1 von früher",
+  );
+  const planned = page.getByRole("region", {
+    name: "Offen / geplant",
+    exact: true,
+  });
+  // The appointment by its time, then the day's order, not the alphabet.
+  await expect(planned.locator(".planned-item h3")).toHaveText([
+    "Arzt",
+    "Zebra füttern",
+    "Lesen",
+    "Äpfel kaufen",
+  ]);
+  const daily = planned.locator(".planned-item").filter({ hasText: "Lesen" });
+  await expect(daily).toContainText("Daily");
+  await expect(daily).toContainText("Für ruhige Abende");
+
+  // The completion mark on the axis reads as one phrase.
+  await expect(
+    page
+      .getByRole("list", { name: "Geplant", exact: true })
+      .getByRole("listitem")
+      .filter({ hasText: "Gliederung" }),
+  ).toMatchAriaSnapshot(String.raw`- listitem: /Gliederung, erledigt um \d\d:\d\d/`);
+
+  await daily
+    .getByRole("button", { name: "Lesen erledigen", exact: true })
+    .click();
+  const toast = page.locator(".undo-toast");
+  await expect(toast).toContainText("„Lesen“ erledigt");
+  await expect(
+    page.getByRole("region", { name: "Erledigt", exact: true }),
+  ).toContainText("Lesen");
+  await expect(page.locator(".calendar-day__tally")).toHaveText(
+    "2 von 5 erledigt · 1 von früher",
+  );
+  await toast.getByRole("button", { name: "Rückgängig", exact: true }).click();
+  await expect(planned.locator(".planned-item h3")).toContainText(["Lesen"]);
+  await expect
+    .poll(async () => {
+      const occurrences = (await (
+        await request.get(`${API_URL}/habit-occurrences/today`)
+      ).json()) as { id: number; status: string }[];
+      return occurrences.find((item) => item.id === run.occurrenceId)?.status;
+    })
+    .toBe("pending");
 });

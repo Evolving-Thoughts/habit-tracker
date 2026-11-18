@@ -1,4 +1,5 @@
 import type { DayPlannerItem, DayPlannerResponse } from "../types/day-planner";
+import { tallyOfPlanner, type DayTally } from "./day-tally";
 
 export type ExternalEvent = DayPlannerResponse["externalEvents"][number];
 
@@ -8,8 +9,10 @@ export type TimelineEntry =
   | { kind: "event"; minutes: number; time: string; event: ExternalEvent };
 
 export type TodayAgenda = {
-  /** The one thing that is up now, shown large with its why. */
+  /** The one thing that is up now (`currentItem`), shown large with its why. */
   focus: DayPlannerItem | null;
+  /** Start and end of the focus when it is an appointment whose turn it is. */
+  focusWindow: AppointmentWindow | null;
   /** Open items from earlier days, offered for catching up. */
   carriedOver: DayPlannerItem[];
   /** Today's appointments, timed dailies and events by clock, without the focus. */
@@ -22,12 +25,19 @@ export type TodayAgenda = {
    */
   queue: DayPlannerItem[];
   resolved: DayPlannerItem[];
-  done: number;
-  total: number;
+  /** The day counted by the rule all views share (`day-tally.ts`). */
+  tally: DayTally;
 };
 
-/** How long an appointment without a duration counts as running. */
-const DEFAULT_APPOINTMENT_MINUTES = 30;
+/**
+ * How long an appointment without a planned duration stays its turn: long
+ * enough for a short call, short enough not to hold the focus card all
+ * morning when nobody set a duration.
+ */
+export const DEFAULT_APPOINTMENT_MINUTES = 30;
+
+/** Minutes since midnight: an appointment's turn, from start until end. */
+export type AppointmentWindow = { start: number; end: number };
 
 const timeFormat = new Intl.DateTimeFormat("de-DE", {
   hour: "2-digit",
@@ -60,6 +70,76 @@ export function itemKey(item: DayPlannerItem): string {
     : `habit-${item.occurrenceId}`;
 }
 
+/** When an appointment or timed daily is its turn; null without a time. */
+export function appointmentWindow(
+  item: DayPlannerItem,
+): AppointmentWindow | null {
+  const clock = plannedClock(item);
+  if (!clock) return null;
+  return {
+    start: clock.minutes,
+    end:
+      clock.minutes +
+      (item.plannedDurationMinutes ?? DEFAULT_APPOINTMENT_MINUTES),
+  };
+}
+
+/** "09:00–10:00" for a window, in minutes since midnight. */
+export function formatWindow(window: AppointmentWindow): string {
+  const clock = (minutes: number) => {
+    const wrapped = ((minutes % 1440) + 1440) % 1440;
+    return `${String(Math.floor(wrapped / 60)).padStart(2, "0")}:${String(wrapped % 60).padStart(2, "0")}`;
+  };
+  return `${clock(window.start)}–${clock(window.end)}`;
+}
+
+/**
+ * What is up now: the one rule Heute's focus card and the Fokus-Modus share.
+ * An appointment is up from its start until its end (start plus its planned
+ * duration, or DEFAULT_APPOINTMENT_MINUTES); when several are, the one that
+ * began last. Otherwise it is the head of the order: the next item one can
+ * work on. Before its start and after its end an appointment stays on the
+ * time axis; it never stands in for an empty order.
+ */
+export function currentItem(
+  pending: readonly DayPlannerItem[],
+  queue: readonly DayPlannerItem[],
+  now: number,
+): DayPlannerItem | null {
+  let running: { item: DayPlannerItem; start: number } | null = null;
+  for (const item of pending) {
+    const window = appointmentWindow(item);
+    if (!window || window.start > now || now >= window.end) continue;
+    if (!running || window.start > running.start)
+      running = { item, start: window.start };
+  }
+  return running?.item ?? queue[0] ?? null;
+}
+
+/**
+ * The next minute at which `currentItem` or the "now" line can change: an
+ * appointment starts or ends, or an entry of the axis falls behind "now".
+ * Null when nothing changes any more today. A timer waits for exactly this
+ * instead of polling the clock.
+ */
+export function nextChangeAt(
+  planner: DayPlannerResponse,
+  now: number,
+): number | null {
+  const moments: number[] = [];
+  for (const item of planner.items) {
+    if (item.status !== "pending" || item.isOverdue) continue;
+    const window = appointmentWindow(item);
+    if (window) moments.push(window.start, window.start + 1, window.end);
+  }
+  for (const event of planner.externalEvents) {
+    const { minutes } = clockOf(event.start);
+    moments.push(minutes + 1);
+  }
+  const later = moments.filter((moment) => moment > now && moment < 1440);
+  return later.length ? Math.min(...later) : null;
+}
+
 /** Arranges today around what is up now. `now` is minutes since midnight. */
 export function arrangeToday(
   planner: DayPlannerResponse,
@@ -79,22 +159,7 @@ export function arrangeToday(
     })
     .sort((first, second) => first.clock.minutes - second.clock.minutes);
   const queue = pending.filter((item) => plannedClock(item) === null);
-
-  // An appointment that is running now comes before the order of the day.
-  const running = timed.find(
-    ({ item, clock }) =>
-      clock.minutes <= now &&
-      now <
-        clock.minutes +
-          (item.plannedDurationMinutes ?? DEFAULT_APPOINTMENT_MINUTES),
-  );
-  const upcoming = timed.find(({ clock }) => clock.minutes > now);
-  const focus =
-    running?.item ??
-    queue[0] ??
-    upcoming?.item ??
-    timed.at(-1)?.item ??
-    null;
+  const focus = currentItem(pending, queue, now);
 
   const events: TimelineEntry[] = planner.externalEvents.map((event) => ({
     kind: "event",
@@ -111,13 +176,13 @@ export function arrangeToday(
 
   return {
     focus,
+    focusWindow: focus ? appointmentWindow(focus) : null,
     carriedOver,
     timeline,
     nowIndex: nowIndex === -1 ? timeline.length : nowIndex,
     queue,
     resolved,
-    done: resolved.length,
-    total: today.length,
+    tally: tallyOfPlanner(planner.items),
   };
 }
 

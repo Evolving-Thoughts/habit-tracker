@@ -325,3 +325,47 @@ describe("PlannerItem", () => {
     expect(wrapper.get(".check-ring").attributes("aria-busy")).toBe("true");
   });
 });
+
+describe("PlannerItem: Daily marker and Warum", () => {
+  it("leads a Daily's meta line with the Daily marker", () => {
+    const wrapper = mount(PlannerItem, {
+      props: { item: makeHabit({ categoryName: "Sport" }), isUpdating: false },
+    });
+    const meta = wrapper.get(".item-row__meta");
+    expect(meta.element.firstElementChild!.textContent!.trim()).toBe("Daily");
+    expect(meta.find("svg").exists()).toBe(true);
+    expect(meta.text()).toContain("Sport");
+  });
+
+  it("shows the Warum in one quiet line, not on done rows", () => {
+    const open = mount(PlannerItem, {
+      props: {
+        item: makeTodo({ why: "Damit der Kopf frei ist" }),
+        isUpdating: false,
+      },
+    });
+    const why = open.get(".planner-item__why");
+    expect(why.text()).toBe("Damit der Kopf frei ist");
+    expect(why.attributes("title")).toBe("Damit der Kopf frei ist");
+    expect(why.classes()).not.toContain("planner-item__why--wide");
+
+    const wide = mount(PlannerItem, {
+      props: {
+        item: makeTodo({ why: "Später" }),
+        isUpdating: false,
+        whyWideOnly: true,
+      },
+    });
+    expect(wide.get(".planner-item__why").classes()).toContain(
+      "planner-item__why--wide",
+    );
+
+    const done = mount(PlannerItem, {
+      props: {
+        item: makeTodo({ why: "Vorbei", status: "completed" }),
+        isUpdating: false,
+      },
+    });
+    expect(done.find(".planner-item__why").exists()).toBe(false);
+  });
+});

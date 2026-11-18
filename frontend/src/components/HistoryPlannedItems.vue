@@ -4,7 +4,7 @@ import type { MenuEntry } from "../utils/row-actions";
 
 /** What the calendar lets a planned row do; the view owns every write. */
 export type PlannedActions = {
-  /** Open quests get the ring and are ticked like on Heute. */
+  /** Open quests and today's Daily runs get the ring, ticked like on Heute. */
   checkable: (item: HistoryPlannedItem) => boolean;
   complete: (item: HistoryPlannedItem) => void;
   /** The title opens the editor where the entry is stored. */
@@ -18,6 +18,7 @@ export type PlannedActions = {
 
 <script setup lang="ts">
 import { computed } from "vue";
+import AppIcon from "./AppIcon.vue";
 import ItemRow from "./ItemRow.vue";
 import { categoryMark } from "../utils/category-mark";
 import { shortDate } from "../utils/history";
@@ -44,7 +45,7 @@ const can = <K extends "checkable" | "editable">(
   kind: K,
   item: HistoryPlannedItem,
 ) => props.actions?.[kind](item) ?? false;
-/* Daily runs keep the ring's place, so all titles of the list line up. */
+/* Rows without a ring keep its place, so all titles of the list line up. */
 const anyCheckable = computed(() =>
   props.items.some((item) => can("checkable", item)),
 );
@@ -68,7 +69,16 @@ const anyCheckable = computed(() =>
         @toggle="actions?.complete(item)"
         @edit="actions?.edit(item)"
       >
-        <template v-if="item.categoryName || details(item).length" #meta>
+        <template
+          v-if="
+            item.type === 'habit' || item.categoryName || details(item).length
+          "
+          #meta
+        >
+          <!-- A Daily says so first, as on Heute and in the Plan. -->
+          <span v-if="item.type === 'habit'" class="planned-item__daily">
+            <AppIcon name="dailies" />Daily
+          </span>
           <span v-if="item.categoryName" class="planned-item__category">
             <i
               class="planned-item__mark"
@@ -105,6 +115,18 @@ const anyCheckable = computed(() =>
   font-size: 0.9375rem;
   line-height: 1.4;
   overflow-wrap: anywhere;
+}
+
+.planned-item__daily {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  font-weight: 700;
+}
+
+.planned-item__daily :deep(svg) {
+  width: 0.875rem;
+  height: 0.875rem;
 }
 
 .planned-item__category {

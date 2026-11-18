@@ -1,4 +1,4 @@
-import { openView, today, daysAfter } from "./helpers";
+import { berlinTime, openView, today, daysAfter } from "./helpers";
 import { test, expect } from "./fixtures";
 import { API_URL } from "./environment";
 import type { APIRequestContext, Page } from "@playwright/test";
@@ -119,6 +119,8 @@ test("Heute: appointments sit on the time axis and stay when the rest moves to t
   request,
 }) => {
   const date = await today(request);
+  // Noon in the browser, whatever the hour the suite runs at.
+  await page.clock.install({ time: berlinTime(date, "12:00") });
   await plan(request, {
     title: "Zahnarzt",
     scheduledDate: date,
@@ -141,8 +143,13 @@ test("Heute: appointments sit on the time axis and stay when the rest moves to t
     .click();
   await expect(dialog).not.toBeVisible();
 
-  await expect(page.locator("#focus-title")).toHaveText("Zahnarzt");
+  // An appointment never stands in for an empty order: it waits on the axis.
+  await expect(page.locator("#focus-title")).toHaveCount(0);
   await expect(page.locator(".order .planner-item")).toHaveCount(0);
+  await expect(page.locator(".today-view__empty")).toContainText(
+    "Nächster Termin: 23:58 Zahnarzt.",
+  );
+  await expect(axis).toContainText("Zahnarzt");
   const todos = (await (await request.get(`${API_URL}/todos`)).json()) as {
     title: string;
     scheduledDate: string;
@@ -156,11 +163,76 @@ test("Heute: appointments sit on the time axis and stay when the rest moves to t
   });
 });
 
+test("Heute: an appointment is the focus card from its start to its end", async ({
+  page,
+  request,
+}) => {
+  const date = await today(request);
+  // The browser's clock, not the wall clock: 09:50 on the server's day.
+  await page.clock.install({ time: berlinTime(date, "09:50") });
+  await plan(request, {
+    title: "Teamrunde",
+    scheduledDate: date,
+    timeOfDay: "10:00",
+    plannedDurationMinutes: 30,
+  });
+  await plan(request, { title: "Steuer sortieren", scheduledDate: date });
+  await plan(request, { title: "Mails", scheduledDate: date });
+  await page.goto("/");
+  const focus = page.locator(".focus");
+  const axis = page.getByRole("region", { name: "Termine" });
+
+  // Before: the next item of the order; the appointment waits on the axis.
+  await expect(page.locator("#focus-title")).toHaveText("Steuer sortieren");
+  await expect(axis).toContainText("Teamrunde");
+  await expect(
+    focus.getByRole("link", { name: "Fokus-Modus", exact: true }),
+  ).toBeVisible();
+
+  // During: the page stays open and the card changes on its own.
+  await page.clock.fastForward(11 * 60_000);
+  await expect(page.locator("#focus-title")).toHaveText("Teamrunde");
+  await expect(focus.locator(".focus__slot")).toHaveText("10:00–10:30");
+  await expect(
+    focus.getByRole("button", { name: "Teamrunde erledigen", exact: true }),
+  ).toBeVisible();
+  await expect(
+    focus.getByRole("button", {
+      name: "Stoppuhr für Teamrunde starten",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    focus.getByRole("link", { name: "Fokus-Modus", exact: true }),
+  ).toHaveCount(0);
+  await focus
+    .getByRole("button", { name: "Aktionen für Teamrunde", exact: true })
+    .click();
+  await expect(
+    page.getByRole("menuitem", { name: "Teamrunde verschieben", exact: true }),
+  ).toHaveText(/Termin verschieben/);
+  await page.keyboard.press("Escape");
+  // The rest of the order is unchanged below it.
+  await expect(page.locator(".order .planner-item h3")).toHaveText([
+    "Steuer sortieren",
+    "Mails",
+  ]);
+
+  // After: back to the order; the unfinished appointment stays, as past.
+  await page.clock.fastForward(30 * 60_000);
+  await expect(page.locator("#focus-title")).toHaveText("Steuer sortieren");
+  await expect(axis.locator(".timeline__entry--past")).toContainText(
+    "Teamrunde",
+  );
+});
+
 test("Quest forms plan a day; only an appointment gets a time", async ({
   page,
   request,
 }) => {
   const date = await today(request);
+  // Noon in the browser, so 23:57 is still ahead whenever the suite runs.
+  await page.clock.install({ time: berlinTime(date, "12:00") });
   await page.goto("/");
   await openView(page, "Questlog");
   await page.locator(".create-button").click();
@@ -181,5 +253,10 @@ test("Quest forms plan a day; only an appointment gets a time", async ({
   }[];
   expect(todo).toMatchObject({ scheduledDate: date, timeOfDay: "23:57" });
   await openView(page, "Heute");
-  await expect(page.getByText("Steuerberater")).toBeVisible();
+  // An appointment waits on the time axis until its turn.
+  await expect(
+    page
+      .getByRole("region", { name: "Termine" })
+      .getByRole("heading", { name: "Steuerberater", exact: true }),
+  ).toBeVisible();
 });
