@@ -2,6 +2,7 @@ import { HistoryModule } from './history/history.module';
 import { ReflectionsModule } from './reflections/reflections.module';
 import { WorkLogsModule } from './work-logs/work-logs.module';
 import { QuestHoursModule } from './quest-hours/quest-hours.module';
+import { WeekReviewModule } from './week-review/week-review.module';
 import { PushModule } from './push/push.module';
 import { TimersModule } from './timers/timers.module';
 import { AuthModule } from './auth/auth.module';
@@ -43,6 +44,7 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
     ReflectionsModule,
     WorkLogsModule,
     QuestHoursModule,
+    WeekReviewModule,
     CalendarModule,
   ],
   controllers: [AppController],

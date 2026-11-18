@@ -12,13 +12,12 @@ import {
   placeOpenTodo,
 } from '../todos/todo-agenda';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
-import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { resolvedOccurrences } from '../habit-occurrences/resolved-occurrences';
 import { historyRange } from './history-range';
 import { eventsOfDays } from '../calendar/day-events';
 import { CategoryEntity } from '../categories/category.entity';
-import { perfectWeek } from './perfect-week';
-import { weekQuota } from './week-quota';
+import { perfectWeekOf } from './perfect-week';
+import { loadWeekQuota } from './week-quota';
 import {
   HistoryQueryDto,
   HistoryResponse,
@@ -139,32 +138,17 @@ export class HistoryService {
       return {
         ...(query.view === 'week' && filter === 'all'
           ? {
-              perfectWeek: perfectWeek(categories, [
-                ...todos.map((todo) => todo.categoryId),
-                ...occurrences
-                  .filter(
-                    (item) => item.status === HabitOccurrenceStatus.COMPLETED,
-                  )
-                  .map((item) => item.habit.categoryId),
-              ]),
+              perfectWeek: perfectWeekOf(categories, todos, occurrences),
             }
           : {}),
         weeklyTargets: planning.targets,
         ...(query.view === 'week' && filter !== 'todos'
           ? {
-              weekQuota: weekQuota(
-                await manager
-                  .getRepository(HabitOccurrenceEntity)
-                  .createQueryBuilder('occurrence')
-                  .withDeleted()
-                  .innerJoin('occurrence.habit', 'habit')
-                  .innerJoinAndSelect('occurrence.scheduleVersion', 'version')
-                  .where('"habit"."userId" = :userId', { userId })
-                  .andWhere(
-                    '"occurrence"."scheduledDate" BETWEEN :startDate AND :endDate',
-                    { startDate, endDate },
-                  )
-                  .getMany(),
+              weekQuota: await loadWeekQuota(
+                manager,
+                userId,
+                startDate,
+                endDate,
               ),
             }
           : {}),

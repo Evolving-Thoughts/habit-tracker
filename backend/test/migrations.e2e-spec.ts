@@ -85,7 +85,7 @@ describe('Migrations (e2e)', () => {
 
     const applied = await db.runMigrations();
 
-    expect(applied).toHaveLength(7);
+    expect(applied).toHaveLength(8);
     expect(await remainingChanges()).toEqual([]);
     expect(
       await db.query(

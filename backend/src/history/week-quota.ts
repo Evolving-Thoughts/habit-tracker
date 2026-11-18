@@ -1,3 +1,5 @@
+import { EntityManager } from 'typeorm';
+import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus as Status } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitScheduleType } from '../habits/enums/habit-schedule-type.enum';
 
@@ -48,4 +50,30 @@ export function weekQuota(occurrences: QuotaOccurrence[]): WeekQuota | null {
     total,
     percentage: Math.round((completed / total) * 100),
   };
+}
+
+/** The quota of the stored runs due on `startDate`..`endDate`, deleted dailies included. */
+export async function loadWeekQuota(
+  manager: EntityManager,
+  userId: string,
+  startDate: string,
+  endDate: string,
+): Promise<WeekQuota | null> {
+  return weekQuota(
+    await manager
+      .getRepository(HabitOccurrenceEntity)
+      .createQueryBuilder('occurrence')
+      .withDeleted()
+      .innerJoin('occurrence.habit', 'habit')
+      .innerJoinAndSelect('occurrence.scheduleVersion', 'version')
+      .where('"habit"."userId" = :userId', { userId })
+      .andWhere(
+        '"occurrence"."scheduledDate" BETWEEN :startDate AND :endDate',
+        {
+          startDate,
+          endDate,
+        },
+      )
+      .getMany(),
+  );
 }

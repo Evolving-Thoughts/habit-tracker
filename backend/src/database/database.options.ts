@@ -6,6 +6,7 @@ import { Stopwatch1795000000000 } from './migrations/1795000000000-Stopwatch';
 import { TodoNotes1795100000000 } from './migrations/1795100000000-TodoNotes';
 import { LogbookEvents1795200000000 } from './migrations/1795200000000-LogbookEvents';
 import { QuestHours1795300000000 } from './migrations/1795300000000-QuestHours';
+import { WeekReviews1795400000000 } from './migrations/1795400000000-WeekReviews';
 
 type PostgresOptions = Extract<DataSourceOptions, { type: 'postgres' }>;
 
@@ -34,6 +35,7 @@ export function databaseOptions(
       TodoNotes1795100000000,
       LogbookEvents1795200000000,
       QuestHours1795300000000,
+      WeekReviews1795400000000,
     ],
   };
 }

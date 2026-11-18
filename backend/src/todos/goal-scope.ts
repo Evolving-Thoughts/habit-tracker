@@ -6,18 +6,21 @@ export type GoalScope = {
   totalMinutes: number;
 };
 
-type ScopeTodo = {
-  id: number;
-  parentId?: number | null;
+type TreeTodo = { id: number; parentId?: number | null };
+
+type ScopeTodo = TreeTodo & {
   completed: boolean;
   plannedDurationMinutes: number | null;
 };
 
-/** Sums every todo into its root. Both units are kept for the chart to pick. */
-export function scopesByRoot(todos: ScopeTodo[]): GoalScope[] {
+/**
+ * The root of every todo: the topmost one above it in the list. A todo whose
+ * parent is missing is its own root; a cycle stops instead of looping.
+ */
+export function rootIds(todos: TreeTodo[]): Map<number, number> {
   const byId = new Map(todos.map((todo) => [todo.id, todo]));
   const roots = new Map<number, number>();
-  const rootOf = (todo: ScopeTodo): number => {
+  for (const todo of todos) {
     const path: number[] = [];
     let current = todo;
     while (!roots.has(current.id)) {
@@ -29,11 +32,24 @@ export function scopesByRoot(todos: ScopeTodo[]): GoalScope[] {
     }
     const root = roots.get(current.id) ?? current.id;
     for (const id of path) roots.set(id, root);
-    return root;
-  };
+  }
+  return roots;
+}
+
+/**
+ * Sums every todo into its root. Both units are kept for the chart to pick.
+ * `counts` leaves todos out of the sums without cutting the tree, so a todo
+ * still finds its root through a parent that does not count.
+ */
+export function scopesByRoot<T extends ScopeTodo>(
+  todos: T[],
+  counts: (todo: T) => boolean = () => true,
+): GoalScope[] {
+  const roots = rootIds(todos);
   const scopes = new Map<number, GoalScope>();
   for (const todo of todos) {
-    const rootTodoId = rootOf(todo);
+    if (!counts(todo)) continue;
+    const rootTodoId = roots.get(todo.id)!;
     const scope = scopes.get(rootTodoId) ?? {
       rootTodoId,
       doneCount: 0,

@@ -67,6 +67,26 @@ export async function assertGoalAvailable(
     );
 }
 
+/**
+ * Completed runs that count for a goal: those done in its period, and with
+ * `until` only those done on or before that day.
+ */
+export function countedRuns(
+  goal: Pick<Goal, 'goalHabitId' | 'periodStart' | 'periodEnd'>,
+  completions: { habitId: number; resolvedDate: string | null }[],
+  until?: string,
+): number {
+  const last =
+    until !== undefined && until < goal.periodEnd! ? until : goal.periodEnd!;
+  return completions.filter(
+    (item) =>
+      item.habitId === goal.goalHabitId &&
+      item.resolvedDate !== null &&
+      goal.periodStart! <= item.resolvedDate &&
+      item.resolvedDate <= last,
+  ).length;
+}
+
 export async function habitGoals(
   manager: EntityManager,
   todos: TodoEntity[],
@@ -88,13 +108,7 @@ export async function habitGoals(
     }),
   ]);
   for (const todo of goals) {
-    const completed = completions.filter(
-      (item) =>
-        item.habitId === todo.goalHabitId &&
-        item.resolvedDate !== null &&
-        todo.periodStart! <= item.resolvedDate &&
-        item.resolvedDate <= todo.periodEnd!,
-    ).length;
+    const completed = countedRuns(todo, completions);
     result.set(todo.id, {
       habitId: todo.goalHabitId!,
       habitTitle:

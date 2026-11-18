@@ -1,8 +1,8 @@
 import { Body, Controller, Get, Put, Query } from '@nestjs/common';
 import type { AuthUser } from '../auth/auth.dto';
 import { CurrentUser } from '../auth/auth.guard';
+import { WeekQueryDto } from '../common/week-query.dto';
 import {
-  QuestHoursQueryDto,
   QuestHoursResponse,
   QuestTargetDto,
   QuestTargetResponse,
@@ -16,7 +16,7 @@ export class QuestHoursController {
   @Get()
   week(
     @CurrentUser() user: AuthUser,
-    @Query() query: QuestHoursQueryDto,
+    @Query() query: WeekQueryDto,
   ): Promise<QuestHoursResponse> {
     return this.questHours.week(user.id, query.week);
   }
