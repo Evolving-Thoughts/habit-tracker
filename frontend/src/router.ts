@@ -26,8 +26,12 @@ export type AppView = {
   component: Component;
   /** Primary views are tabs on a phone; the rest sit behind Mehr. */
   primary: boolean;
-  /** Behind Mehr on a phone, but a tab in its own place on wide screens. */
-  tabWhenWide?: boolean;
+  /**
+   * Behind Mehr on a phone, but a tab of its own on wide screens: from 56rem
+   * ("wide", beside the main views) or from 70rem ("wider", in the group on
+   * the right). Views without it leave Mehr only at 82rem.
+   */
+  tabFrom?: "wide" | "wider";
   /** Fills the screen alone: no navigation and no timer bar around it. */
   immersive?: boolean;
 };
@@ -47,7 +51,7 @@ export const VIEWS: readonly AppView[] = [
     label: "Plan",
     component: PlanView,
     primary: false,
-    tabWhenWide: true,
+    tabFrom: "wide",
   },
   {
     name: "review",
@@ -55,6 +59,7 @@ export const VIEWS: readonly AppView[] = [
     label: "Wochenrückblick",
     component: WeekReviewView,
     primary: false,
+    tabFrom: "wider",
   },
   {
     name: "focus",
@@ -62,6 +67,7 @@ export const VIEWS: readonly AppView[] = [
     label: "Fokus",
     component: FocusView,
     primary: false,
+    tabFrom: "wider",
     immersive: true,
   },
   {
@@ -91,6 +97,7 @@ export const VIEWS: readonly AppView[] = [
     label: "Dailies",
     component: HabitsView,
     primary: false,
+    tabFrom: "wider",
   },
   {
     name: "categories",

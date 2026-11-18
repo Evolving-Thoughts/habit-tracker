@@ -10,29 +10,40 @@ import { ariaKeys, keyCaps, shortcutById } from "../utils/shortcuts";
 /**
  * The views as tabs: at the bottom on a phone, at the top from 56rem. "Mehr"
  * is a disclosure: a button that shows or hides a list of links, walked with
- * Tab. On a phone it holds the rarer views; between 56rem and 82rem only the
- * right-hand group, since Plan has its own tab there; from 82rem nothing,
- * so the button goes and every view is a labelled tab.
+ * Tab. On a phone it holds the rarer views. From 56rem Plan has its own tab;
+ * from 70rem Wochenrückblick, Fokus and Dailies too, so Mehr keeps only
+ * Kategorien and Einstellungen; from 82rem nothing, so the button goes and
+ * every view is a labelled tab.
  */
 const route = useRoute();
 const keyboardLikely = useKeyboardLikely();
 
-/* Wide screens show some Mehr views as tabs, so those render in both places. */
-const PRIMARY = VIEWS.filter((view) => view.primary || view.tabWhenWide);
+/*
+ * Wide screens show some Mehr views as tabs, so those render in both places.
+ * The "wider" ones form the group on the right, after the main views.
+ */
+const PRIMARY = [
+  ...VIEWS.filter((view) => view.primary || view.tabFrom === "wide"),
+  ...VIEWS.filter((view) => view.tabFrom === "wider"),
+];
 const SECONDARY = VIEWS.filter((view) => !view.primary);
 
 const open = ref(false);
 const more = ref<HTMLElement | null>(null);
 const button = ref<HTMLButtonElement | null>(null);
-/** One of its views is open: Mehr is the current tab (Plan only on a phone). */
-const activeWide = computed(() =>
-  SECONDARY.some(
-    ({ name, tabWhenWide }) => !tabWhenWide && name === route.name,
-  ),
-);
-const activeNarrow = computed(() =>
-  SECONDARY.some(({ name, tabWhenWide }) => tabWhenWide && name === route.name),
-);
+/*
+ * One of its views is open: Mehr is the current tab, as long as that view
+ * has no tab of its own at this width. Which width that is, CSS decides.
+ */
+const openFrom = (tabFrom: "wide" | "wider" | undefined) =>
+  computed(() =>
+    SECONDARY.some(
+      (view) => view.tabFrom === tabFrom && view.name === route.name,
+    ),
+  );
+const activeWide = openFrom(undefined);
+const activeMedium = openFrom("wider");
+const activeNarrow = openFrom("wide");
 
 const menuShortcut = shortcutById("menu.open");
 
@@ -77,7 +88,10 @@ onUnmounted(() => {
         :key="view.name"
         :to="{ name: view.name }"
         class="tab-bar__tab"
-        :class="{ 'tab-bar__tab--wide': !view.primary }"
+        :class="{
+          'tab-bar__tab--wide': view.tabFrom === 'wide',
+          'tab-bar__tab--wider': view.tabFrom === 'wider',
+        }"
       >
         <AppIcon :name="view.name" />
         <span>{{ view.label }}</span>
@@ -90,6 +104,7 @@ onUnmounted(() => {
           :aria-expanded="open"
           aria-controls="more-views"
           :data-active="activeWide || undefined"
+          :data-active-medium="activeMedium || undefined"
           :data-active-narrow="activeNarrow || undefined"
           @click="open = !open"
         >
@@ -107,7 +122,10 @@ onUnmounted(() => {
             :key="view.name"
             :to="{ name: view.name }"
             class="tab-bar__tab"
-            :class="{ 'tab-bar__tab--narrow': view.tabWhenWide }"
+            :class="{
+              'tab-bar__tab--narrow': view.tabFrom === 'wide',
+              'tab-bar__tab--below-wider': view.tabFrom === 'wider',
+            }"
           >
             <AppIcon :name="view.name" />
             <span>{{ view.label }}</span>
@@ -186,12 +204,14 @@ onUnmounted(() => {
 
 .tab-bar__tab[aria-current="page"],
 .tab-bar__more[data-active],
+.tab-bar__more[data-active-medium],
 .tab-bar__more[data-active-narrow] {
   color: var(--color-action);
 }
 
 .tab-bar__tab[aria-current="page"] :deep(svg),
 .tab-bar__more[data-active] :deep(svg),
+.tab-bar__more[data-active-medium] :deep(svg),
 .tab-bar__more[data-active-narrow] :deep(svg) {
   stroke-width: 2.4;
 }
@@ -243,7 +263,8 @@ onUnmounted(() => {
   background: var(--color-scrim-light);
 }
 
-.tab-bar__tab--wide {
+.tab-bar__tab--wide,
+.tab-bar__tab--wider {
   display: none;
 }
 
@@ -278,11 +299,11 @@ onUnmounted(() => {
   }
 
   /* Plan has its own tab here, so it no longer makes "Mehr" current. */
-  .tab-bar__more[data-active-narrow]:not([data-active]) {
+  .tab-bar__more[data-active-narrow] {
     color: var(--color-ink-muted);
   }
 
-  .tab-bar__more[data-active-narrow]:not([data-active]) :deep(svg) {
+  .tab-bar__more[data-active-narrow] :deep(svg) {
     stroke-width: 2;
   }
 
@@ -303,7 +324,7 @@ onUnmounted(() => {
     transform: rotate(180deg);
   }
 
-  /* Between 56rem and 82rem "Mehr" drops its list below the bar. */
+  /* Below 82rem "Mehr" drops its list below the bar. */
   .tab-bar__secondary {
     top: calc(100% + var(--space-1));
     bottom: auto;
@@ -325,9 +346,70 @@ onUnmounted(() => {
 }
 
 /* The key caps of Ctrl+K fit beside "Befehle" once the bar has room. */
-@media (min-width: 64rem) {
+@media (min-width: 64rem) and (max-width: 69.99rem) {
   .tab-bar__keys {
     display: inline-flex;
+  }
+}
+
+/*
+ * From 70rem, a usual desktop window, Wochenrückblick, Fokus and Dailies
+ * get their labelled tabs on the right; Mehr keeps the two settings views.
+ * The tabs sit a little tighter, the type stays the same size.
+ */
+@media (min-width: 70rem) {
+  .tab-bar__inner {
+    max-width: 80rem;
+  }
+
+  .tab-bar__inner > .tab-bar__tab {
+    gap: 0.375rem;
+    padding: 0 0.625rem;
+  }
+
+  .tab-bar__tab--wider {
+    display: flex;
+  }
+
+  /* The first of them starts the group on the right; Mehr follows it. */
+  .tab-bar__tab--wider:not(.tab-bar__tab--wider ~ .tab-bar__tab--wider) {
+    margin-left: auto;
+  }
+
+  .tab-bar__more-group {
+    margin-left: 0;
+  }
+
+  .tab-bar__tab--below-wider {
+    display: none;
+  }
+
+  .tab-bar__more[data-active-medium] {
+    color: var(--color-ink-muted);
+  }
+
+  .tab-bar__more[data-active-medium] :deep(svg) {
+    stroke-width: 2;
+  }
+
+  /*
+   * The command button keeps only its magnifier here; its name stays for
+   * screen readers and in the tooltip, with the shortcut.
+   */
+  .tab-bar__inner > .tab-bar__command {
+    justify-content: center;
+    width: var(--tap);
+    padding: 0;
+  }
+
+  .tab-bar__command .tab-bar__command-label,
+  .tab-bar__command .tab-bar__keys {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 
@@ -336,10 +418,6 @@ onUnmounted(() => {
  * its views stand in the bar as tabs.
  */
 @media (min-width: 82rem) {
-  .tab-bar__inner {
-    max-width: 80rem;
-  }
-
   .tab-bar__more-group {
     display: contents;
   }
@@ -356,39 +434,17 @@ onUnmounted(() => {
     gap: var(--space-1);
     min-width: 0;
     padding: 0;
-    margin-left: auto;
     border-radius: 0;
     background: none;
     box-shadow: none;
   }
 
-  /* Ten labelled tabs take the room: a little tighter, same size of type. */
-  .tab-bar__tab,
+  /* Inline, the settings views are tabs like the rest. */
   .tab-bar__secondary .tab-bar__tab {
     gap: 0.375rem;
     min-height: 3.5rem;
     padding: 0 0.625rem;
     font-size: 0.9375rem;
-  }
-
-  /*
-   * The command button keeps only its magnifier here; its name stays for
-   * screen readers and in the tooltip, with the shortcut.
-   */
-  .tab-bar__command {
-    justify-content: center;
-    width: var(--tap);
-    padding: 0;
-  }
-
-  .tab-bar__command .tab-bar__command-label,
-  .tab-bar__command .tab-bar__keys {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
   }
 }
 </style>
