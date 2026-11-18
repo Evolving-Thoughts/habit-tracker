@@ -778,7 +778,7 @@ describe("CalendarView week", () => {
 });
 
 describe("CalendarView Logbuch", () => {
-  const book = { id: 9, title: "Buch" };
+  const book = { id: 9, title: "Buch", color: null, icon: null };
   function workLog(overrides: Partial<HistoryWorkLog> = {}): HistoryWorkLog {
     return {
       id: 1,

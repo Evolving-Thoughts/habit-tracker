@@ -1,4 +1,10 @@
-import { HABIT_FIELDS, TODO_FIELDS, PLANNER_HABIT_FIELDS, PLANNER_TODO_FIELDS } from "../types/fixtures";
+import {
+  HABIT_FIELDS,
+  NO_QUEST_HOURS,
+  TODO_FIELDS,
+  PLANNER_HABIT_FIELDS,
+  PLANNER_TODO_FIELDS,
+} from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -92,6 +98,7 @@ function makePlanner(
     items,
     externalEvents: [],
     workedMinutes: 0,
+    questHours: NO_QUEST_HOURS,
   };
 }
 
@@ -142,6 +149,29 @@ describe("TodayView", () => {
     expect(wrapper.get("h1").text()).toBe("Freitag, 2. Okt.");
     expect(wrapper.text()).toContain("Für heute ist nichts geplant.");
     expect(wrapper.findAll(".planner-item")).toHaveLength(0);
+  });
+
+  it("shows the quest hours of today and the week in the head", async () => {
+    getTodayMock.mockResolvedValue({
+      ...makePlanner([makeTodo()]),
+      questHours: {
+        todayMinutes: 80,
+        weekMinutes: 360,
+        weeklyTargetMinutes: 1200,
+      },
+    });
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.get(".today-view__quest").text()).toBe(
+      "Quest-Stunden heute 1 Std. 20 Min. · Woche 6 Std. von 20 Std.",
+    );
+  });
+
+  it("leaves the quest hours out without measured time and goal", async () => {
+    getTodayMock.mockResolvedValue(makePlanner([makeTodo()]));
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.find(".today-view__quest").exists()).toBe(false);
   });
 
   it("shows an error when loading fails", async () => {

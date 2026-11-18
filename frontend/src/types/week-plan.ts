@@ -4,7 +4,13 @@ type WeekPlanEntryContext = {
   timeOfDay: string | null;
   plannedDurationMinutes: number | null;
   /** The campaign the entry works towards; null for a loose entry. */
-  campaign: { id: number; title: string } | null;
+  /** Colour and icon are keys from `campaign.ts`. */
+  campaign: {
+    id: number;
+    title: string;
+    color: string | null;
+    icon: string | null;
+  } | null;
   /** Open and carried to today from an earlier day. */
   isOverdue: boolean;
 };

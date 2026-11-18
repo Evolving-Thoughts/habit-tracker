@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { PLANNER_HABIT_FIELDS, PLANNER_TODO_FIELDS } from "../types/fixtures";
+import {
+  NO_QUEST_HOURS,
+  PLANNER_HABIT_FIELDS,
+  PLANNER_TODO_FIELDS,
+} from "../types/fixtures";
 import type {
   DayPlannerHabitItem,
   DayPlannerResponse,
@@ -54,6 +58,7 @@ const planner = (
   items,
   externalEvents,
   workedMinutes: 0,
+  questHours: NO_QUEST_HOURS,
 });
 const at = (hours: number, minutes = 0) => hours * 60 + minutes;
 

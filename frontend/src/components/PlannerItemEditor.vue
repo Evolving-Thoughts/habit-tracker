@@ -5,6 +5,7 @@ import PlanFields from "./PlanFields.vue";
 import QuestNotes from "./QuestNotes.vue";
 import WhyField from "./WhyField.vue";
 import TodoGoalFields from "./TodoGoalFields.vue";
+import CampaignFields from "./CampaignFields.vue";
 import AppIcon from "./AppIcon.vue";
 
 import {
@@ -31,12 +32,16 @@ import type {
 } from "../types/habit";
 import { formatHabitSchedule, WEEKDAY_OPTIONS } from "../utils/habit";
 import type {
+  CampaignInput,
   InheritedWhy,
   TodoGoalInput,
   TodoResponse,
   UpdateTodoInput,
 } from "../types/todo";
 import { buildTodoInput } from "../utils/todo-input";
+import type { CampaignColor, CampaignIcon } from "../types/campaign";
+import { isCampaignColor, isCampaignIcon } from "../utils/campaign-style";
+import { hoursToMinutes, minutesToHours } from "../utils/quest-hours";
 import {
   emptyScheduleDraft,
   positiveInteger,
@@ -109,6 +114,11 @@ const todoDate = ref("");
 const todoTime = ref("");
 const duration = ref<string | number>("");
 const timeOfDay = ref("");
+// Only a quest without parent is a campaign and offers these.
+const campaignColor = ref<CampaignColor | null>(null);
+const campaignIcon = ref<CampaignIcon | null>(null);
+const weeklyTarget = ref<string | number>("");
+const isCampaign = computed(() => loadedTodo.value?.parentId === null);
 
 // Habit-Felder
 const isActive = ref(true);
@@ -165,6 +175,9 @@ async function loadEntity(): Promise<void> {
       duration.value = todo.plannedDurationMinutes ?? "";
       todoDate.value = todo.scheduledDate ?? "";
       todoTime.value = todo.timeOfDay ?? "";
+      campaignColor.value = isCampaignColor(todo.color) ? todo.color : null;
+      campaignIcon.value = isCampaignIcon(todo.icon) ? todo.icon : null;
+      weeklyTarget.value = minutesToHours(todo.weeklyTargetMinutes);
     } else {
       const habit = await getHabit(props.entityId);
 
@@ -224,6 +237,23 @@ function goalChanges(): TodoGoalInput {
   );
 }
 
+/** Only what changed; a quest below another one never sends these. */
+function campaignChanges(): CampaignInput {
+  const todo = loadedTodo.value;
+  if (!todo || !isCampaign.value) return {};
+  const next = {
+    weeklyTargetMinutes: hoursToMinutes(weeklyTarget.value),
+    color: campaignColor.value,
+    icon: campaignIcon.value,
+  };
+  const keys = Object.keys(next) as (keyof typeof next)[];
+  return Object.fromEntries(
+    keys
+      .filter((key) => next[key] !== (todo[key] ?? null))
+      .map((key) => [key, next[key]]),
+  );
+}
+
 function todoInput(): UpdateTodoInput {
   return {
     ...buildTodoInput({
@@ -234,6 +264,7 @@ function todoInput(): UpdateTodoInput {
     }),
     ...assignmentChanges(),
     ...goalChanges(),
+    ...campaignChanges(),
   };
 }
 
@@ -443,6 +474,15 @@ onMounted(loadEntity);
               />
             </label>
           </div>
+
+          <CampaignFields
+            v-if="isCampaign"
+            v-model:color="campaignColor"
+            v-model:icon="campaignIcon"
+            v-model:target="weeklyTarget"
+            id-prefix="planner-edit-campaign"
+            :title="title"
+          />
 
           <TodoGoalFields
             v-model:period-start="periodStart"

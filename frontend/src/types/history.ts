@@ -40,7 +40,13 @@ export type HistoryWeeklyTarget = {
   fromDate: string;
   untilDate: string;
 };
-export type Campaign = { id: number; title: string };
+/** Colour and icon are keys from `campaign.ts`. */
+export type Campaign = {
+  id: number;
+  title: string;
+  color: string | null;
+  icon: string | null;
+};
 /** One stretch of measured work, at its full length even across midnight. */
 export type HistoryWorkLog = {
   id: number;

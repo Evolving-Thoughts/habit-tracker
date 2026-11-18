@@ -27,6 +27,7 @@ no row yet. Rows are added, corrected and deleted by hand through
 - **Campaign of a stretch**: the campaign of its quest, or of the goal counting
   its daily, as the planner names it today (`withCampaigns` in
   `work-logs/day-logs.ts`, using `todo-ancestry.ts`). A deleted quest has none.
+  Time on campaigns is also counted as quest hours (`quest-hours.md`).
 - A stretch belongs to every day it covers (`logsOfDays`).
 
 ## Read: inside `GET /history`
@@ -37,7 +38,7 @@ path (the old `GET /work-logs?date=` is gone). Every day of the answer has
 ```ts
 work: {
   minutes: number;               // the day's worked minutes
-  campaigns?: { campaign: { id, title } | null; minutes }[]; // day and week
+  campaigns?: { campaign: { id, title, color, icon } | null; minutes }[]; // day and week
   logs?: HistoryWorkLog[];       // day and week
 }
 ```
@@ -100,5 +101,5 @@ and other calendars are only read.
   Min.", on a phone "2:15 h"); the cell's label says it in full.
 - Pure rules in `utils/logbook.ts` (positions on the axis, side-by-side layout
   of overlapping blocks, the axis range, labels). The colour of a campaign comes
-  from `campaignMark` in `utils/category-mark.ts`, the one place to change when
-  campaigns get a stored colour.
+  from `campaignMark` in `utils/category-mark.ts`: its stored colour, else one
+  from its title (see `quest-hours.md`).

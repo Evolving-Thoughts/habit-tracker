@@ -105,6 +105,17 @@ history reader uses `withDeleted()`, so previous completion entries remain visib
 No immutable journal or historical snapshot semantics were added. Already sent
 external push notifications cannot be retracted by deleting their source timer.
 
+## Campaign fields
+
+A todo without parent may carry a weekly goal of quest minutes
+(`weeklyTargetMinutes`), a `color` and an `icon` (keys from
+`todos/campaign-style.ts`). Setting one on a todo with a parent is a 400;
+moving a todo below another one clears all three in the same update, so a
+campaign that becomes a Questreihe loses its look and goal. The check
+constraint `CHK_todos_campaign_fields` holds the rule in the database. A
+top-level todo counts as a campaign once it has todos below it or carries one
+of these fields (`TodoAncestry.campaignOf`). See `quest-hours.md`.
+
 ## Inherited why
 
 A todo without its own `why` shows the reason of its nearest ancestor that

@@ -36,6 +36,30 @@ describe("CreateTodoForm", () => {
     createTodoMock.mockResolvedValue(response);
   });
 
+  it("gives a new campaign colour, icon and weekly goal", async () => {
+    const wrapper = mount(CreateTodoForm, { props: { campaign: true } });
+    await wrapper.get('input[name="title"]').setValue("Buch");
+    await wrapper.get('input[type="radio"][value="pine"]').setValue(true);
+    await wrapper.get('input[type="radio"][value="pen"]').setValue(true);
+    await wrapper.get('input[name="weeklyTarget"]').setValue("6");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(createTodoMock).toHaveBeenCalledWith({
+      title: "Buch",
+      scheduledDate: null,
+      timeOfDay: null,
+      plannedDurationMinutes: null,
+      color: "pine",
+      icon: "pen",
+      weeklyTargetMinutes: 360,
+    });
+  });
+
+  it("offers campaign fields only for a new campaign", () => {
+    const wrapper = mount(CreateTodoForm);
+    expect(wrapper.find('input[name="weeklyTarget"]').exists()).toBe(false);
+  });
+
   it("creates an unscheduled todo and resets the form", async () => {
     const wrapper = mount(CreateTodoForm);
 

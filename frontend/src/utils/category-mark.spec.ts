@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CAMPAIGN_COLORS } from "../types/campaign";
 import { campaignMark, categoryMark } from "./category-mark";
 
 describe("categoryMark", () => {
@@ -11,15 +12,31 @@ describe("categoryMark", () => {
     expect(new Set(names.map(categoryMark)).size).toBe(names.length);
   });
 
-  it("returns a mark for every name", () => {
+  it("returns a mark token for every name", () => {
     for (const name of ["", "a", "Ärger", "x".repeat(200)])
-      expect(categoryMark(name)).toMatch(/^#[0-9a-f]{6}$/);
+      expect(categoryMark(name)).toMatch(/^var\(--color-mark-[a-z]+\)$/);
   });
 });
 
 describe("campaignMark", () => {
-  it("gives a campaign the mark of its title and nothing without one", () => {
+  it("gives a campaign without stored colour the mark of its title", () => {
     expect(campaignMark({ title: "Buch" })).toBe(categoryMark("Buch"));
+    expect(campaignMark({ title: "Buch", color: null })).toBe(
+      categoryMark("Buch"),
+    );
     expect(campaignMark(null)).toBeNull();
+  });
+
+  it("uses the stored colour, whatever the title", () => {
+    for (const color of CAMPAIGN_COLORS)
+      expect(campaignMark({ title: "Buch", color })).toBe(
+        `var(--color-mark-${color})`,
+      );
+  });
+
+  it("falls back to the title for a key it does not know", () => {
+    expect(campaignMark({ title: "Buch", color: "orange" })).toBe(
+      categoryMark("Buch"),
+    );
   });
 });
