@@ -87,23 +87,25 @@ async function save(): Promise<void> {
 </script>
 
 <template>
-  <section class="answers" aria-labelledby="review-answers-title">
-    <h2 id="review-answers-title" class="section-title">Rückblick</h2>
-    <p v-if="ahead" class="answers__ahead card">
+  <section class="answers card" aria-labelledby="review-answers-title">
+    <h2 id="review-answers-title" class="card-title">Rückblick</h2>
+    <p v-if="ahead" class="answers__ahead">
       Die Fragen öffnen sich, sobald die Woche begonnen hat.
     </p>
-    <form v-else class="answers__form card" novalidate @submit.prevent="save">
-      <div v-for="question in QUESTIONS" :key="question.key" class="field">
-        <label :for="`review-${question.key}`">{{ question.label }}</label>
-        <textarea
-          :id="`review-${question.key}`"
-          v-model="fields[question.key]"
-          :name="question.key"
-          rows="3"
-          maxlength="10000"
-          :placeholder="question.hint"
-          @input="saved = false"
-        />
+    <form v-else class="answers__form" novalidate @submit.prevent="save">
+      <div class="answers__questions">
+        <div v-for="question in QUESTIONS" :key="question.key" class="field">
+          <label :for="`review-${question.key}`">{{ question.label }}</label>
+          <textarea
+            :id="`review-${question.key}`"
+            v-model="fields[question.key]"
+            :name="question.key"
+            rows="4"
+            maxlength="10000"
+            :placeholder="question.hint"
+            @input="saved = false"
+          />
+        </div>
       </div>
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
       <div class="answers__actions">
@@ -124,9 +126,17 @@ async function save(): Promise<void> {
 </template>
 
 <style scoped>
-.answers__form {
+.answers__form,
+.answers__questions {
   display: grid;
   gap: var(--space-4);
+}
+
+/* The three questions side by side on a wide screen, like the figures above. */
+@media (min-width: 56rem) {
+  .answers__questions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .answers__form .field label {

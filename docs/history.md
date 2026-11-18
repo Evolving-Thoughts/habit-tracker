@@ -50,4 +50,4 @@ Kein DB-Reset nötig. Die nullable Spalte `habit_occurrences.resolvedAt` wird du
 
 Tests prüfen zusätzlich überfällige/geplante Todos, Intervall-/Wochentagsprognosen, Regelwechsel, Wochenzielzählung, Filter und unveränderte Datenbankzeilen beim Lesen. Tests prüfen Nutzertrennung einschließlich gelöschter Beziehungen, Berlin-Mitternacht und beide DST-Wechsel, Montag/Jahreswechsel, verspätete Erledigungen, geplante Skip-Tage, Soft-Delete, Reopen, idempotente Erledigung, reine Lesezugriffe, Filter, Leer-/Fehlerzustände und veraltete Frontend-Antworten. Browser-E2E nutzen die echten App-/API-/Datenbank-Komponenten.
 
-Seitdem hinzugekommen: Monatsansicht, Wochenquote und Perfect Week sowie das Logbuch der gemessenen Arbeitszeit (`logbook.md`). Noch nicht enthalten: Streaks und unveränderliche Ereignis-Snapshots.
+Seitdem hinzugekommen: Monatsansicht, Wochenquote (in der Oberfläche "Dailies im Wochensoll") und Perfect Week sowie das Logbuch der gemessenen Arbeitszeit (`logbook.md`). Noch nicht enthalten: Streaks und unveränderliche Ereignis-Snapshots.

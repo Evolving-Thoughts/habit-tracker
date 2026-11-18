@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, useId } from "vue";
 import AppIcon from "./AppIcon.vue";
 import type { WeekReviewItem, WeekReviewResponse } from "../types/week-review";
 import { campaignMark } from "../utils/category-mark";
 import { dayLabel } from "../utils/history";
 
 const props = defineProps<{ days: WeekReviewResponse["days"] }>();
+
+/** Up to this many entries a wide screen shows the list open. */
+const SHORT_LIST = 8;
 
 /* Only days with something on them; the rest would be empty headings. */
 const groups = computed(() =>
@@ -19,6 +22,20 @@ const groups = computed(() =>
 const total = computed(() =>
   groups.value.reduce((sum, day) => sum + day.done, 0),
 );
+const entries = computed(() =>
+  groups.value.reduce((sum, day) => sum + day.items.length, 0),
+);
+/* Skipped runs are listed too; the head names them, so the counts add up. */
+const skipped = computed(() => entries.value - total.value);
+
+/*
+ * Decided once when the list appears: on a phone it starts closed with its
+ * count, on a wide screen it is simply open unless it is long.
+ */
+const wide = window.matchMedia?.("(min-width: 56rem)").matches ?? false;
+const collapsible = !wide || entries.value > SHORT_LIST;
+const open = ref(!collapsible);
+const listId = useId();
 
 function details(item: WeekReviewItem): string[] {
   const parts: string[] = [];
@@ -30,75 +47,102 @@ function details(item: WeekReviewItem): string[] {
 </script>
 
 <template>
-  <section class="done-list" aria-labelledby="review-done-title">
-    <h2 id="review-done-title" class="section-title">
-      Erledigt <span class="count">{{ total }}</span>
-    </h2>
+  <section class="done-list card" aria-labelledby="review-done-title">
+    <div class="card-head">
+      <h2 id="review-done-title" class="card-title">
+        Erledigt <span class="count">{{ total }}</span
+        ><span v-if="skipped" class="count"> · {{ skipped }} übersprungen</span>
+      </h2>
+      <button
+        v-if="collapsible && entries"
+        type="button"
+        class="btn"
+        :aria-expanded="open"
+        :aria-controls="listId"
+        @click="open = !open"
+      >
+        {{ open ? "Liste ausblenden" : "Liste zeigen" }}
+      </button>
+    </div>
     <p v-if="!groups.length" class="done-list__none">
       In dieser Woche ist nichts erledigt.
     </p>
-    <div v-for="day in groups" :key="day.date" class="done-list__day">
-      <h3 class="done-list__date">
-        {{ dayLabel(day.date) }}
-        <span class="count">{{ day.done }}</span>
-      </h3>
-      <ul class="done-list__items card">
-        <li
-          v-for="item in day.items"
-          :key="`${item.type}-${item.id}`"
-          class="done-list__item"
-          :class="{ 'done-list__item--skipped': item.status === 'skipped' }"
-          :data-done-key="`${item.type}-${item.id}`"
-        >
-          <!-- A state, not a control: never the action orange. -->
-          <span class="done-list__state" aria-hidden="true">
-            <AppIcon v-if="item.status === 'completed'" name="check" />
-          </span>
-          <span class="done-list__text">
-            <span class="done-list__title">{{ item.title }}</span>
-            <span
-              v-if="item.campaign || details(item).length"
-              class="done-list__meta"
-            >
-              <span v-if="item.campaign" class="done-list__campaign">
-                <i
-                  class="done-list__mark"
-                  :style="{ background: campaignMark(item.campaign)! }"
-                  aria-hidden="true"
-                />{{ item.campaign.title }}
-              </span>
-              <span v-for="part in details(item)" :key="part">{{ part }}</span>
+    <div v-else v-show="open" :id="listId" class="done-list__days">
+      <div v-for="day in groups" :key="day.date" class="done-list__day">
+        <h3 class="done-list__date">
+          {{ dayLabel(day.date) }}
+          <span class="count">{{ day.done }}</span>
+        </h3>
+        <ul class="done-list__items">
+          <li
+            v-for="item in day.items"
+            :key="`${item.type}-${item.id}`"
+            class="done-list__item"
+            :class="{ 'done-list__item--skipped': item.status === 'skipped' }"
+            :data-done-key="`${item.type}-${item.id}`"
+          >
+            <!-- A state, not a control: never the action orange. -->
+            <span class="done-list__state" aria-hidden="true">
+              <AppIcon v-if="item.status === 'completed'" name="check" />
             </span>
-          </span>
-        </li>
-      </ul>
+            <span class="done-list__text">
+              <span class="done-list__title">{{ item.title }}</span>
+              <span
+                v-if="item.campaign || details(item).length"
+                class="done-list__meta"
+              >
+                <span v-if="item.campaign" class="done-list__campaign">
+                  <i
+                    class="done-list__mark"
+                    :style="{ background: campaignMark(item.campaign)! }"
+                    aria-hidden="true"
+                  />{{ item.campaign.title }}
+                </span>
+                <span v-for="part in details(item)" :key="part">{{
+                  part
+                }}</span>
+              </span>
+            </span>
+          </li>
+        </ul>
+      </div>
     </div>
   </section>
 </template>
 
 <style scoped>
+/* Closed, the head alone is the card; the space below belongs to the list. */
+.done-list .card-head {
+  min-height: var(--tap);
+  margin-bottom: 0;
+}
+
 .done-list__none {
-  margin: 0;
+  margin: var(--space-2) 0 0;
   color: var(--color-ink-muted);
 }
 
-.done-list__day + .done-list__day {
-  margin-top: var(--space-4);
+/* Days side by side where there is room, each a short list. */
+.done-list__days {
+  display: grid;
+  margin-top: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+  gap: var(--space-4) var(--space-5);
 }
 
 .done-list__date {
   display: flex;
   gap: var(--space-2);
   align-items: baseline;
-  margin: 0 0 var(--space-2);
-  font-size: 1rem;
+  margin: 0;
+  font-size: 0.9375rem;
   font-weight: 800;
 }
 
 .done-list__items {
   display: grid;
   margin: 0;
-  padding: var(--space-1) var(--space-4);
+  padding: 0;
   list-style: none;
 }
 
@@ -107,7 +151,7 @@ function details(item: WeekReviewItem): string[] {
   grid-template-columns: 1.25rem minmax(0, 1fr);
   gap: var(--space-3);
   align-items: start;
-  padding: var(--space-3) 0;
+  padding: var(--space-2) 0;
 }
 
 .done-list__item + .done-list__item {

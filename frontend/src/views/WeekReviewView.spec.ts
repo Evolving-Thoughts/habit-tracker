@@ -94,16 +94,73 @@ describe("WeekReviewView", () => {
     expect(getQuestHours).toHaveBeenCalledWith(MONDAY, expect.any(AbortSignal));
     expect(getWeekReview).toHaveBeenCalledWith(MONDAY, expect.any(AbortSignal));
     expect(wrapper.get("h1").text()).toBe("Wochenrückblick");
-    expect(wrapper.get(".week-review__range").text()).toBe(
-      "16.–22. Nov. · diese Woche",
+    expect(wrapper.get(".page-lead").text()).toBe(
+      "Wie weit die Woche deine Kampagnen gebracht hat.",
     );
+    // The switcher names the week between its arrows.
+    expect(wrapper.get(".week-review__range").text()).toBe(
+      "16.–22. Nov. diese Woche",
+    );
+    // The dashboard first, then what the week changed, then the questions.
     expect(sectionTitles(wrapper)).toEqual([
       "Kennzahlen",
       "Quest-Stunden je Tag",
       "Stunden je Kampagne",
-      "Fortschritt je Kampagne",
       "Quest-Arbeit gegen Sonstiges",
       "Quest-Stunden · letzte Wochen",
+      "Fortschritt je Kampagne",
+      "Erledigt 1",
+      "Rückblick",
+    ]);
+    // Day bars beside a column with the hours per campaign and the split.
+    const charts = wrapper.get(".week-review__charts");
+    expect(charts.find(".day-bars").exists()).toBe(true);
+    expect(
+      charts
+        .get(".week-review__side")
+        .findAll("h2")
+        .map((heading) => heading.text()),
+    ).toEqual(["Stunden je Kampagne", "Quest-Arbeit gegen Sonstiges"]);
+  });
+
+  it("shows the Dailies against what was due and the perfect week side by side", async () => {
+    const { hours, review } = busyWeek();
+    vi.mocked(getQuestHours).mockResolvedValue(hours);
+    vi.mocked(getWeekReview).mockResolvedValue({
+      ...review,
+      weekQuota: { completed: 5, total: 8, percentage: 63 },
+      perfectWeek: {
+        perfect: false,
+        categories: [
+          { id: 1, name: "Sport", target: 2, completed: 1, reached: false },
+        ],
+      },
+    });
+    const { wrapper } = await mountReview();
+    const pair = wrapper.get(".week-quota--dashboard");
+    expect(pair.findAll("h2").map((heading) => heading.text())).toEqual([
+      "Dailies im Wochensoll",
+      "Perfekte Woche",
+    ]);
+    expect(pair.get(".quota").classes()).not.toContain("quota--lifted");
+    expect(sectionTitles(wrapper).slice(-4)).toEqual([
+      "Dailies im Wochensoll",
+      "Perfekte Woche",
+      "Erledigt 1",
+      "Rückblick",
+    ]);
+  });
+
+  it("shows the figures but no empty charts for a week with only resolved quests", async () => {
+    const { review } = busyWeek();
+    vi.mocked(getQuestHours).mockResolvedValue(questHours());
+    vi.mocked(getWeekReview).mockResolvedValue(review);
+    const { wrapper } = await mountReview();
+    expect(wrapper.find(".empty-state").exists()).toBe(false);
+    expect(wrapper.find(".week-review__charts").exists()).toBe(false);
+    expect(sectionTitles(wrapper)).toEqual([
+      "Kennzahlen",
+      "Fortschritt je Kampagne",
       "Erledigt 1",
       "Rückblick",
     ]);
@@ -118,7 +175,7 @@ describe("WeekReviewView", () => {
       expect.any(AbortSignal),
     );
     expect(wrapper.get(".week-review__range").text()).toBe(
-      "9.–15. Nov. · vorige Woche",
+      "9.–15. Nov. vorige Woche",
     );
 
     await wrapper.get('button[aria-label="Nächste Woche"]').trigger("click");
@@ -139,13 +196,22 @@ describe("WeekReviewView", () => {
     expect(router.currentRoute.value.query).toEqual({});
   });
 
-  it("shows a placeholder of fixed size while loading", async () => {
+  it("holds the dashboard's shape with bones while loading", async () => {
     vi.mocked(getQuestHours).mockReturnValue(new Promise(() => {}));
     const { wrapper } = await mountReview();
+    const loading = wrapper.get(
+      '[role="status"][aria-label="Wochenrückblick wird geladen"]',
+    );
+    // Three figures, the day bars beside two side cards, the recent weeks.
     expect(
-      wrapper.get('[role="status"][aria-label="Wochenrückblick wird geladen"]')
-        .findAll(".week-review__bone"),
+      loading.get(".week-review__figures-bones").findAll(".week-review__bone"),
     ).toHaveLength(3);
+    const charts = loading.get(".week-review__charts");
+    expect(charts.find(".week-review__bone--days").exists()).toBe(true);
+    expect(
+      charts.get(".week-review__side").findAll(".week-review__bone"),
+    ).toHaveLength(2);
+    expect(loading.find(".week-review__bone--trend").exists()).toBe(true);
     expect(wrapper.find("h2").exists()).toBe(false);
   });
 
@@ -158,6 +224,29 @@ describe("WeekReviewView", () => {
     );
     expect(sectionTitles(wrapper)).toEqual(["Rückblick"]);
     expect(wrapper.find("form").exists()).toBe(true);
+  });
+
+  it("keeps the figures and the weeks before around an empty week that has them", async () => {
+    const empty = questHours({ weeklyTargetMinutes: 600 });
+    empty.weeks[5]!.questMinutes = 240;
+    vi.mocked(getQuestHours).mockResolvedValue(empty);
+    vi.mocked(getWeekReview).mockResolvedValue(weekReview());
+    const { wrapper } = await mountReview();
+    expect(wrapper.find(".empty-state").exists()).toBe(true);
+    expect(wrapper.find(".week-review__charts").exists()).toBe(false);
+    expect(sectionTitles(wrapper)).toEqual([
+      "Kennzahlen",
+      "Quest-Stunden · letzte Wochen",
+      "Rückblick",
+    ]);
+    // The calm card stands where the charts would be.
+    const body = wrapper.get(".week-review__body").element.children;
+    expect([...body].map((child) => child.className.split(" ")[0])).toEqual([
+      "figures",
+      "empty-state",
+      "week-trend",
+      "answers",
+    ]);
   });
 
   it("says a week still ahead lies ahead and keeps its questions closed", async () => {

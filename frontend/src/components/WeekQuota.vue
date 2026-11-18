@@ -4,17 +4,21 @@ import AppIcon from "./AppIcon.vue";
 import type { PerfectWeek, WeekQuota } from "../types/history";
 import { categoryMark } from "../utils/category-mark";
 
-/* The week's quota and perfect week, shared by the calendar's week and the weekly review. */
+/*
+ * The week's Dailies against what was due, and the perfect week, shared by
+ * the calendar's week and the weekly review.
+ */
 const props = withDefaults(
   defineProps<{
     quota: WeekQuota | null;
     perfectWeek: PerfectWeek | null;
-    /** The one lifted card of its view; the review lifts its key figures instead. */
-    lifted?: boolean;
-    /** Puts "Wochenquote" above the card, where nothing else introduces it. */
-    titled?: boolean;
+    /**
+     * In the weekly review: two flat cards side by side, each titled inside
+     * like the dashboard above. The calendar lifts the quota instead.
+     */
+    dashboard?: boolean;
   }>(),
-  { lifted: true, titled: false },
+  { dashboard: false },
 );
 
 const id = useId();
@@ -27,72 +31,103 @@ const shownPerfectWeek = computed(() =>
 </script>
 
 <template>
-  <h2 v-if="titled && shownQuota" class="section-title">Wochenquote</h2>
-  <section
-    v-if="shownQuota"
-    class="quota card"
-    :class="{ 'quota--lifted': lifted }"
-    :aria-labelledby="`${id}-quota`"
+  <div
+    v-if="shownQuota || shownPerfectWeek"
+    class="week-quota"
+    :class="{ 'week-quota--dashboard': dashboard }"
   >
-    <p class="quota__value">
-      {{ shownQuota.completed }} von {{ shownQuota.total }}
-    </p>
-    <p :id="`${id}-quota`" class="quota__label">Dailies der Woche</p>
-    <div
-      class="quota__bar"
-      role="progressbar"
+    <section
+      v-if="shownQuota"
+      class="quota card"
+      :class="{ 'quota--lifted': !dashboard }"
       :aria-labelledby="`${id}-quota`"
-      :aria-valuenow="shownQuota.completed"
-      aria-valuemin="0"
-      :aria-valuemax="shownQuota.total"
     >
-      <span
-        :style="{
-          width: `${Math.min(100, (shownQuota.completed / shownQuota.total) * 100)}%`,
-        }"
-      />
-    </div>
-  </section>
-
-  <section
-    v-if="shownPerfectWeek"
-    class="perfect-week"
-    :aria-labelledby="`${id}-perfect`"
-  >
-    <h2 :id="`${id}-perfect`" class="section-title">
-      {{ shownPerfectWeek.perfect ? "Perfekte Woche!" : "Perfekte Woche" }}
-    </h2>
-    <ul class="rows card">
-      <li
-        v-for="category in shownPerfectWeek.categories"
-        :key="category.id"
-        class="row"
+      <component
+        :is="dashboard ? 'h2' : 'p'"
+        :id="`${id}-quota`"
+        class="card-title"
+        >Dailies im Wochensoll</component
       >
-        <span class="row__name">
-          <i
-            class="swatch"
-            :style="{ background: categoryMark(category.name) }"
-            aria-hidden="true"
-          />{{ category.name }}
-        </span>
-        <span class="count"
-          >{{ category.completed }} von {{ category.target }}</span
+      <p class="quota__value">
+        {{ shownQuota.completed }} von {{ shownQuota.total }}
+      </p>
+      <!-- Reads on from the number: "5 von 8 fälligen Ausführungen erledigt". -->
+      <p class="quota__note">fälligen Ausführungen erledigt</p>
+      <div
+        class="quota__bar"
+        role="progressbar"
+        :aria-labelledby="`${id}-quota`"
+        :aria-valuenow="shownQuota.completed"
+        aria-valuemin="0"
+        :aria-valuemax="shownQuota.total"
+        :aria-valuetext="`${shownQuota.completed} von ${shownQuota.total} fälligen Ausführungen erledigt`"
+      >
+        <span
+          :style="{
+            width: `${Math.min(100, (shownQuota.completed / shownQuota.total) * 100)}%`,
+          }"
+        />
+      </div>
+    </section>
+
+    <section
+      v-if="shownPerfectWeek"
+      class="perfect-week"
+      :class="{ card: dashboard }"
+      :aria-labelledby="`${id}-perfect`"
+    >
+      <h2
+        :id="`${id}-perfect`"
+        :class="dashboard ? 'card-title' : 'section-title'"
+      >
+        {{ shownPerfectWeek.perfect ? "Perfekte Woche!" : "Perfekte Woche" }}
+      </h2>
+      <ul class="rows" :class="{ card: !dashboard }">
+        <li
+          v-for="category in shownPerfectWeek.categories"
+          :key="category.id"
+          class="row"
         >
-        <span class="row__check">
-          <template v-if="category.reached">
-            <AppIcon name="check" />
-            <span class="visually-hidden">erreicht</span>
-          </template>
-        </span>
-      </li>
-    </ul>
-  </section>
+          <span class="row__name">
+            <i
+              class="swatch"
+              :style="{ background: categoryMark(category.name) }"
+              aria-hidden="true"
+            />{{ category.name }}
+          </span>
+          <span class="count"
+            >{{ category.completed }} von {{ category.target }}</span
+          >
+          <span class="row__check">
+            <template v-if="category.reached">
+              <AppIcon name="check" />
+              <span class="visually-hidden">erreicht</span>
+            </template>
+          </span>
+        </li>
+      </ul>
+    </section>
+  </div>
 </template>
 
 <style scoped>
+/* In the calendar the two parts flow with the rest of the week. */
+.week-quota {
+  display: contents;
+}
+
+/* In the review they stand side by side; one alone takes the full width. */
+.week-quota--dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: var(--space-4);
+  align-items: stretch;
+}
+
 .quota {
   display: grid;
   gap: var(--space-1);
+  align-content: start;
   padding: var(--space-5);
 }
 
@@ -104,6 +139,10 @@ const shownPerfectWeek = computed(() =>
   margin: 0;
 }
 
+.quota .card-title {
+  margin: 0;
+}
+
 .quota__value {
   font-size: clamp(2.25rem, 10vw, 3rem);
   font-weight: 800;
@@ -112,9 +151,18 @@ const shownPerfectWeek = computed(() =>
   font-variant-numeric: tabular-nums;
 }
 
-.quota__label {
+.week-quota--dashboard .quota {
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+
+.week-quota--dashboard .quota__value {
+  margin-top: var(--space-2);
+  font-size: clamp(1.625rem, 3.4vw, 2.25rem);
+}
+
+.quota__note {
   color: var(--color-ink-muted);
-  font-weight: 700;
+  font-size: 0.875rem;
 }
 
 .quota__bar {
@@ -132,11 +180,20 @@ const shownPerfectWeek = computed(() =>
   background: var(--color-ink);
 }
 
+.week-quota--dashboard .perfect-week {
+  padding: var(--space-4) var(--space-5) var(--space-3);
+}
+
 .rows {
   display: grid;
   margin: 0;
   padding: var(--space-1) var(--space-4);
   list-style: none;
+}
+
+/* Inside its own card the list needs no second inset. */
+.week-quota--dashboard .rows {
+  padding: 0;
 }
 
 .row {

@@ -10,59 +10,67 @@ const label = computed(() => dayBarsText(bars.value));
 </script>
 
 <template>
-  <section class="day-bars" aria-labelledby="review-days-title">
-    <h2 id="review-days-title" class="section-title">Quest-Stunden je Tag</h2>
-    <div class="card">
-      <!-- The figure is read as one sentence; the bars repeat it for the eye. -->
-      <div class="day-bars__chart" role="img" :aria-label="label">
-        <div
-          v-for="bar in bars"
-          :key="bar.date"
-          class="day-bars__day"
-          :class="{
-            'day-bars__day--today': bar.isToday,
-            'day-bars__day--ahead': bar.isAhead,
-          }"
-          :data-date="bar.date"
-        >
-          <span class="day-bars__value" aria-hidden="true">{{
-            bar.isAhead ? "–" : clockDuration(bar.minutes)
-          }}</span>
-          <span class="day-bars__track" aria-hidden="true">
-            <span class="day-bars__bar" :style="{ height: `${bar.height}%` }" />
-          </span>
-          <span class="day-bars__weekday" aria-hidden="true">{{
-            bar.isToday ? "Heute" : bar.weekday
-          }}</span>
-        </div>
+  <section class="day-bars card" aria-labelledby="review-days-title">
+    <div class="card-head">
+      <h2 id="review-days-title" class="card-title">Quest-Stunden je Tag</h2>
+      <span class="day-bars__unit">Std.:Min.</span>
+    </div>
+    <!-- The figure is read as one sentence; the bars repeat it for the eye. -->
+    <div class="day-bars__chart" role="img" :aria-label="label">
+      <div
+        v-for="bar in bars"
+        :key="bar.date"
+        class="day-bars__day"
+        :class="{
+          'day-bars__day--today': bar.isToday,
+          'day-bars__day--ahead': bar.isAhead,
+        }"
+        :data-date="bar.date"
+      >
+        <span class="day-bars__value" aria-hidden="true">{{
+          bar.isAhead ? "–" : clockDuration(bar.minutes)
+        }}</span>
+        <span class="day-bars__track" aria-hidden="true">
+          <span class="day-bars__bar" :style="{ height: `${bar.height}%` }" />
+        </span>
+        <span class="day-bars__weekday" aria-hidden="true">{{
+          bar.isToday ? "Heute" : bar.weekday
+        }}</span>
       </div>
-      <p class="day-bars__unit">Stunden:Minuten auf Quests einer Kampagne</p>
     </div>
   </section>
 </template>
 
 <style scoped>
-.day-bars .card {
-  display: grid;
-  gap: var(--space-3);
+.day-bars {
+  display: flex;
+  flex-direction: column;
 }
 
+.day-bars__unit {
+  color: var(--color-ink-soft);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+/* A fixed height on the phone; beside the side column it fills the card. */
 .day-bars__chart {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: var(--space-1);
+  height: 9rem;
 }
 
 .day-bars__day {
   display: grid;
-  grid-template-rows: auto 6rem auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: var(--space-1);
   justify-items: center;
-  padding: var(--space-1) 0;
+  padding: var(--space-2) 0 var(--space-1);
   border-radius: var(--radius-control);
 }
 
-/* Today wears the calendar's ink frame. */
+/* Today wears the calendar's ink frame, not the orange of what can be tapped. */
 .day-bars__day--today {
   box-shadow: inset 0 0 0 2px var(--color-ink);
 }
@@ -83,8 +91,7 @@ const label = computed(() => dayBarsText(bars.value));
 .day-bars__track {
   display: flex;
   align-items: flex-end;
-  width: min(100%, 1.75rem);
-  height: 100%;
+  width: min(100% - 0.5rem, 2.25rem);
   border-bottom: 1px solid var(--color-line);
 }
 
@@ -96,10 +103,17 @@ const label = computed(() => dayBarsText(bars.value));
   transition: height 240ms var(--ease-out);
 }
 
+/* Small enough that "Heute" keeps clear of its frame in a phone's column. */
 .day-bars__weekday {
   color: var(--color-ink-muted);
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 700;
+}
+
+@media (min-width: 40rem) {
+  .day-bars__weekday {
+    font-size: 0.8125rem;
+  }
 }
 
 .day-bars__day--today .day-bars__weekday {
@@ -107,9 +121,17 @@ const label = computed(() => dayBarsText(bars.value));
   font-weight: 800;
 }
 
-.day-bars__unit {
-  margin: 0;
-  color: var(--color-ink-muted);
-  font-size: 0.8125rem;
+@media (min-width: 56rem) {
+  .day-bars__chart {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 11rem;
+    max-height: 16rem;
+    margin-top: auto;
+  }
+
+  .day-bars__value {
+    font-size: 0.8125rem;
+  }
 }
 </style>

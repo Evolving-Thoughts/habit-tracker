@@ -1,7 +1,8 @@
 # The weekly review (Wochenrückblick)
 
 One page per week that looks back: how many quest hours went where, how far
-each campaign moved, what was done, the week's quota and perfect week, and
+each campaign moved, what was done, the week's quota ("Dailies im
+Wochensoll": completed runs against those due) and perfect week, and
 three short answers the user writes. It counts input as the rest of the app
 does (see `quest-hours.md`): a missed goal is a number, never a warning.
 
@@ -95,29 +96,50 @@ Monday that has begun; a week ahead is 400. The answer is the stored
 ## Frontend
 
 - `views/WeekReviewView.vue` at `#/rueckblick`, the week in `?woche=<Monday>`
-  (the current week has the plain address) with the Plan's switcher (Vorige
-  Woche, Diese Woche, Nächste Woche) and the range plus "diese Woche",
-  "vorige Woche", "vor 3 Wochen" below the title. On the phone it sits behind
-  Mehr after Plan; on wide screens it sits behind Mehr up to 70rem and has
-  its own tab in the right-hand group from there (`tabFrom: "wider"` in
+  (the current week has the plain address). The header holds the title, a
+  one-line lead ("Wie weit die Woche deine Kampagnen gebracht hat.") and the
+  switcher: Vorige Woche, the range with "diese Woche", "vorige Woche",
+  "vor 3 Wochen" below it, Nächste Woche, Diese Woche. On the phone it sits
+  behind Mehr after Plan; on wide screens it sits behind Mehr up to 70rem and
+  has its own tab in the right-hand group from there (`tabFrom: "wider"` in
   `router.ts`, see `DESIGN.md` for the steps of the bar).
-- Both reads load with `useLoader`. While either loads, three bones of the
-  sections' size hold the place. A failed read shows its error with a retry
-  above the sections of the other read; an empty week is only claimed when
-  both arrived.
-- Sections, each a component: `ReviewFigures` (Kennzahlen: quest hours
-  against the overall goal with percent, the daily average over the days
-  begun, the share of quest work in all measured time; the view's one lifted
-  card), `ReviewDayBars`, `ReviewCampaignHours`, `ReviewCampaignProgress`
-  (rows link to `#/kampagnen?kampagne=<id>`, where the burn-up is),
-  `ReviewQuestSplit`, `ReviewWeekTrend` (the line is the average of the
-  seven weeks before the shown one, so the shown week is compared with it),
-  `WeekQuota` (shared with `CalendarWeek.vue`, flat here), `ReviewDoneList`
-  and `ReviewAnswers` (three text areas, explicit "Speichern", a quiet
-  "Gespeichert", errors in place, typing never overwritten by a refresh).
-- A week without measured time and without anything resolved shows one calm
-  empty card instead of the charts; trend, quota and the questions stay. A
-  week ahead shows only that card and a line that the questions open once it
-  begins.
-- Pure rules in `utils/week-review.ts` (figures, bar heights, the change in
-  words "+4 Quests, 62 % → 71 %", texts for screen readers).
+- The page is a dashboard on top and the week's details below, one grid of
+  cards each titled inside (`.card-title`). From 56rem it is up to 72rem
+  wide, like the Plan wider than the page column:
+  1. `ReviewFigures`: three figures, from 40rem three cards in a row, on a
+     phone one card (quest hours over the two others). Quest hours against
+     the overall goal ("von 20 Std. Wochenziel", "11 % vom Ziel", a flat bar;
+     just the hours without a goal), the daily average over the days begun,
+     the share of quest work in all measured time. The quest hours are the
+     view's one lifted card.
+  2. `ReviewDayBars` (about three fifths) beside a column with
+     `ReviewCampaignHours` and `ReviewQuestSplit`; on a phone one below the
+     other.
+  3. `ReviewWeekTrend`, full width: eight weeks, the running one marked
+     "bisher"; the line is the average of the seven weeks before the shown
+     one, its value top right, so the shown week is compared with it.
+  4. `ReviewCampaignProgress` (rows link to `#/kampagnen?kampagne=<id>`,
+     where the burn-up is; two columns where there is room).
+  5. `WeekQuota` with `dashboard`: "Dailies im Wochensoll" and "Perfekte
+     Woche" as two flat cards side by side (one alone takes the width). The
+     component is shared with `CalendarWeek.vue`, where the quota is lifted.
+  6. `ReviewDoneList`: one card, days side by side where there is room. On a
+     phone it starts closed with its count and "Alle n Einträge zeigen"; on
+     a wide screen (56rem, decided when it appears) it is open up to eight
+     entries and closed beyond.
+  7. `ReviewAnswers`: three text areas (side by side from 56rem), explicit
+     "Speichern", a quiet "Gespeichert", errors in place, typing never
+     overwritten by a refresh.
+- Both reads load with `useLoader`. While either loads, bones in the
+  dashboard's grid (three figures, day bars beside two side cards, the
+  weeks) hold the place. A failed read shows its error with a retry above
+  the sections of the other read; an empty week is only claimed when both
+  arrived.
+- The charts appear only for measured time. A week without measured time
+  and without anything resolved shows one calm empty card instead; the
+  figures and the weeks before stay around it when earlier weeks have time,
+  and quota and questions stay. A week ahead shows only that card and a
+  line that the questions open once it begins.
+- Pure rules in `utils/week-review.ts` (figures and their units, bar
+  heights, the running week, the change in words "+4 Quests, 62 % → 71 %",
+  texts for screen readers).

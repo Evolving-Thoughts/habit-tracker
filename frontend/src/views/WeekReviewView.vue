@@ -78,8 +78,18 @@ const quiet = computed(
   () => !!hours.value && !!review.value && isQuietWeek(hours.value, review.value),
 );
 const ahead = computed(() => week.value > thisWeek());
+/* A week still ahead has nothing to compare or count yet. */
 const hasTrend = computed(
-  () => !!hours.value?.weeks.some((item) => item.questMinutes > 0),
+  () =>
+    !ahead.value && !!hours.value?.weeks.some((item) => item.questMinutes > 0),
+);
+/* An empty week keeps its figures only where earlier weeks give them weight. */
+const showFigures = computed(
+  () => !!hours.value && (!quiet.value || hasTrend.value),
+);
+/* The charts only for measured time, never a wall of empty ones. */
+const measured = computed(
+  () => !!hours.value && hours.value.questMinutes + hours.value.otherMinutes > 0,
 );
 const distance = computed(() => weekDistance(week.value, thisWeek()));
 
@@ -90,8 +100,11 @@ function onSaved(answers: WeekReviewAnswers): void {
 
 <template>
   <main class="page week-review">
-    <header class="page-header">
-      <h1 class="page-title">Wochenrückblick</h1>
+    <header class="page-header week-review__header">
+      <div class="week-review__heading">
+        <h1 class="page-title">Wochenrückblick</h1>
+        <p class="page-lead">Wie weit die Woche deine Kampagnen gebracht hat.</p>
+      </div>
       <div class="week-review__nav">
         <button
           type="button"
@@ -101,9 +114,9 @@ function onSaved(answers: WeekReviewAnswers): void {
         >
           <AppIcon name="chevron-left" />
         </button>
-        <button type="button" class="btn" @click="showWeek(thisWeek())">
-          Diese Woche
-        </button>
+        <p class="week-review__range">
+          <strong>{{ weekLabel(week) }}</strong> <span>{{ distance }}</span>
+        </p>
         <button
           type="button"
           class="btn btn--icon"
@@ -112,36 +125,49 @@ function onSaved(answers: WeekReviewAnswers): void {
         >
           <AppIcon name="chevron" />
         </button>
+        <button type="button" class="btn" @click="showWeek(thisWeek())">
+          Diese Woche
+        </button>
       </div>
-      <p class="page-lead week-review__range">
-        <strong>{{ weekLabel(week) }}</strong> · {{ distance }}
-      </p>
     </header>
 
+    <!-- Bones in the grid of what comes, so nothing jumps when it arrives. -->
     <div
       v-if="loading"
-      class="week-review__loading"
+      class="week-review__body week-review__loading"
       role="status"
       aria-label="Wochenrückblick wird geladen"
     >
-      <span class="week-review__bone week-review__bone--figures" />
-      <span class="week-review__bone week-review__bone--chart" />
-      <span class="week-review__bone week-review__bone--chart" />
+      <div class="week-review__figures-bones">
+        <span class="week-review__bone week-review__bone--figure" />
+        <span class="week-review__bone week-review__bone--figure" />
+        <span class="week-review__bone week-review__bone--figure" />
+      </div>
+      <div class="week-review__charts">
+        <span class="week-review__bone week-review__bone--days" />
+        <div class="week-review__side">
+          <span class="week-review__bone week-review__bone--side" />
+          <span class="week-review__bone week-review__bone--side" />
+        </div>
+      </div>
+      <span class="week-review__bone week-review__bone--trend" />
     </div>
-    <template v-else>
-      <div v-if="hoursError" class="alert week-review__alert" role="alert">
+    <div v-else class="week-review__body">
+      <div v-if="hoursError" class="alert" role="alert">
         <p>{{ hoursError }}</p>
         <button type="button" class="btn btn--ground" @click="reloadHours()">
           <AppIcon name="refresh" />Erneut versuchen
         </button>
       </div>
-      <div v-if="reviewError" class="alert week-review__alert" role="alert">
+      <div v-if="reviewError" class="alert" role="alert">
         <p>{{ reviewError }}</p>
         <button type="button" class="btn btn--ground" @click="reloadReview()">
           <AppIcon name="refresh" />Erneut versuchen
         </button>
       </div>
 
+      <!-- The dashboard: figures, the week's charts, the weeks before. -->
+      <ReviewFigures v-if="hours && showFigures" :hours="hours" />
       <div v-if="quiet" class="empty-state">
         <template v-if="ahead">
           <strong>Diese Woche liegt noch vor dir.</strong>
@@ -155,25 +181,26 @@ function onSaved(answers: WeekReviewAnswers): void {
           <span>Auch eine ruhige Woche darf einen Rückblick haben.</span>
         </template>
       </div>
-
-      <template v-if="hours && !quiet">
-        <ReviewFigures :hours="hours" />
+      <!-- Measured time always has its split, so the side is never empty. -->
+      <div v-if="hours && measured" class="week-review__charts">
         <ReviewDayBars :hours="hours" />
-        <ReviewCampaignHours :hours="hours" />
-      </template>
+        <div class="week-review__side">
+          <ReviewCampaignHours :hours="hours" />
+          <ReviewQuestSplit :hours="hours" />
+        </div>
+      </div>
+      <ReviewWeekTrend v-if="hours && hasTrend" :hours="hours" />
+
+      <!-- What the week changed, and the questions. -->
       <ReviewCampaignProgress
         v-if="review && !quiet"
         :campaigns="review.campaigns"
       />
-      <ReviewQuestSplit v-if="hours && !quiet" :hours="hours" />
-      <!-- A week still ahead has nothing to compare or count yet. -->
-      <ReviewWeekTrend v-if="hours && hasTrend && !ahead" :hours="hours" />
       <WeekQuota
         v-if="review && !ahead"
         :quota="review.weekQuota"
         :perfect-week="review.perfectWeek"
-        :lifted="false"
-        titled
+        dashboard
       />
       <ReviewDoneList v-if="review && !quiet" :days="review.days" />
       <ReviewAnswers
@@ -183,33 +210,96 @@ function onSaved(answers: WeekReviewAnswers): void {
         :ahead="ahead"
         @saved="onSaved"
       />
-    </template>
+    </div>
   </main>
 </template>
 
 <style scoped>
+/* The dashboard needs more room than a page column, like the Plan. */
+@media (min-width: 56rem) {
+  .week-review {
+    width: min(100% - 2rem, 72rem);
+  }
+}
+
+.week-review__heading {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
 .week-review__nav {
   display: flex;
+  flex: 1 1 100%;
   gap: var(--space-1);
   align-items: center;
 }
 
 .week-review__range {
+  display: grid;
+  flex: 1 1 auto;
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
 .week-review__range strong {
   color: var(--color-ink);
+  font-size: 0.9375rem;
+  font-weight: 800;
 }
 
-.week-review__alert {
-  margin-bottom: var(--space-4);
+/* From 40rem the switcher sits beside the title, as in the Plan. */
+@media (min-width: 40rem) {
+  .week-review__header {
+    align-items: end;
+  }
+
+  .week-review__nav {
+    flex: 0 0 auto;
+  }
+
+  .week-review__range {
+    min-width: 7.5rem;
+  }
 }
 
-/* Bones in the size of what comes, so nothing jumps when it arrives. */
-.week-review__loading {
+/* One grid for every card, so the gaps are the same everywhere. */
+.week-review__body {
   display: grid;
-  gap: var(--space-6);
+  gap: var(--space-3);
+}
+
+.week-review__charts,
+.week-review__side {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+}
+
+@media (min-width: 40rem) {
+  .week-review__body,
+  .week-review__charts,
+  .week-review__side {
+    gap: var(--space-4);
+  }
+}
+
+/* Day bars about three fifths, the two side cards stacked beside them. */
+@media (min-width: 56rem) {
+  .week-review__charts {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    align-items: stretch;
+  }
+}
+
+.week-review__figures-bones {
+  display: grid;
+  gap: var(--space-4);
 }
 
 .week-review__bone {
@@ -219,12 +309,46 @@ function onSaved(answers: WeekReviewAnswers): void {
   animation: week-review-breathe 1.6s var(--ease-out) infinite alternate;
 }
 
-.week-review__bone--figures {
+/* On the phone the figures are one card: one bone of its size. */
+.week-review__bone--figure {
+  height: 13.5rem;
+}
+
+.week-review__bone--figure + .week-review__bone--figure {
+  display: none;
+}
+
+.week-review__bone--days {
   height: 13rem;
 }
 
-.week-review__bone--chart {
-  height: 11rem;
+.week-review__bone--side {
+  height: 9rem;
+}
+
+.week-review__bone--trend {
+  height: 13rem;
+}
+
+@media (min-width: 40rem) {
+  .week-review__figures-bones {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .week-review__bone--figure {
+    height: 8.5rem;
+  }
+
+  .week-review__bone--figure + .week-review__bone--figure {
+    display: block;
+  }
+}
+
+@media (min-width: 56rem) {
+  .week-review__bone--days {
+    height: auto;
+    min-height: 17rem;
+  }
 }
 
 @keyframes week-review-breathe {
