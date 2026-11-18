@@ -1,6 +1,8 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getHistory } from "../api/history.api";
+import { ApiError, ConnectionError } from "../api/http";
+import { deleteWorkLog } from "../api/work-logs.api";
 import { rescheduleTodo, updateTodoCompletion } from "../api/day-planner.api";
 import { notifyViewsChanged } from "../composables/data-sync";
 import { HISTORY_ITEM_FIELDS, PLANNED_FIELDS } from "../types/fixtures";
@@ -500,7 +502,8 @@ describe("CalendarView states", () => {
   });
 
   it("explains a lost connection in plain words", async () => {
-    mock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    // The API layer turns fetch's TypeError into these words (http.ts).
+    mock.mockRejectedValueOnce(new ConnectionError());
     const wrapper = await render();
     const alert = wrapper.get('[role="alert"]').text();
     expect(alert).toContain("Keine Verbindung zum Server");
@@ -903,6 +906,123 @@ describe("CalendarView Logbuch", () => {
       (logbook.get('input[aria-label="Start"]').element as HTMLInputElement)
         .value,
     ).toBe("10:00");
+  });
+
+  describe("deleting a stretch", () => {
+    const twoLogs = () => {
+      const data = dayResponse([item()]);
+      data.days[0]!.work = {
+        minutes: 35,
+        campaigns: [{ campaign: book, minutes: 35 }],
+        logs: [
+          workLog(),
+          workLog({
+            id: 2,
+            title: "Lesen",
+            startedAt: "2026-10-07T09:00:00.000Z",
+            endedAt: "2026-10-07T09:05:00.000Z",
+            minutes: 5,
+          }),
+        ],
+      };
+      return data;
+    };
+    const rows = (wrapper: Wrapper) =>
+      wrapper
+        .findAll('[aria-label="Einträge im Logbuch"] li strong')
+        .map((row) => row.text());
+    const remove = (wrapper: Wrapper, label: string) =>
+      wrapper.get(`[aria-label="${label}"]`).trigger("click");
+
+    it("takes the stretch out at once and holds the delete behind the toast", async () => {
+      const wrapper = await renderDay(twoLogs());
+      await remove(wrapper, "Kapitel 10:00 löschen");
+      await flushPromises();
+      expect(rows(wrapper)).toEqual(["Lesen"]);
+      expect(
+        wrapper.findAll('ol[aria-label="Logbuch"] button').map((block) =>
+          block.attributes("aria-label"),
+        ),
+      ).toEqual(["Lesen, 11:00 bis 11:05, 5 Min., Kampagne Buch, korrigieren"]);
+      // The server's total still counts it: no figure rather than a wrong one.
+      expect(wrapper.get("#day-axis-title").text()).toBe("Logbuch");
+      expect(wrapper.get(".undo-toast").text()).toContain(
+        "Abschnitt „Kapitel“ gelöscht",
+      );
+      expect(deleteWorkLog).not.toHaveBeenCalled();
+    });
+
+    it("brings the stretch back with Rückgängig and never deletes it", async () => {
+      const wrapper = await renderDay(twoLogs());
+      await remove(wrapper, "Kapitel 10:00 löschen");
+      await flushPromises();
+      await wrapper
+        .findAll("button")
+        .find((button) => button.text() === "Rückgängig")!
+        .trigger("click");
+      await flushPromises();
+      expect(rows(wrapper)).toEqual(["Kapitel", "Lesen"]);
+      expect(wrapper.get("#day-axis-title").text()).toBe("Logbuch 35 Min.");
+      wrapper.unmount();
+      await flushPromises();
+      expect(deleteWorkLog).not.toHaveBeenCalled();
+    });
+
+    it("deletes when the next offer replaces the toast", async () => {
+      vi.mocked(deleteWorkLog).mockResolvedValue();
+      const wrapper = await renderDay(twoLogs());
+      await remove(wrapper, "Kapitel 10:00 löschen");
+      await flushPromises();
+      await remove(wrapper, "Lesen 11:00 löschen");
+      await flushPromises();
+      expect(deleteWorkLog).toHaveBeenCalledTimes(1);
+      expect(deleteWorkLog).toHaveBeenCalledWith(1);
+      expect(wrapper.get(".undo-toast").text()).toContain(
+        "Abschnitt „Lesen“ gelöscht",
+      );
+    });
+
+    it("sends a held delete when the page closes or the view goes", async () => {
+      vi.mocked(deleteWorkLog).mockResolvedValue();
+      const wrapper = await renderDay(twoLogs());
+      await remove(wrapper, "Kapitel 10:00 löschen");
+      window.dispatchEvent(new Event("pagehide"));
+      await flushPromises();
+      expect(deleteWorkLog).toHaveBeenCalledWith(1);
+
+      await remove(wrapper, "Lesen 11:00 löschen");
+      wrapper.unmount();
+      await flushPromises();
+      expect(deleteWorkLog).toHaveBeenLastCalledWith(2);
+    });
+
+    it("shows the stretch again with the reason when the delete fails", async () => {
+      vi.mocked(deleteWorkLog).mockRejectedValueOnce(
+        new ApiError(
+          "Der Server hatte gerade einen Fehler, die Änderung ist nicht gespeichert.",
+          500,
+        ),
+      );
+      const wrapper = await renderDay(twoLogs());
+      await remove(wrapper, "Kapitel 10:00 löschen");
+      window.dispatchEvent(new Event("pagehide"));
+      await flushPromises();
+      expect(rows(wrapper)).toEqual(["Kapitel", "Lesen"]);
+      expect(wrapper.get('[role="alert"]').text()).toContain(
+        "die Änderung ist nicht gespeichert",
+      );
+    });
+
+    it("counts a stretch deleted elsewhere as deleted", async () => {
+      vi.mocked(deleteWorkLog).mockRejectedValueOnce(
+        new ApiError("Work log with ID 1 was not found", 404),
+      );
+      const wrapper = await renderDay(twoLogs());
+      await remove(wrapper, "Kapitel 10:00 löschen");
+      window.dispatchEvent(new Event("pagehide"));
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    });
   });
 
   it("stacks each day's work by campaign in the week and names the colours", async () => {

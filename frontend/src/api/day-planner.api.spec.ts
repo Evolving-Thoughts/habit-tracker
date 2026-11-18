@@ -67,12 +67,12 @@ describe("habit API contracts", () => {
       );
     },
   );
-  it("falls back to the status for a non-JSON error", async () => {
+  it("says in plain words what a server failure without a message means", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response("Bad gateway", { status: 502 }),
     );
     await expect(updateHabit(10, { title: "Joggen" })).rejects.toThrow(
-      "Request failed with status 502",
+      "Der Server hatte gerade einen Fehler, die Änderung ist nicht gespeichert. Was du eingegeben hast, bleibt hier stehen",
     );
   });
 });

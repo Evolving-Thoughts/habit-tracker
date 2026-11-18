@@ -70,18 +70,20 @@ describe('Todo hierarchy T2/T3 PostgreSQL API', () => {
       (await tree()).find((t) => t.id === root.id)?.progress,
     ).toMatchObject({
       mode: 'duration',
-      completed: 90,
-      total: 180,
-      percentage: 50,
+      completed: 30,
+      total: 120,
+      percentage: 25,
+      todoCount: 2,
+      doneCount: 1,
     });
     await patch(b.id, { plannedDurationMinutes: null });
     expect(
       (await tree()).find((t) => t.id === root.id)?.progress,
     ).toMatchObject({
       mode: 'count',
-      completed: 2,
-      total: 3,
-      knownDurationMinutes: 90,
+      completed: 1,
+      total: 2,
+      knownDurationMinutes: 30,
     });
     expect(
       await db.getRepository(TodoEntity).findOneBy({ id: b.id }),
@@ -308,8 +310,8 @@ describe('Todo hierarchy T2/T3 PostgreSQL API', () => {
     const nodes = await tree();
     expect(nodes).toHaveLength(2000);
     expect(nodes.find((t) => t.id === 1)?.progress).toMatchObject({
-      total: 2000,
-      todoCount: 2000,
+      total: 1999,
+      todoCount: 1999,
     });
     const snapshot = await preview(1);
     expect(snapshot.todos).toHaveLength(2000);

@@ -73,7 +73,7 @@ export function createTimerController() {
         error.value =
           cause instanceof Error && !(cause instanceof TypeError)
             ? cause.message
-            : "Timer nicht erreichbar. Prüfe deine Verbindung.";
+            : "Stoppuhr nicht erreichbar. Prüf deine Verbindung.";
     } finally {
       reading = false;
     }
@@ -97,7 +97,7 @@ export function createTimerController() {
         error.value =
           cause instanceof Error
             ? cause.message
-            : "Timer konnte nicht geändert werden.";
+            : "Die Stoppuhr konnte nicht geändert werden.";
       throw cause;
     } finally {
       busy.value = false;
@@ -125,8 +125,7 @@ export function createTimerController() {
     const current = timer.value;
     if (!current) return false;
     if (expectedId && current.id !== expectedId) {
-      error.value =
-        "Der aktive Timer hat sich auf einem anderen Gerät geändert.";
+      error.value = "Die Stoppuhr hat sich auf einem anderen Gerät geändert.";
       return false;
     }
     try {
@@ -142,8 +141,7 @@ export function createTimerController() {
     const current = timer.value;
     if (!current) return false;
     if (expectedId && current.id !== expectedId) {
-      error.value =
-        "Der aktive Timer hat sich auf einem anderen Gerät geändert.";
+      error.value = "Die Stoppuhr hat sich auf einem anderen Gerät geändert.";
       return false;
     }
     try {

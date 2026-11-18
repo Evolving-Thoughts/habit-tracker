@@ -24,9 +24,12 @@ test("Quest timer: direct play, sticky bar, reload, second device, pause/target/
   await visit(page, "Questlog");
   await createTodo(page, "Schreiben");
   await page
-    .getByRole("button", { name: "Timer für Schreiben starten", exact: true })
+    .getByRole("button", {
+      name: "Stoppuhr für Schreiben starten",
+      exact: true,
+    })
     .click();
-  const bar = page.getByRole("complementary", { name: "Aktueller Timer" });
+  const bar = page.getByRole("complementary", { name: "Aktuelle Stoppuhr" });
   await expect(bar).toContainText("Stoppuhr läuft");
   expect((await read(request)).timer?.targetMinutes).toBe(30);
   await page.reload();
@@ -42,7 +45,7 @@ test("Quest timer: direct play, sticky bar, reload, second device, pause/target/
   await device.goto("/");
   await expect(device.getByRole("complementary")).toContainText("Schreiben");
   await page
-    .getByRole("button", { name: "Timer pausieren", exact: true })
+    .getByRole("button", { name: "Stoppuhr pausieren", exact: true })
     .click();
   await expect(bar).toContainText("Pausiert");
   await expect(device.getByRole("complementary")).toContainText("Pausiert");
@@ -55,11 +58,11 @@ test("Quest timer: direct play, sticky bar, reload, second device, pause/target/
   await expect(dialog).not.toBeVisible();
   expect((await read(request)).timer?.targetMinutes).toBe(35);
   await page
-    .getByRole("button", { name: "Timer fortsetzen", exact: true })
+    .getByRole("button", { name: "Stoppuhr fortsetzen", exact: true })
     .click();
   await expect(bar).toContainText("Stoppuhr läuft");
   // Ending needs no confirmation: the time worked is in the logbook.
-  await timerBarAction(page, "Timer beenden");
+  await timerBarAction(page, "Stoppuhr beenden");
   await expect(bar).toHaveCount(0);
   await expect(device.getByRole("complementary")).toHaveCount(0);
   await other.close();
@@ -81,33 +84,33 @@ test("switching requires confirmation and completing a Questlog Quest persists i
   await createTodo(page, "Zweite Quest");
   await page
     .getByRole("button", {
-      name: "Timer für Erste Quest starten",
+      name: "Stoppuhr für Erste Quest starten",
       exact: true,
     })
     .click();
   await expect(
-    page.getByRole("complementary", { name: "Aktueller Timer" }),
+    page.getByRole("complementary", { name: "Aktuelle Stoppuhr" }),
   ).toContainText("Erste Quest");
   const old = (await read(request)).timer!.id;
   await page
     .getByRole("button", {
-      name: "Timer für Zweite Quest starten",
+      name: "Stoppuhr für Zweite Quest starten",
       exact: true,
     })
     .click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog).toContainText("Anderen Timer starten?");
+  await expect(dialog).toContainText("Andere Stoppuhr starten?");
   expect((await read(request)).timer?.id).toBe(old);
   await dialog.getByRole("button", { name: "Abbrechen", exact: true }).click();
   expect((await read(request)).timer?.id).toBe(old);
   await page
     .getByRole("button", {
-      name: "Timer für Zweite Quest starten",
+      name: "Stoppuhr für Zweite Quest starten",
       exact: true,
     })
     .click();
   await dialog
-    .getByRole("button", { name: "Timer wechseln", exact: true })
+    .getByRole("button", { name: "Stoppuhr wechseln", exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
   await expect(page.getByRole("complementary")).toContainText("Zweite Quest");
@@ -162,15 +165,15 @@ test("Daily play availability and occurrence-only timer duration", async ({
   await visit(page, "Dailies");
   await expect(
     page.getByRole("button", {
-      name: "Timer für Zukünftig: keine offene fällige Ausführung",
+      name: "Stoppuhr für Zukünftig: keine offene fällige Ausführung",
       exact: true,
     }),
   ).toBeDisabled();
   await page
-    .getByRole("button", { name: "Timer für Gitarre starten", exact: true })
+    .getByRole("button", { name: "Stoppuhr für Gitarre starten", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Timer pausieren", exact: true })
+    .getByRole("button", { name: "Stoppuhr pausieren", exact: true })
     .click();
   await timerBarAction(page, "Soll ändern");
   const dialog = page.getByRole("dialog");
@@ -200,7 +203,7 @@ test("timer bar remains visible during long scrolling and icons have symmetric 4
     });
   await visit(page, "Questlog");
   await page
-    .getByRole("button", { name: "Timer für Quest 0 starten", exact: true })
+    .getByRole("button", { name: "Stoppuhr für Quest 0 starten", exact: true })
     .click();
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   const bar = page.getByRole("complementary");
@@ -234,7 +237,7 @@ test("a remote replacement closes an old local target dialog", async ({
   await createTodo(page, "Zweiter Timer");
   await page
     .getByRole("button", {
-      name: "Timer für Erster Timer starten",
+      name: "Stoppuhr für Erster Timer starten",
       exact: true,
     })
     .click();

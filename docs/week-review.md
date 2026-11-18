@@ -56,8 +56,15 @@ Pure functions in `backend/src/week-review/week-review.ts`, each with a spec.
   it existed before the week ended and was not completed before it began. A
   campaign completed during the week is still listed.
 - **Progress** counts like the burn-up and `goal_snapshots`
-  (`scopesByRoot`): every live todo of the campaign, the campaign itself
-  included; done against all. The percentage is whole, 0 without any quest.
+  (`scopesByRoot`): every live todo below the campaign, never the campaign
+  itself (a campaign with three quests, one done, is "1 von 3 Quests");
+  done against all. The percentage is whole, 0 without any quest.
+- **Stored snapshots** written before this rule counted the campaign too.
+  Migration `1795500000000-ProgressBelowCampaign` deletes them all (only test
+  data existed, and an old row cannot be corrected exactly: whether the
+  campaign was done on that day is lost once it was reopened). Until new
+  snapshots exist, earlier weeks are read back from the todos and say so
+  (`source: 'reconstructed'`).
 - **Start of the week**: the latest snapshot dated in the seven days before
   Monday (a snapshot holds the last state of its day). Without one, the
   state is read back from the live todos (`scopesAt`): those created before
@@ -69,7 +76,7 @@ Pure functions in `backend/src/week-review/week-review.ts`, each with a spec.
   for a past week the latest snapshot dated in the week, else read back at
   the end of Sunday. A week still ahead shows the live state on both sides,
   so it changes by nothing.
-- **Daily goals**: every todo of the campaign (the campaign included) that
+- **Daily goals** (unchanged): every todo of the campaign (the campaign included) that
   counts a daily in a period touching the week. `before` and `after` are its
   completed runs up to Sunday before and up to the week's Sunday
   (`countedRuns` in `todos/habit-goal.ts`, also used by the hierarchy's goal

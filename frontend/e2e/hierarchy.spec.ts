@@ -61,20 +61,49 @@ test("Tree: add child, collapse, independent completion and reopen, persist", as
   await expect(
     page.getByRole("heading", { name: "Oberfläche entwickeln", exact: true }),
   ).toBeVisible();
-  await row(page, root.id).getByRole("checkbox").check();
-  await expect(row(page, root.id).getByRole("checkbox")).toBeChecked();
   const child = (
     (await (await request.get(`${API_URL}/todos`)).json()) as {
       id: number;
       parentId: number | null;
     }[]
   ).find((t) => t.parentId === root.id)!;
+  // Progress counts the quest below, not the campaign's own 30 minutes.
+  await expect(row(page, root.id).locator(".row__count")).toHaveText(
+    "0/90 Min.",
+  );
+  // The campaign still has an open quest: it asks first, the quest stays open.
+  await row(page, root.id).getByRole("checkbox").click();
+  const question = page.getByRole("dialog", { name: "Kampagne abschließen?" });
+  await expect(question).toContainText(
+    "1 Quest in „Lernprojekt abschließen“ ist noch offen. Sie bleibt offen",
+  );
+  await question
+    .getByRole("button", { name: "Abbrechen", exact: true })
+    .click();
+  await expect(question).toHaveCount(0);
+  await expect(row(page, root.id).getByRole("checkbox")).not.toBeChecked();
+  await row(page, root.id).getByRole("checkbox").click();
+  await question
+    .getByRole("button", { name: "Kampagne abschließen", exact: true })
+    .click();
+  await expect(row(page, root.id).getByRole("checkbox")).toBeChecked();
+  await expect(row(page, child.id).getByRole("checkbox")).not.toBeChecked();
+  const toast = page.locator(".undo-toast");
+  await expect(toast).toContainText("„Lernprojekt abschließen“ abgeschlossen");
   await row(page, child.id).getByRole("checkbox").check();
   await expect(row(page, root.id).getByRole("checkbox")).toBeChecked();
-  await row(page, child.id).getByRole("checkbox").uncheck();
+  await expect(row(page, root.id).locator(".row__count")).toHaveText(
+    "90/90 Min.",
+  );
+  // The toast takes the tick back, as on Heute.
+  await expect(toast).toContainText("„Oberfläche entwickeln“ erledigt");
+  await toast.getByRole("button", { name: "Rückgängig", exact: true }).click();
   // Reopening a child leaves the parent's own completion (and history) intact.
   await expect(row(page, child.id).getByRole("checkbox")).not.toBeChecked();
   await expect(row(page, root.id).getByRole("checkbox")).toBeChecked();
+  await expect(row(page, root.id).locator(".row__count")).toHaveText(
+    "0/90 Min.",
+  );
   await row(page, root.id)
     .getByRole("button", {
       name: "Lernprojekt abschließen einklappen",

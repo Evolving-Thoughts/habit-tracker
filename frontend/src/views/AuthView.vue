@@ -264,7 +264,7 @@ function selectAfter(next: typeof mode.value): void {
   width: min(100%, 27rem);
   padding: var(--space-6) var(--space-5) var(--space-4);
   border-radius: var(--radius-card);
-  background: var(--color-surface);
+  background: var(--color-surface-raised);
   box-shadow: var(--shadow-card);
 }
 .wordmark {

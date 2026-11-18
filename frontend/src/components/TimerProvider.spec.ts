@@ -52,12 +52,14 @@ describe("global Timer bar", () => {
     expect(w.get('[aria-label="Gearbeitete Zeit"]').text()).toBe("01:05");
     expect(w.get(".timer-bar__target").text()).toBe("von 2 Min.");
     expect(w.text()).toContain("Stoppuhr läuft");
-    await w.get('button[aria-label="Timer pausieren"]').trigger("click");
+    await w.get('button[aria-label="Stoppuhr pausieren"]').trigger("click");
     await flushPromises();
     expect(w.text()).toContain("Pausiert");
-    expect(w.find('button[aria-label="Timer fortsetzen"]').exists()).toBe(true);
+    expect(w.find('button[aria-label="Stoppuhr fortsetzen"]').exists()).toBe(
+      true,
+    );
     vi.mocked(timerAction).mockResolvedValue(none);
-    await w.get('button[aria-label="Timer beenden"]').trigger("click");
+    await w.get('button[aria-label="Stoppuhr beenden"]').trigger("click");
     await flushPromises();
     // The work is logged either way, so ending needs no confirmation.
     expect(timerAction).toHaveBeenLastCalledWith("a", "stop");
@@ -130,9 +132,9 @@ describe("global Timer bar", () => {
       w
         .findAll(".timer-bar__more [role=menuitem]")
         .map((item) => item.attributes("aria-label") ?? item.text()),
-    ).toEqual(["Soll ändern", "Schreiben erledigen", "Timer beenden"]);
+    ).toEqual(["Soll ändern", "Schreiben erledigen", "Stoppuhr beenden"]);
     await w
-      .get('.timer-bar__more [role=menuitem][aria-label="Timer beenden"]')
+      .get('.timer-bar__more [role=menuitem][aria-label="Stoppuhr beenden"]')
       .trigger("click");
     await flushPromises();
     expect(timerAction).toHaveBeenCalledWith("a", "stop");

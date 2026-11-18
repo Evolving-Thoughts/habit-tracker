@@ -134,7 +134,9 @@ describe("synced Timer controller", () => {
       new TypeError("Failed to fetch"),
     );
     await c.refresh();
-    expect(c.error.value).toContain("Prüfe deine Verbindung");
+    expect(c.error.value).toBe(
+      "Stoppuhr nicht erreichbar. Prüf deine Verbindung.",
+    );
     expect(c.timer.value?.id).toBe("timer-1");
     expect(c.elapsed.value).toBe(30_000);
     c.dispose();

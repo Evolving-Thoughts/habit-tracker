@@ -11,9 +11,20 @@ Nothing is completed automatically.
 
 - Every open Todo and every due Habit occurrence has a round Play icon; a planned
   duration is not needed. Future and paused Habits cannot start an occurrence.
-- A sticky timer bar stays visible across the views: time worked, "von n Min."
-  when there is a target, and round 44px controls: pause/resume, change target,
-  complete, end. The label reads "Stoppuhr läuft", "Pausiert" or "Soll erreicht".
+- The UI always says "Stoppuhr", never "Timer" (labels, screen-reader names,
+  menus, the command menu, Einstellungen, server messages, push). `timer` stays
+  the name in code, API and database. The target is the "Soll": it is reached,
+  nothing "runs out" (Einstellungen: "Benachrichtigen, wenn das Soll erreicht
+  ist"; the push says "Du hast dein Soll erreicht", "Die Stoppuhr läuft
+  weiter.").
+- A sticky bar ("Aktuelle Stoppuhr") stays visible across the views: time
+  worked, "von n Min." when there is a target, and round 44px controls:
+  pause/resume, change target, complete, end. The label reads "Stoppuhr läuft",
+  "Pausiert" or "Soll erreicht".
+- Completing by a ring offers the undo toast everywhere (Heute, Questlog, Plan,
+  Kalender, Kampagnen); a campaign with open quests asks first (see
+  `todo-hierarchy.md`). The bar's "Erledigen" and the Fokus-Modus' "Erledigt"
+  have no toast: the stopwatch ends with it and the next quest follows.
 - Ending needs no confirmation: every stretch is in the logbook already.
   Switching to another target still asks, and checks the exact old timer ID, so a
   stale device cannot end a newer stopwatch.

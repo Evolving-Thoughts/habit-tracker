@@ -148,8 +148,26 @@ export function tokenContrast(
   background: string,
   base = "color-ground",
 ): number {
-  const ground = parseColor(tokenColor(tokens, base));
-  const back = flatten(parseColor(tokenColor(tokens, background)), ground);
+  return layeredContrast(tokens, foreground, [base, background]);
+}
+
+/**
+ * The same for a stack of surfaces, bottom first: the first must be opaque,
+ * each further one lies on what is below it (a translucent field on a
+ * translucent column on the ground).
+ */
+export function layeredContrast(
+  tokens: Tokens,
+  foreground: string,
+  layers: string[],
+): number {
+  const [bottom, ...above] = layers.map((name) =>
+    parseColor(tokenColor(tokens, name)),
+  );
+  const back = above.reduce((below, layer) => flatten(layer, below), {
+    ...bottom!,
+    a: 1,
+  });
   const front = flatten(parseColor(tokenColor(tokens, foreground)), back);
   return contrastRatio(front, back);
 }

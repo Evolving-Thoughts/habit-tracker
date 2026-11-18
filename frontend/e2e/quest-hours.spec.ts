@@ -104,10 +104,11 @@ test("Quest-Stunden: goals, a campaign's colour and icon, its tile and the line 
   await page.goBack();
   await expect(tile).toBeVisible();
 
-  // Heute names the quest hours of today and of the week against the goal.
+  // Heute relates the time worked to its quest hours, then the week against the goal.
   await openView(page, "Heute");
-  await expect(page.locator(".today-view__quest")).toHaveText(
-    /^Quest-Stunden heute \d+ Min\. · Woche \d+ Min\. von 20 Std\.$/,
+  // Right after midnight the half hour may lie wholly on yesterday.
+  await expect(page.locator(".today-view__time")).toHaveText(
+    /^(\d+ Min\. gearbeitet, alles auf Kampagnen · Woche|Kampagnen diese Woche) \d+ Min\. von 20 Std\.$/,
   );
   // The quest's stripe takes the campaign's stored colour.
   await expect(page.locator(".planner-item.item-row--campaign").first()).toHaveAttribute(

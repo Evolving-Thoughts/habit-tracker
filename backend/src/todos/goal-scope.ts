@@ -37,7 +37,11 @@ export function rootIds(todos: TreeTodo[]): Map<number, number> {
 }
 
 /**
- * Sums every todo into its root. Both units are kept for the chart to pick.
+ * Sums the todos below every root into it: the progress of a campaign is
+ * the quests below it, never the campaign itself (like the hierarchy's
+ * progress in `todo-hierarchy.ts`). Every counted root has a scope, a lone
+ * one with nothing below it all zeros, so its stored row stays current when
+ * its last quest goes. Both units are kept for the chart to pick.
  * `counts` leaves todos out of the sums without cutting the tree, so a todo
  * still finds its root through a parent that does not count.
  */
@@ -47,16 +51,25 @@ export function scopesByRoot<T extends ScopeTodo>(
 ): GoalScope[] {
   const roots = rootIds(todos);
   const scopes = new Map<number, GoalScope>();
+  const scopeOf = (rootTodoId: number): GoalScope => {
+    let scope = scopes.get(rootTodoId);
+    if (!scope) {
+      scope = {
+        rootTodoId,
+        doneCount: 0,
+        totalCount: 0,
+        doneMinutes: 0,
+        totalMinutes: 0,
+      };
+      scopes.set(rootTodoId, scope);
+    }
+    return scope;
+  };
   for (const todo of todos) {
     if (!counts(todo)) continue;
     const rootTodoId = roots.get(todo.id)!;
-    const scope = scopes.get(rootTodoId) ?? {
-      rootTodoId,
-      doneCount: 0,
-      totalCount: 0,
-      doneMinutes: 0,
-      totalMinutes: 0,
-    };
+    const scope = scopeOf(rootTodoId);
+    if (rootTodoId === todo.id) continue;
     const minutes = todo.plannedDurationMinutes ?? 0;
     scope.totalCount += 1;
     scope.totalMinutes += minutes;
@@ -64,7 +77,6 @@ export function scopesByRoot<T extends ScopeTodo>(
       scope.doneCount += 1;
       scope.doneMinutes += minutes;
     }
-    scopes.set(rootTodoId, scope);
   }
   return [...scopes.values()];
 }

@@ -122,7 +122,7 @@ test("Tastenkürzel: X ticks the hovered quest with undo, D moves it to tomorrow
   await page.locator(`[data-focus-key="todo-${time.id}"]`).hover();
   await page.keyboard.press("Space");
   await expect(
-    page.getByRole("complementary", { name: "Aktueller Timer" }),
+    page.getByRole("complementary", { name: "Aktuelle Stoppuhr" }),
   ).toContainText("Stoppen");
 });
 

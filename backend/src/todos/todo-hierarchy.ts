@@ -4,7 +4,8 @@
  * no framework exceptions; the service maps the two error types to HTTP.
  *
  * A parent's own completion is independent of its subtree: nothing here
- * completes or reopens other nodes. Progress shows the subtree state.
+ * completes or reopens other nodes. Progress shows the todos below a node,
+ * never the node itself.
  */
 export interface HierarchyTodo {
   id: number;
@@ -18,7 +19,9 @@ export interface TodoProgress {
   total: number;
   percentage: number;
   knownDurationMinutes: number;
+  /** Todos below the node, and how many of them are done. */
   todoCount: number;
+  doneCount: number;
 }
 
 /** What inheriting a reason needs to know about a todo. */
@@ -134,7 +137,12 @@ export class TodoTree<T extends HierarchyTodo> {
     }
   }
 
-  /** Bottom-up progress of every subtree; each node counts once. */
+  /**
+   * Bottom-up progress of the todos below every node; each counts once. The
+   * node itself is left out, so a campaign with three quests shows "1/3":
+   * its own completion is its own (see the class comment), not progress.
+   * A todo without todos below it has no progress (`todoCount` 0).
+   */
   progress(): Map<number, TodoProgress> {
     const totals = new Map<
       number,
@@ -151,32 +159,35 @@ export class TodoTree<T extends HierarchyTodo> {
     const order: T[] = [];
     this.walk(this.roots, (node) => order.push(node));
     for (const node of order.reverse()) {
-      const own = {
-        count: 1,
-        done: Number(node.completed),
-        known: node.plannedDurationMinutes ?? 0,
-        doneMinutes: node.completed ? (node.plannedDurationMinutes ?? 0) : 0,
-        missing: Number(node.plannedDurationMinutes == null),
-      };
+      // What lies below the node; its parent adds the node itself on top.
+      const below = { count: 0, done: 0, known: 0, doneMinutes: 0, missing: 0 };
       for (const child of this.children.get(node.id) ?? []) {
         const sub = totals.get(child.id)!;
-        own.count += sub.count;
-        own.done += sub.done;
-        own.known += sub.known;
-        own.doneMinutes += sub.doneMinutes;
-        own.missing += sub.missing;
+        below.count += sub.count;
+        below.done += sub.done;
+        below.known += sub.known;
+        below.doneMinutes += sub.doneMinutes;
+        below.missing += sub.missing;
       }
-      totals.set(node.id, own);
-      const byDuration = own.missing === 0;
-      const completed = byDuration ? own.doneMinutes : own.done;
-      const total = byDuration ? own.known : own.count;
+      const minutes = node.plannedDurationMinutes;
+      totals.set(node.id, {
+        count: below.count + 1,
+        done: below.done + Number(node.completed),
+        known: below.known + (minutes ?? 0),
+        doneMinutes: below.doneMinutes + (node.completed ? (minutes ?? 0) : 0),
+        missing: below.missing + Number(minutes == null),
+      });
+      const byDuration = below.count > 0 && below.missing === 0;
+      const completed = byDuration ? below.doneMinutes : below.done;
+      const total = byDuration ? below.known : below.count;
       result.set(node.id, {
         mode: byDuration ? 'duration' : 'count',
         completed,
         total,
         percentage: total > 0 ? (completed / total) * 100 : 0,
-        knownDurationMinutes: own.known,
-        todoCount: own.count,
+        knownDurationMinutes: below.known,
+        todoCount: below.count,
+        doneCount: below.done,
       });
     }
     return result;

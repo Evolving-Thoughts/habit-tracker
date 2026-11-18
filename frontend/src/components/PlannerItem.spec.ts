@@ -166,7 +166,7 @@ describe("PlannerItem", () => {
       },
     });
     expect(
-      wrapper.find('[aria-label="Timer für NestJS lernen starten"]').exists(),
+      wrapper.find('[aria-label="Stoppuhr für NestJS lernen starten"]').exists(),
     ).toBe(false);
   });
   it("emits toggle with the original item", async () => {
@@ -207,7 +207,7 @@ describe("PlannerItem", () => {
     ).toEqual([
       "Joggen erledigen",
       "Joggen bearbeiten",
-      "Timer für Joggen starten",
+      "Stoppuhr für Joggen starten",
       "Aktionen für Joggen",
     ]);
     await wrapper.get('[aria-label="Aktionen für Joggen"]').trigger("click");

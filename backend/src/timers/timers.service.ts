@@ -246,7 +246,7 @@ export class TimersService {
         if (same && !dto.replaceTimerId) return this.response(active, now);
         if (dto.replaceTimerId !== active.id)
           throw new ConflictException({
-            message: 'Ein anderer Timer ist bereits aktiv.',
+            message: 'Eine andere Stoppuhr läuft bereits.',
             code: 'ACTIVE_TIMER_EXISTS',
           });
         await stopTimer(manager, active, now);
@@ -278,7 +278,7 @@ export class TimersService {
   ): Promise<TimerResponse> {
     return this.transaction(userId, async (manager) => {
       const stored = await manager.findOneBy(TimerEntity, { id, userId });
-      if (!stored) throw new NotFoundException('Timer nicht gefunden.');
+      if (!stored) throw new NotFoundException('Stoppuhr nicht gefunden.');
       const now = this.clock.now();
       if (action === 'stop') {
         // Stopping what another device already stopped changes nothing.
@@ -315,7 +315,7 @@ export class TimersService {
   ): Promise<TimerResponse> {
     return this.transaction(userId, async (manager) => {
       const stored = await manager.findOneBy(TimerEntity, { id, userId });
-      if (!stored) throw new NotFoundException('Timer nicht gefunden.');
+      if (!stored) throw new NotFoundException('Stoppuhr nicht gefunden.');
       const now = this.clock.now();
       const timer = await this.active(manager, userId, stored, now);
       await this.persistDuration(
@@ -347,7 +347,7 @@ export class TimersService {
   ): Promise<TimerEntity> {
     const timer = await this.reconcile(manager, userId, stored, now);
     if (!timer || timer.state === 'stopped')
-      throw new ConflictException('Der Timer ist nicht mehr aktiv.');
+      throw new ConflictException('Die Stoppuhr läuft nicht mehr.');
     return timer;
   }
 }

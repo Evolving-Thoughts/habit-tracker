@@ -1,7 +1,14 @@
 import { TODO_FIELDS } from "../types/fixtures";
 import { describe, it, expect } from "vitest";
-import { visibleHierarchy, descendantIds } from "./todo-hierarchy";
-import type { HierarchyTodo } from "../types/todo-hierarchy";
+import {
+  descendantIds,
+  hasProgress,
+  openBelow,
+  progressText,
+  progressWords,
+  visibleHierarchy,
+} from "./todo-hierarchy";
+import type { HierarchyTodo, TodoProgress } from "../types/todo-hierarchy";
 const node = (id: number, parentId: number | null): HierarchyTodo => ({
     ...TODO_FIELDS,
   id,
@@ -16,10 +23,11 @@ const node = (id: number, parentId: number | null): HierarchyTodo => ({
   progress: {
     mode: "count",
     completed: 0,
-    total: 1,
+    total: 0,
     percentage: 0,
     knownDurationMinutes: 0,
-    todoCount: 1,
+    todoCount: 0,
+    doneCount: 0,
   },
 });
 describe("Iterative hierarchy navigation", () => {
@@ -49,5 +57,48 @@ describe("Iterative hierarchy navigation", () => {
     );
     expect(visibleHierarchy(rows, new Set()).length).toBe(20000);
     expect(descendantIds(rows, 1).size).toBe(20000);
+  });
+});
+
+describe("progress as the server counts it", () => {
+  const progress = (changes: Partial<TodoProgress>): TodoProgress => ({
+    mode: "count",
+    completed: 0,
+    total: 0,
+    percentage: 0,
+    knownDurationMinutes: 0,
+    todoCount: 0,
+    doneCount: 0,
+    ...changes,
+  });
+
+  it("shows nothing for a quest without quests below", () => {
+    expect(hasProgress(progress({}))).toBe(false);
+    expect(hasProgress(progress({ todoCount: 3, total: 3 }))).toBe(true);
+  });
+
+  it("names a campaign with three quests, one done, 1/3, not 1/4", () => {
+    const below = progress({
+      completed: 1,
+      total: 3,
+      todoCount: 3,
+      doneCount: 1,
+    });
+    expect(progressText(below)).toBe("1/3");
+    expect(progressWords(below)).toBe("1 von 3 Quests darunter erledigt");
+    expect(openBelow(below)).toBe(2);
+  });
+
+  it("names minutes when every quest below has a duration", () => {
+    const below = progress({
+      mode: "duration",
+      completed: 30,
+      total: 90,
+      todoCount: 2,
+      doneCount: 1,
+    });
+    expect(progressText(below)).toBe("30/90 Min.");
+    expect(progressWords(below)).toBe("30 von 90 Minuten darunter erledigt");
+    expect(openBelow(below)).toBe(1);
   });
 });

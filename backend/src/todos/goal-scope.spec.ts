@@ -8,7 +8,7 @@ const todo = (
 ) => ({ id, parentId, completed, plannedDurationMinutes });
 
 describe('scopesByRoot', () => {
-  it('counts every level once under its root', () => {
+  it('counts every level below the root once, never the root itself', () => {
     expect(
       scopesByRoot([
         todo(1, null, true, 60),
@@ -19,19 +19,39 @@ describe('scopesByRoot', () => {
     ).toEqual([
       {
         rootTodoId: 1,
-        doneCount: 2,
-        totalCount: 3,
-        doneMinutes: 60,
-        totalMinutes: 90,
+        doneCount: 1,
+        totalCount: 2,
+        doneMinutes: 0,
+        totalMinutes: 30,
       },
       {
         rootTodoId: 4,
         doneCount: 0,
-        totalCount: 1,
+        totalCount: 0,
         doneMinutes: 0,
         totalMinutes: 0,
       },
     ]);
+  });
+
+  it('gives a campaign with three quests, one done, 1 of 3', () => {
+    const [scope] = scopesByRoot([
+      todo(1, null),
+      todo(2, 1, true),
+      todo(3, 1),
+      todo(4, 1),
+    ]);
+    expect(scope).toMatchObject({ doneCount: 1, totalCount: 3 });
+  });
+
+  it('does not count a completed root as progress', () => {
+    const [scope] = scopesByRoot([todo(1, null, true, 60), todo(2, 1)]);
+    expect(scope).toMatchObject({
+      doneCount: 0,
+      totalCount: 1,
+      doneMinutes: 0,
+      totalMinutes: 0,
+    });
   });
 
   it('leaves out what does not count, but keeps the tree through it', () => {
@@ -45,18 +65,22 @@ describe('scopesByRoot', () => {
       {
         rootTodoId: 1,
         doneCount: 1,
-        totalCount: 2,
+        totalCount: 1,
         doneMinutes: 0,
         totalMinutes: 0,
       },
     ]);
   });
 
+  it('gives a root that does not count no scope of its own', () => {
+    expect(scopesByRoot([todo(1, null)], () => false)).toEqual([]);
+  });
+
   it('handles very deep trees without recursion', () => {
     const deep = Array.from({ length: 20_000 }, (_, index) =>
       todo(index + 1, index === 0 ? null : index),
     );
-    expect(scopesByRoot(deep)[0].totalCount).toBe(20_000);
+    expect(scopesByRoot(deep)[0].totalCount).toBe(19_999);
   });
 });
 

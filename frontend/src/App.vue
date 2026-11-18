@@ -158,6 +158,7 @@ onUnmounted(() => {
   justify-items: center;
   width: min(100%, 26rem);
   padding: var(--space-6) var(--space-5);
+  background: var(--color-surface-raised);
   box-shadow: var(--shadow-card);
   text-align: center;
 }

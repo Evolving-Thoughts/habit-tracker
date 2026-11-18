@@ -18,7 +18,8 @@ rules are introduced. The existing one-active-timer-per-user rule remains in pla
 1. Sketch a tree containing an explicitly completed parent with open children.
    Explain why its checkbox and subtree progress can disagree without being a bug.
 2. Read `todo-hierarchy.ts` (`TodoTree`). Work out the parent-plus-five-children
-   example on paper: the denominator is six, not five. Then add durations to every node.
+   example on paper: the denominator is five, the children only; the parent's
+   own completion is not progress. Then add durations to every node.
 3. Trace `TodosService.update`: the ancestor-chain query, `assertCanPlace`,
    own-property changes and the timer release on completion. Identify the
    invariant protected by each check before reading the corresponding test.
@@ -57,16 +58,40 @@ the history stays where it was. The parent's progress shows the open work below
 it. Repeated completion preserves the original timestamp. Completing a Todo stops
 its timer in the same transaction (see `timers/timer-target.ts`).
 
+Because completing a campaign leaves its quests open, the frontend asks first
+when a top-level todo with open todos below it is completed by its ring (or
+X): "Kampagne abschließen?", "3 Quests in „Buch“ sind noch offen. Sie bleiben
+offen; die Kampagne steht danach unter „Abgeschlossen“." The count is the
+server's (`todoCount - doneCount` of its progress); without open todos below
+nothing asks. `useCampaignCompletion` and `CampaignCompletionDialog` do this in
+the Kampagnen view (the tree is at hand), the Questlog, Heute and the Plan's X
+(they read `GET /todos/hierarchy` once, only for a row that is itself a
+campaign; a failed read asks nothing). The calendar's rows do not name their
+campaign and do not ask. Every completion by ring, including the Kampagnen
+view, offers the undo toast.
+
 ### Progress and deep trees
 
 `GET /todos/hierarchy` reads one owner-scoped snapshot, then computes progress
 bottom-up in O(n) time and space. A Todo whose parent is missing counts as a root,
 so one bad row cannot hide the whole tree; a stored cycle is reported as a 500.
 Create, move and delete do not load the whole tree: they read only the parent's
-ancestor chain or the affected subtree with recursive queries on the parent index. Parent and intermediate nodes each count once.
-All durations present: completed planned minutes / total planned minutes.
-Any missing duration: completed Todo count / total Todo count. The known duration
-sum is then displayed as a minimum estimate.
+ancestor chain or the affected subtree with recursive queries on the parent index.
+
+**Progress counts the todos below a node, never the node itself.** A campaign
+with three quests, one done, is "1/3", not "1/4": the campaign's own
+completion is its own, not a step towards it. Intermediate nodes (a
+Questreihe) count once in their parent's progress and have their own progress
+over the todos below them. A todo without todos below has no progress
+(`todoCount` 0) and shows none. `TodoProgress` carries `todoCount` and
+`doneCount` (todos below and done ones) besides the shown unit:
+all durations below present: completed planned minutes / total planned minutes
+(the node's own duration does not matter); any missing duration below:
+completed count / total count, with the known duration sum as a minimum
+estimate. The same definition runs the burn-up and `goal_snapshots`
+(`goal-scope.ts` `scopesByRoot`) and the weekly review. The frontend only
+shows it (`utils/todo-hierarchy.ts`: `hasProgress`, `progressText`,
+`progressWords`, `openBelow`).
 
 Traversal uses explicit queues/stacks, not recursively nested calls or recursive
 Vue components. There is no configured functional depth limit. Visual indentation

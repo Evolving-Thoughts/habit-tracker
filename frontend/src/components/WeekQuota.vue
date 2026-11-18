@@ -132,6 +132,7 @@ const shownPerfectWeek = computed(() =>
 }
 
 .quota--lifted {
+  background: var(--color-surface-raised);
   box-shadow: var(--shadow-card);
 }
 

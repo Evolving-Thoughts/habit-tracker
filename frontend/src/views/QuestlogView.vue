@@ -15,6 +15,8 @@ import ItemRow from "../components/ItemRow.vue";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import { useUndo } from "../composables/useUndo";
+import { useCampaignCompletion } from "../composables/useCampaignCompletion";
+import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
 import { useShortcutHandlers } from "../composables/useShortcuts";
 import { toggleTimer, useTimer } from "../composables/useTimer";
 import { addDays, getCurrentDateInTimeZone, weekStart } from "../utils/date";
@@ -92,7 +94,12 @@ const {
   initial: [] as TodoResponse[],
   fallbackError: "Die Quests konnten nicht geladen werden.",
   refreshOnChange: () =>
-    !(isSaving.value || selectedTodo.value || creationOpen.value),
+    !(
+      isSaving.value ||
+      selectedTodo.value ||
+      creationOpen.value ||
+      campaignCompletion.question.value
+    ),
 });
 const { write, applied, busy: isSaving } = useWrites(loadTodos, errorMessage);
 
@@ -120,9 +127,7 @@ function forgetDone(id: number): void {
 }
 
 const { undo, offer, take: takeUndo } = useUndo<TodoResponse>();
-function offerUndo(todo: TodoResponse): void {
-  offer(todo, `„${todo.title}“ erledigt`);
-}
+const campaignCompletion = useCampaignCompletion();
 
 function categoryOf(todo: TodoResponse): string | null {
   return todo.categoryId === null
@@ -144,6 +149,12 @@ async function toggleTodo(todo: TodoResponse): Promise<void> {
 
   successMessage.value = null;
   const completing = !todo.completed;
+  // Campaigns show up here as rows: one with open quests asks first.
+  const open =
+    completing && todo.campaign?.id === todo.id
+      ? await campaignCompletion.openQuestsBelow(todo.id)
+      : 0;
+  if (!(await campaignCompletion.confirm(todo.title, open))) return;
   const written = await write(() => updateTodoCompletion(todo.id, completing), {
     fallbackError: "Die Quest konnte nicht aktualisiert werden.",
   });
@@ -151,7 +162,10 @@ async function toggleTodo(todo: TodoResponse): Promise<void> {
   forgetDone(todo.id);
   if (completing) {
     doneHere.value = [{ ...todo, completed: true }, ...doneHere.value];
-    offerUndo(todo);
+    offer(
+      todo,
+      open > 0 ? `„${todo.title}“ abgeschlossen` : `„${todo.title}“ erledigt`,
+    );
   }
 }
 
@@ -590,6 +604,13 @@ useShortcutHandlers({
       </template>
     </template>
 
+    <CampaignCompletionDialog
+      v-if="campaignCompletion.question.value"
+      :title="campaignCompletion.question.value.title"
+      :open="campaignCompletion.question.value.open"
+      @confirm="campaignCompletion.reply(true)"
+      @cancel="campaignCompletion.reply(false)"
+    />
     <UndoToast :label="undo?.label ?? null" @undo="undoLast" />
   </main>
 </template>

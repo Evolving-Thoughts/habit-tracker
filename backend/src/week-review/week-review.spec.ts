@@ -118,7 +118,7 @@ describe('countsInWeek', () => {
 });
 
 describe('scopesAt', () => {
-  it('counts what existed and what was done at that moment', () => {
+  it('counts what existed below the root and what was done then', () => {
     const scopes = scopesAt(
       [
         todo(1, null),
@@ -130,15 +130,23 @@ describe('scopesAt', () => {
       ],
       at('2026-11-15T23:00:00Z'),
     );
-    expect(scopes.get(1)).toMatchObject({ doneCount: 1, totalCount: 3 });
+    expect(scopes.get(1)).toMatchObject({ doneCount: 1, totalCount: 2 });
   });
 
   it('counts a completed todo without a completion time as done', () => {
     const scopes = scopesAt(
-      [todo(1, null, { completed: true, completedAt: null })],
+      [todo(1, null), todo(2, 1, { completed: true, completedAt: null })],
       at('2026-11-15T23:00:00Z'),
     );
     expect(scopes.get(1)).toMatchObject({ doneCount: 1, totalCount: 1 });
+  });
+
+  it('never counts the campaign itself, done or not', () => {
+    const scopes = scopesAt(
+      [todo(1, null, done('2026-11-10T09:00:00Z')), todo(2, 1)],
+      at('2026-11-15T23:00:00Z'),
+    );
+    expect(scopes.get(1)).toMatchObject({ doneCount: 0, totalCount: 1 });
   });
 });
 
@@ -160,14 +168,14 @@ describe('campaignProgress', () => {
     const [row] = progress(RUNNING);
     expect(row.start).toEqual({
       doneCount: 2,
-      totalCount: 5,
-      percentage: 40,
+      totalCount: 4,
+      percentage: 50,
       source: 'reconstructed',
     });
     expect(row.end).toEqual({
       doneCount: 3,
-      totalCount: 5,
-      percentage: 60,
+      totalCount: 4,
+      percentage: 75,
       source: 'live',
     });
   });
@@ -190,20 +198,20 @@ describe('campaignProgress', () => {
   it('ends a past week with its latest snapshot, else reads it back', () => {
     expect(
       progress(PAST, [
-        snapshot('2026-11-12', 2, 4),
-        snapshot('2026-11-14', 2, 5),
+        snapshot('2026-11-12', 2, 3),
+        snapshot('2026-11-14', 2, 4),
       ])[0].end,
     ).toEqual({
       doneCount: 2,
-      totalCount: 5,
-      percentage: 40,
+      totalCount: 4,
+      percentage: 50,
       source: 'snapshot',
     });
     // A snapshot after the week says nothing about its end.
-    expect(progress(PAST, [snapshot('2026-11-16', 4, 5)])[0].end).toEqual({
+    expect(progress(PAST, [snapshot('2026-11-16', 3, 4)])[0].end).toEqual({
       doneCount: 2,
-      totalCount: 5,
-      percentage: 40,
+      totalCount: 4,
+      percentage: 50,
       source: 'reconstructed',
     });
   });
@@ -224,6 +232,7 @@ describe('campaignProgress', () => {
           createdAt: at('2026-11-17T09:00:00Z'),
           ...done('2026-11-18T09:00:00Z'),
         }),
+        todo(3, 1, { createdAt: at('2026-11-17T09:00:00Z') }),
       ],
     );
     expect(row.start).toMatchObject({

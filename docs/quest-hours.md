@@ -109,11 +109,17 @@ Logbuch, quest hours) carries `{ id, title, color, icon }`.
   title, this week against its goal, an eight-week trend (`QuestTrend.vue`, a
   small SVG with the weeks in words as its label) and the total. A tile opens
   the campaign in the same view (`#/kampagnen?kampagne=<id>`, so Back closes
-  it): its numbers, subtree progress, `GoalBurnup.vue` and the hierarchy of
+  it): its numbers, the progress of the quests below it (never itself, see
+  `todo-hierarchy.md`), `GoalBurnup.vue` and the hierarchy of
   that campaign only, with every row action the full list has.
 - Einstellungen: `QuestTargetSetting.vue` reads and saves the overall goal.
-- Heute: one quiet line in the head, "Quest-Stunden heute 1 Std. 20 Min. ·
-  Woche 6 Std. von 20 Std."; without a goal only the numbers, nothing at all
-  without measured quest time this week and without a goal.
+- Heute: one quiet line in the head that relates the day's quest time to
+  what was worked (both from the same stretches, so the part is never more
+  than the whole), then the week: "1 Std. 40 Min. gearbeitet, davon 1 Std.
+  20 Min. auf Kampagnen · Woche 4 Std. 11 Min. von 20 Std."; "…, alles auf
+  Kampagnen" when all of it was; just "40 Min. gearbeitet · Kampagnen diese
+  Woche …" when none was; only the week before anything was worked today;
+  without a goal only the numbers; nothing without time and goal
+  (`workLine` in `utils/quest-hours.ts`).
 - Stripes in Heute, Plan and the calendar's Logbuch take the stored colour
   through `campaignMark`; those rows get no icon.

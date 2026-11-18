@@ -26,6 +26,13 @@ export function updateWorkLog(
   });
 }
 
+/**
+ * `keepalive`, because the calendar sends a delete held behind its undo
+ * toast when the page closes; the request must outlive the page.
+ */
 export function deleteWorkLog(id: number): Promise<void> {
-  return request<void>(`/work-logs/${id}`, { method: "DELETE" });
+  return request<void>(`/work-logs/${id}`, {
+    method: "DELETE",
+    keepalive: true,
+  });
 }

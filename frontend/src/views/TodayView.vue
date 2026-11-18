@@ -13,6 +13,7 @@ import { useSortable } from "../composables/useSortable";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import { useUndo } from "../composables/useUndo";
+import { useCampaignCompletion } from "../composables/useCampaignCompletion";
 import { timerStateOf, toggleTimer, useTimer } from "../composables/useTimer";
 import {
   focusWhenReady,
@@ -29,6 +30,7 @@ import EditItemDialog from "../components/EditItemDialog.vue";
 import MoveItemDialog from "../components/MoveItemDialog.vue";
 import ModalDialog from "../components/ModalDialog.vue";
 import UndoToast from "../components/UndoToast.vue";
+import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
 import type {
   DayPlannerHabitItem,
   DayPlannerItem,
@@ -39,7 +41,6 @@ import { dayLabel, fullStop } from "../utils/history";
 import {
   arrangeToday,
   formatDayHeading,
-  formatDuration,
   itemKey,
   moved,
   nowInBerlin,
@@ -47,7 +48,7 @@ import {
   withQueueOrder,
 } from "../utils/today-agenda";
 import { categoryMark } from "../utils/category-mark";
-import { questHoursLine } from "../utils/quest-hours";
+import { workLine } from "../utils/quest-hours";
 import { hrefOf } from "../routes";
 import {
   quickMoveEntries,
@@ -79,13 +80,14 @@ const {
   reload: loadToday,
 } = useLoader<DayPlannerResponse | null>(getToday, {
   initial: null,
-  fallbackError: "Ein unbekannter Fehler ist aufgetreten.",
+  fallbackError: "Heute konnte nicht geladen werden.",
   refreshOnChange: () =>
     !editorBusy.value &&
     !editingTarget.value &&
     !movingItem.value &&
     !postponeOpen.value &&
     !creationOpen.value &&
+    !campaignCompletion.question.value &&
     !writes.busy.value,
 });
 const writes = useWrites(loadToday, errorMessage);
@@ -104,16 +106,18 @@ const agenda = computed(() =>
 const heading = computed(() =>
   planner.value ? formatDayHeading(planner.value.date) : "Heute",
 );
-const progress = computed(() => {
-  if (!agenda.value || !planner.value || !agenda.value.total) return [];
-  const parts = [`${agenda.value.done} von ${agenda.value.total} erledigt`];
-  if (planner.value.workedMinutes > 0)
-    parts.push(`${formatDuration(planner.value.workedMinutes)} gearbeitet`);
-  return parts;
-});
-const questLine = computed(() =>
-  planner.value ? questHoursLine(planner.value.questHours) : null,
+const progress = computed(() =>
+  agenda.value?.total
+    ? `${agenda.value.done} von ${agenda.value.total} erledigt`
+    : null,
 );
+/* Worked time and quest hours in one line that says how they relate. */
+const timeLine = computed(() =>
+  planner.value
+    ? workLine(planner.value.workedMinutes, planner.value.questHours)
+    : null,
+);
+const timeParts = computed(() => timeLine.value?.split(" · ") ?? []);
 const hasItems = computed(
   () =>
     (planner.value?.items.length ?? 0) > 0 ||
@@ -145,6 +149,7 @@ const focusMeta = computed(() => {
 });
 
 const { undo, offer: offerUndo, take: takeUndo } = useUndo<DayPlannerItem>();
+const campaignCompletion = useCampaignCompletion();
 
 const getItemKey = itemKey;
 
@@ -158,6 +163,12 @@ async function toggleItem(item: DayPlannerItem): Promise<void> {
   }
 
   const completing = item.status === "pending";
+  // A campaign planned for today with open quests asks first.
+  const open =
+    completing && item.type === "todo" && item.campaign?.id === item.todoId
+      ? await campaignCompletion.openQuestsBelow(item.todoId)
+      : 0;
+  if (!(await campaignCompletion.confirm(item.title, open))) return;
   const done = await writes.write(
     () =>
       item.type === "todo"
@@ -171,7 +182,11 @@ async function toggleItem(item: DayPlannerItem): Promise<void> {
       fallbackError: "Der Eintrag konnte nicht aktualisiert werden.",
     },
   );
-  if (done && completing) offerUndo(item, `„${item.title}“ erledigt`);
+  if (done && completing)
+    offerUndo(
+      item,
+      open > 0 ? `„${item.title}“ abgeschlossen` : `„${item.title}“ erledigt`,
+    );
 }
 
 async function undoLast(): Promise<void> {
@@ -542,10 +557,16 @@ useShortcutHandlers(
     <header class="today-view__header">
       <div class="today-view__title">
         <h1>{{ heading }}</h1>
-        <p v-if="progress.length" class="today-view__progress">
-          <span v-for="part in progress" :key="part">{{ part }}</span>
+        <p v-if="progress" class="today-view__progress">{{ progress }}</p>
+        <p v-if="timeLine" class="today-view__time">
+          <!-- From 40rem each part breaks as a whole, no figure torn apart. -->
+          <template v-for="(part, index) in timeParts" :key="part"
+            >{{ index ? " " : ""
+            }}<span class="today-view__time-part">{{
+              index < timeParts.length - 1 ? `${part} ·` : part
+            }}</span></template
+          >
         </p>
-        <p v-if="questLine" class="today-view__quest">{{ questLine }}</p>
       </div>
       <button
         v-if="postponable.length"
@@ -622,9 +643,17 @@ useShortcutHandlers(
       @close="closeMoving"
     />
 
-    <p v-if="errorMessage" class="today-view__error" role="alert">
-      {{ errorMessage }}
-    </p>
+    <div v-if="errorMessage" class="alert today-view__error">
+      <p role="alert">{{ errorMessage }}</p>
+      <button
+        class="btn btn--ground"
+        type="button"
+        :disabled="isLoading || writes.busy.value"
+        @click="loadToday()"
+      >
+        <AppIcon name="refresh" />Erneut versuchen
+      </button>
+    </div>
 
     <QuickAddQuest
       v-if="planner"
@@ -936,6 +965,13 @@ useShortcutHandlers(
 
     <!-- Stays mounted, so a move that empties the day is still announced. -->
     <p class="visually-hidden" role="status">{{ orderMessage }}</p>
+    <CampaignCompletionDialog
+      v-if="campaignCompletion.question.value"
+      :title="campaignCompletion.question.value.title"
+      :open="campaignCompletion.question.value.open"
+      @confirm="campaignCompletion.reply(true)"
+      @cancel="campaignCompletion.reply(false)"
+    />
     <UndoToast
       class="today-view__toast"
       :label="undo?.label ?? null"
@@ -968,26 +1004,25 @@ useShortcutHandlers(
   text-wrap: balance;
 }
 
-.today-view__progress span {
-  white-space: nowrap;
-}
-
 .today-view__progress {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 var(--space-3);
   margin: var(--space-1) 0 0;
   color: var(--color-ink-muted);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-.today-view__quest {
+.today-view__time {
   margin: var(--space-1) 0 0;
   color: var(--color-ink-muted);
   font-size: 0.875rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 40rem) {
+  .today-view__time-part {
+    display: inline-block;
+  }
 }
 
 .today-view__postpone {
@@ -1023,22 +1058,19 @@ useShortcutHandlers(
 .today-view__notice,
 .today-view__error {
   margin: 0 0 var(--space-4);
+}
+
+.today-view__notice {
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-control);
   background: var(--color-surface);
-}
-
-.today-view__error {
-  background: var(--color-danger-tint);
-  color: var(--color-danger);
-  font-weight: 600;
 }
 
 /* Focus: the one large card on the page. */
 .focus {
   padding: var(--space-5) var(--space-5) var(--space-4);
   border-radius: var(--radius-card);
-  background: var(--color-surface);
+  background: var(--color-surface-raised);
   box-shadow: var(--shadow-card);
 }
 

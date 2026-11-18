@@ -397,7 +397,7 @@ export class HabitSchedulingService {
 
       if (await hasOpenTimer(manager, userId, { occurrenceId: id })) {
         throw new ConflictException(
-          'Beende zuerst den Timer, bevor du das Daily verschiebst.',
+          'Beende zuerst die Stoppuhr, bevor du das Daily verschiebst.',
         );
       }
 

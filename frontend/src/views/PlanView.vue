@@ -15,6 +15,8 @@ import MoveItemDialog from "../components/MoveItemDialog.vue";
 import PlanDay from "../components/PlanDay.vue";
 import PlanQuestlog from "../components/PlanQuestlog.vue";
 import UndoToast from "../components/UndoToast.vue";
+import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
+import { useCampaignCompletion } from "../composables/useCampaignCompletion";
 import { useListFocus } from "../composables/useListFocus";
 import { useLoader } from "../composables/useLoader";
 import { useMediaQuery } from "../composables/useMediaQuery";
@@ -296,12 +298,26 @@ watch(
 /* What the toast takes back after a quest was ticked with X. */
 type Ticked = { todoId: number; title: string };
 const { undo, offer: offerUndo, take: takeUndo } = useUndo<Ticked>();
-async function complete(entry: Ticked): Promise<void> {
+const campaignCompletion = useCampaignCompletion();
+async function complete(
+  entry: Ticked,
+  campaign: { id: number } | null,
+): Promise<void> {
+  // A campaign with open quests asks first, as everywhere.
+  const open =
+    campaign?.id === entry.todoId
+      ? await campaignCompletion.openQuestsBelow(entry.todoId)
+      : 0;
+  if (!(await campaignCompletion.confirm(entry.title, open))) return;
   const done = await writes.write(
     () => updateTodoCompletion(entry.todoId, true),
     { key: "plan", fallbackError: "Die Quest konnte nicht erledigt werden." },
   );
-  if (done) offerUndo(entry, `„${entry.title}“ erledigt`);
+  if (done)
+    offerUndo(
+      entry,
+      open > 0 ? `„${entry.title}“ abgeschlossen` : `„${entry.title}“ erledigt`,
+    );
 }
 async function undoLast(): Promise<void> {
   const entry = takeUndo();
@@ -448,7 +464,9 @@ useShortcutHandlers({
     const entry = openQuest(key) ?? questlogQuest(key);
     if (!entry || writes.busy.value || dialogBusy.value) return false;
     const todoId = "todoId" in entry ? entry.todoId : entry.id;
-    void listFocus.around(key!, () => complete({ todoId, title: entry.title }));
+    void listFocus.around(key!, () =>
+      complete({ todoId, title: entry.title }, entry.campaign),
+    );
   },
   "row.today": ({ key }) => moveRowByKey(key, (today) => today),
   "row.tomorrow": ({ key }) => moveRowByKey(key, (today) => addDays(today, 1)),
@@ -568,8 +586,16 @@ useShortcutHandlers({
       {{ backlogError }}
     </p>
 
+    <CampaignCompletionDialog
+      v-if="campaignCompletion.question.value"
+      :title="campaignCompletion.question.value.title"
+      :open="campaignCompletion.question.value.open"
+      @confirm="campaignCompletion.reply(true)"
+      @cancel="campaignCompletion.reply(false)"
+    />
     <UndoToast :label="undo?.label ?? null" @undo="undoLast" />
   </main>
+
 </template>
 
 <style scoped>

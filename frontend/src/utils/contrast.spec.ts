@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   contrastRatio,
   flatten,
+  layeredContrast,
   parseColor,
   ruleBody,
   themeTokens,
@@ -72,5 +73,19 @@ describe("token blocks", () => {
     const { light } = themeTokens(css);
     expect(tokenContrast(light, "color-ink", "color-ground")).toBeCloseTo(21);
     expect(tokenContrast(light, "color-ink", "color-veil")).toBeLessThan(6);
+  });
+  it("stacks translucent layers bottom first", () => {
+    const { light } = themeTokens(css);
+    // Half black on half black on white: a quarter of white is left.
+    const twice = layeredContrast(light, "color-ground", [
+      "color-ground",
+      "color-veil",
+      "color-veil",
+    ]);
+    const once = tokenContrast(light, "color-ground", "color-veil");
+    expect(twice).toBeGreaterThan(once);
+    expect(
+      layeredContrast(light, "color-ink", ["color-ground", "color-veil"]),
+    ).toBeCloseTo(tokenContrast(light, "color-ink", "color-veil"));
   });
 });

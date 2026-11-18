@@ -38,4 +38,42 @@ describe("useUndo", () => {
     expect(api.take()).toBeNull();
     expect(api.undo.value).toBeNull();
   });
+
+  it("runs a held step once when the offer runs out", () => {
+    const { api } = setup();
+    const commit = vi.fn();
+    api.offer("a", "Abschnitt gelöscht", commit);
+    vi.advanceTimersByTime(4999);
+    expect(commit).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(commit).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(5000);
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
+
+  it("never runs a held step that was taken back", () => {
+    const { api, wrapper } = setup();
+    const commit = vi.fn();
+    api.offer("a", "A", commit);
+    expect(api.take()).toBe("a");
+    vi.advanceTimersByTime(5000);
+    wrapper.unmount();
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it("runs a held step when a new offer replaces it, on flush and on unmount", () => {
+    const { api, wrapper } = setup();
+    const first = vi.fn();
+    const second = vi.fn();
+    const third = vi.fn();
+    api.offer("a", "A", first);
+    api.offer("b", "B", second);
+    expect(first).toHaveBeenCalledTimes(1);
+    api.flush();
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(api.undo.value).toBeNull();
+    api.offer("c", "C", third);
+    wrapper.unmount();
+    expect(third).toHaveBeenCalledTimes(1);
+  });
 });

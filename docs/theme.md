@@ -26,7 +26,15 @@ keep it that way:
   redefines every colour and shadow token.
 
 A new colour therefore needs a light value, a dark value and, if it carries
-text or meaning, a pair in `theme.spec.ts`.
+text or meaning, a pair in `theme.spec.ts`. Text on stacked translucent
+surfaces is measured layer by layer (`layeredContrast`), e.g. a placeholder in
+the Plan's quick add (`surface-quiet` on `surface-faint` on `ground`).
+
+`--color-surface-raised` is the one lifted card of a view (focus card, the
+calendar week's quota, the quest-hours figure of the weekly review, sign-in
+and boot error). In light it is `var(--color-surface)` and the card shadow
+lifts it; in dark it is one step lighter than `surface`, because a shadow
+barely shows on umber and the card would otherwise share the rows' colour.
 
 ## One attribute, one dark block
 

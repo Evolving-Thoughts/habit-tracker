@@ -5,6 +5,7 @@ colors:
   ground: "#fde4d0"
   ground-deep: "#f9d3b5"
   surface: "#ffffff"
+  surface-raised: "#ffffff"
   surface-flat: "rgb(255 255 255 / 55%)"
   line: "#f1cfb4"
   line-strong: "#a07d66"
@@ -146,7 +147,7 @@ components:
     rounded: "{rounded.card}"
     padding: "{spacing.4}"
   card-focus:
-    backgroundColor: "{colors.surface}"
+    backgroundColor: "{colors.surface-raised}"
     textColor: "{colors.ink}"
     rounded: "{rounded.card}"
     padding: "1.5rem 1.5rem 1rem"
@@ -251,8 +252,8 @@ Ein warmes, einstimmiges Apricot-Umfeld mit einer gebrannten Orange-Stimme und z
 ### Primary
 - **Gebranntes Orange** (action): Haken-Ring und gefüllter Haken, Primär-Button "Erledigt", "Alle nachholen", Dialog-Submit, Plus-Button, aktiver Tab, eingeschalteter Schalter. Außerdem `accent-color` und `caret-color`.
 - **Tiefes Orange** (action-strong): Hover des Primär-Buttons, Text auf getönten Buttons, Links, Fokusring (3px, Abstand 2px).
-- **Apricot-Hauch** (action-tint): Fläche der sekundären, getönten Buttons (Timer ▶, Fokus-Modus auf der Fokuskarte, Nebenaktionen in Dialogen, Dialog-Schließen), Hover der leisen Buttons und des Menü-Auslösers "…", ruhige Fläche des deaktivierten Primär-Buttons, Grund der Wortmarke.
-- **Dichter Apricot-Hauch** (action-tint-hover): Hover des getönten Timer-Buttons und Fläche des ▶, dessen Stoppuhr gerade läuft oder pausiert (dann mit 2px-Ring in tiefem Orange innen); eine Stufe dichter als der Hauch.
+- **Apricot-Hauch** (action-tint): Fläche der sekundären, getönten Buttons (Stoppuhr ▶, Fokus-Modus auf der Fokuskarte, Nebenaktionen in Dialogen, Dialog-Schließen), Hover der leisen Buttons und des Menü-Auslösers "…", ruhige Fläche des deaktivierten Primär-Buttons, Grund der Wortmarke.
+- **Dichter Apricot-Hauch** (action-tint-hover): Hover des getönten Stoppuhr-Buttons und Fläche des ▶, dessen Stoppuhr gerade läuft oder pausiert (dann mit 2px-Ring in tiefem Orange innen); eine Stufe dichter als der Hauch.
 - **Auf Aktion** (on-action): Schrift und Icons auf Orange.
 
 ### Secondary
@@ -262,7 +263,8 @@ Ein warmes, einstimmiges Apricot-Umfeld mit einer gebrannten Orange-Stimme und z
 ### Neutral
 - **Apricot-Grund** (ground): Seitenhintergrund, Scrollbar-Spur, Hover im Filtermenü.
 - **Tiefer Apricot** (ground-deep): eingelassene Fläche des Nachholen-Panels, Spur der Segmentwahl und Spur aller Fortschrittsbalken.
-- **Kartenweiß** (surface): Karten, Leerzustände, Tab-Leiste, Dialoge, Menüs, gewähltes Segment und gewählter Chip, Buttons, die direkt auf dem Grund liegen ("Auf morgen", Nachholen-Chips). Flacher als eine Karte über eigene Tokens: `surface-flat` (55 % Weiß) für Kalendertermine, Plan-Blöcke der Zeitachse, Dailies im Plan und Ladeskelette; `surface-faint` (35 %) für die Tagesspalten im Plan; `surface-quiet` (70 %) für deren Schnell-Anlegen.
+- **Kartenweiß** (surface): Karten, Leerzustände, Tab-Leiste, Dialoge, Menüs, Felder, gewähltes Segment und gewählter Chip, Buttons, die direkt auf dem Grund liegen ("Auf morgen", Nachholen-Chips). Flacher als eine Karte über eigene Tokens: `surface-flat` (55 % Weiß) für Kalendertermine, Plan-Blöcke der Zeitachse, Dailies im Plan und Ladeskelette; `surface-faint` (35 %) für die Tagesspalten im Plan; `surface-quiet` (70 %) für deren Schnell-Anlegen.
+- **Gehobene Karte** (surface-raised): genau die eine ruhende Karte, die die One-Lifted-Card Rule hebt (Fokuskarte, Quotenkarte der Kalenderwoche, Quest-Stunden-Kennzahl im Wochenrückblick, Anmelde- und Boot-Fehlerkarte). Hell ist sie Kartenweiß und wird vom Kartenschatten gehoben; dunkel ist sie eine Stufe heller als die Zeilen (#3a2b21 auf #2f231b), weil ein Schatten auf Umbra kaum zu sehen ist.
 - **Apricot-Linie** (line): Haarlinien zwischen Listenzeilen (Nachholen, Kategorien, Kalenderzeilen, Menütrenner), Einrückungslinie in den Kampagnen, Chiprahmen (1.5px), Tab-Leisten-Kante, Unterstreichung von Text-Links.
 - **Feldrahmen** (line-strong): der 1.5px-Rahmen von Feldern, Auswahllisten, Textflächen und dem Notizen-Editor. Er ist oft die einzige Kante eines Felds und hält deshalb 3:1 gegen Karte und Grund.
 - **Warme Tinte** (ink): Fließtext, Titel, die Jetzt-Linie, der Undo-Toast, Füllung aller Fortschrittsbalken, Heute-Rahmen im Kalender (2px innen), Rahmen des gewählten Chips, "Löschen" im Aktionsmenü.
@@ -292,17 +294,18 @@ Dasselbe Haus bei Nacht, keine Umkehrung: Die Rollen bleiben, die Werte wechseln
 | ground | #fde4d0 | #1e1611 |
 | ground-deep | #f9d3b5 | #150f0b |
 | surface | #ffffff | #2f231b |
+| surface-raised | = surface (#ffffff) | #3a2b21 |
 | surface-faint | rgb(255 255 255 / 35%) | rgb(255 238 222 / 2.5%) |
 | surface-flat | rgb(255 255 255 / 55%) | rgb(255 238 222 / 5%) |
 | surface-quiet | rgb(255 255 255 / 70%) | rgb(255 238 222 / 8%) |
 | line | #f1cfb4 | #44352b |
-| line-strong | #a07d66 | #8a705f |
+| line-strong | #a07d66 | #8f7563 |
 | selection | #fbc79f | #6e3b1f |
 | scrim | rgb(43 29 22 / 40%) | rgb(10 6 4 / 60%) |
 | scrim-light | rgb(43 29 22 / 18%) | rgb(10 6 4 / 40%) |
 | ink | #2b1d16 | #f6e9df |
 | ink-muted | #6b4d3d | #cdb4a4 |
-| ink-soft | #7a5846 | #a88d7c |
+| ink-soft | #7a5846 | #ad9281 |
 | action | #c2410c | #f08a4e |
 | action-strong | #9a330a | #ffa774 |
 | action-tint | #fff1e8 | #3d2619 |
@@ -327,20 +330,24 @@ Dasselbe Haus bei Nacht, keine Umkehrung: Die Rollen bleiben, die Werte wechseln
 
 **The Still-Orange Rule.** Nachts ist das Orange heller (action #f08a4e), damit es auf Umbra als einzige Tippfarbe leuchtet; Schrift auf Orange wird dafür dunkle Tinte (on-action #2b1408), auch die Symbole auf den Kampagnen-Plaketten. "Tief" (action-strong) heißt im Dunkeln "kontrastreicher", also heller: Hover, Text auf getönten Flächen, Links und Fokusring. Orange bleibt auch nachts nur auf Antippbarem.
 
-**The Hairline-Not-Shadow Rule.** Schatten sieht man auf Dunkel kaum. Gehobenes (Fokuskarte, Popover, Dialog, gewähltes Segment) bekommt statt eines schwereren Schattens eine helle Haarlinie (`0 0 0 1px` in 7–9 % Warmweiß); Popover und Dialog behalten darunter einen weichen dunklen Schatten. Eingelassenes (ground-deep) liegt tiefer als der Grund.
+**The Hairline-Not-Shadow Rule.** Schatten sieht man auf Dunkel kaum. Gehobenes (Fokuskarte, Popover, Dialog, gewähltes Segment) bekommt statt eines schwereren Schattens eine helle Haarlinie (`0 0 0 1px` in 7–9 % Warmweiß); Popover und Dialog behalten darunter einen weichen dunklen Schatten. Die eine gehobene Karte einer Ansicht liegt zusätzlich eine Stufe heller (surface-raised), sonst teilt sie nachts die Farbe aller Zeilen und die Ordnung fällt zusammen. Eingelassenes (ground-deep) liegt tiefer als der Grund.
 
 **The Marks-At-Night Rule.** Die zehn Marken sind nachts heller und etwas ruhiger, weiter in der Helligkeit gestaffelt; mark-none ist nachts dunkler als die Marken, damit "ohne Kampagne" leiser bleibt.
 
 Der Undo-Toast bleibt eine Pille in Tinte und ist im Dunkeln deshalb hell mit dunkler Schrift. Native Bedienelemente, Scrollbars und Autofill folgen `color-scheme` (light bzw. dark).
 
 ### Kontrast
-Ein Test (`frontend/src/theme.spec.ts`) liest beide Token-Sätze aus `style.css` und prüft die Paare, die die App zeichnet: Text 4.5:1, Marken, Ringe, Symbole, Feldrahmen und Fokusring 3:1. Durchscheinende Flächen werden auf den Grund gerechnet.
+Ein Test (`frontend/src/theme.spec.ts`) liest beide Token-Sätze aus `style.css` und prüft die Paare, die die App zeichnet: Text 4.5:1, Marken, Ringe, Symbole, Feldrahmen und Fokusring 3:1. Durchscheinende Flächen werden auf den Grund gerechnet, gestapelte Schicht für Schicht (das Schnell-Anlegen im Plan liegt in surface-quiet auf der Tagesspalte in surface-faint). Platzhalter stehen in leiser Tinte und halten auch auf dem echten Feldgrund 4.5:1; dafür ist ink-soft nachts etwas heller als zuvor (#ad9281 statt #a88d7c, vorher 4.38 im Plan).
 
 | Paar | Hell | Dunkel | Mindestens |
 |---|---|---|---|
 | ink / ground · ground-deep · surface · surface-flat | 13.32 · 11.64 · 16.28 · 14.89 | 14.97 · 15.96 · 12.81 · 13.30 | 4.5 |
 | ink-muted / ground · ground-deep · surface · surface-flat | 6.24 · 5.45 · 7.63 · 6.97 | 9.05 · 9.65 · 7.74 · 8.04 | 4.5 |
-| ink-soft / ground · ground-deep · surface · surface-flat | 5.19 · 4.53 · 6.34 · 5.80 | 5.74 · 6.12 · 4.91 · 5.10 | 4.5 |
+| ink-soft / ground · ground-deep · surface · surface-flat | 5.19 · 4.53 · 6.34 · 5.80 | 6.12 · 6.52 · 5.23 · 5.43 | 4.5 |
+| ink · ink-muted · ink-soft / surface-raised (gehobene Karte) | 16.28 · 7.63 · 6.34 | 11.40 · 6.89 · 4.66 | 4.5 |
+| action · action-strong / surface-raised | 5.18 · 7.36 | 5.46 · 7.13 | 4.5 |
+| Platzhalter (ink-soft) / Feld (surface) | 6.34 | 5.23 | 4.5 |
+| Platzhalter (ink-soft) / Schnell-Anlegen im Plan (surface-quiet auf surface-faint auf ground) | 6.10 | 4.67 | 4.5 |
 | action / surface · action-tint | 5.18 · 4.69 | 6.14 · 5.67 | 4.5 |
 | action / ground (Plus-Button, Ringe; dort steht keine Schrift) | 4.24 | 7.17 | 3 |
 | action-strong / action-tint · action-tint-hover · surface · ground · ground-deep | 6.66 · 5.97 · 7.36 · 6.03 · 5.26 | 7.41 · 6.34 · 8.01 · 9.36 · 9.98 | 4.5 |
@@ -349,7 +356,7 @@ Ein Test (`frontend/src/theme.spec.ts`) liest beide Token-Sätze aus `style.css`
 | danger / surface · danger-tint | 6.57 · 5.93 | 6.66 · 6.35 | 4.5 |
 | ink / danger-tint (Hinweisfläche) | 14.67 | 12.21 | 4.5 |
 | surface / ink (Undo-Toast) | 16.28 | 12.81 | 4.5 |
-| line-strong / surface · ground (Feldrahmen) | 3.74 · 3.06 | 3.31 · 3.87 | 3 |
+| line-strong / surface · ground · surface-raised (Feldrahmen) | 3.74 · 3.06 · 3.74 | 3.55 · 4.15 · 3.16 | 3 |
 | Marken / surface (kleinster Wert) | 3.82 (moss) | 4.80 (pine) | 3 |
 | Marken / ground (kleinster Wert) | 3.13 (moss) | 5.61 (pine) | 3 |
 | on-action / Marke (Symbol auf Plakette, kleinster Wert) | 3.82 (moss) | 5.48 (pine) | 3 |
@@ -376,6 +383,8 @@ Ein Test (`frontend/src/theme.spec.ts`) liest beide Token-Sätze aus `style.css`
 **The Tabular-Time Rule.** Jede Uhrzeit, Minutenangabe und Zählung ("10/35 Min.", "1 von 4", "3 von 12") setzt tabellarische Ziffern.
 
 **The Weight-Not-Case Rule.** Betonung kommt über 700/800, nie über Versalien oder Sperrung. Inline-Labels wie "Danach" stehen fett im Satz, nicht als Überzeile.
+
+**The Stopwatch-Word Rule.** Was misst, heißt in der Oberfläche "Stoppuhr", nie "Timer": in Beschriftungen, Namen für Screenreader, Menüs, Befehlsmenü, Einstellungen ("Benachrichtigen, wenn das Soll erreicht ist"), Meldungen des Servers und Push. Sie zählt hoch; das Soll hält sie nicht an, also "läuft ab" nichts. "Timer" bleibt nur ein Suchwort im Befehlsmenü und der Name im Code.
 
 ## Layout
 
@@ -409,13 +418,13 @@ Alle Schatten sind Tokens (`--shadow-card`, `--shadow-rest`, `--shadow-thumb`, `
 - **Plus-Button** (`box-shadow: 0 4px 14px rgb(154 51 10 / 28%)`).
 
 ### Named Rules
-**The One-Lifted-Card Rule.** Pro Ansicht trägt höchstens eine ruhende Karte den Kartenschatten. Listenkarten, Leerzustände und Einstellungskarten liegen flach.
+**The One-Lifted-Card Rule.** Pro Ansicht trägt höchstens eine ruhende Karte den Kartenschatten und als Fläche `surface-raised` (hell gleich Kartenweiß, dunkel eine Stufe heller). Listenkarten, Leerzustände und Einstellungskarten liegen flach in surface.
 
 **The Warm-Shadow Rule.** Schatten sind weich, diffus und warmbraun getönt, nie schwarz, nie hart versetzt.
 
 ## Shapes
 
-Großzügig gerundet in drei Stufen: Karten, Panels, Leerzustände, Hinweisflächen, Dialoge und Popover 1.375rem (das Aktionsmenü als unteres Blatt nur oben gerundet); Felder, Kalendertage, Filtermenü und der große Primär-Button 0.875rem; alle übrigen Buttons, Segmentwahl, Chips, Fortschrittsbalken, Schalter und Toast als Pille. Runde Icon-Buttons (Timer, Dialog-Schließen, Haken) sind Kreise in Tap-Größe. Der Plus-Button ist ein weiches Quadrat (3.5rem, Ecke 1.125rem). Rahmen kommen fast nicht vor; nur Felder und ungewählte Chips tragen eine 1.5px-Apricot-Linie, Listenzeilen trennt eine 1px-Haarlinie. Gestrichelt ist nur, was nicht stattfindet oder noch nicht ist: Übersprungenes und die Ablagefläche beim Ziehen.
+Großzügig gerundet in drei Stufen: Karten, Panels, Leerzustände, Hinweisflächen, Dialoge und Popover 1.375rem (das Aktionsmenü als unteres Blatt nur oben gerundet); Felder, Kalendertage, Filtermenü und der große Primär-Button 0.875rem; alle übrigen Buttons, Segmentwahl, Chips, Fortschrittsbalken, Schalter und Toast als Pille. Runde Icon-Buttons (Stoppuhr, Dialog-Schließen, Haken) sind Kreise in Tap-Größe. Der Plus-Button ist ein weiches Quadrat (3.5rem, Ecke 1.125rem). Rahmen kommen fast nicht vor; nur Felder und ungewählte Chips tragen eine 1.5px-Apricot-Linie, Listenzeilen trennt eine 1px-Haarlinie. Gestrichelt ist nur, was nicht stattfindet oder noch nicht ist: Übersprungenes und die Ablagefläche beim Ziehen.
 
 Icons stammen aus einer eigenen Strichfamilie (AppIcon): 24px-Raster, Strich 2, runde Enden und Ecken, `currentColor`. Dazu gehören die sechzehn Kampagnen-Symbole (Buch, Code, Hantel, Herz, Zuhause, Aktentasche, Doktorhut, Musik, Blatt, Geld, Werkzeug, Füller, Kamera, Globus, Stern, Fahne). Aktive Tabs heben den Strich auf 2.4, der Haken im Primär-Button auf 2.6, im Ring auf 3. In Buttons messen Icons 1.125rem.
 
@@ -434,7 +443,7 @@ Weich, griffig, federnd.
 - **Icon:** quadratisch in Tap-Größe, ohne Polster.
 - **Link:** tiefes Orange, unterstrichen in Apricot-Linie, Tap-Höhe; für Wechsel wie "Passwort vergessen?" und "Konto erstellen" auf der Anmeldung.
 - **Hover / Focus:** Primär wird tiefes Orange (160ms, --ease-out); Fokus ist ein 3px-Ring in tiefem Orange.
-- **Press:** `scale(0.97)` beim Drücken (90ms), Rückfederung über `--spring` (420ms). Haken drücken auf 0.86, Timer auf 0.92.
+- **Press:** `scale(0.97)` beim Drücken (90ms), Rückfederung über `--spring` (420ms). Haken drücken auf 0.86, Stoppuhr-Buttons auf 0.92.
 - **Disabled:** Nebenbuttons verlieren die Fläche und werden leise Tinte. Ein noch nicht verfügbarer Primär-Button wird ruhig: Apricot-Hauch mit leiser Tinte, Cursor `not-allowed`; während er arbeitet, Cursor `progress`.
 
 ### Chips
@@ -443,7 +452,7 @@ Weich, griffig, federnd.
 
 ### Cards / Containers
 - **Corner Style:** 1.375rem.
-- **Background:** Weiß; Termine 55 % Weiß; Nachholen-Panel tiefer Apricot.
+- **Background:** Weiß; die eine gehobene Karte surface-raised; Termine 55 % Weiß; Nachholen-Panel tiefer Apricot.
 - **Shadow Strategy:** höchstens eine gehobene Karte pro Ansicht (siehe Elevation).
 - **Border:** keine; Zeilen in Listenkarten trennt eine Haarlinie (Kategorien, Kalenderzeilen).
 - **Internal Padding:** Basis 1rem; Fokus 1.5rem (unten 1rem), Quote 1.5rem, Einträge 0.5–1rem.
@@ -452,7 +461,7 @@ Weich, griffig, federnd.
 ### Inputs / Fields
 - **Style:** Label darüber in gedämpfter Tinte 700, 0.875rem. Feld weiß, 1.5px Feldrahmen (line-strong), Platzhalter in leiser Tinte, Ecke 0.875rem, Tap-Höhe, Polster 0.75rem, Schrift 1rem 400; Textflächen mit Rundum-Polster und vertikal ziehbar.
 - **Focus:** 3px-Ring in tiefem Orange, Abstand 2px; Caret orange.
-- **Error:** Formularfehler als Satz in Fehlerrot 700, 0.9375rem; Ladefehler als Hinweisfläche (Fehlerhauch, Tinte, Kartenecke) mit Wiederholen-Button.
+- **Error:** Formularfehler als Satz in Fehlerrot 700, 0.9375rem; Ladefehler als Hinweisfläche (Fehlerhauch, Tinte, Kartenecke) mit "Erneut versuchen", auch auf Heute. Der Text sagt in einfachen Worten, was geschah und ob etwas verloren ist: "Der Server hatte gerade einen Fehler. Deine Daten sind davon nicht betroffen; versuch es gleich noch einmal." beim Laden, "… die Änderung ist nicht gespeichert. Was du eingegeben hast, bleibt hier stehen; …" beim Speichern, "Keine Verbindung zum Server. …" offline. Eine eigene Meldung des Servers ("Das Ende muss nach dem Start liegen.") bleibt, wie sie ist.
 - **Gespeichert:** stille Rückmeldung als gedämpfter Text neben dem Feld (Kategorien, Tagesreflexion), kein Toast.
 
 ### Navigation
@@ -471,7 +480,7 @@ In der Übersicht ("?") und in Einstellungen › Tastatur dieselbe Liste: Gruppe
 
 ### Zeilen (der Zeilenvertrag)
 Jede Quest- und Daily-Zeile in jeder Ansicht folgt einem Vertrag, gebaut aus `ItemRow` (Zeile), `CheckRing` (Haken) und `ActionMenu` (Menü):
-- **Ring**, wo man den Eintrag erledigen kann, mit Rückgängig, wo die Ansicht es hat (Heute, Questlog, Plan, Kalender).
+- **Ring**, wo man den Eintrag erledigen kann, überall mit Rückgängig im Toast (Heute, Questlog, Plan, Kalender, Kampagnen). Eine Kampagne mit offenen Quests fragt vorher (siehe Kampagne abschließen).
 - **Titel öffnet den Editor** ("… bearbeiten"); die Überschrift behält den reinen Titel. Darunter eine Metazeile; am Handy bleibt sie eine Zeile, der letzte Teil (meist die Kampagne, die auch der Streifen nennt) endet mit Auslassung.
 - **▶**, wo Messen Sinn ergibt (Heute, Questlog). Läuft die Stoppuhr dieser Zeile, wird ▶ zu Pause (pausiert zu Weiter) mit dichterem Hauch und Ring, und die Metazeile beginnt mit "läuft" oder "pausiert" in Tinte mit einem ruhig pulsierenden Punkt; nie orange.
 - **Alles andere im Menü "…"** (Verschieben, Überspringen, Heute/Morgen/Nächste Woche, Einplanen, Unter-Quest, Fortschritt, Löschen, wo es das gibt). Keine dauerhaften Text-Buttons in der Zeile.
@@ -480,7 +489,7 @@ Jede Quest- und Daily-Zeile in jeder Ansicht folgt einem Vertrag, gebaut aus `It
 Je Ansicht:
 - **Heute:** Griff, Ring, Titel mit Metazeile, ▶, "…" (Überspringen bei Dailies, Morgen und Nächste Woche, "Anderer Tag …" bzw. "Termin verschieben …"). Eine Zeile mit einer Metazeile misst rund 68px (Desktop wie Handy, solange der Titel auf eine Zeile passt). Nachholen behält sein Panel mit den Chips Heute · Morgen · Anderer Tag · Überspringen.
 - **Questlog:** Ring, Titel, Metazeile mit Kampagne, Warum, ▶, "…" mit Einplanen (Heute, Morgen, Nächste Woche, "Tag wählen …", das den Editor am Tag öffnet). Löschen bleibt im Editor.
-- **Kampagnen:** Einrückung, Chevron, Ring, Titel, "…" (Timer starten, Unter-Quest, Fortschritt, Verschieben, Löschen). Der Baum ordnet, daher liegt Messen hier im Menü statt als ▶ auf jeder Zeile.
+- **Kampagnen:** Einrückung, Chevron, Ring, Titel, "…" (Stoppuhr starten, Unter-Quest, Fortschritt, Verschieben, Löschen). Der Baum ordnet, daher liegt Messen hier im Menü statt als ▶ auf jeder Zeile.
 - **Kalender (Monats-Tagesliste, Tag):** offene Quests mit Ring und Rückgängig; Titel öffnet den Editor (auch bei Daily-Läufen); "…" mit denselben schnellen Tagen wie Heute und "Anderer Tag …". Voraussichtliche Läufe zeigen nur, Daily-Läufe halten die Ringspalte frei.
 - **Plan:** kompakte Zeilen der Tagesspalten (siehe Wochenplan-Brett); der Griff ist dort die eine Bedienung, weil sieben Spalten schmal sind; X und Leertaste erreichen die Zeile. Die Questlog-Spalte trägt "…" mit "Einplanen auf …".
 
@@ -507,16 +516,16 @@ Oben das Dashboard, darunter die Einzelheiten, alles nach dem Dashboard-Muster:
 
 Diagramme erscheinen nur für gemessene Zeit. Eine Woche ohne gemessene Zeit und ohne Erledigtes zeigt eine Leerzustandskarte statt der Diagramme, die Kennzahlen und die letzten Wochen bleiben um sie herum, wenn frühere Wochen Zeit haben. Beim Laden halten Skelettflächen das Raster des Dashboards. Ein verfehltes Wochenziel ist eine Zahl; nirgends Warn- oder Fehlerfarbe.
 
-### Quest-Stunden in Heute
-Eine leise Zeile im Kopf unter dem Fortschritt, gedämpfte Tinte 600, 0.875rem, Tabellenziffern: "Quest-Stunden heute 1 Std. 20 Min. · Woche 6 Std. von 20 Std.". Ohne Wochenziel nur die Zahlen; ohne gemessene Quest-Zeit und ohne Ziel keine Zeile. Nie farbig, auch nicht unter dem Ziel.
+### Zeit in Heute
+Unter dem Datum "2 von 5 erledigt", darunter eine leise Zeile, gedämpfte Tinte 600, 0.875rem, Tabellenziffern, die gearbeitete Zeit und Quest-Stunden in Beziehung setzt, statt sie nebeneinander zu stellen: "1 Std. 40 Min. gearbeitet, davon 1 Std. 20 Min. auf Kampagnen · Woche 4 Std. 11 Min. von 20 Std.". Ging alles auf Kampagnen: "…, alles auf Kampagnen"; nichts: nur "40 Min. gearbeitet", und die Woche sagt, was sie zählt ("Kampagnen diese Woche 4 Std. 11 Min. von 20 Std."). Heute noch nichts gearbeitet: nur die Woche. Ohne Wochenziel nur die Zahlen; ohne gemessene Zeit und ohne Ziel keine Zeile. Nie farbig, auch nicht unter dem Ziel.
 
 ### Fokuskarte (Signature)
 Die eine große, gehobene Karte oben auf Heute: Titel als Headline (antippen öffnet den Editor), rechts oben in der Ecke der leise Griff, wo der Plus-Button ihn nie verdeckt; darunter Warum-Satz in Body Large und Metazeile mit Kategoriemarke, Uhrzeit, Minuten, Zielstand und, wenn ihre Stoppuhr läuft, "läuft" bzw. "pausiert". Darunter genau eine Aktionszeile, auch bei 375px: "Erledigt" (Primär, nimmt den Platz; ab 40rem höchstens 18rem breit), ▶ und Fokus-Modus als runde getönte Icon-Buttons (Name und Tooltip "Fokus-Modus"), dann "…" mit Überspringen und Verschieben wie bei den Zeilen. Sie zeigt, was jetzt dran ist: den Kopf der Reihenfolge oder einen gerade laufenden Termin.
 
 ### Fokus-Ansicht
-Eine Quest allein auf dem Grund, mittig, ohne Tab-Leiste und ohne Timerleiste: Kampagnen-Pille (weiß, mit Marke), Titel als Headline, Warum-Satz gedämpft, darunter die Stoppuhr als größte Schrift der App (800, clamp 4–7rem, Tabellenziffern; solange sie nicht läuft in leiser Tinte). Darunter Zustand ("Bereit", "Läuft", "Pausiert", "Soll erreicht") mit Soll und heute schon gearbeiteter Zeit, dann genau eine Primäraktion (Starten, Pausieren, Weiter) neben "Erledigt", leise darunter "Später" und "Überspringen". Unter einer Haarlinie nennt eine kleine Liste nur, was danach kommt und wann der nächste Termin ist. Oben links führt ein Link zurück zu Heute.
+Eine Quest allein auf dem Grund, mittig, ohne Tab-Leiste und ohne Stoppuhr-Leiste: Kampagnen-Pille (weiß, mit Marke), Titel als Headline, Warum-Satz gedämpft, darunter die Stoppuhr als größte Schrift der App (800, clamp 4–7rem, Tabellenziffern; solange sie nicht läuft in leiser Tinte). Darunter Zustand ("Bereit", "Läuft", "Pausiert", "Soll erreicht") mit Soll und heute schon gearbeiteter Zeit, dann genau eine Primäraktion (Starten, Pausieren, Weiter) neben "Erledigt", leise darunter "Später" und "Überspringen". Unter einer Haarlinie nennt eine kleine Liste nur, was danach kommt und wann der nächste Termin ist. Oben links führt ein Link zurück zu Heute.
 
-### Timerleiste
+### Stoppuhr-Leiste
 Weiße Karte, die oben haftet: Zustand und Titel links, die gearbeitete Zeit in Tinte mit "von n Min." darunter, rechts runde getönte Icon-Buttons (Pause/Weiter, Soll ändern, Erledigen, Beenden). Sie zählt hoch; ist das Soll erreicht, sagt eine ruhige Zeile, dass die Stoppuhr weiterläuft.
 
 Unter 40rem ist sie eine Zeile (rund 60px): Zustand klein über dem Titel (beide mit Auslassung), die Zeit (1.25rem), Pause/Weiter und ein "…" ("Weitere Aktionen der Stoppuhr") mit Soll ändern, Erledigen und Beenden. Die Zeile zum erreichten Soll wird dort nur vorgelesen; der Zustand oben sagt es in einem Wort.
@@ -544,7 +553,10 @@ Weiße Karte mit dem 5px-Kampagnenstreifen links: runde Plakette in der Marke (T
 Im Bearbeiten-Dialog einer obersten Quest: Farben als runde Muster (2rem in Tap-Fläche), gewählt mit weißem Haken und Tintenring; "Automatisch aus dem Titel" als Ring in der abgeleiteten Marke. Symbole als Kacheln in Control-Ecke mit Apricot-Linie, gewählt Tinte auf Weiß. Unter jeder Gruppe steht die Wahl in Worten ("Beere", "Füller"), jede Option hat einen gesprochenen Namen. Darunter "Wochenziel in Stunden" als Zahlfeld in halben Stunden.
 
 ### Kampagnen-Zeile
-Weiße Karte je Quest: Einrückungslinie, Chevron zum Auf- und Zuklappen (sonst Platzhalter in Tap-Breite), Haken-Ring, Titel als Button, Metazeile mit Kategoriemarke. Nur Quests mit Unter-Quests zeigen Fortschritt als flachen Balken mit Zähler. Rechts der Auslöser des gemeinsamen Aktionsmenüs (Timer starten, Unter-Quest hinzufügen, Fortschritt anzeigen, Verschieben, Löschen). Beim Ziehen wird das Ziel mit 2px gestrichelter gedämpfter Tinte umrandet.
+Weiße Karte je Quest: Einrückungslinie, Chevron zum Auf- und Zuklappen (sonst Platzhalter in Tap-Breite), Haken-Ring, Titel als Button, Metazeile mit Kategoriemarke. Nur Quests mit Unter-Quests zeigen Fortschritt als flachen Balken mit Zähler; er zählt nur die Quests darunter, nie die Quest selbst ("1/3" bei drei Quests, eine erledigt; "30/90 Min.", wenn jede darunter eine Dauer hat). Rechts der Auslöser des gemeinsamen Aktionsmenüs (Stoppuhr starten, Unter-Quest hinzufügen, Fortschritt anzeigen, Verschieben, Löschen).
+
+### Kampagne abschließen
+Der Ring einer Kampagne (oberste Quest), unter der noch Quests offen sind, fragt im üblichen Dialog: Titel "Kampagne abschließen?", gedämpft "3 Quests in „Buch“ sind noch offen. Sie bleiben offen; die Kampagne steht danach unter „Abgeschlossen“.", dann "Kampagne abschließen" als Primär-Button und "Abbrechen". Das stimmt mit dem Modell überein: Erledigen betrifft nur die Kampagne selbst, die Quests darunter behalten Zustand und Tag. Ohne offene Quests darunter fragt nichts. Danach sagt der Toast "„Buch“ abgeschlossen" mit Rückgängig. Gilt in Kampagnen, Questlog, Heute und im Plan (X); der Kalender kennt die Kampagne seiner Zeilen nicht und fragt nicht. Beim Ziehen wird das Ziel mit 2px gestrichelter gedämpfter Tinte umrandet.
 
 ### Daily-Karte
 Weiße, flache Karte: Titel (als Button zum Bearbeiten), Warum-Satz in gedämpfter Tinte, Metazeile mit Kategoriemarke und dem Rhythmus in Klartext. Pausierte Dailies gedämpft.
@@ -553,7 +565,7 @@ Weiße, flache Karte: Titel (als Button zum Bearbeiten), Warum-Satz in gedämpft
 Kopfzeile mit Segmentwahl Monat · Woche · Tag, Vor/Zurück und dem Zeitraum als Titel-Button, der einen Datumswähler öffnet; der Filter ist ein Menü-Chip.
 - **Monat:** Raster aus Tagen in Control-Ecke, heute mit 2px-Tintenrahmen innen, gewählt weiß mit Kartenschatten. Unter jeder Zahl ruhige Punkte (0.4375rem): gefüllt für Erledigtes, Ring für Offenes, ein kurzer Strich in leiser Tinte für Termine; darunter die Zeit im Logbuch als kleine Zahl in gedämpfter Tinte ("2 Std. 15 Min.", mobil "2:15 h"), keine Heatmap. Eine Legende in Label-Größe erklärt alles. Die Liste des gewählten Tages folgt dem Zeilenvertrag: offene Quests mit Ring (Rückgängig im Toast), Titel öffnet den Editor, "…" mit Morgen, Nächste Woche (und Heute für Liegengebliebenes) und "Anderer Tag …".
 - **Woche:** Quotenkarte "Dailies im Wochensoll" (Label oben, große Zahl "3 von 12", darunter "fälligen Ausführungen erledigt", flacher Tintenbalken auf tiefem Apricot); darunter Daily-Zeilen mit Haarlinien, das Logbuch der Woche als Zeilen je Kampagne (Marke, Name, Zeit; zugleich Legende) und eine weiße Karte pro Tag. Eine Tageskarte mit gemessener Zeit trägt einen gestapelten Pillenbalken (0.625rem) in den Kampagnenmarken, ohne Spur und am längsten Tag der Woche gemessen, daneben die Summe als Text.
-- **Tag:** links die Tagesreflexion, Erledigtes, Übersprungenes, Geplantes (dieselben Zeilen wie im Monat) und Wochenziele; rechts (mobil darunter) "Logbuch" mit Summe und die Zeitachse: Stundenlinien in Apricot-Linie, Uhrzeiten in leiser Tinte, zwei Spuren "Plan" und "Logbuch" (4rem je Stunde). Plan-Blöcke in 55 % Weiß, Logbuch-Blöcke weiß mit dem 5px-Kampagnenstreifen (ohne Kampagne mark-none), Titel und Dauer; überlappende Blöcke stehen nebeneinander, jeder Block mindestens 2.75rem hoch und antippbar zum Korrigieren. Darunter eine Karte mit den Abschnitten als Liste (Korrigieren, Löschen) und "Zeit nachtragen". Ohne Abschnitt sagt eine ruhige Zeile, dass nichts im Logbuch ist.
+- **Tag:** links die Tagesreflexion, Erledigtes, Übersprungenes, Geplantes (dieselben Zeilen wie im Monat) und Wochenziele; rechts (mobil darunter) "Logbuch" mit Summe und die Zeitachse: Stundenlinien in Apricot-Linie, Uhrzeiten in leiser Tinte, zwei Spuren "Plan" und "Logbuch" (4rem je Stunde). Plan-Blöcke in 55 % Weiß, Logbuch-Blöcke weiß mit dem 5px-Kampagnenstreifen (ohne Kampagne mark-none), Titel und Dauer; überlappende Blöcke stehen nebeneinander, jeder Block mindestens 2.75rem hoch und antippbar zum Korrigieren. Darunter eine Karte mit den Abschnitten als Liste (Korrigieren, Löschen; die Quelle heißt "Stoppuhr" oder "Nachtrag") und "Zeit nachtragen". "Löschen" nimmt den Abschnitt sofort aus Liste und Zeitachse, der Fokus geht zum Nachbarn, der Toast sagt "Abschnitt „Lesen“ gelöscht" mit Rückgängig; solange zeigt der Kopf "Logbuch" ohne Summe, weil die Summe des Servers den Abschnitt noch zählt. Ohne Abschnitt sagt eine ruhige Zeile, dass nichts im Logbuch ist.
 
 ### Verlaufszeile
 Nur lesend: statt des antippbaren Rings ein kleiner gefüllter Punkt (1.25rem) in gedämpfter Tinte mit weißem Haken; übersprungen gestrichelt in leiser Tinte. Ein Zustand, kein Bedienelement, daher nie orange.
@@ -562,7 +574,7 @@ Nur lesend: statt des antippbaren Rings ein kleiner gefüllter Punkt (1.25rem) i
 Pillen-Spur in tiefem Apricot (0.625rem in der Quote), Füllung flache Tinte, Breitenwechsel 240ms --ease-out. Gilt für "Dailies im Wochensoll" und Quests mit Unter-Quests.
 
 ### Undo-Toast
-Gemeinsame Komponente für Heute, Questlog, Plan und Kalender. Tintenfarbene Pille über Tab-Leiste und Plus-Button, weiße Schrift 600, rechts ein weißer Pillen-Button "Rückgängig" in tiefem Orange. Erscheint mit 0.75rem Aufstieg in 240ms.
+Gemeinsame Komponente für Heute, Questlog, Plan, Kalender und Kampagnen: jede Erledigung mit dem Ring (oder X) und das Löschen eines Logbuch-Abschnitts. Tintenfarbene Pille über Tab-Leiste und Plus-Button, weiße Schrift 600, rechts ein weißer Pillen-Button "Rückgängig" in tiefem Orange. Erscheint mit 0.75rem Aufstieg in 240ms und bleibt fünf Sekunden. Ein Löschen wartet hinter dem Toast: Erst wenn er abläuft, ein neuer ihn ersetzt, die Ansicht wechselt oder die Seite schließt, geht es zum Server; "Rückgängig" zeigt das Gelöschte nur wieder. Die Leiste der Stoppuhr ("Erledigen") und der Fokus-Modus ("Erledigt") haben keinen Toast; dort folgt die nächste Quest.
 
 ### Einzelkarte: Anmeldung und Boot-Fehler
 Eine ruhige, gehobene weiße Karte mittig auf dem Grund. Anmeldung: Wortmarke (runder Apricot-Hauch mit Tinten-Icon, Name in Title), Headline, gedämpfte Einleitung, Felder, ein einziger voller Primär-Button über die ganze Breite, darunter leise Text-Links. Boot-Fehler: zentriert "Keine Verbindung zum Server" (1.375rem, 800), gedämpfte Erklärung (max. 34ch) und ein Primär-Button zum erneuten Versuch, ohne Rot.

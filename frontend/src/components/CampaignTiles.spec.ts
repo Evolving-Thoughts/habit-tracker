@@ -26,10 +26,11 @@ const tile = (
     progress: {
       mode: "count",
       completed: 0,
-      total: 1,
+      total: 0,
       percentage: 0,
       knownDurationMinutes: 0,
-      todoCount: 1,
+      todoCount: 0,
+      doneCount: 0,
     },
   },
   color: null,

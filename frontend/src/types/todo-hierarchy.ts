@@ -5,8 +5,11 @@ export type TodoProgress = {
   total: number;
   percentage: number;
   knownDurationMinutes: number;
+  /** Quests below this one (never itself), and how many of them are done. */
   todoCount: number;
+  doneCount: number;
 };
+
 export type HabitGoalProgress = {
   habitId: number;
   habitTitle: string;

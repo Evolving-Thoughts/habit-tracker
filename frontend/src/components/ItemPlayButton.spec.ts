@@ -18,7 +18,7 @@ describe("Item timer play", () => {
     });
     expect(w.get("svg").attributes("aria-hidden")).toBe("true");
     expect(w.get("button").attributes("aria-label")).toBe(
-      "Timer für Quest starten",
+      "Stoppuhr für Quest starten",
     );
     c.dispose();
   });
@@ -35,7 +35,7 @@ describe("Item timer play", () => {
     });
     expect(w.get("button").attributes("disabled")).toBeDefined();
     expect(w.get("button").attributes("aria-label")).toBe(
-      "Timer für Daily: keine offene fällige Ausführung",
+      "Stoppuhr für Daily: keine offene fällige Ausführung",
     );
     c.dispose();
   });

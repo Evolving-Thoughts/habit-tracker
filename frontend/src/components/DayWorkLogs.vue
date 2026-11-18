@@ -2,7 +2,6 @@
 import { computed, nextTick, ref, watch } from "vue";
 import {
   createWorkLog,
-  deleteWorkLog,
   updateWorkLog,
   type WorkTarget,
 } from "../api/work-logs.api";
@@ -25,6 +24,11 @@ const props = defineProps<{
 }>();
 /** The stretch being corrected; the time axis opens one by a tap. */
 const editingId = defineModel<number | null>("editing", { default: null });
+/*
+ * Deleting is the calendar's: it holds the delete back behind its undo
+ * toast, so this list only says which stretch should go.
+ */
+const emit = defineEmits<{ remove: [log: HistoryWorkLog] }>();
 
 const error = ref<string | null>(null);
 const { write, busy: saving } = useWrites(props.reload, error);
@@ -88,6 +92,20 @@ watch(editingId, async (id) => {
     ?.querySelector<HTMLInputElement>(`[data-log="${id}"] input`)
     ?.focus();
 });
+
+/** The row goes at once; the focus moves to its neighbour, not to nowhere. */
+async function remove(log: HistoryWorkLog): Promise<void> {
+  const index = props.logs.findIndex((item) => item.id === log.id);
+  const neighbour = props.logs[index + 1] ?? props.logs[index - 1];
+  emit("remove", log);
+  await nextTick();
+  const target = neighbour
+    ? list.value?.querySelector<HTMLElement>(
+        `[data-log="${neighbour.id}"] button`,
+      )
+    : null;
+  (target ?? document.querySelector<HTMLElement>("#day-axis-title"))?.focus();
+}
 
 async function saveEdit(log: HistoryWorkLog): Promise<void> {
   const saved = await run(() =>
@@ -156,7 +174,7 @@ watch(
             <strong>{{ log.title }}</strong>
             <span class="work-logs__meta">
               {{ logTimes(log) }} · {{ formatDuration(log.minutes) }} ·
-              {{ log.source === "timer" ? "Timer" : "Nachtrag" }}
+              {{ log.source === "timer" ? "Stoppuhr" : "Nachtrag" }}
               <template v-if="log.campaign">
                 ·
                 <span class="work-logs__campaign"
@@ -182,7 +200,7 @@ watch(
             class="btn btn--quiet"
             :disabled="saving"
             :aria-label="`${log.title} ${formatTimeForGermanDisplay(log.startedAt)} löschen`"
-            @click="run(() => deleteWorkLog(log.id))"
+            @click="remove(log)"
           >
             Löschen
           </button>

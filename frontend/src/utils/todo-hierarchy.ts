@@ -1,4 +1,34 @@
-import type { HierarchyTodo } from "../types/todo-hierarchy";
+import type { HierarchyTodo, TodoProgress } from "../types/todo-hierarchy";
+
+/*
+ * Progress is the server's (`todo-hierarchy.ts` in the backend): the quests
+ * below a quest, never the quest itself. The frontend only shows it.
+ */
+
+/** Only a quest with quests below it has progress to show. */
+export function hasProgress(progress: TodoProgress): boolean {
+  return progress.todoCount > 0;
+}
+
+/** "1/3", or "30/120 Min." when every quest below has a duration. */
+export function progressText(progress: TodoProgress): string {
+  return progress.mode === "duration"
+    ? `${progress.completed}/${progress.total} Min.`
+    : `${progress.completed}/${progress.total}`;
+}
+
+/** The same in words for screen readers: "1 von 3 Quests darunter erledigt". */
+export function progressWords(progress: TodoProgress): string {
+  return progress.mode === "duration"
+    ? `${progress.completed} von ${progress.total} Minuten darunter erledigt`
+    : `${progress.completed} von ${progress.total} Quests darunter erledigt`;
+}
+
+/** Quests below that are still open. */
+export function openBelow(progress: TodoProgress): number {
+  return progress.todoCount - progress.doneCount;
+}
+
 export function hierarchyChildren(todos: HierarchyTodo[]) {
   const groups = new Map<number | null, HierarchyTodo[]>();
   for (const todo of todos) {
