@@ -1,7 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { loadHabitForecast } from './habit-forecast';
-import { plannedHabits, weeklyTargets } from './history-planning';
+import {
+  openTargetRuns,
+  plannedHabits,
+  sortedLikeToday,
+  weeklyTargets,
+} from './history-planning';
+import { HabitEntity } from '../habits/entities/habit.entity';
 import { DEFAULT_TIME_ZONE } from '../common/date/date-only.utils';
 import { dayOf, weekRange } from '../common/date/local-day';
 import { Clock } from '../common/clock';
@@ -190,6 +196,8 @@ export class HistoryService {
   ): Promise<{ items: HistoryPlannedItem[]; targets: HistoryWeeklyTarget[] }> {
     const items: HistoryPlannedItem[] = [];
     if (dates[dates.length - 1] < today) return { items, targets: [] };
+    /** Where each entry was sorted into its day, by key. */
+    const positions = new Map<string, number | null>();
     if (filter !== 'habits') {
       const todos = await openScheduledTodos(manager, userId, {
         firstDay: dates[0],
@@ -198,6 +206,7 @@ export class HistoryService {
       });
       for (const todo of todos) {
         const { scheduledDate, date, isOverdue } = placeOpenTodo(todo, today);
+        positions.set(`todo:${todo.id}`, todo.dayPosition);
         if (dates.includes(date))
           items.push({
             key: `todo:${todo.id}`,
@@ -216,7 +225,8 @@ export class HistoryService {
           });
       }
     }
-    if (filter === 'todos') return { items, targets: [] };
+    if (filter === 'todos')
+      return { items: sortedLikeToday(items, positions), targets: [] };
     const { habits, versions, occurrences, slots } = await loadHabitForecast(
       manager,
       userId,
@@ -224,27 +234,32 @@ export class HistoryService {
       today,
       now,
     );
-    if (!habits.length) return { items, targets: [] };
+    if (!habits.length)
+      return { items: sortedLikeToday(items, positions), targets: [] };
     // Target progress is scoped to the selected calendar week even in day view.
     const { startDate: weekStart, endDate: weekEnd } = weekRange(dates[0]);
+    const why = (habit: HabitEntity) => ancestry.habitWhy(habit);
     items.push(
-      ...plannedHabits(
-        habits,
-        slots,
-        occurrences,
-        today,
-        categoryName,
-        (habit) => ancestry.habitWhy(habit),
-      ),
+      ...plannedHabits(habits, slots, occurrences, today, categoryName, why),
+      ...(dates.includes(today)
+        ? openTargetRuns(
+            habits,
+            versions,
+            occurrences,
+            today,
+            categoryName,
+            why,
+          )
+        : []),
     );
-    items.sort(
-      (a, b) =>
-        a.scheduledDate.localeCompare(b.scheduledDate) ||
-        a.title.localeCompare(b.title, 'de') ||
-        a.key.localeCompare(b.key),
+    const stored = new Map(
+      occurrences.map((occurrence) => [occurrence.id, occurrence.dayPosition]),
     );
+    for (const item of items)
+      if (item.type === 'habit' && item.id !== null)
+        positions.set(item.key, stored.get(item.id) ?? null);
     return {
-      items,
+      items: sortedLikeToday(items, positions),
       targets: weeklyTargets(habits, versions, occurrences, dates, today, now, {
         startDate: weekStart,
         endDate: weekEnd,

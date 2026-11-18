@@ -4,6 +4,7 @@
  */
 import type { DayPlannerResponseDto } from '../src/day-planner/dto/day-planner-response.dto';
 import type { WeekPlanResponseDto } from '../src/day-planner/dto/week-plan.dto';
+import type { HabitOccurrenceResponseDto } from '../src/habit-occurrences/dto/habit-occurrence-response.dto';
 import type { CreateHabitDto } from '../src/habits/dto/create-habit.dto';
 import type { HabitResponseDto } from '../src/habits/dto/habit-response.dto';
 import type { UpdateHabitDto } from '../src/habits/dto/update-habit.dto';
@@ -31,6 +32,7 @@ import type { DayPlannerResponse } from '../../frontend/src/types/day-planner';
 import type { WeekPlanResponse } from '../../frontend/src/types/week-plan';
 import type {
   CreateHabitInput,
+  HabitOccurrenceResponse,
   HabitResponse,
   UpdateHabitInput,
 } from '../../frontend/src/types/habit';
@@ -81,6 +83,7 @@ type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 export type Contract = [
   Assert<Reads<TodoResponseDto, TodoResponse>>,
   Assert<Reads<HabitResponseDto, HabitResponse>>,
+  Assert<Reads<HabitOccurrenceResponseDto, HabitOccurrenceResponse>>,
   Assert<Reads<DayPlannerResponseDto, DayPlannerResponse>>,
   Assert<Reads<WeekPlanResponseDto, WeekPlanResponse>>,
   Assert<Reads<HistoryResponseDto, HistoryResponse>>,

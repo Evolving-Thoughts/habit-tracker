@@ -1,8 +1,11 @@
 import {
   forecastSlots,
+  openTargetRuns,
   plannedHabits,
+  sortedLikeToday,
   weeklyTargets,
 } from './history-planning';
+import type { HistoryPlannedItem } from './history.dto';
 import { addDays as addHistoryDays } from '../common/date/local-day';
 import { historyRange } from './history-range';
 import {
@@ -276,5 +279,97 @@ describe('Read-only weekly forecasts', () => {
         now,
       ),
     ).toEqual([]);
+  });
+});
+describe('Open weekly target runs and the order of a day', () => {
+  const target = () => version(Type.WEEKLY_TARGET);
+  const run = (overrides: Partial<HabitOccurrenceEntity> = {}) =>
+    Object.assign(new HabitOccurrenceEntity(), {
+      id: 5,
+      habitId: 1,
+      scheduleVersionId: 1,
+      scheduledDate: today,
+      movedToDate: null,
+      status: Status.PENDING,
+      resolvedDate: null,
+      plannedDurationMinutes: null,
+      dayPosition: null,
+      ...overrides,
+    });
+
+  it("lists today's open run of a weekly target, as Heute does", () => {
+    expect(openTargetRuns([habit], [target()], [run()], today)).toEqual([
+      expect.objectContaining({
+        key: `habit:1:${today}`,
+        type: 'habit',
+        id: 5,
+        habitId: 1,
+        date: today,
+        scheduledDate: today,
+        isOverdue: false,
+        plannedDurationMinutes: 20,
+      }),
+    ]);
+  });
+
+  it('leaves out resolved, moved, earlier and scheduled runs and paused habits', () => {
+    const v = target();
+    for (const other of [
+      run({ status: Status.COMPLETED }),
+      run({ status: Status.CANCELLED }),
+      run({ movedToDate: today, scheduledDate: '2026-10-06' }),
+      run({ scheduledDate: '2026-10-06' }),
+    ])
+      expect(openTargetRuns([habit], [v], [other], today)).toEqual([]);
+    expect(openTargetRuns([habit], [version()], [run()], today)).toEqual([]);
+    expect(
+      openTargetRuns([{ ...habit, isActive: false }], [v], [run()], today),
+    ).toEqual([]);
+    v.cancelledAt = now;
+    expect(openTargetRuns([habit], [v], [run()], today)).toEqual([]);
+  });
+
+  it('sorts like Heute: carried over first, appointments by clock, then the order, forecasts last', () => {
+    const entry = (
+      key: string,
+      overrides: Partial<HistoryPlannedItem> = {},
+    ): HistoryPlannedItem => ({
+      key,
+      type: 'todo',
+      id: Number(key.replace(/\D/g, '')) || null,
+      habitId: null,
+      title: key,
+      categoryName: null,
+      why: null,
+      date: today,
+      scheduledDate: today,
+      isOverdue: false,
+      plannedDurationMinutes: null,
+      timeOfDay: null,
+      moveUntil: null,
+      ...overrides,
+    });
+    const items = [
+      entry('Zebra 1'),
+      entry('Apfel 2'),
+      entry('Termin 3', { timeOfDay: '15:00' }),
+      entry('Frueh 4', { timeOfDay: '08:30' }),
+      entry('Alt 5', { isOverdue: true, scheduledDate: '2026-10-05' }),
+      entry('Lauf', { type: 'habit', id: null, habitId: 1 }),
+      entry('Bad', { type: 'habit', id: null, habitId: 2 }),
+    ];
+    const positions = new Map<string, number | null>([
+      ['Zebra 1', 0],
+      ['Apfel 2', 1],
+    ]);
+    expect(sortedLikeToday(items, positions).map((item) => item.key)).toEqual([
+      'Alt 5',
+      'Frueh 4',
+      'Termin 3',
+      'Zebra 1',
+      'Apfel 2',
+      'Bad',
+      'Lauf',
+    ]);
   });
 });
