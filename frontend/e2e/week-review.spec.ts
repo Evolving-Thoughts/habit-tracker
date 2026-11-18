@@ -5,6 +5,7 @@ import { API_URL } from "./environment";
 test("Wochenrückblick: the week in numbers, its campaigns, what was done, and three answers that stay", async ({
   page,
   request,
+  isMobile,
 }) => {
   const date = await today(request);
   const create = async (data: Record<string, unknown>) => {
@@ -63,10 +64,10 @@ test("Wochenrückblick: the week in numbers, its campaigns, what was done, and t
   ).toHaveCount(0);
 
   // Key figures: the week against the overall goal.
-  await expect(view.locator(".figures__value")).toHaveText("45 Min.");
-  await expect(view.locator(".figures")).toContainText(
-    "von 10 Std. Wochenziel · 8 %",
-  );
+  const questHours = view.locator(".figures__item--hours");
+  await expect(questHours.locator(".figures__value")).toHaveText("45 Min.");
+  await expect(questHours).toContainText("von 10 Std. Wochenziel");
+  await expect(questHours).toContainText("8 % vom Ziel");
   // Seven days, today's value written out.
   const todayBar = view.locator(`.day-bars__day[data-date="${date}"]`);
   await expect(todayBar).toContainText("0:45");
@@ -82,7 +83,15 @@ test("Wochenrückblick: the week in numbers, its campaigns, what was done, and t
     "href",
     `#/kampagnen?kampagne=${book}`,
   );
-  // The done list names the quest with its campaign.
+  // The running week among the weeks before, marked as what it is so far.
+  await expect(view.locator(".week-trend__label--shown")).toContainText(
+    "bisher",
+  );
+  // The done list starts closed on a phone and opens on request.
+  const showDone = view.getByRole("button", { name: "Liste zeigen" });
+  if (isMobile) await showDone.click();
+  else await expect(showDone).toHaveCount(0);
+  // It names the quest with its campaign.
   await expect(
     view.locator(`[data-done-key="todo-${chapter}"]`),
   ).toContainText("Kapitel schreibenBuch");

@@ -24,10 +24,10 @@ Vier Dinge zusammen, die andere Tracker meist getrennt halten:
 
 - **Kampagnen und Dailies verbunden:** Quests bilden Hierarchien aus Kampagne, Questreihe und Quest; eine Quest kann ein Daily mit Zeitraum und Sollmenge verlinken, etwa 20 Läufe bis Dezember.
 - **Planen nach Tag und Reihenfolge:** Eine Quest hat ihren Tag, nur ein Termin hat eine Uhrzeit. Was heute ansteht, zieht man in die Reihenfolge, in der man es angehen will; Offenes wandert mit einem Schritt auf morgen. Termine stehen in beide Richtungen im eigenen Google Kalender.
-- **Reflexion und Warum:** Quests und Dailies tragen ein persönliches Warum. Ohne eigenes übernehmen sie das der Quest oder Kampagne darüber, und zwar live: Ändert sich das Warum der Kampagne, ändert es sich überall darunter; dazu kommen Tagesreflexion, Wochenquote und Perfect Week je Kategorie.
+- **Reflexion und Warum:** Quests und Dailies tragen ein persönliches Warum. Ohne eigenes übernehmen sie das der Quest oder Kampagne darüber, und zwar live: Ändert sich das Warum der Kampagne, ändert es sich überall darunter; dazu kommen Tagesreflexion, Dailies im Wochensoll und Perfect Week je Kategorie.
 - **Zeit erfassen:** Eine Stoppuhr misst die echte Arbeitszeit; die geplante Dauer ist nur ein Soll, das die Stoppuhr nicht anhält. Im Fokus-Modus steht eine einzige Quest im Blick. Was gemessen wurde, steht als Logbuch im Kalender neben dem Plan und, ab fünf Minuten, auch im eigenen Google Kalender.
 - **Quest-Stunden statt Punkte:** Zeit auf Quests einer Kampagne zählt als Quest-Stunden, gemessen an einem Wochenziel in den Einstellungen und, wenn gewünscht, einem eigenen je Kampagne. Heute nennt den Stand in einer ruhigen Zeile; die Kampagnen stehen als Kacheln mit Farbe, Symbol, Wochenstand, Verlauf der letzten acht Wochen und Gesamtzeit. Ein verfehltes Ziel ist eine Zahl, keine Warnung; es gibt keine Punkte, Stufen oder Abzeichen.
-- **Wochenrückblick:** Eine Seite je Woche schaut zurück: Quest-Stunden gegen das Wochenziel, je Tag und je Kampagne, wie weit jede Kampagne kam ("+4 Quests, 62 % → 71 %"), Quest-Arbeit gegen Sonstiges, die letzten acht Wochen, Wochenquote und Perfect Week, was erledigt wurde, und drei Fragen zum Selbst-Beantworten: Was lief gut, was nicht, was ändere ich.
+- **Wochenrückblick:** Eine Seite je Woche schaut zurück. Oben ein ruhiges Dashboard auf einen Blick: Quest-Stunden gegen das Wochenziel, Tagesschnitt, Quest-Arbeit gegen Sonstiges, die Stunden je Tag und je Kampagne und die letzten acht Wochen. Darunter, wie weit jede Kampagne kam ("+4 Quests, 62 % → 71 %"), Dailies im Wochensoll und Perfect Week, was erledigt wurde, und drei Fragen zum Selbst-Beantworten: Was lief gut, was nicht, was ändere ich.
 - **Notizen:** Jede Quest hat Notizen als formatierten Text (Überschriften, Listen, Checklisten, Zitate, Code, Links). Sie stehen im Fokus-Modus und im Bearbeiten-Dialog und speichern sich von selbst.
 
 ## Operating Context
@@ -67,6 +67,7 @@ Die Oberfläche spricht das Vokabular links. Code, API und Datenbank behalten di
 | Quest-Stunden | Gemessene Zeit auf Quests, die zu einer Kampagne gehören | `quest-hours` |
 | Wochenziel | Quest-Stunden, die man pro Woche erreichen will, insgesamt oder je Kampagne | `weeklyQuestTargetMinutes`, `weeklyTargetMinutes` |
 | Wochenrückblick | Rückschau auf eine Woche mit Zahlen, Fortschritt der Kampagnen und drei Antworten | `week-review`, `week_reviews` |
+| Dailies im Wochensoll | Erledigte gegen fällige Ausführungen einer Woche; ein Wochenziel zählt mit seiner Sollzahl | `weekQuota` |
 
 Eine oberste Quest wird zur Kampagne, sobald sie Unter-Quests hat oder eine Farbe, ein Symbol oder ein Wochenziel bekommt; ein eigenes Kampagnen-Feld gibt es nicht. Farbe, Symbol und Wochenziel gibt es nur für oberste Quests; wandert eine Kampagne unter eine andere Quest, verliert sie alle drei.
 

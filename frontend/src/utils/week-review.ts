@@ -74,6 +74,19 @@ export function isQuietWeek(
   return !measured && !resolved;
 }
 
+/** A figure split into number and unit, so the unit can sit smaller. */
+export type FigurePart = { value: string; unit: string };
+
+/** "2 Std. 15 Min." in parts; the same words as `formatDuration`. */
+export function durationParts(minutes: number): FigurePart[] {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  const parts: FigurePart[] = [];
+  if (hours) parts.push({ value: String(hours), unit: "Std." });
+  if (rest || !hours) parts.push({ value: String(rest), unit: "Min." });
+  return parts;
+}
+
 /** "2:15", the bars' figure where "2 Std. 15 Min." does not fit. */
 export function clockDuration(minutes: number): string {
   return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
@@ -192,6 +205,8 @@ export type WeekBar = {
   minutes: number;
   height: number;
   isShown: boolean;
+  /** The shown week while it still runs: its figure is "bisher". */
+  isRunning: boolean;
 };
 
 export type WeekTrend = {
@@ -218,14 +233,20 @@ export function weekTrend(hours: QuestHoursResponse): WeekTrend {
     average ?? 0,
     ...hours.weeks.map((week) => week.questMinutes),
   );
+  const running =
+    hours.startDate <= hours.today && hours.today <= hours.endDate;
   return {
-    bars: hours.weeks.map((week) => ({
-      startDate: week.startDate,
-      label: `${week.startDate.slice(8, 10)}.${week.startDate.slice(5, 7)}.`,
-      minutes: week.questMinutes,
-      height: barHeight(week.questMinutes, top),
-      isShown: week.startDate === hours.startDate,
-    })),
+    bars: hours.weeks.map((week) => {
+      const isShown = week.startDate === hours.startDate;
+      return {
+        startDate: week.startDate,
+        label: `${week.startDate.slice(8, 10)}.${week.startDate.slice(5, 7)}.`,
+        minutes: week.questMinutes,
+        height: barHeight(week.questMinutes, top),
+        isShown,
+        isRunning: isShown && running,
+      };
+    }),
     average,
     averageAt: average === null || !top ? null : (average / top) * 100,
   };
@@ -234,7 +255,8 @@ export function weekTrend(hours: QuestHoursResponse): WeekTrend {
 /** The weeks in words, the average included. */
 export function weekTrendText(trend: WeekTrend): string {
   const parts = trend.bars.map(
-    (bar) => `Woche ab ${shortDate(bar.startDate)}: ${formatDuration(bar.minutes)}`,
+    (bar) =>
+      `Woche ab ${shortDate(bar.startDate)}: ${formatDuration(bar.minutes)}${bar.isRunning ? " bisher" : ""}`,
   );
   const average =
     trend.average === null

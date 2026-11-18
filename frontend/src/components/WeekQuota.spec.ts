@@ -11,32 +11,45 @@ const perfectWeek = {
 };
 
 describe("WeekQuota", () => {
-  it("shows the quota as a number with a bar, lifted by default", () => {
+  it("shows the Dailies against what was due, with a bar, lifted by default", () => {
     const wrapper = mount(WeekQuota, {
       props: {
         quota: { completed: 5, total: 8, percentage: 63 },
         perfectWeek: null,
       },
     });
-    expect(wrapper.get(".quota__value").text()).toBe("5 von 8");
-    expect(wrapper.get(".quota").classes()).toContain("quota--lifted");
+    const quota = wrapper.get(".quota");
+    // Title, number, and a line that says what the number counts.
+    expect(quota.text()).toBe(
+      "Dailies im Wochensoll5 von 8fälligen Ausführungen erledigt",
+    );
+    expect(quota.classes()).toContain("quota--lifted");
     const bar = wrapper.get('[role="progressbar"]');
     expect(bar.attributes("aria-valuenow")).toBe("5");
     expect(bar.attributes("aria-valuemax")).toBe("8");
+    expect(bar.attributes("aria-valuetext")).toBe(
+      "5 von 8 fälligen Ausführungen erledigt",
+    );
     expect(wrapper.find("h2").exists()).toBe(false);
   });
 
-  it("lies flat with its own title where the view asks for it", () => {
+  it("stands as two flat titled cards side by side in the review", () => {
     const wrapper = mount(WeekQuota, {
       props: {
         quota: { completed: 0, total: 4, percentage: 0 },
-        perfectWeek: null,
-        lifted: false,
-        titled: true,
+        perfectWeek,
+        dashboard: true,
       },
     });
-    expect(wrapper.get("h2").text()).toBe("Wochenquote");
+    expect(wrapper.get(".week-quota").classes()).toContain(
+      "week-quota--dashboard",
+    );
+    expect(wrapper.findAll("h2").map((heading) => heading.text())).toEqual([
+      "Dailies im Wochensoll",
+      "Perfekte Woche",
+    ]);
     expect(wrapper.get(".quota").classes()).not.toContain("quota--lifted");
+    expect(wrapper.get(".perfect-week").classes()).toContain("card");
   });
 
   it("lists each category and says which reached its target", () => {
@@ -59,7 +72,7 @@ describe("WeekQuota", () => {
       props: {
         quota: { completed: 0, total: 0, percentage: 0 },
         perfectWeek: { perfect: true, categories: [] },
-        titled: true,
+        dashboard: true,
       },
     });
     expect(wrapper.text()).toBe("");

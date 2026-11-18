@@ -14,6 +14,7 @@ import {
   dayBars,
   dayBarsText,
   daysPassed,
+  durationParts,
   isQuietWeek,
   percentOf,
   progressChange,
@@ -115,6 +116,23 @@ describe("isQuietWeek", () => {
     expect(isQuietWeek(null, null)).toBe(true);
     expect(isQuietWeek(hours({ otherMinutes: 5 }), review(0))).toBe(false);
     expect(isQuietWeek(hours(), review(1))).toBe(false);
+  });
+});
+
+describe("durationParts", () => {
+  it.each([
+    [0, [{ value: "0", unit: "Min." }]],
+    [45, [{ value: "45", unit: "Min." }]],
+    [120, [{ value: "2", unit: "Std." }]],
+    [
+      135,
+      [
+        { value: "2", unit: "Std." },
+        { value: "15", unit: "Min." },
+      ],
+    ],
+  ])("splits %i minutes into numbers and units", (minutes, parts) => {
+    expect(durationParts(minutes)).toEqual(parts);
   });
 });
 
@@ -247,7 +265,7 @@ describe("weekTrend", () => {
 
   it("averages the weeks before the shown one and marks the shown one", () => {
     const trend = weekTrend(
-      hours({ startDate: weeks[7]!.startDate, weeks }),
+      hours({ startDate: weeks[7]!.startDate, endDate: "2026-10-23", weeks }),
     );
     expect(trend.average).toBe(94);
     expect(trend.averageAt).toBeCloseTo((94 / 300) * 100);
@@ -255,9 +273,24 @@ describe("weekTrend", () => {
       20, 40, 0, 60, 40, 20, 40, 100,
     ]);
     expect(trend.bars.filter((bar) => bar.isShown)).toHaveLength(1);
+    // A week that is over is no longer "bisher".
+    expect(trend.bars.some((bar) => bar.isRunning)).toBe(false);
     expect(trend.bars[0]!.label).toBe("10.09.");
     expect(weekTrendText(trend)).toMatch(
       /^Quest-Stunden der letzten 8 Wochen\. Woche ab 10\. Sept\.: 1 Std\., .*5 Std\.; Schnitt der Wochen davor: 1 Std\. 34 Min\.$/,
+    );
+  });
+
+  it("calls the running week's figure what it is so far", () => {
+    const running = weeks.map((week, index) =>
+      index === 7 ? { ...week, startDate: MONDAY } : week,
+    );
+    const trend = weekTrend(hours({ weeks: running }));
+    expect(trend.bars.map((bar) => bar.isRunning)).toEqual([
+      false, false, false, false, false, false, false, true,
+    ]);
+    expect(weekTrendText(trend)).toContain(
+      "Woche ab 16. Nov.: 5 Std. bisher; Schnitt",
     );
   });
 

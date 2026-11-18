@@ -1,98 +1,94 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { QuestHoursResponse } from "../types/quest-hours";
-import { shortDate } from "../utils/history";
 import { formatDuration } from "../utils/today-agenda";
-import { weekTrend, weekTrendText } from "../utils/week-review";
+import { clockDuration, weekTrend, weekTrendText } from "../utils/week-review";
 
 const props = defineProps<{ hours: QuestHoursResponse }>();
 
 const trend = computed(() => weekTrend(props.hours));
 const label = computed(() => weekTrendText(trend.value));
-const shown = computed(() => trend.value.bars.find((bar) => bar.isShown));
-const shownName = computed(() =>
-  props.hours.startDate <= props.hours.today &&
-  props.hours.today <= props.hours.endDate
-    ? "Diese Woche"
-    : `Woche ab ${shortDate(props.hours.startDate)}`,
-);
 </script>
 
 <template>
-  <section class="week-trend" aria-labelledby="review-trend-title">
-    <h2 id="review-trend-title" class="section-title">
-      Quest-Stunden · letzte Wochen
-    </h2>
-    <div class="card">
-      <p class="week-trend__summary">
+  <section class="week-trend card" aria-labelledby="review-trend-title">
+    <div class="card-head">
+      <h2 id="review-trend-title" class="card-title">
+        Quest-Stunden · letzte Wochen
+      </h2>
+      <p
+        v-if="trend.average !== null"
+        class="week-trend__average-note"
+        aria-hidden="true"
+      >
+        <i class="week-trend__dash" />Schnitt der
+        {{ trend.bars.length - 1 }} Wochen davor
+        <strong>{{ formatDuration(trend.average) }}</strong>
+      </p>
+    </div>
+    <div class="week-trend__chart" role="img" :aria-label="label">
+      <div class="week-trend__plot" aria-hidden="true">
         <span
-          >{{ shownName }}
-          <strong>{{ formatDuration(shown?.minutes ?? 0) }}</strong></span
+          v-for="bar in trend.bars"
+          :key="bar.startDate"
+          class="week-trend__slot"
         >
-        <span v-if="trend.average !== null"
-          >Schnitt der Wochen davor
-          <strong>{{ formatDuration(trend.average) }}</strong></span
-        >
-      </p>
-      <div class="week-trend__chart" role="img" :aria-label="label">
-        <div class="week-trend__plot" aria-hidden="true">
           <span
-            v-for="bar in trend.bars"
-            :key="bar.startDate"
-            class="week-trend__slot"
-          >
-            <span
-              class="week-trend__bar"
-              :class="{ 'week-trend__bar--shown': bar.isShown }"
-              :style="{ height: `${bar.height}%` }"
-            />
-          </span>
-          <span
-            v-if="trend.averageAt !== null"
-            class="week-trend__average"
-            :style="{ bottom: `${trend.averageAt}%` }"
+            class="week-trend__bar"
+            :class="{ 'week-trend__bar--shown': bar.isShown }"
+            :style="{ height: `${bar.height}%` }"
           />
-        </div>
-        <div class="week-trend__labels" aria-hidden="true">
-          <span
-            v-for="bar in trend.bars"
-            :key="bar.startDate"
-            :class="{ 'week-trend__label--shown': bar.isShown }"
-            >{{ bar.label }}</span
-          >
-        </div>
+        </span>
+        <span
+          v-if="trend.averageAt !== null"
+          class="week-trend__average"
+          :style="{ bottom: `${trend.averageAt}%` }"
+        />
       </div>
-      <p class="week-trend__legend" aria-hidden="true">
-        <i class="week-trend__dash" />Schnitt der sieben Wochen davor
-      </p>
+      <div class="week-trend__labels" aria-hidden="true">
+        <span
+          v-for="bar in trend.bars"
+          :key="bar.startDate"
+          class="week-trend__label"
+          :class="{ 'week-trend__label--shown': bar.isShown }"
+        >
+          <span class="week-trend__value">{{ clockDuration(bar.minutes) }}</span>
+          <span class="week-trend__date">{{ bar.label }}</span>
+          <span v-if="bar.isRunning" class="week-trend__running">bisher</span>
+        </span>
+      </div>
     </div>
   </section>
 </template>
 
 <style scoped>
-.week-trend .card {
-  display: grid;
-  gap: var(--space-3);
-}
-
-.week-trend__summary {
-  display: flex;
+.week-trend__average-note {
+  display: inline-flex;
   flex-wrap: wrap;
-  gap: var(--space-1) var(--space-5);
+  gap: 0 var(--space-2);
+  align-items: center;
   margin: 0;
   color: var(--color-ink-muted);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
-.week-trend__summary strong {
+.week-trend__average-note strong {
   color: var(--color-ink);
+  font-size: 0.9375rem;
+  font-weight: 800;
+}
+
+.week-trend__dash {
+  display: inline-block;
+  width: 1.25rem;
+  border-top: 2px dashed var(--color-ink-muted);
 }
 
 .week-trend__chart {
   display: grid;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
 .week-trend__plot {
@@ -100,7 +96,7 @@ const shownName = computed(() =>
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: var(--space-1);
-  height: 6rem;
+  height: 6.5rem;
   border-bottom: 1px solid var(--color-line);
 }
 
@@ -112,12 +108,13 @@ const shownName = computed(() =>
 
 .week-trend__bar {
   display: block;
-  width: min(100%, 1.75rem);
+  width: min(100% - 0.5rem, 3rem);
   border-radius: 0.375rem 0.375rem 0 0;
   background: var(--color-ink-soft);
   transition: height 240ms var(--ease-out);
 }
 
+/* The shown week in full ink; the others step back. */
 .week-trend__bar--shown {
   background: var(--color-ink);
 }
@@ -134,30 +131,52 @@ const shownName = computed(() =>
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: var(--space-1);
-  color: var(--color-ink-muted);
-  font-size: 0.6875rem;
-  font-weight: 700;
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
 
-.week-trend__label--shown {
+.week-trend__label {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+}
+
+.week-trend__value {
+  color: var(--color-ink-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.week-trend__date {
+  color: var(--color-ink-soft);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.week-trend__label--shown .week-trend__value,
+.week-trend__label--shown .week-trend__date {
   color: var(--color-ink);
   font-weight: 800;
 }
 
-.week-trend__legend {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-  margin: 0;
+.week-trend__running {
   color: var(--color-ink-muted);
-  font-size: 0.8125rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
 }
 
-.week-trend__dash {
-  display: inline-block;
-  width: 1.25rem;
-  border-top: 2px dashed var(--color-ink-muted);
+@media (min-width: 56rem) {
+  .week-trend__plot {
+    height: 8rem;
+  }
+
+  .week-trend__value {
+    font-size: 0.8125rem;
+  }
+
+  .week-trend__date,
+  .week-trend__running {
+    font-size: 0.75rem;
+  }
 }
 </style>

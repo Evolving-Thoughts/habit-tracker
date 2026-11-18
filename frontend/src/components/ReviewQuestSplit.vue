@@ -31,46 +31,37 @@ const label = computed(() =>
 <template>
   <section
     v-if="total"
-    class="quest-split"
+    class="quest-split card"
     aria-labelledby="review-split-title"
   >
-    <h2 id="review-split-title" class="section-title">
+    <h2 id="review-split-title" class="card-title">
       Quest-Arbeit gegen Sonstiges
     </h2>
-    <div class="card">
-      <div class="quest-split__bar" role="img" :aria-label="label">
-        <span
-          v-for="part in parts"
-          :key="part.key"
-          :class="`quest-split__part quest-split__part--${part.key}`"
-          :style="{ flexGrow: part.minutes }"
-        />
-      </div>
-      <ul class="quest-split__legend" aria-hidden="true">
-        <li v-for="part in parts" :key="part.key">
-          <i :class="`quest-split__key quest-split__part--${part.key}`" />
-          <span class="quest-split__name">{{ part.name }}</span>
-          <strong>{{ formatDuration(part.minutes) }}</strong>
-          <span class="quest-split__share">{{ part.share }} %</span>
-        </li>
-      </ul>
-      <p class="quest-split__note">
-        Sonstiges ist gemessene Zeit ohne Kampagne.
-      </p>
+    <div class="quest-split__bar" role="img" :aria-label="label">
+      <span
+        v-for="part in parts"
+        :key="part.key"
+        :class="`quest-split__part quest-split__part--${part.key}`"
+        :style="{ flexGrow: part.minutes }"
+      />
     </div>
+    <ul class="quest-split__legend" aria-hidden="true">
+      <li v-for="part in parts" :key="part.key">
+        <i :class="`quest-split__key quest-split__part--${part.key}`" />
+        <span class="quest-split__name">{{ part.name }}</span>
+        <strong>{{ formatDuration(part.minutes) }}</strong>
+        <span class="quest-split__share">{{ part.share }} %</span>
+      </li>
+    </ul>
+    <p class="quest-split__note">Sonstiges ist gemessene Zeit ohne Kampagne.</p>
   </section>
 </template>
 
 <style scoped>
-.quest-split .card {
-  display: grid;
-  gap: var(--space-3);
-}
-
 .quest-split__bar {
   display: flex;
   gap: 2px;
-  height: 1rem;
+  height: 0.875rem;
   overflow: hidden;
   border-radius: var(--radius-pill);
 }
@@ -91,14 +82,15 @@ const label = computed(() =>
 .quest-split__legend {
   display: grid;
   gap: var(--space-1);
-  margin: 0;
+  margin: var(--space-3) 0 0;
   padding: 0;
   list-style: none;
+  font-size: 0.9375rem;
 }
 
 .quest-split__legend li {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto 3.5rem;
+  grid-template-columns: auto minmax(0, 1fr) auto 3rem;
   gap: var(--space-2);
   align-items: center;
   font-variant-numeric: tabular-nums;
@@ -121,7 +113,7 @@ const label = computed(() =>
 }
 
 .quest-split__note {
-  margin: 0;
+  margin: var(--space-3) 0 0;
   color: var(--color-ink-muted);
   font-size: 0.8125rem;
 }

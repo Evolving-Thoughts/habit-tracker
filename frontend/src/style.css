@@ -601,6 +601,33 @@ textarea.input {
   background: var(--color-surface);
 }
 
+/*
+ * A card's own small title, where cards stand side by side as a dashboard
+ * and a section title above each would be too loud. The head puts a quiet
+ * figure or control on the right of it.
+ */
+.card-title {
+  margin: 0 0 var(--space-3);
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.card-head > .card-title {
+  margin: 0;
+}
+
 /* Calm states. */
 .empty-state {
   display: grid;

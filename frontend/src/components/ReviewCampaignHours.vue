@@ -12,13 +12,13 @@ const rows = computed(() => campaignHourRows(props.hours));
 <template>
   <section
     v-if="rows.length"
-    class="campaign-hours"
+    class="campaign-hours card"
     aria-labelledby="review-campaign-hours-title"
   >
-    <h2 id="review-campaign-hours-title" class="section-title">
+    <h2 id="review-campaign-hours-title" class="card-title">
       Stunden je Kampagne
     </h2>
-    <ul class="campaign-hours__rows card">
+    <ul class="campaign-hours__rows">
       <li
         v-for="row in rows"
         :key="row.id"
@@ -56,8 +56,9 @@ const rows = computed(() => campaignHourRows(props.hours));
 <style scoped>
 .campaign-hours__rows {
   display: grid;
+  gap: var(--space-3);
   margin: 0;
-  padding: var(--space-1) var(--space-4);
+  padding: 0;
   list-style: none;
 }
 
@@ -65,12 +66,7 @@ const rows = computed(() => campaignHourRows(props.hours));
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-1) var(--space-3);
-  align-items: center;
-  padding: var(--space-3) 0;
-}
-
-.campaign-hours__row + .campaign-hours__row {
-  border-top: 1px solid var(--color-line);
+  align-items: baseline;
 }
 
 .campaign-hours__name {
@@ -78,6 +74,7 @@ const rows = computed(() => campaignHourRows(props.hours));
   gap: var(--space-2);
   align-items: center;
   min-width: 0;
+  font-size: 0.9375rem;
   font-weight: 700;
   overflow-wrap: anywhere;
 }
@@ -101,7 +98,8 @@ const rows = computed(() => campaignHourRows(props.hours));
 .campaign-hours__track {
   position: relative;
   grid-column: 1 / -1;
-  height: 0.625rem;
+  height: 0.5rem;
+  margin-top: var(--space-1);
   border-radius: var(--radius-pill);
   background: var(--color-ground-deep);
 }
@@ -129,7 +127,7 @@ const rows = computed(() => campaignHourRows(props.hours));
   display: flex;
   gap: var(--space-2);
   align-items: center;
-  margin: var(--space-2) 0 0;
+  margin: var(--space-4) 0 0;
   color: var(--color-ink-muted);
   font-size: 0.8125rem;
 }
