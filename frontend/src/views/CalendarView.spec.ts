@@ -729,7 +729,7 @@ describe("CalendarView week", () => {
     await chooseMode(wrapper, "Woche");
     const quota = wrapper.get(".quota");
     expect(quota.get(".quota__value").text()).toBe("5 von 8");
-    expect(quota.text()).toContain("Dailies diese Woche");
+    expect(quota.text()).toContain("Dailies der Woche");
     expect(quota.get('[role="progressbar"]').attributes("aria-valuenow")).toBe(
       "5",
     );

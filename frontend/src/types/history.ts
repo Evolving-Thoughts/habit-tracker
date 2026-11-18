@@ -70,23 +70,27 @@ export type HistoryDayWork = {
   /** Day and week only. */
   logs?: HistoryWorkLog[];
 };
+/** Share of the week's due runs that were completed. */
+export type WeekQuota = { completed: number; total: number; percentage: number };
+/** Completions per category against its weekly target. */
+export type PerfectWeek = {
+  perfect: boolean;
+  categories: {
+    id: number;
+    name: string;
+    target: number;
+    completed: number;
+    reached: boolean;
+  }[];
+};
 export type HistoryResponse = {
   today: string;
   timeZone: string;
   startDate: string;
   endDate: string;
   weeklyTargets?: HistoryWeeklyTarget[];
-  perfectWeek?: {
-    perfect: boolean;
-    categories: {
-      id: number;
-      name: string;
-      target: number;
-      completed: number;
-      reached: boolean;
-    }[];
-  } | null;
-  weekQuota?: { completed: number; total: number; percentage: number } | null;
+  perfectWeek?: PerfectWeek | null;
+  weekQuota?: WeekQuota | null;
   days: {
     date: string;
     items: HistoryItem[];

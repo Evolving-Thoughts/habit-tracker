@@ -5,6 +5,7 @@
 export const PATHS = {
   today: "/heute",
   plan: "/plan",
+  review: "/rueckblick",
   focus: "/fokus",
   questlog: "/questlog",
   campaigns: "/kampagnen",

@@ -212,7 +212,7 @@ components:
 
 # Design System: Habit-Tracker
 
-<!-- Aufgenommen aus dem ausgelieferten Code: App-Hülle (Tab-Leiste, Mehr-Menü, Dialoge, Boot-Fehler), Heute, Plan, Questlog, Kampagnen, Dailies, Kalender (ersetzt Kalender und Verlauf), Kategorien, Einstellungen und Anmeldung. Alle Ansichten beziehen Farben, Ecken und Abstände aus den Tokens und setzen sich aus den gemeinsamen Bausteinen am Ende von frontend/src/style.css zusammen. -->
+<!-- Aufgenommen aus dem ausgelieferten Code: App-Hülle (Tab-Leiste, Mehr-Menü, Dialoge, Boot-Fehler), Heute, Plan, Wochenrückblick, Questlog, Kampagnen, Dailies, Kalender (ersetzt Kalender und Verlauf), Kategorien, Einstellungen und Anmeldung. Alle Ansichten beziehen Farben, Ecken und Abstände aus den Tokens und setzen sich aus den gemeinsamen Bausteinen am Ende von frontend/src/style.css zusammen. -->
 
 ## Overview
 
@@ -300,7 +300,7 @@ Anmeldung und Boot-Fehler sind die Ausnahme: eine einzelne Karte (26–27rem bre
 
 Die Kampagnen beginnen mit Kacheln (Raster, je mindestens 14rem, mobil eine Spalte) über dem ganzen Baum; eine geöffnete Kampagne ersetzt Kacheln und Baum durch ihre Detailkarte und nur ihren Teilbaum, darüber "Alle Kampagnen" als leiser Zurück-Button.
 
-Mobil steht unten eine feste Tab-Leiste (4.25rem plus Safe Area) mit vier Zielen (Heute, Questlog, Kampagnen, Kalender) und "Mehr" (Plan, Fokus, Dailies, Kategorien, Einstellungen), das ein Popover über der Leiste mit Scrim öffnet. Die Ziele sind Links mit eigener Adresse; beim Wechsel springt die Ansicht nach oben und nimmt den Fokus; der Body hält per Polsterung Abstand zur Leiste. Ab 56rem wird die Leiste zur oberen Leiste (3.5rem hoch, Innenbreite 64rem), alle Ziele sichtbar, kein "Mehr"; Plan steht dort direkt nach Heute.
+Mobil steht unten eine feste Tab-Leiste (4.25rem plus Safe Area) mit vier Zielen (Heute, Questlog, Kampagnen, Kalender) und "Mehr" (Plan, Wochenrückblick, Fokus, Dailies, Kategorien, Einstellungen), das ein Popover über der Leiste mit Scrim öffnet. Die Ziele sind Links mit eigener Adresse; beim Wechsel springt die Ansicht nach oben und nimmt den Fokus; der Body hält per Polsterung Abstand zur Leiste. Ab 56rem wird die Leiste zur oberen Leiste (3.5rem hoch, Innenbreite 64rem), alle Ziele sichtbar, kein "Mehr"; Plan steht dort direkt nach Heute. Zehn Ziele mit Beschriftung brauchen rund 78rem: Bis 82rem zeigt die rechte Gruppe (Wochenrückblick, Fokus, Dailies, Kategorien, Einstellungen) nur ihre Icons in Tap-Größe, der Name bleibt für Screenreader und als Tooltip; ab 82rem wächst die Innenbreite auf 80rem und alle Ziele tragen ihren Namen.
 
 Der Kalender-Tag nutzt ab 56rem bis zu 64rem Breite: links die Liste des Tages, rechts die Zeitachse (19–24rem); mobil stehen beide untereinander. Der Plan ist die weitere Ausnahme von der Seitenspalte: Er nutzt bis zu 90rem Breite, damit sieben Tagesspalten (mind. 10.5rem) nebeneinander passen. Reicht die Breite nicht, scrollen die Tage innerhalb des Bretts seitwärts, nie die Seite. Unter 40rem füllt ein Tag 85 % der Breite, der nächste lugt herein, die Spalten rasten ein. Der Plus-Button sitzt mobil über der Leiste rechts, auf breiten Schirmen neben der Seitenspalte; Questlog, Kampagnen und Dailies legen über denselben Plus-Button an. Unter 32rem werden Karten- und Dialogpolster auf 1rem reduziert. Ab 40rem wird das Aktionsmenü vom unteren Blatt zum Popover am Auslöser.
 
@@ -308,7 +308,7 @@ Einträge sind ein Raster aus Zeitspalte (2.75rem), Haken-Spalte (Tap-Breite) un
 
 ## Elevation & Depth
 
-Weitgehend flach. Tiefe entsteht durch Tonwechsel: weiße Karte auf Apricot, eingelassenes Panel in tieferem Apricot, halbtransparentes Weiß für nicht abhakbare Termine. Ein einziger leiser, warmbrauner Kartenschatten hebt pro Ansicht höchstens eine ruhende Karte: die Fokuskarte auf Heute, die Quotenkarte in der Kalenderwoche, die Anmeldekarte, die Boot-Fehlerkarte. Sonst hebt er nur einen Auswahlzustand (gewählter Tag im Monatsraster). Alles Schwebende (Tab-Leiste, Popover, Filtermenü, Aktionsmenü, Dialog, Toast, Plus-Button) bekommt einen weichen, diffusen Schatten in warmem Braun.
+Weitgehend flach. Tiefe entsteht durch Tonwechsel: weiße Karte auf Apricot, eingelassenes Panel in tieferem Apricot, halbtransparentes Weiß für nicht abhakbare Termine. Ein einziger leiser, warmbrauner Kartenschatten hebt pro Ansicht höchstens eine ruhende Karte: die Fokuskarte auf Heute, die Quotenkarte in der Kalenderwoche, die Kennzahlen-Karte im Wochenrückblick (dort liegt die Quotenkarte flach), die Anmeldekarte, die Boot-Fehlerkarte. Sonst hebt er nur einen Auswahlzustand (gewählter Tag im Monatsraster). Alles Schwebende (Tab-Leiste, Popover, Filtermenü, Aktionsmenü, Dialog, Toast, Plus-Button) bekommt einen weichen, diffusen Schatten in warmem Braun.
 
 ### Shadow Vocabulary
 - **Kartenschatten** (`box-shadow: 0 1px 2px rgb(107 50 18 / 6%), 0 6px 18px rgb(107 50 18 / 7%)`): die eine gehobene Karte der Ansicht, gewählter Kalendertag, Filtermenü; Basis von Mehr-Popover und Aktionsmenü.
@@ -371,6 +371,18 @@ Weich, griffig, federnd.
 
 ### Aktionsmenü
 Ein Menü "Aktionen für …" pro Zeile statt verstreuter Buttons. Unter 40rem ein weißes Blatt von unten (oben Kartenecke, Scrim `rgb(43 29 22 / 18%)`), ab 40rem ein Popover am Auslöser (mind. 15rem, Kartenecke); beide mit dem Titel des Eintrags als Überschrift in Tinte. Einträge sind leise Buttons in Tinte mit Icon links. "Löschen" steht zuletzt, durch eine Haarlinie abgesetzt, ebenfalls in Tinte; erst der Bestätigungsdialog zeigt "Ja, löschen" rot.
+
+### Wochenrückblick
+Eine Spalte in Seitenbreite, Kopfzeile wie im Plan (Titel "Wochenrückblick", Vor/Zurück und "Diese Woche"), darunter der Zeitraum fett mit "diese Woche" / "vor 3 Wochen" gedämpft. Abschnitte mit Abschnittstitel in fester Folge; Diagramme sind kleine handgeschriebene CSS-Stücke ohne Bibliothek, mit fester Höhe, tabellarischen Ziffern und einer Text-Alternative, die alle Werte nennt.
+- **Kennzahlen-Karte** (die eine gehobene Karte der Ansicht): Label "Quest-Stunden", die Zahl groß (800, clamp 2–2.75rem), darunter "von 20 Std. Wochenziel · 18 %" gedämpft und ein flacher Tintenbalken; unter einer Haarlinie zwei Kennzahlen nebeneinander (Label, Zahl 1.375rem 800, gedämpfte Erläuterung). Ohne Ziel nur die Stunden, unbekannte Werte als "–".
+- **Säulen je Tag:** sieben Spalten, Wert in h:mm über jeder Säule (nie nur beim Hover), Säule in Tinte auf einer Apricot-Grundlinie (6rem hoch), heute mit dem 2px-Tintenrahmen des Kalenders und "Heute" statt des Kürzels; kommende Tage zeigen "–" in leiser Tinte.
+- **Balkenliste je Kampagne:** Zeilen mit Marke, Name und "3 Std. von 6 Std."; darunter eine Pillen-Spur in tiefem Apricot, gefüllt in der Marke der Kampagne, alle Zeilen auf einer Skala; das Wochenziel ist ein 2px-Tintenstrich, in einer Legende erklärt.
+- **Fortschrittszeilen:** weiße Karten mit 5px-Kampagnenstreifen als Link zur Kampagne (Chevron gedämpft, Druck federt): Titel, "9 von 12 Quests · 75 %", die Änderung fett ("+4 Quests, 62 % → 75 %"), eine Spur mit dem Stand vorher in heller Marke (40 % Marke auf Weiß) und dem Zuwachs der Woche in voller Marke.
+- **Aufteilung:** ein geteilter Pillenbalken (1rem), Quest-Arbeit in Tinte, Sonstiges in mark-none, darunter beide Zahlen mit Anteil.
+- **Letzte Wochen:** acht Säulen, die gezeigte Woche in Tinte, die anderen in leiser Tinte, der Schnitt der Wochen davor als gestrichelte gedämpfte Linie mit Wert darüber.
+- **Erledigt:** je Tag eine Überschrift mit Zähler und eine Listenkarte mit Verlaufspunkten, Kampagne mit Marke in der Metazeile.
+- **Rückblick:** drei Textflächen mit Fragen als Label (800), "Speichern" als einziger Primär-Button, ruhig solange nichts geändert ist, "Gespeichert" still daneben.
+- Eine Woche ohne gemessene Zeit und ohne Erledigtes zeigt eine Leerzustandskarte statt leerer Diagramme. Ein verfehltes Wochenziel ist eine Zahl; nirgends Warn- oder Fehlerfarbe.
 
 ### Quest-Stunden in Heute
 Eine leise Zeile im Kopf unter dem Fortschritt, gedämpfte Tinte 600, 0.875rem, Tabellenziffern: "Quest-Stunden heute 1 Std. 20 Min. · Woche 6 Std. von 20 Std.". Ohne Wochenziel nur die Zahlen; ohne gemessene Quest-Zeit und ohne Ziel keine Zeile. Nie farbig, auch nicht unter dem Ziel.

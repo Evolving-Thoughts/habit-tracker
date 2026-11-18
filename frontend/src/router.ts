@@ -14,6 +14,7 @@ import PlanView from "./views/PlanView.vue";
 import QuestlogView from "./views/QuestlogView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import TodayView from "./views/TodayView.vue";
+import WeekReviewView from "./views/WeekReviewView.vue";
 import { PATHS, type ViewName } from "./routes";
 
 export type { ViewName };
@@ -47,6 +48,13 @@ export const VIEWS: readonly AppView[] = [
     component: PlanView,
     primary: false,
     tabWhenWide: true,
+  },
+  {
+    name: "review",
+    path: PATHS.review,
+    label: "Wochenrückblick",
+    component: WeekReviewView,
+    primary: false,
   },
   {
     name: "focus",
