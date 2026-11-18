@@ -21,6 +21,7 @@ export class TodoMapper {
       icon: todo.icon ?? null,
       why: todo.why ?? null,
       inheritedWhy: ancestry.inheritedWhy(todo),
+      campaign: ancestry.campaignOf(todo),
       title: todo.title,
       completed: todo.completed,
       completedAt: todo.completedAt?.toISOString() ?? null,
