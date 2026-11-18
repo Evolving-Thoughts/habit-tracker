@@ -98,8 +98,9 @@ Monday that has begun; a week ahead is 400. The answer is the stored
   (the current week has the plain address) with the Plan's switcher (Vorige
   Woche, Diese Woche, Nächste Woche) and the range plus "diese Woche",
   "vorige Woche", "vor 3 Wochen" below the title. On the phone it sits behind
-  Mehr after Plan; on wide screens it is in the right-hand group of the bar
-  (`tabWhenWide` stays off, see `DESIGN.md` for the bar's compact icons).
+  Mehr after Plan; on wide screens it sits behind Mehr up to 70rem and has
+  its own tab in the right-hand group from there (`tabFrom: "wider"` in
+  `router.ts`, see `DESIGN.md` for the steps of the bar).
 - Both reads load with `useLoader`. While either loads, three bones of the
   sections' size hold the place. A failed read shows its error with a retry
   above the sections of the other read; an empty week is only claimed when

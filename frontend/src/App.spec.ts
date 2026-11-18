@@ -64,9 +64,9 @@ describe("App navigation", () => {
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
-    // Four tabs and Plan for wide screens, Mehr, six views behind it, and
-    // the command button of wide screens.
-    expect(wrapper.findAll("nav a, nav button")).toHaveLength(13);
+    // Four tabs, Plan and three more tabs for wide screens, Mehr, six views
+    // behind it, and the command button of wide screens.
+    expect(wrapper.findAll("nav a, nav button")).toHaveLength(16);
     expect(tab(wrapper, "Befehle").attributes("aria-keyshortcuts")).toBe(
       "Control+K",
     );
@@ -82,10 +82,24 @@ describe("App navigation", () => {
       "Questlog",
       "Kampagnen",
       "Kalender",
+      "Wochenrückblick",
+      "Fokus",
+      "Dailies",
     ]);
     expect(wrapper.get(".tab-bar__inner > a:nth-child(2)").classes()).toContain(
       "tab-bar__tab--wide",
     );
+    // From 70rem the group on the right gets its own tabs.
+    expect(
+      wrapper
+        .findAll(".tab-bar__inner > a.tab-bar__tab--wider")
+        .map((link) => link.text()),
+    ).toEqual(["Wochenrückblick", "Fokus", "Dailies"]);
+    expect(
+      wrapper
+        .findAll(".tab-bar__secondary a.tab-bar__tab--below-wider")
+        .map((link) => link.text()),
+    ).toEqual(["Wochenrückblick", "Fokus", "Dailies"]);
     expect(labels(".tab-bar__secondary a")[0]).toBe("Plan");
     expect(wrapper.get(".tab-bar__secondary a").classes()).toContain(
       "tab-bar__tab--narrow",
@@ -102,7 +116,8 @@ describe("App navigation", () => {
         .findAll("nav a")
         .filter((link) => link.attributes("aria-current") === "page")
         .map((link) => link.text()),
-    ).toEqual(["Dailies"]);
+      // Its wide-screen tab and its entry behind Mehr; CSS shows one of them.
+    ).toEqual(["Dailies", "Dailies"]);
   });
   it("shows the focus view alone, without the navigation around it", async () => {
     const wrapper = mountApp();
@@ -135,7 +150,7 @@ describe("App navigation", () => {
     await flushPromises();
     const button = tab(wrapper, "Einstellungen");
     await button.trigger("click");
-  await flushPromises();
+    await flushPromises();
     expect(wrapper.find('[data-view="settings"]').exists()).toBe(true);
     expect(button.attributes("aria-current")).toBe("page");
     expect(

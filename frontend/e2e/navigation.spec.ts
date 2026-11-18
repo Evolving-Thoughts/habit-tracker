@@ -16,9 +16,7 @@ test("views have their own address: Back returns and a reload stays", async ({
   await openView(page, "Kampagnen");
   await expect(page).toHaveTitle("Kampagnen · Habit Tracker");
   await page.reload();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-    "Kampagnen",
-  );
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Kampagnen");
 
   await page.goBack();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Questlog");
@@ -38,7 +36,7 @@ test.describe("wide navigation", () => {
     "Die obere Leiste gibt es erst ab 56rem; das Handy behält die Tab-Leiste.",
   );
 
-  test("between 56rem and 82rem the rarer views sit behind a labelled Mehr menu", async ({
+  test("between 56rem and 70rem the rarer views sit behind a labelled Mehr menu", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
@@ -82,9 +80,45 @@ test.describe("wide navigation", () => {
       .click();
     await expect(page).toHaveURL(/#\/dailies$/);
     await expect(more).toHaveAttribute("aria-expanded", "false");
-    await expect(more).toHaveAttribute("data-active");
+    await expect(more).toHaveAttribute("data-active-medium");
     await openView(page, "Plan");
-    await expect(more).not.toHaveAttribute("data-active");
+    await expect(more).not.toHaveAttribute("data-active-medium");
+  });
+
+  test("from 70rem Wochenrückblick, Fokus and Dailies are tabs; Mehr keeps the settings views", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1148, height: 800 });
+    await page.goto("/");
+    const navigation = page.getByRole("navigation", { name: "Ansichten" });
+    const more = navigation.getByRole("button", { name: "Mehr", exact: true });
+    for (const name of ["Wochenrückblick", "Fokus", "Dailies"])
+      await expect(
+        navigation.getByRole("link", { name, exact: true }),
+      ).toBeVisible();
+    await expect(
+      navigation.getByRole("link", { name: "Kategorien", exact: true }),
+    ).toBeHidden();
+
+    await more.click();
+    await expect(navigation.locator("#more-views a:visible")).toHaveText([
+      "Kategorien",
+      "Einstellungen",
+    ]);
+
+    // A view with its own tab no longer makes Mehr current; one inside it does.
+    await navigation.getByRole("link", { name: "Einstellungen" }).click();
+    await expect(more).toHaveAttribute("data-active");
+    await navigation
+      .getByRole("link", { name: "Dailies", exact: true })
+      .click();
+    await expect(page).toHaveURL(/#\/dailies$/);
+    await expect(more).toHaveCSS(
+      "color",
+      await navigation
+        .getByRole("link", { name: "Questlog", exact: true })
+        .evaluate((link) => getComputedStyle(link).color),
+    );
   });
 
   test("the bar never overflows, and from 82rem every view has its labelled tab", async ({
@@ -92,7 +126,9 @@ test.describe("wide navigation", () => {
   }) => {
     await page.goto("/");
     const navigation = page.getByRole("navigation", { name: "Ansichten" });
-    for (const width of [896, 1024, 1152, 1280, 1311, 1312, 1440]) {
+    for (const width of [
+      896, 1024, 1119, 1120, 1148, 1152, 1280, 1311, 1312, 1440,
+    ]) {
       await page.setViewportSize({ width, height: 800 });
       const wide = width >= 1312;
       await expect(
@@ -101,6 +137,9 @@ test.describe("wide navigation", () => {
       await expect(
         navigation.getByRole("link", { name: "Einstellungen" }),
       ).toBeVisible({ visible: wide });
+      await expect(
+        navigation.getByRole("link", { name: "Wochenrückblick" }),
+      ).toBeVisible({ visible: width >= 1120 });
       await expect(
         navigation.getByRole("button", { name: /Befehle/ }),
       ).toBeVisible();
