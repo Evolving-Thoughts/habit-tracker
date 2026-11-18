@@ -1,8 +1,8 @@
 import { DayLog, dayWork } from './history-work';
 
 const DAY = '2026-11-17';
-const writing = { id: 1, title: 'Buch' };
-const garden = { id: 2, title: 'Garten' };
+const writing = { id: 1, title: 'Buch', color: null, icon: null };
+const garden = { id: 2, title: 'Garten', color: null, icon: null };
 let nextId = 1;
 const log = (
   from: string,

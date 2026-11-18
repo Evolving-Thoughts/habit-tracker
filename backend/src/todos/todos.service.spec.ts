@@ -37,6 +37,9 @@ function todo(
     timeOfDay: null,
     dayPosition: null,
     plannedDurationMinutes: null,
+    weeklyTargetMinutes: null,
+    color: null,
+    icon: null,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     deletedAt: null,
@@ -128,6 +131,31 @@ describe('TodosService', () => {
       await expect(
         service.create(USER, { title: 'Fix', timeOfDay: '09:00' }),
       ).rejects.toThrow(BadRequestException);
+    });
+    it('gives a new campaign its goal, colour and icon', async () => {
+      await expect(
+        service.create(USER, {
+          title: 'Buch',
+          weeklyTargetMinutes: 300,
+          color: 'berry',
+          icon: 'book',
+        }),
+      ).resolves.toMatchObject({
+        weeklyTargetMinutes: 300,
+        color: 'berry',
+        icon: 'book',
+      });
+    });
+    it('rejects a goal, colour or icon on a new child with 400', async () => {
+      for (const field of [
+        { weeklyTargetMinutes: 60 },
+        { color: 'moss' as const },
+        { icon: 'flag' as const },
+      ])
+        await expect(
+          service.create(USER, { title: 'Child', parentId: 1, ...field }),
+        ).rejects.toThrow(BadRequestException);
+      expect(repository.save).not.toHaveBeenCalled();
     });
     it('does not reopen a completed parent when a child is added', async () => {
       rows = [todo(1, null, true)];
@@ -228,6 +256,35 @@ describe('TodosService', () => {
       expect(rows[0]).toMatchObject({ completed: true });
       await service.update(USER, 1, { completed: false });
       expect(rows[1]).toMatchObject({ completed: false });
+    });
+    it('rejects a goal, colour or icon on a todo with a parent', async () => {
+      rows = [todo(1), todo(2, 1)];
+      await expect(service.update(USER, 2, { color: 'moss' })).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(
+        service.update(USER, 1, { parentId: null, icon: 'star' }),
+      ).resolves.toMatchObject({ icon: 'star' });
+      await expect(
+        service.update(USER, 1, { parentId: 2, weeklyTargetMinutes: 60 }),
+      ).rejects.toThrow(BadRequestException);
+    });
+    it('clears goal, colour and icon when a campaign moves below a todo', async () => {
+      rows = [
+        Object.assign(todo(1), {
+          weeklyTargetMinutes: 600,
+          color: 'pine',
+          icon: 'leaf',
+        }),
+        todo(2),
+      ];
+      await service.update(USER, 1, { parentId: 2 });
+      expect(rows[0]).toMatchObject({
+        parentId: 2,
+        weeklyTargetMinutes: null,
+        color: null,
+        icon: null,
+      });
     });
     it('moves a subtree and rejects moving below a descendant', async () => {
       rows = [todo(1), todo(2, 1), todo(3, 2), todo(4)];

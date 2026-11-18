@@ -1,5 +1,6 @@
 import { UserEntity } from '../../auth/auth.entities';
 import { CategoryEntity } from '../../categories/category.entity';
+import type { CampaignColor, CampaignIcon } from '../campaign-style';
 import type { NotesDocument } from '../todo-notes';
 import {
   Check,
@@ -18,6 +19,14 @@ import {
 @Check(
   'CHK_todos_time_needs_date',
   '"timeOfDay" IS NULL OR "scheduledDate" IS NOT NULL',
+)
+@Check(
+  'CHK_todos_campaign_fields',
+  '"parentId" IS NULL OR ("weeklyTargetMinutes" IS NULL AND "color" IS NULL AND "icon" IS NULL)',
+)
+@Check(
+  'CHK_todos_weekly_target',
+  '"weeklyTargetMinutes" IS NULL OR "weeklyTargetMinutes" BETWEEN 1 AND 6000',
 )
 export class TodoEntity {
   @Index()
@@ -60,6 +69,19 @@ export class TodoEntity {
 
   @Column({ type: 'integer', nullable: true })
   goalTarget!: number | null;
+
+  /**
+   * Campaign only: minutes of quest time to reach each week, a colour and
+   * an icon (keys from campaign-style.ts).
+   */
+  @Column({ type: 'integer', nullable: true })
+  weeklyTargetMinutes!: number | null;
+
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  color!: CampaignColor | null;
+
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  icon!: CampaignIcon | null;
 
   /** The personal reason for this entry. */
   @Column({ type: 'varchar', length: 1000, nullable: true })

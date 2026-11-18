@@ -1,5 +1,7 @@
 import { HabitOccurrenceStatus } from '../../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitScheduleType } from '../../habits/enums/habit-schedule-type.enum';
+import type { QuestHoursToday } from '../../quest-hours/quest-hours.dto';
+import type { Campaign } from '../../todos/todo-ancestry';
 
 export type DayPlannerTodoStatus = 'pending' | 'completed';
 
@@ -18,7 +20,7 @@ type DayPlannerItemContext = {
   why: string | null;
   goal: DayPlannerGoalDto | null;
   /** The campaign the item works towards; null for a loose item. */
-  campaign: { id: number; title: string } | null;
+  campaign: Campaign | null;
   /** Minutes logged on this item today. */
   workedMinutes: number;
 };
@@ -75,16 +77,24 @@ export class DayPlannerResponseDto {
   readonly externalEvents: DayPlannerExternalEventDto[];
   /** All time logged today; overlapping logs count once. */
   readonly workedMinutes: number;
+  /** Quest minutes today and this week, against the overall weekly goal. */
+  readonly questHours: QuestHoursToday;
 
   constructor(properties: {
     date: string;
     items: DayPlannerItemDto[];
     externalEvents?: DayPlannerExternalEventDto[];
     workedMinutes?: number;
+    questHours?: QuestHoursToday;
   }) {
     this.date = properties.date;
     this.items = properties.items;
     this.externalEvents = properties.externalEvents ?? [];
     this.workedMinutes = properties.workedMinutes ?? 0;
+    this.questHours = properties.questHours ?? {
+      todayMinutes: 0,
+      weekMinutes: 0,
+      weeklyTargetMinutes: null,
+    };
   }
 }

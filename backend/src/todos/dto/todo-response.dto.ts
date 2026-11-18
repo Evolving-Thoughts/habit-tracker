@@ -1,3 +1,4 @@
+import type { CampaignColor, CampaignIcon } from '../campaign-style';
 import type { InheritedWhy } from '../todo-hierarchy';
 
 export type TodoResponseDtoProperties = {
@@ -10,6 +11,9 @@ export type TodoResponseDtoProperties = {
   periodEnd?: string | null;
   goalHabitId?: number | null;
   goalTarget?: number | null;
+  weeklyTargetMinutes?: number | null;
+  color?: CampaignColor | null;
+  icon?: CampaignIcon | null;
   title: string;
   completed: boolean;
   completedAt: string | null;
@@ -28,6 +32,10 @@ export class TodoResponseDto {
   readonly periodEnd: string | null;
   readonly goalHabitId: number | null;
   readonly goalTarget: number | null;
+  /** Campaign only: weekly goal of quest minutes, colour and icon keys. */
+  readonly weeklyTargetMinutes: number | null;
+  readonly color: CampaignColor | null;
+  readonly icon: CampaignIcon | null;
   /** The todo's own reason. */
   readonly why: string | null;
   /** What it takes over from an ancestor while it has none of its own. */
@@ -50,6 +58,9 @@ export class TodoResponseDto {
     this.periodEnd = properties.periodEnd ?? null;
     this.goalHabitId = properties.goalHabitId ?? null;
     this.goalTarget = properties.goalTarget ?? null;
+    this.weeklyTargetMinutes = properties.weeklyTargetMinutes ?? null;
+    this.color = properties.color ?? null;
+    this.icon = properties.icon ?? null;
     this.why = properties.why ?? null;
     this.inheritedWhy = properties.inheritedWhy ?? null;
     this.title = properties.title;

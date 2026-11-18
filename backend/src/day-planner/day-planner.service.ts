@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { eventsOfDays } from '../calendar/day-events';
 import { CategoryEntity } from '../categories/category.entity';
-import { dayOf } from '../common/date/local-day';
+import { dayOf, weekRange } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { ownedOccurrences } from '../habit-occurrences/owned-occurrences';
@@ -21,7 +21,7 @@ import { lastMovableDate } from '../habits/scheduling/schedule-rules';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { habitGoals } from '../todos/habit-goal';
 import { loadTodoAncestry } from '../todos/todo-ancestry';
-import { logsOfDays } from '../work-logs/day-logs';
+import { logsOfDays, withCampaigns } from '../work-logs/day-logs';
 import { workedMinutes } from '../work-logs/work-time';
 import {
   completedTodos,
@@ -31,6 +31,8 @@ import {
 import { resolvedOccurrences } from '../habit-occurrences/resolved-occurrences';
 import { loadHabitForecast } from '../history/habit-forecast';
 import { plannedHabits } from '../history/history-planning';
+import { weeklyQuestTarget } from '../quest-hours/quest-hours.service';
+import { questSoFar } from '../quest-hours/quest-time';
 import { compareInDay } from './day-order';
 import {
   DayPlannerGoalDto,
@@ -73,16 +75,20 @@ export class DayPlannerService {
     const categoryName = (id: number | null): string | null =>
       (id !== null && names.get(id)) || null;
 
-    const [parents, habitGoalsByHabit, logs, ancestry] = await Promise.all([
-      this.parentsOf(userId, todos),
-      this.habitGoalsFor(
-        userId,
-        occurrences.map((occurrence) => occurrence.habitId),
-        today,
-      ),
-      logsOfDays(this.db.manager, userId, today),
-      loadTodoAncestry(this.db.manager, userId, today),
-    ]);
+    // The week's stretches: today's work and the week's quest hours.
+    const { startDate, endDate } = weekRange(today);
+    const [parents, habitGoalsByHabit, logs, ancestry, questTarget] =
+      await Promise.all([
+        this.parentsOf(userId, todos),
+        this.habitGoalsFor(
+          userId,
+          occurrences.map((occurrence) => occurrence.habitId),
+          today,
+        ),
+        logsOfDays(this.db.manager, userId, startDate, endDate),
+        loadTodoAncestry(this.db.manager, userId, today),
+        weeklyQuestTarget(this.db.manager, userId),
+      ]);
     const workedOn = (key: 'todoId' | 'occurrenceId', id: number): number =>
       workedMinutes(
         logs.filter((log) => log[key] === id),
@@ -141,6 +147,13 @@ export class DayPlannerService {
         end: end.toISOString(),
       })),
       workedMinutes: workedMinutes(logs, today),
+      questHours: {
+        ...questSoFar(
+          await withCampaigns(this.db.manager, userId, logs, ancestry),
+          today,
+        ),
+        weeklyTargetMinutes: questTarget,
+      },
     });
   }
 

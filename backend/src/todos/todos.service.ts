@@ -29,6 +29,7 @@ import { UpdateTodoDto } from './dto/update-todo.dto';
 import { TodoEntity } from './entities/todo.entity';
 import { TodoMapper } from './mappers/todo.mapper';
 import { assertGoalAvailable, assertGoalShape, habitGoals } from './habit-goal';
+import { assertCampaignFields, NO_CAMPAIGN_FIELDS } from './campaign-style';
 import { backlogTodos } from './todo-agenda';
 import { cleanNotes, InvalidNotesError, NotesDocument } from './todo-notes';
 import {
@@ -136,6 +137,12 @@ export class TodosService {
     const timeOfDay = dto.timeOfDay ?? null;
     this.validatePlan(scheduledDate, timeOfDay);
     const parentId = dto.parentId ?? null;
+    const campaign = {
+      weeklyTargetMinutes: dto.weeklyTargetMinutes ?? null,
+      color: dto.color ?? null,
+      icon: dto.icon ?? null,
+    };
+    assertCampaignFields({ parentId, ...campaign });
     return this.unitOfWork.run(userId, async (manager) => {
       await this.assertCanPlace(manager, userId, null, parentId);
       const repository = manager.getRepository(TodoEntity);
@@ -156,6 +163,7 @@ export class TodosService {
           scheduledDate,
           timeOfDay,
           plannedDurationMinutes: dto.plannedDurationMinutes ?? null,
+          ...campaign,
         }),
       );
     });
@@ -176,7 +184,14 @@ export class TodosService {
       if (dto.parentId !== undefined && dto.parentId !== todo.parentId) {
         await this.assertCanPlace(manager, userId, id, dto.parentId);
         todo.parentId = dto.parentId;
+        // Below another todo it is no campaign any more.
+        if (dto.parentId !== null) Object.assign(todo, NO_CAMPAIGN_FIELDS);
       }
+      if (dto.weeklyTargetMinutes !== undefined)
+        todo.weeklyTargetMinutes = dto.weeklyTargetMinutes;
+      if (dto.color !== undefined) todo.color = dto.color;
+      if (dto.icon !== undefined) todo.icon = dto.icon;
+      assertCampaignFields(todo);
       if (dto.categoryId !== undefined) {
         await assertOwnedCategory(manager, userId, dto.categoryId);
         todo.categoryId = dto.categoryId;

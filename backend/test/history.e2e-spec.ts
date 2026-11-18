@@ -697,7 +697,10 @@ describe('History API (e2e)', () => {
     const day = (await get()).days[0];
     expect(day.work.minutes).toBe(60 + 45);
     expect(day.work.campaigns).toEqual([
-      { campaign: { id: campaign.id, title: 'Buch' }, minutes: 90 },
+      {
+        campaign: { id: campaign.id, title: 'Buch', color: null, icon: null },
+        minutes: 90,
+      },
       { campaign: null, minutes: 15 },
     ]);
     expect(day.work.logs).toEqual([
@@ -705,7 +708,7 @@ describe('History API (e2e)', () => {
         title: 'Kapitel',
         minutes: 120,
         todoId: chapter.id,
-        campaign: { id: campaign.id, title: 'Buch' },
+        campaign: { id: campaign.id, title: 'Buch', color: null, icon: null },
       }),
       expect.objectContaining({ minutes: 30 }),
       expect.objectContaining({

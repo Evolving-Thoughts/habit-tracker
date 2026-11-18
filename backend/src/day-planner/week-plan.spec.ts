@@ -54,7 +54,7 @@ const planned = (
     },
     dayPosition,
     TODAY,
-    { id: 9, title: 'Marathon' },
+    { id: 9, title: 'Marathon', color: null, icon: null },
   );
 
 const titlesOn = (date: string, days: ReturnType<typeof arrangeWeek>) =>
@@ -116,7 +116,7 @@ describe('plannedHabitCandidate', () => {
       type: 'habit',
       occurrenceId: null,
       status: 'pending',
-      campaign: { id: 9, title: 'Marathon' },
+      campaign: { id: 9, title: 'Marathon', color: null, icon: null },
       plannedDurationMinutes: 20,
     });
     expect(order.dayPosition).toBeNull();

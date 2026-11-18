@@ -8,6 +8,15 @@ import type { CreateHabitDto } from '../src/habits/dto/create-habit.dto';
 import type { HabitResponseDto } from '../src/habits/dto/habit-response.dto';
 import type { UpdateHabitDto } from '../src/habits/dto/update-habit.dto';
 import type { HistoryResponse as HistoryResponseDto } from '../src/history/history.dto';
+import type {
+  QuestHoursResponse as QuestHoursResponseDto,
+  QuestTargetDto,
+  QuestTargetResponse,
+} from '../src/quest-hours/quest-hours.dto';
+import type {
+  CAMPAIGN_COLORS as BACKEND_COLORS,
+  CAMPAIGN_ICONS as BACKEND_ICONS,
+} from '../src/todos/campaign-style';
 import type { TimerResponse as TimerResponseDto } from '../src/timers/timers.service';
 import type { CreateTodoDto } from '../src/todos/dto/create-todo.dto';
 import type { TodoResponseDto } from '../src/todos/dto/todo-response.dto';
@@ -20,7 +29,15 @@ import type {
   HabitResponse,
   UpdateHabitInput,
 } from '../../frontend/src/types/habit';
+import type {
+  CAMPAIGN_COLORS,
+  CAMPAIGN_ICONS,
+} from '../../frontend/src/types/campaign';
 import type { HistoryResponse } from '../../frontend/src/types/history';
+import type {
+  QuestHoursResponse,
+  QuestTarget,
+} from '../../frontend/src/types/quest-hours';
 import type { TimerResponse } from '../../frontend/src/types/timer';
 import type {
   CreateTodoInput,
@@ -48,6 +65,9 @@ type Reads<Dto, Frontend> = [Json<Dto>] extends [Frontend] ? true : false;
 /** The frontend sends no field the backend would refuse as unknown. */
 type Sends<Frontend, Dto> = [keyof Frontend] extends [keyof Dto] ? true : false;
 
+/** Both sides list the same keys in the same order. */
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+
 export type Contract = [
   Assert<Reads<TodoResponseDto, TodoResponse>>,
   Assert<Reads<HabitResponseDto, HabitResponse>>,
@@ -56,6 +76,11 @@ export type Contract = [
   Assert<Reads<HistoryResponseDto, HistoryResponse>>,
   Assert<Reads<TimerResponseDto, TimerResponse>>,
   Assert<Reads<WorkLogResponse, WorkLog>>,
+  Assert<Reads<QuestHoursResponseDto, QuestHoursResponse>>,
+  Assert<Reads<QuestTargetResponse, QuestTarget>>,
+  Assert<Sends<QuestTarget, QuestTargetDto>>,
+  Assert<Same<typeof BACKEND_COLORS, typeof CAMPAIGN_COLORS>>,
+  Assert<Same<typeof BACKEND_ICONS, typeof CAMPAIGN_ICONS>>,
   Assert<Sends<CreateTodoInput, CreateTodoDto>>,
   Assert<Sends<UpdateTodoInput, UpdateTodoDto>>,
   Assert<Sends<CreateHabitInput, CreateHabitDto>>,
