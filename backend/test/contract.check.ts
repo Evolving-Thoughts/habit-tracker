@@ -21,6 +21,11 @@ import type { TimerResponse as TimerResponseDto } from '../src/timers/timers.ser
 import type { CreateTodoDto } from '../src/todos/dto/create-todo.dto';
 import type { TodoResponseDto } from '../src/todos/dto/todo-response.dto';
 import type { UpdateTodoDto } from '../src/todos/dto/update-todo.dto';
+import type {
+  SaveWeekReviewDto,
+  WeekReviewAnswers as WeekReviewAnswersDto,
+  WeekReviewResponse as WeekReviewResponseDto,
+} from '../src/week-review/week-review.dto';
 import type { WorkLogResponse } from '../src/work-logs/work-log.dto';
 import type { DayPlannerResponse } from '../../frontend/src/types/day-planner';
 import type { WeekPlanResponse } from '../../frontend/src/types/week-plan';
@@ -44,6 +49,11 @@ import type {
   TodoResponse,
   UpdateTodoInput,
 } from '../../frontend/src/types/todo';
+import type {
+  WeekReviewAnswers,
+  WeekReviewInput,
+  WeekReviewResponse,
+} from '../../frontend/src/types/week-review';
 import type { WorkLog } from '../../frontend/src/types/work-log';
 
 /** What a value looks like after JSON: enums are strings, dates too. */
@@ -79,6 +89,9 @@ export type Contract = [
   Assert<Reads<QuestHoursResponseDto, QuestHoursResponse>>,
   Assert<Reads<QuestTargetResponse, QuestTarget>>,
   Assert<Sends<QuestTarget, QuestTargetDto>>,
+  Assert<Reads<WeekReviewResponseDto, WeekReviewResponse>>,
+  Assert<Reads<WeekReviewAnswersDto, WeekReviewAnswers>>,
+  Assert<Sends<WeekReviewInput, SaveWeekReviewDto>>,
   Assert<Same<typeof BACKEND_COLORS, typeof CAMPAIGN_COLORS>>,
   Assert<Same<typeof BACKEND_ICONS, typeof CAMPAIGN_ICONS>>,
   Assert<Sends<CreateTodoInput, CreateTodoDto>>,

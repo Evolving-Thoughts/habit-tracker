@@ -1,20 +1,6 @@
-import {
-  IsInt,
-  IsString,
-  Matches,
-  Max,
-  Min,
-  ValidateIf,
-} from 'class-validator';
+import { IsInt, Max, Min, ValidateIf } from 'class-validator';
 import { MAX_WEEKLY_TARGET_MINUTES } from '../todos/campaign-style';
 import type { Campaign } from '../todos/todo-ancestry';
-
-/** GET /quest-hours?week=YYYY-MM-DD; `week` must be a Monday. */
-export class QuestHoursQueryDto {
-  @IsString()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/)
-  readonly week!: string;
-}
 
 /** PUT /quest-hours/target: the overall weekly goal; null removes it. */
 export class QuestTargetDto {

@@ -55,8 +55,8 @@ describe("App navigation", () => {
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
-    // Four tabs and Plan for wide screens, Mehr, and five views behind it.
-    expect(wrapper.findAll("nav a, nav button")).toHaveLength(11);
+    // Four tabs and Plan for wide screens, Mehr, and six views behind it.
+    expect(wrapper.findAll("nav a, nav button")).toHaveLength(12);
   });
   it("puts Plan after Heute on wide screens and first behind Mehr", async () => {
     const wrapper = mountApp();

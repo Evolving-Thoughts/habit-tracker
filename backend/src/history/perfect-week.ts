@@ -1,3 +1,5 @@
+import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
+
 export type PerfectWeekCategory = {
   id: number;
   name: string;
@@ -34,4 +36,24 @@ export function perfectWeek(
   });
   if (!rows.length) return null;
   return { perfect: rows.every((row) => row.reached), categories: rows };
+}
+
+/**
+ * The perfect week from what was resolved in it: completed quests and
+ * completed runs count for their category, skipped runs do not.
+ */
+export function perfectWeekOf(
+  categories: { id: number; name: string; weeklyTarget: number | null }[],
+  todos: { categoryId: number | null }[],
+  runs: {
+    status: HabitOccurrenceStatus;
+    habit: { categoryId: number | null };
+  }[],
+): PerfectWeek | null {
+  return perfectWeek(categories, [
+    ...todos.map((todo) => todo.categoryId),
+    ...runs
+      .filter((run) => run.status === HabitOccurrenceStatus.COMPLETED)
+      .map((run) => run.habit.categoryId),
+  ]);
 }

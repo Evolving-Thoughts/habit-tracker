@@ -168,6 +168,7 @@ onUnmounted(() => {
             :to="{ name: view.name }"
             class="tab-bar__tab"
             :class="{ 'tab-bar__tab--narrow': view.tabWhenWide }"
+            :title="view.label"
           >
             <AppIcon :name="view.name" />
             <span>{{ view.label }}</span>
@@ -391,6 +392,33 @@ onUnmounted(() => {
     min-height: 3.5rem;
     padding: 0 var(--space-3);
     font-size: 0.9375rem;
+  }
+}
+
+/*
+ * Ten views with labels need about 78rem. Below that the rarer views on the
+ * right keep only their icon; the name stays for screen readers and on hover.
+ */
+@media (min-width: 56rem) and (max-width: 81.99rem) {
+  .tab-bar__secondary .tab-bar__tab {
+    justify-content: center;
+    width: var(--tap);
+    padding: 0;
+  }
+
+  .tab-bar__secondary .tab-bar__tab span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+@media (min-width: 82rem) {
+  .tab-bar__inner {
+    max-width: 80rem;
   }
 }
 </style>

@@ -53,7 +53,7 @@ number, never in a warning colour.
 
 `week` must be a Monday (validated like `GET /day-planner/week`: a malformed
 date, another weekday or an unknown query field is 400). One endpoint carries
-what the tiles, Heute and the coming weekly review need:
+what the tiles, Heute and the weekly review (`week-review.md`) need:
 
 ```ts
 {

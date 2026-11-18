@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import AppIcon from "./AppIcon.vue";
+import WeekQuota from "./WeekQuota.vue";
 import WeeklyTargets from "./WeeklyTargets.vue";
 import type {
   Campaign,
@@ -8,7 +9,7 @@ import type {
   HistoryResponse,
   HistoryWorkShare,
 } from "../types/history";
-import { campaignMark, categoryMark } from "../utils/category-mark";
+import { campaignMark } from "../utils/category-mark";
 import { dayCounts, dayLabel, daySummary, hasEntries } from "../utils/history";
 import { formatDuration } from "../utils/logbook";
 
@@ -24,13 +25,6 @@ const emit = defineEmits<{ openDay: [date: string]; showAll: [] }>();
 const weeklyTargets = computed(() => props.result.weeklyTargets ?? []);
 const isEmpty = computed(
   () => !weeklyTargets.value.length && !props.result.days.some(hasEntries),
-);
-const quota = computed(() => {
-  const value = props.result.weekQuota;
-  return value && value.total > 0 ? value : null;
-});
-const perfectWeek = computed(() =>
-  props.result.perfectWeek?.categories.length ? props.result.perfectWeek : null,
 );
 
 /* Logbuch: the bars share one scale, the longest day of the week. */
@@ -81,58 +75,10 @@ function workDescription(day: Day): string {
     </template>
   </div>
   <template v-else>
-    <section v-if="quota" class="quota card" aria-labelledby="quota-label">
-      <p class="quota__value">{{ quota.completed }} von {{ quota.total }}</p>
-      <p id="quota-label" class="quota__label">Dailies diese Woche</p>
-      <div
-        class="quota__bar"
-        role="progressbar"
-        aria-labelledby="quota-label"
-        :aria-valuenow="quota.completed"
-        aria-valuemin="0"
-        :aria-valuemax="quota.total"
-      >
-        <span
-          :style="{
-            width: `${Math.min(100, (quota.completed / quota.total) * 100)}%`,
-          }"
-        />
-      </div>
-    </section>
-
-    <section
-      v-if="perfectWeek"
-      class="perfect-week"
-      aria-labelledby="perfect-week-title"
-    >
-      <h2 id="perfect-week-title" class="section-title">
-        {{ perfectWeek.perfect ? "Perfekte Woche!" : "Perfekte Woche" }}
-      </h2>
-      <ul class="rows card">
-        <li
-          v-for="category in perfectWeek.categories"
-          :key="category.id"
-          class="row"
-        >
-          <span class="row__name">
-            <i
-              class="swatch"
-              :style="{ background: categoryMark(category.name) }"
-              aria-hidden="true"
-            />{{ category.name }}
-          </span>
-          <span class="count"
-            >{{ category.completed }} von {{ category.target }}</span
-          >
-          <span class="row__check">
-            <template v-if="category.reached">
-              <AppIcon name="check" />
-              <span class="visually-hidden">erreicht</span>
-            </template>
-          </span>
-        </li>
-      </ul>
-    </section>
+    <WeekQuota
+      :quota="result.weekQuota ?? null"
+      :perfect-week="result.perfectWeek ?? null"
+    />
 
     <WeeklyTargets v-if="weeklyTargets.length" :targets="weeklyTargets" />
 
@@ -214,45 +160,6 @@ function workDescription(day: Day): string {
 </template>
 
 <style scoped>
-.quota {
-  display: grid;
-  gap: var(--space-1);
-  padding: var(--space-5);
-  box-shadow: var(--shadow-card);
-}
-
-.quota p {
-  margin: 0;
-}
-
-.quota__value {
-  font-size: clamp(2.25rem, 10vw, 3rem);
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-.quota__label {
-  color: var(--color-ink-muted);
-  font-weight: 700;
-}
-
-.quota__bar {
-  height: 0.625rem;
-  margin-top: var(--space-3);
-  overflow: hidden;
-  border-radius: var(--radius-pill);
-  background: var(--color-ground-deep);
-}
-
-.quota__bar span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--color-ink);
-}
-
 .rows {
   display: grid;
   margin: 0;
@@ -281,19 +188,6 @@ function workDescription(day: Day): string {
   min-width: 0;
   font-weight: 700;
   overflow-wrap: anywhere;
-}
-
-.row__check {
-  display: inline-grid;
-  width: 1.25rem;
-  place-items: center;
-  color: var(--color-ink);
-}
-
-.row__check :deep(svg) {
-  width: 1.25rem;
-  height: 1.25rem;
-  stroke-width: 2.6;
 }
 
 .swatch {
