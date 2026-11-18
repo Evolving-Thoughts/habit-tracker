@@ -281,6 +281,35 @@ describe("FocusView", () => {
     expect(updateTodoCompletion).toHaveBeenCalledWith(1, true);
   });
 
+  it("leaves Ctrl+Enter and Space to the notes while typing there", async () => {
+    vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+    const { start } = await mountView();
+    const editor = document.createElement("div");
+    editor.setAttribute("contenteditable", "true");
+    document.body.append(editor);
+    editor.focus();
+    for (const init of [{ key: "Enter", ctrlKey: true }, { key: " " }])
+      editor.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          ...init,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    await flushPromises();
+    expect(updateTodoCompletion).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+    editor.remove();
+  });
+
+  it("leads back to Heute with Escape", async () => {
+    vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+    await mountView();
+    window.location.hash = "#/fokus";
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(window.location.hash).toBe("#/heute");
+  });
+
   it("says so when everything is done and leads back to Heute", async () => {
     vi.mocked(getToday).mockResolvedValue(
       planner(

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from "vue";
+import { computed, ref } from "vue";
 import TodoDeletionSummary from "../components/TodoDeletionSummary.vue";
 import { useTodoDeletion } from "../composables/useTodoDeletion";
 import {
@@ -13,6 +13,10 @@ import AppIcon from "../components/AppIcon.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
+import { useUndo } from "../composables/useUndo";
+import { useShortcutHandlers } from "../composables/useShortcuts";
+import { toggleTimer, useTimer } from "../composables/useTimer";
+import { addDays, getCurrentDateInTimeZone, weekStart } from "../utils/date";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import ModalDialog from "../components/ModalDialog.vue";
@@ -23,6 +27,7 @@ import PlanFields from "../components/PlanFields.vue";
 import QuestNotes from "../components/QuestNotes.vue";
 import { categoryMark } from "../utils/category-mark";
 import { buildTodoInput } from "../utils/todo-input";
+import { dayLabel, fullStop } from "../utils/history";
 
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
@@ -108,15 +113,10 @@ function forgetDone(id: number): void {
   doneHere.value = doneHere.value.filter((item) => item.id !== id);
 }
 
-type Undo = { todo: TodoResponse; label: string };
-const undo = ref<Undo | null>(null);
-let undoTimer: ReturnType<typeof setTimeout> | undefined;
+const { undo, offer, take: takeUndo } = useUndo<TodoResponse>();
 function offerUndo(todo: TodoResponse): void {
-  clearTimeout(undoTimer);
-  undo.value = { todo, label: `„${todo.title}“ erledigt` };
-  undoTimer = setTimeout(() => (undo.value = null), 5000);
+  offer(todo, `„${todo.title}“ erledigt`);
 }
-onUnmounted(() => clearTimeout(undoTimer));
 
 function categoryOf(todo: TodoResponse): string | null {
   return todo.categoryId === null
@@ -150,16 +150,14 @@ async function toggleTodo(todo: TodoResponse): Promise<void> {
 }
 
 async function undoLast(): Promise<void> {
-  const last = undo.value;
-  if (!last) return;
-  clearTimeout(undoTimer);
-  undo.value = null;
+  const todo = takeUndo();
+  if (!todo) return;
   if (
-    await write(() => updateTodoCompletion(last.todo.id, false), {
+    await write(() => updateTodoCompletion(todo.id, false), {
       fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
     })
   )
-    forgetDone(last.todo.id);
+    forgetDone(todo.id);
 }
 
 function openEditing(todo: TodoResponse): void {
@@ -263,6 +261,63 @@ async function onCreated(): Promise<void> {
   await applied();
   creationOpen.value = false;
 }
+
+/*
+ * Keyboard shortcuts on a row: the same writes as its buttons and as saving
+ * a day in the editor. Finished rows ignore them.
+ */
+const timer = useTimer();
+function openTodo(key: string | null): TodoResponse | null {
+  if (isBusy.value || selectedTodo.value) return null;
+  return todos.value.find((todo) => `todo-${todo.id}` === key) ?? null;
+}
+function plan(key: string | null, date: string, where: string): boolean {
+  const todo = openTodo(key);
+  if (!todo) return false;
+  void listFocus.around(key!, async () => {
+    successMessage.value = null;
+    const input = buildTodoInput({
+      title: todo.title,
+      date,
+      time: "",
+      duration: todo.plannedDurationMinutes ?? "",
+    });
+    if (
+      await write(() => updateTodo(todo.id, input), {
+        fallbackError: "Die Quest konnte nicht eingeplant werden.",
+      })
+    )
+      successMessage.value = fullStop(`„${todo.title}“ steht jetzt ${where}`);
+  });
+  return true;
+}
+useShortcutHandlers({
+  "quest.new": () => {
+    if (isBusy.value || selectedTodo.value) return;
+    openCreation();
+  },
+  "row.timer": ({ key }) => {
+    const todo = openTodo(key);
+    if (!todo) return false;
+    return toggleTimer(
+      timer,
+      { kind: "todo", targetId: todo.id, title: todo.title },
+      todo.timerEligible,
+    );
+  },
+  "row.done": ({ key }) => {
+    const todo = openTodo(key);
+    if (!todo) return false;
+    void listFocus.around(key!, () => toggleTodo(todo));
+  },
+  "row.today": ({ key }) => plan(key, getCurrentDateInTimeZone(), "bei heute"),
+  "row.tomorrow": ({ key }) =>
+    plan(key, addDays(getCurrentDateInTimeZone(), 1), "bei morgen"),
+  "row.nextWeek": ({ key }) => {
+    const monday = addDays(weekStart(getCurrentDateInTimeZone()), 7);
+    return plan(key, monday, `am ${dayLabel(monday)}`);
+  },
+});
 </script>
 
 <template>

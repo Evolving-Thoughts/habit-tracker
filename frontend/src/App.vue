@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
-import AppIcon from "./components/AppIcon.vue";
+import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { RouterView, useRoute, useRouter } from "vue-router";
+import AppNavigation from "./components/AppNavigation.vue";
+import AppShortcuts from "./components/AppShortcuts.vue";
 import TimerProvider from "./components/TimerProvider.vue";
 import AuthView from "./views/AuthView.vue";
 import { getMe, logout } from "./api/auth.api";
 import type { User } from "./api/auth.api";
-import { VIEWS, type AuthLink } from "./router";
+import type { AuthLink } from "./router";
 
 const router = useRouter();
 const route = useRoute();
@@ -73,18 +74,10 @@ function readCalendarReturn(): void {
 }
 readCalendarReturn();
 
-/* Wide screens show some Mehr views as tabs, so those render in both places. */
-const PRIMARY = VIEWS.filter((view) => view.primary || view.tabWhenWide);
-const SECONDARY = VIEWS.filter((view) => !view.primary);
-const moreOpen = ref(false);
-const moreActive = computed(() =>
-  SECONDARY.some(({ name }) => name === route.name),
-);
 // A new view starts at its top, with the keyboard and screen reader in it.
 watch(
   () => route.name,
   async () => {
-    moreOpen.value = false;
     await nextTick();
     const main = document.querySelector<HTMLElement>("main");
     if (!main) return;
@@ -92,17 +85,12 @@ watch(
     main.focus({ preventScroll: true });
   },
 );
-function onKeydown(event: KeyboardEvent): void {
-  if (event.key === "Escape") moreOpen.value = false;
-}
 onMounted(() => {
   void load();
   window.addEventListener("auth-expired", expire);
-  window.addEventListener("keydown", onKeydown);
 });
 onUnmounted(() => {
   window.removeEventListener("auth-expired", expire);
-  window.removeEventListener("keydown", onKeydown);
 });
 </script>
 
@@ -134,54 +122,8 @@ onUnmounted(() => {
     @link-cleared="clearLink"
   />
   <TimerProvider v-else :key="user.id" :hide-bar="route.meta.immersive">
-    <nav v-if="!route.meta.immersive" class="tab-bar" aria-label="Ansichten">
-      <div class="tab-bar__inner">
-        <RouterLink
-          v-for="view in PRIMARY"
-          :key="view.name"
-          :to="{ name: view.name }"
-          class="tab-bar__tab"
-          :class="{ 'tab-bar__tab--wide': !view.primary }"
-        >
-          <AppIcon :name="view.name" />
-          <span>{{ view.label }}</span>
-        </RouterLink>
-        <button
-          type="button"
-          class="tab-bar__tab tab-bar__more"
-          :aria-expanded="moreOpen"
-          aria-controls="more-views"
-          :data-active="moreActive || undefined"
-          @click="moreOpen = !moreOpen"
-        >
-          <AppIcon name="more" />
-          <span>Mehr</span>
-        </button>
-        <div
-          id="more-views"
-          class="tab-bar__secondary"
-          :data-open="moreOpen || undefined"
-        >
-          <RouterLink
-            v-for="view in SECONDARY"
-            :key="view.name"
-            :to="{ name: view.name }"
-            class="tab-bar__tab"
-            :class="{ 'tab-bar__tab--narrow': view.tabWhenWide }"
-            :title="view.label"
-          >
-            <AppIcon :name="view.name" />
-            <span>{{ view.label }}</span>
-          </RouterLink>
-        </div>
-      </div>
-    </nav>
-    <div
-      v-if="moreOpen"
-      class="tab-bar__scrim"
-      aria-hidden="true"
-      @click="moreOpen = false"
-    />
+    <AppNavigation v-if="!route.meta.immersive" />
+    <AppShortcuts />
 
     <RouterView v-slot="{ Component }">
       <component
@@ -241,184 +183,5 @@ onUnmounted(() => {
 
 .boot-error .btn--primary {
   margin-top: var(--space-2);
-}
-
-.tab-bar {
-  position: fixed;
-  inset: auto 0 0;
-  z-index: 30;
-  padding: 0 var(--space-2) env(safe-area-inset-bottom, 0px);
-  background: var(--color-surface);
-  box-shadow:
-    0 -1px 0 var(--color-line),
-    0 -8px 24px rgb(107 50 18 / 8%);
-}
-
-.tab-bar__inner {
-  position: relative;
-  display: flex;
-  max-width: var(--page-width);
-  margin: 0 auto;
-}
-
-.tab-bar__tab {
-  display: flex;
-  flex: 1 1 0;
-  flex-direction: column;
-  gap: 0.2rem;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  min-height: var(--tab-bar-height);
-  padding: var(--space-2) var(--space-1);
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--color-ink-muted);
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-decoration: none;
-  cursor: pointer;
-  transition: transform 420ms var(--spring);
-}
-
-.tab-bar__tab span {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tab-bar__tab:active {
-  transform: var(--press);
-}
-
-.tab-bar__tab[aria-current="page"],
-.tab-bar__more[data-active] {
-  color: var(--color-action);
-}
-
-.tab-bar__tab[aria-current="page"] :deep(svg),
-.tab-bar__more[data-active] :deep(svg) {
-  stroke-width: 2.4;
-}
-
-.tab-bar__secondary {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + var(--space-2));
-  display: none;
-  flex-direction: column;
-  min-width: 14rem;
-  padding: var(--space-2);
-  border-radius: var(--radius-card);
-  background: var(--color-surface);
-  box-shadow:
-    var(--shadow-card),
-    0 12px 32px rgb(107 50 18 / 16%);
-}
-
-.tab-bar__secondary[data-open] {
-  display: flex;
-}
-
-.tab-bar__secondary .tab-bar__tab {
-  flex-direction: row;
-  gap: var(--space-3);
-  justify-content: flex-start;
-  min-height: var(--tap-large);
-  padding: 0 var(--space-4);
-  font-size: 1rem;
-}
-
-.tab-bar__scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 25;
-  background: rgb(43 29 22 / 18%);
-}
-
-.tab-bar__tab--wide {
-  display: none;
-}
-
-/* Wide screens have room for every view, so nothing hides behind Mehr. */
-@media (min-width: 56rem) {
-  .tab-bar {
-    inset: 0 0 auto;
-    padding: 0 var(--space-4);
-    box-shadow: 0 1px 0 var(--color-line);
-  }
-
-  .tab-bar__inner {
-    max-width: 64rem;
-    gap: var(--space-1);
-  }
-
-  .tab-bar__tab {
-    flex: 0 0 auto;
-    flex-direction: row;
-    gap: var(--space-2);
-    min-height: 3.5rem;
-    padding: 0 var(--space-3);
-    font-size: 0.9375rem;
-  }
-
-  .tab-bar__more,
-  .tab-bar__scrim,
-  .tab-bar__tab--narrow {
-    display: none;
-  }
-
-  .tab-bar__tab--wide {
-    display: flex;
-  }
-
-  .tab-bar__secondary,
-  .tab-bar__secondary[data-open] {
-    position: static;
-    display: flex;
-    flex-direction: row;
-    min-width: 0;
-    padding: 0;
-    margin-left: auto;
-    border-radius: 0;
-    background: none;
-    box-shadow: none;
-  }
-
-  .tab-bar__secondary .tab-bar__tab {
-    gap: var(--space-2);
-    min-height: 3.5rem;
-    padding: 0 var(--space-3);
-    font-size: 0.9375rem;
-  }
-}
-
-/*
- * Ten views with labels need about 78rem. Below that the rarer views on the
- * right keep only their icon; the name stays for screen readers and on hover.
- */
-@media (min-width: 56rem) and (max-width: 81.99rem) {
-  .tab-bar__secondary .tab-bar__tab {
-    justify-content: center;
-    width: var(--tap);
-    padding: 0;
-  }
-
-  .tab-bar__secondary .tab-bar__tab span {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-}
-
-@media (min-width: 82rem) {
-  .tab-bar__inner {
-    max-width: 80rem;
-  }
 }
 </style>

@@ -4,6 +4,7 @@ import {
   weekStart,
   dayCounts,
   dayLabel,
+  fullStop,
   daySummary,
   hasEntries,
   longDate,
@@ -71,4 +72,15 @@ it("counts measured work as something to show on a day", () => {
   expect(hasEntries(empty)).toBe(false);
   expect(hasEntries({ ...empty, work: { minutes: 25 } })).toBe(true);
   expect(hasEntries({ ...empty, external: [{}] })).toBe(true);
+});
+
+describe("fullStop", () => {
+  it("ends a sentence once, also after an abbreviated month", () => {
+    expect(fullStop("Steht am Mittwoch, 7. Okt.")).toBe(
+      "Steht am Mittwoch, 7. Okt.",
+    );
+    expect(fullStop("Steht am Freitag, 1. Mai")).toBe(
+      "Steht am Freitag, 1. Mai.",
+    );
+  });
 });

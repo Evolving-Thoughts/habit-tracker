@@ -71,6 +71,7 @@ rounded:
   control: "0.875rem"
   card: "1.375rem"
   pill: "999px"
+  key: "0.375rem"
 spacing:
   "1": "0.25rem"
   "2": "0.5rem"
@@ -208,11 +209,16 @@ components:
     textColor: "{colors.surface}"
     rounded: "{rounded.pill}"
     padding: "0.5rem 0.5rem 0.5rem 1rem"
+  kbd:
+    backgroundColor: "{colors.ground}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.key}"
+    height: "1.75rem"
 ---
 
 # Design System: Habit-Tracker
 
-<!-- Aufgenommen aus dem ausgelieferten Code: App-Hülle (Tab-Leiste, Mehr-Menü, Dialoge, Boot-Fehler), Heute, Plan, Wochenrückblick, Questlog, Kampagnen, Dailies, Kalender (ersetzt Kalender und Verlauf), Kategorien, Einstellungen und Anmeldung. Alle Ansichten beziehen Farben, Ecken und Abstände aus den Tokens und setzen sich aus den gemeinsamen Bausteinen am Ende von frontend/src/style.css zusammen. -->
+<!-- Aufgenommen aus dem ausgelieferten Code: App-Hülle (Tab-Leiste, Mehr-Menü, Befehlsmenü, Tastenkürzel-Übersicht, Dialoge, Boot-Fehler), Heute, Plan, Wochenrückblick, Questlog, Kampagnen, Dailies, Kalender (ersetzt Kalender und Verlauf), Kategorien, Einstellungen und Anmeldung. Alle Ansichten beziehen Farben, Ecken und Abstände aus den Tokens und setzen sich aus den gemeinsamen Bausteinen am Ende von frontend/src/style.css zusammen. -->
 
 ## Overview
 
@@ -300,7 +306,7 @@ Anmeldung und Boot-Fehler sind die Ausnahme: eine einzelne Karte (26–27rem bre
 
 Die Kampagnen beginnen mit Kacheln (Raster, je mindestens 14rem, mobil eine Spalte) über dem ganzen Baum; eine geöffnete Kampagne ersetzt Kacheln und Baum durch ihre Detailkarte und nur ihren Teilbaum, darüber "Alle Kampagnen" als leiser Zurück-Button.
 
-Mobil steht unten eine feste Tab-Leiste (4.25rem plus Safe Area) mit vier Zielen (Heute, Questlog, Kampagnen, Kalender) und "Mehr" (Plan, Wochenrückblick, Fokus, Dailies, Kategorien, Einstellungen), das ein Popover über der Leiste mit Scrim öffnet. Die Ziele sind Links mit eigener Adresse; beim Wechsel springt die Ansicht nach oben und nimmt den Fokus; der Body hält per Polsterung Abstand zur Leiste. Ab 56rem wird die Leiste zur oberen Leiste (3.5rem hoch, Innenbreite 64rem), alle Ziele sichtbar, kein "Mehr"; Plan steht dort direkt nach Heute. Zehn Ziele mit Beschriftung brauchen rund 78rem: Bis 82rem zeigt die rechte Gruppe (Wochenrückblick, Fokus, Dailies, Kategorien, Einstellungen) nur ihre Icons in Tap-Größe, der Name bleibt für Screenreader und als Tooltip; ab 82rem wächst die Innenbreite auf 80rem und alle Ziele tragen ihren Namen.
+Mobil steht unten eine feste Tab-Leiste (4.25rem plus Safe Area) mit vier Zielen (Heute, Questlog, Kampagnen, Kalender) und "Mehr" (Plan, Wochenrückblick, Fokus, Dailies, Kategorien, Einstellungen), das ein Popover über der Leiste mit Scrim öffnet. Die Ziele sind Links mit eigener Adresse; beim Wechsel springt die Ansicht nach oben und nimmt den Fokus; der Body hält per Polsterung Abstand zur Leiste. Ab 56rem wird die Leiste zur oberen Leiste (3.5rem hoch, Innenbreite 64rem): links die fünf Hauptansichten mit Namen (Plan direkt nach Heute), rechts "Befehle" für das Befehlsmenü. Zehn Ziele mit Beschriftung brauchen rund 78rem: Bis 82rem sammelt deshalb ein beschrifteter Button "Mehr" (Icon, Name, kleiner Pfeil) die rechte Gruppe (Wochenrückblick, Fokus, Dailies, Kategorien, Einstellungen) in einem weißen Popover unter der Leiste, mit Icon und Namen je Eintrag; er ist dasselbe "Mehr" wie am Handy, nur ohne Scrim und ohne Plan, und gilt als aktueller Tab, wenn eine seiner Ansichten offen ist. Ab 82rem wächst die Innenbreite auf 80rem, "Mehr" entfällt und alle zehn Ziele stehen mit Namen in der Leiste (Polster etwas enger, 0.625rem); "Befehle" behält dort nur die Lupe in Tap-Größe, der Name bleibt für Screenreader und im Tooltip. Die Tasten Strg K stehen ab 64rem als kleine Tastenkappen neben "Befehle", wo eine Tastatur wahrscheinlich ist.
 
 Der Kalender-Tag nutzt ab 56rem bis zu 64rem Breite: links die Liste des Tages, rechts die Zeitachse (19–24rem); mobil stehen beide untereinander. Der Plan ist die weitere Ausnahme von der Seitenspalte: Er nutzt bis zu 90rem Breite, damit sieben Tagesspalten (mind. 10.5rem) nebeneinander passen. Reicht die Breite nicht, scrollen die Tage innerhalb des Bretts seitwärts, nie die Seite. Unter 40rem füllt ein Tag 85 % der Breite, der nächste lugt herein, die Spalten rasten ein. Der Plus-Button sitzt mobil über der Leiste rechts, auf breiten Schirmen neben der Seitenspalte; Questlog, Kampagnen und Dailies legen über denselben Plus-Button an. Unter 32rem werden Karten- und Dialogpolster auf 1rem reduziert. Ab 40rem wird das Aktionsmenü vom unteren Blatt zum Popover am Auslöser.
 
@@ -332,7 +338,7 @@ Icons stammen aus einer eigenen Strichfamilie (AppIcon): 24px-Raster, Strich 2, 
 
 ## Components
 
-Alle Ansichten setzen sich aus dem gemeinsamen Bausatz in `frontend/src/style.css` zusammen: Seite (`.page`, `.page-header`, `.page-title`, `.page-lead`, `.section-title`, `.count`), Buttons (`.btn` und Varianten), Felder und Auswahl (`.field`, `.input`, `.segmented`, `.chips` / `.chip`), Flächen und Zustände (`.card`, `.empty-state`, `.alert`, `.form-error`, `.skeleton`, `.visually-hidden`). Neue Ansichten komponieren diese Bausteine, statt Buttons und Felder einzeln zu stylen.
+Alle Ansichten setzen sich aus dem gemeinsamen Bausatz in `frontend/src/style.css` zusammen: Seite (`.page`, `.page-header`, `.page-title`, `.page-lead`, `.section-title`, `.count`), Buttons (`.btn` und Varianten), Felder und Auswahl (`.field`, `.input`, `.segmented`, `.chips` / `.chip`, `.switch`), Tastenkappen (`.kbd`), Flächen und Zustände (`.card`, `.empty-state`, `.alert`, `.form-error`, `.skeleton`, `.visually-hidden`). Neue Ansichten komponieren diese Bausteine, statt Buttons und Felder einzeln zu stylen.
 
 ### Buttons
 Weich, griffig, federnd.
@@ -358,7 +364,7 @@ Weich, griffig, federnd.
 - **Shadow Strategy:** höchstens eine gehobene Karte pro Ansicht (siehe Elevation).
 - **Border:** keine; Zeilen in Listenkarten trennt eine Haarlinie (Kategorien, Kalenderzeilen).
 - **Internal Padding:** Basis 1rem; Fokus 1.5rem (unten 1rem), Quote 1.5rem, Einträge 0.5–1rem.
-- **Einstellungen:** jede Gruppe eine flache Karte mit Abschnittstitel; zuerst "Wochenziel Quest-Stunden" (Satz, Zahlfeld in Stunden, getöntes "Speichern", stille Rückmeldung "Gespeichert."); der Schalter für Benachrichtigungen ist eine Zeile mit kleiner Pillen-Spur (3 × 1.75rem) in Tap-Fläche, aus leise Tinte, an Orange, weißer Daumen federt über.
+- **Einstellungen:** jede Gruppe eine flache Karte mit Abschnittstitel; zuerst "Wochenziel Quest-Stunden" (Satz, Zahlfeld in Stunden, getöntes "Speichern", stille Rückmeldung "Gespeichert."); Schalter (`.switch`, für Benachrichtigungen und Tastenkürzel) sind eine Zeile mit kleiner Pillen-Spur (3 × 1.75rem) in Tap-Fläche, aus leise Tinte, an Orange, weißer Daumen federt über. "Tastatur" erscheint nur, wo eine Tastatur wahrscheinlich ist: Schalter "Tastenkürzel", ein gedämpfter Satz, darunter die Tastenkürzel-Liste.
 
 ### Inputs / Fields
 - **Style:** Label darüber in gedämpfter Tinte 700, 0.875rem. Feld weiß, 1.5px Apricot-Linie, Ecke 0.875rem, Tap-Höhe, Polster 0.75rem, Schrift 1rem 400; Textflächen mit Rundum-Polster und vertikal ziehbar.
@@ -367,7 +373,18 @@ Weich, griffig, federnd.
 - **Gespeichert:** stille Rückmeldung als gedämpfter Text neben dem Feld (Kategorien, Tagesreflexion), kein Toast.
 
 ### Navigation
-- **Tab-Leiste:** Weiß, Icon über 0.75rem-Label (700), inaktiv gedämpfte Tinte, aktiv Orange mit kräftigerem Strich. Druck federt. Mehr-Menü als weißes Popover mit Kartenecke und Scrim `rgb(43 29 22 / 18%)`. Ab 56rem oben, Icon neben Label, alle Ziele sichtbar.
+- **Tab-Leiste:** Weiß, Icon über 0.75rem-Label (700), inaktiv gedämpfte Tinte, aktiv Orange mit kräftigerem Strich. Druck federt. Ab 56rem oben, Icon neben Label.
+- **Mehr:** ein Disclosure-Button (`aria-expanded`, `aria-controls`) über einer Liste von Links, die man mit Tab durchläuft. Am Handy ein weißes Popover über der Leiste mit Scrim `rgb(43 29 22 / 18%)`; zwischen 56rem und 82rem ein Popover unter dem Button ohne Scrim. Escape schließt und gibt den Fokus an den Button zurück, ein Klick daneben, Tab aus der Liste heraus und jeder Ansichtswechsel schließen ebenfalls.
+- **Befehle:** leiser Tab mit Lupe und Namen, ab 82rem nur die Lupe; öffnet das Befehlsmenü.
+
+### Befehlsmenü
+Strg K oder "Befehle" öffnen einen Dialog nahe dem oberen Rand: Titel "Befehle", darunter das Suchfeld, dann die Einträge als Zeilen in Tap-Höhe (Tinte 700, Control-Ecke), ohne Suche gruppiert nach "Ansichten" und "Aktionen" (Gruppentitel gedämpft 0.875rem), mit Suche als eine Liste nach Treffergüte. Der aktive Eintrag liegt in Apricot-Hauch mit tiefem Orange, wie Hover in Menüs. Rechts stehen die Tasten des Eintrags als Tastenkappen. Findet die Suche nichts, sagt eine ruhige Fläche in Apricot-Grund "Nichts gefunden für „…“."
+
+### Tastenkappe (`.kbd`)
+Eine Taste: mindestens 1.75rem breit und hoch, Ecke `--radius-key` (0.375rem, kantig genug für eine Taste, keine Pille), Apricot-Grund mit einer 2px-Kante in tiefem Apricot unten, Tinte 700 in 0.8125rem. Mehrere Tasten stehen mit 0.25rem Abstand nebeneinander ("Strg" "K"). Abgeschaltete Kürzel stehen in leiser Tinte, ihre Kappen blasser. Kappen erscheinen nur, wo eine Tastatur wahrscheinlich ist.
+
+### Tastenkürzel-Liste
+In der Übersicht ("?") und in Einstellungen › Tastatur dieselbe Liste: Gruppentitel (800, 1rem), darunter Zeilen mit der Aktion links und den Tastenkappen rechts, getrennt durch Haarlinien.
 
 ### Aktionsmenü
 Ein Menü "Aktionen für …" pro Zeile statt verstreuter Buttons. Unter 40rem ein weißes Blatt von unten (oben Kartenecke, Scrim `rgb(43 29 22 / 18%)`), ab 40rem ein Popover am Auslöser (mind. 15rem, Kartenecke); beide mit dem Titel des Eintrags als Überschrift in Tinte. Einträge sind leise Buttons in Tinte mit Icon links. "Löschen" steht zuletzt, durch eine Haarlinie abgesetzt, ebenfalls in Tinte; erst der Bestätigungsdialog zeigt "Ja, löschen" rot.

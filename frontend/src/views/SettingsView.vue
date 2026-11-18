@@ -3,9 +3,13 @@ import AppIcon from "../components/AppIcon.vue";
 import CalendarConnection from "../components/CalendarConnection.vue";
 import PushSettings from "../components/PushSettings.vue";
 import QuestTargetSetting from "../components/QuestTargetSetting.vue";
+import ShortcutSettings from "../components/ShortcutSettings.vue";
+import { useKeyboardLikely } from "../composables/useShortcuts";
 
 defineProps<{ email: string }>();
 defineEmits<{ signOut: [] }>();
+// Only where a keyboard is likely; a phone has no keys to switch off.
+const keyboardLikely = useKeyboardLikely();
 </script>
 
 <template>
@@ -30,6 +34,15 @@ defineEmits<{ signOut: [] }>();
       <section class="card" aria-labelledby="settings-calendar">
         <h2 id="settings-calendar" class="section-title">Google Kalender</h2>
         <CalendarConnection />
+      </section>
+
+      <section
+        v-if="keyboardLikely"
+        class="card"
+        aria-labelledby="settings-shortcuts"
+      >
+        <h2 id="settings-shortcuts" class="section-title">Tastatur</h2>
+        <ShortcutSettings />
       </section>
 
       <section class="card" aria-labelledby="settings-account">

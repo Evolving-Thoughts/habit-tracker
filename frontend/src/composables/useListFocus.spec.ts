@@ -59,4 +59,23 @@ describe("useListFocus", () => {
     focus.remember("a");
     expect(focus.returnFocus()).toBeNull();
   });
+  it("moves the focus on to the next row after a shortcut took its row away", async () => {
+    const { element, render, focus } = list();
+    element
+      .querySelector<HTMLButtonElement>('[data-focus-key="b"] button')!
+      .focus();
+    await focus.around("b", async () => render(["a", "c"]));
+    expect(document.activeElement).toBe(
+      element.querySelector('[data-focus-key="c"] button'),
+    );
+  });
+  it("leaves the focus alone when the row was acted on by pointer", async () => {
+    const { element, render, focus } = list();
+    const outside = document.createElement("button");
+    document.body.append(outside);
+    outside.focus();
+    await focus.around("b", async () => render(["a", "c"]));
+    expect(document.activeElement).toBe(outside);
+    expect(element.contains(document.activeElement)).toBe(false);
+  });
 });

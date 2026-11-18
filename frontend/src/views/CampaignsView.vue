@@ -26,6 +26,7 @@ import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import { useTodoDeletion } from "../composables/useTodoDeletion";
 import { useTimer } from "../composables/useTimer";
+import { useShortcutHandlers } from "../composables/useShortcuts";
 import { campaignMark, categoryMark } from "../utils/category-mark";
 import {
   formatDateForGermanDisplay,
@@ -393,6 +394,12 @@ async function confirmDelete() {
   );
   if (error.value) action.value = null;
 }
+// N opens the plus button's dialog: a new quest at the top, a campaign to be.
+useShortcutHandlers({
+  "quest.new": () => {
+    if (!busy.value && !action.value) open("create");
+  },
+});
 </script>
 <template>
   <main ref="page" class="page hierarchy">
