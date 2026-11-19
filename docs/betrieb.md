@@ -49,4 +49,4 @@ Damit das auch nach einem Neustart des Rechners gilt, muss Docker selbst automat
 
 ## Verbleibende Risiken
 
-- Die Datenbank wird nachts gesichert und auf einen Backup-Server gespiegelt, siehe [backup.md](backup.md). Die Wiederherstellung ist noch nicht an einer Kopie durchgespielt.
+- Die Datenbank wird nachts gesichert und auf einen Backup-Server hochgeladen, siehe [backup.md](backup.md). Die Wiederherstellung ist noch nicht an einer Kopie durchgespielt.
