@@ -41,12 +41,25 @@ Inhalt:
 AGE_RECIPIENT=age1…
 FTP_HOST=backup.1blu.de
 FTP_USER=bu123456
-FTP_PASS=…
+FTP_PASS='…'
+NOTIFY_EMAIL=du@example.org
 ```
 
-`FTP_USER` ist der Benutzername aus dem Kundencenter (`bu…`); er gehört nicht in dieses öffentliche Repo.
+`FTP_USER` ist der Benutzername aus dem Kundencenter (`bu…`); er gehört nicht in dieses öffentliche Repo. Das Passwort in einfache Anführungszeichen setzen, weil die Datei als Shell gelesen wird und 1blu Sonderzeichen wie `%` verlangt.
 
-Optional: `BACKUP_DIR` (Standard `~/backups`), `KEEP_DAYS` (Standard 14), `KEEP_MIN` (Standard 7, so viele Sicherungen bleiben auf dem Backup-Server immer liegen), `REMOTE_DIR` (Standard `habit-tracker`), `FTP_TLS` (Standard `force`; siehe Testlauf).
+Optional: `BACKUP_DIR` (Standard `~/backups`), `KEEP_DAYS` (Standard 14), `KEEP_MIN` (Standard 7, so viele Sicherungen bleiben auf dem Backup-Server immer liegen), `REMOTE_DIR` (Standard `habit-tracker`), `FTP_TLS` (Standard `force`; siehe Testlauf), `HEALTHCHECK_URL` (siehe Benachrichtigung).
+
+## Benachrichtigung
+
+Scheitert ein Lauf, schickt das Skript eine Mail an `NOTIFY_EMAIL` mit dem Grund und den letzten Fehlermeldungen. Es nutzt dafür dasselbe SMTP wie die App (`SMTP_*` und `MAIL_FROM` aus `.env.production`), braucht also kein eigenes Geheimnis. Ohne `NOTIFY_EMAIL` bleibt es still.
+
+Einmal ausprobieren:
+
+```bash
+~/habit-tracker/scripts/backup.sh --test-notify
+```
+
+Eine Fehlermail kann nur kommen, wenn das Skript läuft. Ist der Server aus oder der Cron-Eintrag kaputt, merkt das niemand. Dafür gibt es Dienste wie [healthchecks.io](https://healthchecks.io), die sich melden, wenn ein erwartetes Lebenszeichen ausbleibt: dort einen Check mit Zeitraum 1 Tag und etwas Spielraum anlegen und dessen Ping-URL als `HEALTHCHECK_URL` eintragen. Das Skript pingt sie nach jedem erfolgreichen Lauf und meldet Fehler an `<url>/fail`.
 
 ## Testlauf
 
@@ -56,7 +69,9 @@ Optional: `BACKUP_DIR` (Standard `~/backups`), `KEEP_DAYS` (Standard 14), `KEEP_
 
 Es muss eine Datei in `~/backups` entstehen und „Auf backup.1blu.de hochgeladen“ erscheinen.
 
-Bricht der Lauf beim Verbinden ab (TLS-Fehler), bietet der Backup-Server kein FTP über TLS. Dann ist die Sicherung zwar weiter verschlüsselt, aber das Passwort ginge im Klartext über die Leitung, und wer es mitliest, könnte die Sicherungen löschen. Erst bei 1blu nach FTPS oder SFTP fragen; nur wenn es keins gibt, `FTP_TLS=allow` in die Konfiguration setzen, dann schreibt jeder Lauf eine Warnung ins Log.
+`backup.1blu.de` spricht FTP über TLS (geprüft am 19.11.2026). Meldet der Lauf `530 Login authentication failed`, stimmen Benutzer oder Passwort nicht: Das Passwort gehört in den Block „FTP Backup“ im Kundencenter, nicht in den Block „Eigenes ISO-Image“, und gilt erst, wenn dort „Fertig“ steht.
+
+Bricht der Lauf dagegen beim Verbinden mit einem TLS-Fehler ab, kann das ein Zertifikatsproblem sein (lftp prüft das Zertifikat) oder bedeuten, dass der Server kein TLS mehr anbietet. Dann ist die Sicherung zwar weiter verschlüsselt, aber das Passwort ginge im Klartext über die Leitung, und wer es mitliest, könnte die Sicherungen löschen. Erst bei 1blu nach FTPS oder SFTP fragen; nur wenn es keins gibt, `FTP_TLS=allow` in die Konfiguration setzen, dann schreibt jeder Lauf eine Warnung ins Log.
 
 Ob die Datei auf dem Backup-Server liegt, zeigt (Benutzername einsetzen):
 
@@ -74,7 +89,7 @@ crontab -e
 0 3 * * * /home/jonas/habit-tracker/scripts/backup.sh >> /home/jonas/habit-backup.log 2>&1
 ```
 
-Das Log liegt bewusst außerhalb von `~/backups`, damit es nicht mit hochgeladen wird. Es meldet sich niemand, wenn ein Lauf scheitert. Wirf deshalb gelegentlich einen Blick auf `tail ~/habit-backup.log` und auf das Datum der neuesten Datei.
+Das Log liegt bewusst außerhalb von `~/backups`, damit es nicht mit hochgeladen wird. Bei einem Fehler kommt eine Mail (siehe Benachrichtigung); die Einzelheiten stehen in `tail ~/habit-backup.log`.
 
 ## Wiederherstellen
 
@@ -86,9 +101,26 @@ age -d -i key.txt habit-2026-11-19_030001.sql.gz.age | gunzip \
     sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 ```
 
-Der Dump enthält `DROP … IF EXISTS`, spielt also über die bestehenden Tabellen. Probiere die Wiederherstellung einmal an einer Kopie durch, bevor du sie im Ernstfall brauchst.
+Der Dump enthält `DROP … IF EXISTS`, spielt also über die bestehenden Tabellen. Er beginnt mit `\restrict`; das versteht nur ein `psql` ab den aktuellen Versionen, deshalb immer das `psql` im Postgres-Container nehmen wie oben.
+
+### Wiederherstellung testen
+
+Ohne die laufende App anzufassen, in eine eigene Datenbank im selben Container (im Ordner `~/habit-tracker`, Schlüssel in `~/key.txt`):
+
+```bash
+C="docker compose -f compose.prod.yaml --env-file .env.production"
+$C exec -T postgres sh -c 'createdb -U "$POSTGRES_USER" restore_test'
+age -d -i ~/key.txt ~/backups/<datei>.sql.gz.age | gunzip \
+  | $C exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -q -U "$POSTGRES_USER" -d restore_test'
+$C exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d restore_test -c "select count(*) from users"'
+$C exec -T postgres sh -c 'dropdb -U "$POSTGRES_USER" restore_test'
+shred -u ~/key.txt
+```
+
+Bricht `psql` nicht ab und stimmt die Zahl der Konten, ist die Sicherung brauchbar. Zuletzt am 19.11.2026 durchgespielt: alle 22 Tabellen und die Konten kamen zurück. Das lohnt sich nach größeren Änderungen am Schema und sonst etwa jedes Vierteljahr.
 
 ## Verbleibende Risiken
 
 - Der Backup-Server gehört demselben Anbieter wie der Server. Ein Ausfall bei 1blu trifft beide. Wer das nicht will, ergänzt später ein zweites Ziel.
-- Ein gescheiterter Lauf erzeugt keine Benachrichtigung.
+- Ohne `HEALTHCHECK_URL` fällt ein ausbleibender Lauf (Server aus, Cron kaputt) nicht auf; nur gescheiterte Läufe melden sich per Mail.
+- Fällt das SMTP der App aus, kommt auch die Fehlermail nicht an.
