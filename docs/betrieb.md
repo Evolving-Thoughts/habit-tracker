@@ -63,6 +63,53 @@ Das Zertifikat kommt beim ersten Aufruf, wenn der DNS-Eintrag schon auf den Serv
 
 Danach die Sicherung nach [backup.md](backup.md) und das automatische Deployment nach [deploy.md](deploy.md) einrichten.
 
+## Optionale Dienste
+
+Beide laufen ohne Neubau: Werte in `.env.production` setzen, dann das Backend neu anlegen (siehe Aktualisieren). Die Befehle gehören in den Repo-Ordner und schreiben Geheimnisse direkt in die Datei, ohne sie anzuzeigen.
+
+### Timer-Push
+
+Die VAPID-Schlüssel einmal im laufenden Backend erzeugen:
+
+```bash
+sed -i '/^VAPID_PUBLIC_KEY=/d;/^VAPID_PRIVATE_KEY=/d' .env.production
+docker compose -f compose.prod.yaml --env-file .env.production exec -T backend node -e "const k=require('web-push').generateVAPIDKeys();console.log('VAPID_PUBLIC_KEY='+k.publicKey);console.log('VAPID_PRIVATE_KEY='+k.privateKey)" >> .env.production
+grep -c -E '^VAPID_(PUBLIC|PRIVATE)_KEY=.+' .env.production   # muss 2 ergeben
+```
+
+`VAPID_SUBJECT` darf leer bleiben, dann gilt `FRONTEND_URL`. Neue Schlüssel machen alle bestehenden Push-Anmeldungen ungültig, also nicht bei jedem Umzug neu erzeugen, sondern die Zeilen mitnehmen. Ein ungültiges Paar lässt das Backend gar nicht erst starten. Bedienung und Grenzen: [timer-push.md](timer-push.md).
+
+### Google Kalender
+
+Jede App bekommt ein eigenes Projekt in der Google Cloud Console, weil Zustimmungsbildschirm, Berechtigungen und Veröffentlichungsstatus pro Projekt gelten. Für diese App heißt es `plan-evolving-thoughts`; das Projekt für die lokale Entwicklung bleibt getrennt.
+
+Im Projekt: Google Calendar API aktivieren, in der Google Auth Platform unter Branding App-Name, Support-Adresse und die autorisierte Domain `evolving-thoughts.com` eintragen, Zielgruppe „Extern“, unter Data access diese Berechtigungen (dieselben wie in `backend/src/calendar/google-calendar.client.ts`):
+
+```
+https://www.googleapis.com/auth/calendar.app.created
+https://www.googleapis.com/auth/calendar.events.readonly
+https://www.googleapis.com/auth/calendar.calendarlist.readonly
+```
+
+Dann einen Client vom Typ Webanwendung mit genau dieser Weiterleitungs-URI anlegen:
+
+```
+https://plan.evolving-thoughts.com/api/calendar/google/callback
+```
+
+Die Client ID ist öffentlich, der Client secret nicht. Auf dem Server:
+
+```bash
+sed -i '/^GOOGLE_/d' .env.production
+printf 'GOOGLE_REDIRECT_URI=%s\nGOOGLE_TOKEN_KEY=%s\n' "https://plan.evolving-thoughts.com/api/calendar/google/callback" "$(openssl rand -base64 32)" >> .env.production
+nano .env.production   # GOOGLE_CLIENT_ID=… und GOOGLE_CLIENT_SECRET=… ergänzen
+grep -c -E '^GOOGLE_(CLIENT_ID|CLIENT_SECRET|REDIRECT_URI|TOKEN_KEY)=.+' .env.production   # muss 4 ergeben
+```
+
+`GOOGLE_TOKEN_KEY` verschlüsselt die gespeicherten Google-Zugriffe und muss genau 32 Byte haben (`… | base64 -d | wc -c`). Ändert er sich, müssen alle ihren Kalender neu verbinden.
+
+Die Google-App steht im Status „Testing“: Nur unter Audience eingetragene Testnutzer können ihren Kalender verbinden, und jede Verbindung läuft 7 Tage nach dem Verbinden ab. Veröffentlichen („Publish app“) verlangt einen Link zu einer Datenschutzerklärung unter Branding; danach einmal neu verbinden, Client und Serverwerte bleiben gleich. Nutzer sehen dann einmalig den Hinweis, dass Google die App nicht geprüft hat.
+
 ## Migrationen
 
 Das Backend führt offene Migrationen beim Start in einer Transaktion aus. Schlägt eine fehl, startet es nicht, und die Datenbank bleibt auf dem alten Stand.
@@ -102,3 +149,5 @@ Alle Dienste haben `restart: unless-stopped`. Geprüft am 19.11.2026 auf dem 1bl
 - Die Datenbank wird nachts gesichert und auf einen Backup-Server hochgeladen, siehe [backup.md](backup.md). Die Wiederherstellung wurde am 19.11.2026 an einer eigenen Test-Datenbank durchgespielt. Ein gescheiterter Lauf schickt eine Mail; ein ausbleibender fällt nur mit einem Überwachungsdienst auf.
 - Backup-Server und Server gehören demselben Anbieter.
 - Ein Deployment baut auf dem Server neu; die App ist dabei kurz nicht erreichbar.
+- Die Google-Kalender-Verbindung muss im Status „Testing“ jede Woche neu hergestellt werden.
+- `.env.production` liegt nur auf dem Server. Datenbankpasswort, SMTP-Schlüssel und Google-Client stehen zusätzlich im Passwortmanager; VAPID-Schlüssel und `GOOGLE_TOKEN_KEY` nicht, gehen sie verloren, müssen Push und Kalender neu eingerichtet werden.
