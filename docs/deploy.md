@@ -37,7 +37,11 @@ In GitHub unter Settings → Secrets and variables → Actions drei Repository-S
 | `DEPLOY_KNOWN_HOSTS` | Ausgabe von `ssh-keyscan -t ed25519 <host>` |
 | `DEPLOY_HOST` | Adresse des Servers |
 
-Der Fingerabdruck in `DEPLOY_KNOWN_HOSTS` muss zu dem passen, den du beim ersten eigenen SSH-Login bestätigt hast (`ssh-keygen -lf` auf die Ausgabe zeigt ihn). Danach den privaten Schlüssel vom Server löschen, er wird dort nicht gebraucht:
+Der Fingerabdruck in `DEPLOY_KNOWN_HOSTS` muss zu dem passen, den du beim ersten eigenen SSH-Login bestätigt hast (`ssh-keygen -lf` auf die Ausgabe zeigt ihn); nur die Zeile mit `ssh-ed25519 AAAA…` gehört ins Secret.
+
+Beim privaten Schlüssel genau von `-----BEGIN OPENSSH PRIVATE KEY-----` bis `-----END OPENSSH PRIVATE KEY-----` kopieren. Meldet der Workflow „kein lesbarer privater Schlüssel“, fehlt meist eine dieser Zeilen oder ein Stück dazwischen. `\r` und Leerzeichen am Zeilenende räumt der Workflow selbst weg. Bevor du den Schlüssel löschst, kannst du ihn auf dem Server prüfen: `ssh-keygen -y -f ~/github-deploy` muss den öffentlichen Schlüssel ausgeben.
+
+Danach den privaten Schlüssel vom Server löschen, er wird dort nicht gebraucht:
 
 ```bash
 shred -u ~/github-deploy ~/github-deploy.pub

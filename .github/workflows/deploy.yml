@@ -32,8 +32,14 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          # Aus einem Terminal kopiert, hat der Schlüssel oft \r oder Leerzeichen am Zeilenende.
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' | sed 's/[[:space:]]*$//' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+          if ! ssh-keygen -y -f ~/.ssh/deploy_key >/dev/null 2>&1; then
+            k=~/.ssh/deploy_key
+            echo "::error::DEPLOY_SSH_KEY ist kein lesbarer privater Schlüssel (Zeilen: $(wc -l < $k), BEGIN-Zeile: $(grep -c 'BEGIN OPENSSH PRIVATE KEY' $k), END-Zeile: $(grep -c 'END OPENSSH PRIVATE KEY' $k)). Siehe docs/deploy.md."
+            exit 1
+          fi
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             -o ServerAliveInterval=30 "jonas@$DEPLOY_HOST" "deploy $SHA"
