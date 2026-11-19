@@ -41,12 +41,25 @@ Inhalt:
 AGE_RECIPIENT=age1…
 FTP_HOST=backup.1blu.de
 FTP_USER=bu123456
-FTP_PASS=…
+FTP_PASS='…'
+NOTIFY_EMAIL=du@example.org
 ```
 
-`FTP_USER` ist der Benutzername aus dem Kundencenter (`bu…`); er gehört nicht in dieses öffentliche Repo.
+`FTP_USER` ist der Benutzername aus dem Kundencenter (`bu…`); er gehört nicht in dieses öffentliche Repo. Das Passwort in einfache Anführungszeichen setzen, weil die Datei als Shell gelesen wird und 1blu Sonderzeichen wie `%` verlangt.
 
-Optional: `BACKUP_DIR` (Standard `~/backups`), `KEEP_DAYS` (Standard 14), `KEEP_MIN` (Standard 7, so viele Sicherungen bleiben auf dem Backup-Server immer liegen), `REMOTE_DIR` (Standard `habit-tracker`), `FTP_TLS` (Standard `force`; siehe Testlauf).
+Optional: `BACKUP_DIR` (Standard `~/backups`), `KEEP_DAYS` (Standard 14), `KEEP_MIN` (Standard 7, so viele Sicherungen bleiben auf dem Backup-Server immer liegen), `REMOTE_DIR` (Standard `habit-tracker`), `FTP_TLS` (Standard `force`; siehe Testlauf), `HEALTHCHECK_URL` (siehe Benachrichtigung).
+
+## Benachrichtigung
+
+Scheitert ein Lauf, schickt das Skript eine Mail an `NOTIFY_EMAIL` mit dem Grund und den letzten Fehlermeldungen. Es nutzt dafür dasselbe SMTP wie die App (`SMTP_*` und `MAIL_FROM` aus `.env.production`), braucht also kein eigenes Geheimnis. Ohne `NOTIFY_EMAIL` bleibt es still.
+
+Einmal ausprobieren:
+
+```bash
+~/habit-tracker/scripts/backup.sh --test-notify
+```
+
+Eine Fehlermail kann nur kommen, wenn das Skript läuft. Ist der Server aus oder der Cron-Eintrag kaputt, merkt das niemand. Dafür gibt es Dienste wie [healthchecks.io](https://healthchecks.io), die sich melden, wenn ein erwartetes Lebenszeichen ausbleibt: dort einen Check mit Zeitraum 1 Tag und etwas Spielraum anlegen und dessen Ping-URL als `HEALTHCHECK_URL` eintragen. Das Skript pingt sie nach jedem erfolgreichen Lauf und meldet Fehler an `<url>/fail`.
 
 ## Testlauf
 
@@ -76,7 +89,7 @@ crontab -e
 0 3 * * * /home/jonas/habit-tracker/scripts/backup.sh >> /home/jonas/habit-backup.log 2>&1
 ```
 
-Das Log liegt bewusst außerhalb von `~/backups`, damit es nicht mit hochgeladen wird. Es meldet sich niemand, wenn ein Lauf scheitert. Wirf deshalb gelegentlich einen Blick auf `tail ~/habit-backup.log` und auf das Datum der neuesten Datei.
+Das Log liegt bewusst außerhalb von `~/backups`, damit es nicht mit hochgeladen wird. Bei einem Fehler kommt eine Mail (siehe Benachrichtigung); die Einzelheiten stehen in `tail ~/habit-backup.log`.
 
 ## Wiederherstellen
 
@@ -109,4 +122,5 @@ Bricht `psql` nicht ab und stimmt die Zahl der Konten, ist die Sicherung brauchb
 ## Verbleibende Risiken
 
 - Der Backup-Server gehört demselben Anbieter wie der Server. Ein Ausfall bei 1blu trifft beide. Wer das nicht will, ergänzt später ein zweites Ziel.
-- Ein gescheiterter Lauf erzeugt keine Benachrichtigung.
+- Ohne `HEALTHCHECK_URL` fällt ein ausbleibender Lauf (Server aus, Cron kaputt) nicht auf; nur gescheiterte Läufe melden sich per Mail.
+- Fällt das SMTP der App aus, kommt auch die Fehlermail nicht an.

@@ -49,4 +49,4 @@ Damit das auch nach einem Neustart des Rechners gilt, muss Docker selbst automat
 
 ## Verbleibende Risiken
 
-- Die Datenbank wird nachts gesichert und auf einen Backup-Server hochgeladen, siehe [backup.md](backup.md). Die Wiederherstellung wurde am 19.11.2026 an einer eigenen Test-Datenbank durchgespielt; ein gescheiterter nächtlicher Lauf meldet sich aber nicht von selbst.
+- Die Datenbank wird nachts gesichert und auf einen Backup-Server hochgeladen, siehe [backup.md](backup.md). Die Wiederherstellung wurde am 19.11.2026 an einer eigenen Test-Datenbank durchgespielt. Ein gescheiterter Lauf schickt eine Mail; ein ausbleibender fällt nur mit einem Überwachungsdienst auf.
