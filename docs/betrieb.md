@@ -76,6 +76,8 @@ git pull
 docker compose -f compose.prod.yaml --env-file .env.production up -d --build --wait
 ```
 
+Updates von Paketen, Basis-Images und Actions schlägt Dependabot jede Woche gebündelt als PR vor ([dependabot.yml](../.github/dependabot.yml)). Mit grünem CI gemergt, landen sie wie jeder andere Merge auf dem Server. `npm audit --omit=dev` in `backend` und `frontend` zeigt, ob etwas, das ausgeliefert wird, eine bekannte Lücke hat.
+
 Eine geänderte `.env.production` übernimmt ein Container erst, wenn er neu angelegt wird:
 
 ```bash
