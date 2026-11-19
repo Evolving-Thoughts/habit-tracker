@@ -2,3 +2,6 @@
 .claude/skills/impeccable/** text eol=lf
 .claude/skills/impeccable/**/*.cmd text eol=crlf
 .claude/agents/impeccable-*.md text eol=lf
+
+# Server scripts run on Linux
+*.sh text eol=lf

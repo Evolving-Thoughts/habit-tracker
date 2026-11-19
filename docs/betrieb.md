@@ -49,6 +49,4 @@ Damit das auch nach einem Neustart des Rechners gilt, muss Docker selbst automat
 
 ## Verbleibende Risiken
 
-- Ein Neustart des ganzen Rechners ist noch nicht auf dem endgültigen Server geprüft.
-- Eine Anmeldung und der Mailversand im Compose-Betrieb brauchen HTTPS und echtes SMTP und sind erst mit dem Tunnel prüfbar.
-- Ohne Backup-Ziel gibt es noch keine Sicherung außerhalb des Docker-Volumes.
+- Die Datenbank wird nachts gesichert und auf einen Backup-Server hochgeladen, siehe [backup.md](backup.md). Die Wiederherstellung ist noch nicht an einer Kopie durchgespielt.
