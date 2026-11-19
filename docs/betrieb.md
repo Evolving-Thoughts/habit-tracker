@@ -26,6 +26,8 @@ Das Backend führt offene Migrationen beim Start in einer Transaktion aus. Schl�
 
 ## Aktualisieren
 
+Nach jedem Merge in `main` mit grünem CI deployt GitHub selbst, siehe [deploy.md](deploy.md). Von Hand, etwa wenn GitHub nicht erreichbar ist:
+
 ```bash
 git pull
 docker compose -f compose.prod.yaml --env-file .env.production up -d --build --wait
