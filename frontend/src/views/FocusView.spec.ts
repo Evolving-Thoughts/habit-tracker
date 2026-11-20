@@ -168,11 +168,10 @@ describe("FocusView", () => {
     expect(wrapper.get(".focus-view__state").text()).toContain(
       "heute schon 12 Min.",
     );
-    // The rest of the day is only named, never listed.
-    expect(wrapper.get(".focus-view__ahead").text()).toContain("Einkaufen");
-    expect(wrapper.get(".focus-view__ahead").text()).toContain(
-      "14:00 Zahnarzt",
-    );
+    // Nothing of the rest of the day: no next quest, no distant appointment.
+    expect(wrapper.text()).not.toContain("Einkaufen");
+    expect(wrapper.text()).not.toContain("Zahnarzt");
+    expect(wrapper.find(".focus-view__soon").exists()).toBe(false);
     expect(wrapper.findAll("h1")).toHaveLength(1);
 
     await button("Starten").trigger("click");
@@ -195,7 +194,7 @@ describe("FocusView", () => {
     controller.timer.value = stopwatch({ state: "paused" });
     await wrapper.vm.$nextTick();
     expect(wrapper.get(".focus-view__state").text()).toContain("Pausiert");
-    await button("Weiter").trigger("click");
+    await button("Fortsetzen").trigger("click");
     expect(action).toHaveBeenLastCalledWith("resume");
   });
 
@@ -207,9 +206,7 @@ describe("FocusView", () => {
       stopwatch({ targetId: 2, title: "Einkaufen" }),
     );
     expect(wrapper.get("h1").text()).toBe("Einkaufen");
-    expect(wrapper.get(".focus-view__ahead").text()).toContain(
-      "Kapitel schreiben",
-    );
+    expect(wrapper.text()).not.toContain("Kapitel schreiben");
   });
 
   it("completes the quest and brings up the next one", async () => {
@@ -328,6 +325,41 @@ describe("FocusView", () => {
     expect(wrapper.find('[role="timer"]').exists()).toBe(false);
   });
 
+  it("shows a daily run with its campaign, its why and the notes of this run", async () => {
+    vi.mocked(getToday).mockResolvedValue(
+      planner([
+        habit({
+          why: "Gesund bleiben",
+          campaign: { id: 3, title: "Fit", color: null, icon: null },
+        }),
+      ]),
+    );
+    const { wrapper } = await mountView();
+    expect(wrapper.get("h1").text()).toBe("Lesen");
+    expect(
+      wrapper.get(".focus-view__campaign .campaign-chip__name").text(),
+    ).toBe("Fit");
+    expect(wrapper.get(".focus-view__why").text()).toBe("Gesund bleiben");
+    expect(wrapper.get("[data-notes]").attributes("data-notes")).toBe(
+      "occurrence-20",
+    );
+  });
+
+  it("marks the stopwatch button with play and pause", async () => {
+    vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+    const { wrapper, controller } = await mountView();
+    const primary = () => wrapper.get(".focus-view__primary");
+    expect(primary().text()).toBe("Starten");
+    expect(primary().find("svg").exists()).toBe(true);
+    controller.timer.value = stopwatch();
+    await wrapper.vm.$nextTick();
+    expect(primary().text()).toBe("Pausieren");
+    expect(primary().html()).toContain("M9 5.5v13M15 5.5v13");
+    controller.timer.value = stopwatch({ state: "paused" });
+    await wrapper.vm.$nextTick();
+    expect(primary().text()).toBe("Fortsetzen");
+  });
+
   it("says why an action failed and keeps the quest in view", async () => {
     vi.mocked(getToday).mockResolvedValue(planner([todo()]));
     vi.mocked(updateTodoCompletion).mockRejectedValueOnce(new Error("Offline"));
@@ -366,7 +398,9 @@ describe("FocusView: appointments by the rule of Heute's focus card", () => {
     vi.mocked(getToday).mockResolvedValue(day());
     const { wrapper, button } = await mountView();
     expect(wrapper.get("h1").text()).toBe("Kapitel schreiben");
-    expect(wrapper.text()).toContain("Nächster Termin");
+    expect(wrapper.get(".focus-view__soon").text()).toBe(
+      "Gleich um 10:00: Teamrunde",
+    );
 
     vi.advanceTimersByTime(60_000 + 100);
     await flushPromises();
@@ -376,14 +410,56 @@ describe("FocusView: appointments by the rule of Heute's focus card", () => {
       "Termin 10:00–10:30",
     );
     expect(button("Später")).toBeUndefined();
-    expect(wrapper.get(".focus-view__ahead").text()).toContain(
-      "Kapitel schreiben",
-    );
+    expect(wrapper.find(".focus-view__soon").exists()).toBe(false);
 
     // Without a duration its turn lasts the default half hour.
     vi.advanceTimersByTime(30 * 60_000);
     await flushPromises();
     expect(wrapper.get("h1").text()).toBe("Kapitel schreiben");
+  });
+
+  it("names an appointment only from fifteen minutes before it", async () => {
+    vi.mocked(getToday).mockResolvedValue(
+      planner([
+        todo(),
+        todo({ todoId: 5, title: "Zahnarzt", timeOfDay: "10:30" }),
+      ]),
+    );
+    const { wrapper } = await mountView();
+    expect(wrapper.find(".focus-view__soon").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("Zahnarzt");
+
+    // 10:15: a quarter of an hour before.
+    vi.advanceTimersByTime(16 * 60_000 + 100);
+    await flushPromises();
+    expect(wrapper.get(".focus-view__soon").text()).toBe(
+      "Gleich um 10:30: Zahnarzt",
+    );
+    expect(wrapper.get("h1").text()).toBe("Kapitel schreiben");
+  });
+
+  it("opens the due appointment after the quest the stopwatch held is done", async () => {
+    vi.mocked(updateTodoCompletion).mockResolvedValue(undefined);
+    vi.mocked(getToday).mockResolvedValue(day());
+    const { wrapper, button } = await mountView(stopwatch());
+    vi.advanceTimersByTime(60_000 + 100);
+    await flushPromises();
+    // The stopwatch keeps its quest in view; the appointment is named.
+    expect(wrapper.get("h1").text()).toBe("Kapitel schreiben");
+    expect(wrapper.get(".focus-view__soon").text()).toBe(
+      "Seit 10:00: Teamrunde",
+    );
+
+    vi.mocked(getToday).mockResolvedValue(
+      planner([
+        day().items[0]!,
+        todo({ status: "completed", completedAt: "2026-10-02T08:00:00Z" }),
+        todo({ todoId: 2, title: "Mails" }),
+      ]),
+    );
+    await button("Erledigt").trigger("click");
+    await flushPromises();
+    expect(wrapper.get("h1").text()).toBe("Teamrunde");
   });
 
   it("does not call the day done while an appointment still waits", async () => {

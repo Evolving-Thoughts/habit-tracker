@@ -138,23 +138,32 @@ export function currentItem(
 /**
  * The next minute at which `currentItem` or the list of appointments can
  * change: an appointment starts (and the next one is another) or ends (and
- * is over).
+ * is over). With `leadMinutes`, also that long before an appointment
+ * starts, for a view that names it ahead (`soonAppointment`).
  * Null when nothing changes any more today. A timer waits for exactly this
  * instead of polling the clock.
  */
 export function nextChangeAt(
   planner: DayPlannerResponse,
   now: number,
+  leadMinutes = 0,
 ): number | null {
   const moments: number[] = [];
+  const ahead = (start: number) => (leadMinutes ? [start - leadMinutes] : []);
   for (const item of planner.items) {
     if (item.status !== "pending" || item.isOverdue) continue;
     const window = appointmentWindow(item);
-    if (window) moments.push(window.start, window.start + 1, window.end);
+    if (window)
+      moments.push(
+        ...ahead(window.start),
+        window.start,
+        window.start + 1,
+        window.end,
+      );
   }
   for (const event of planner.externalEvents) {
     const { minutes } = clockOf(event.start);
-    moments.push(minutes + 1, eventEnd(event));
+    moments.push(...ahead(minutes), minutes + 1, eventEnd(event));
   }
   const later = moments.filter((moment) => moment > now && moment < 1440);
   return later.length ? Math.min(...later) : null;
@@ -218,6 +227,22 @@ export function arrangeToday(
     resolved,
     tally: tallyOfPlanner(planner.items),
   };
+}
+
+/** How long before its start the Fokus-Modus names an appointment. */
+export const APPOINTMENT_LEAD_MINUTES = 15;
+
+/**
+ * The next appointment when it starts within `leadMinutes`; null while it
+ * is further away, so the time before it stays free of it.
+ */
+export function soonAppointment(
+  agenda: TodayAgenda,
+  now: number,
+  leadMinutes = APPOINTMENT_LEAD_MINUTES,
+): AppointmentEntry | null {
+  const entry = agenda.nextAppointment;
+  return entry && entry.minutes - now <= leadMinutes ? entry : null;
 }
 
 /** `list` with the entry at `from` moved to `to`; out-of-range moves change nothing. */

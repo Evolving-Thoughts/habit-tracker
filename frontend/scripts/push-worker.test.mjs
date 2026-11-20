@@ -41,6 +41,8 @@ async function setup(
       showNotification: async (...args) => {
         shown.push(args);
       },
+      getNotifications: async ({ tag }) =>
+        shown.filter(([, options]) => options.tag === tag),
     },
     clients: {
       claim: async () => {},
@@ -165,4 +167,21 @@ test("an offline receipt check cannot produce an application notification", asyn
   result.self.networkFails = true;
   await result.push();
   assert.equal(result.shown.length, 0);
+});
+
+test("leaves the push out when the open app already announced this timer", async () => {
+  const result = await setup();
+  result.events.message({
+    data: { type: "timer-notified", timerId: id },
+    waitUntil() {},
+  });
+  await result.push();
+  assert.equal(result.shown.length, 0);
+});
+test("shows one notification per timer even when the push arrives twice", async () => {
+  const result = await setup();
+  await result.push();
+  await result.push();
+  assert.equal(result.shown.length, 1);
+  assert.equal(result.shown[0][1].tag, `habit-timer-${id}`);
 });

@@ -1,6 +1,7 @@
-import { Brackets, EntityManager } from 'typeorm';
+import { Brackets, EntityManager, LessThan } from 'typeorm';
 import { occurrenceDueDate } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { WorkLogEntity } from '../work-logs/work-log.entity';
+import { coveredMilliseconds } from '../work-logs/work-time';
 import { MAX_SEGMENT_MS } from './timer-math';
 import { TimerEntity } from './timer.entity';
 
@@ -44,8 +45,19 @@ export function effectiveDuration(
 }
 
 /**
- * Ends the running stretch of a stopwatch at `end`: its time joins what was
- * worked before, and it is logged as work. The caller sets the new state.
+ * A pause shorter than this is part of the work: resuming within it
+ * continues the block before the pause, and the pause counts as worked.
+ */
+export const BLOCK_GAP_MS = 60_000;
+/** A block shorter than this is not logged, and its time does not count. */
+export const MIN_BLOCK_MS = 60_000;
+
+/**
+ * Ends the running stretch of a stopwatch at `end`. The work log of its
+ * block is extended when the stretch continues one, else a block of at
+ * least `MIN_BLOCK_MS` becomes a new work log and a shorter one is dropped.
+ * The time of a logged block joins what was worked before. The caller sets
+ * the new state.
  */
 export async function closeWorkSegment(
   manager: EntityManager,
@@ -54,13 +66,36 @@ export async function closeWorkSegment(
 ): Promise<void> {
   const startedAt = timer.segmentStartedAt;
   timer.segmentStartedAt = null;
-  if (!startedAt || end <= startedAt) return;
+  if (!startedAt) return;
   // A stretch nobody ended never counts for more than its limit.
   const endedAt = new Date(
-    Math.min(end.getTime(), startedAt.getTime() + MAX_SEGMENT_MS),
+    Math.max(
+      startedAt.getTime(),
+      Math.min(end.getTime(), startedAt.getTime() + MAX_SEGMENT_MS),
+    ),
   );
-  timer.elapsedMilliseconds += endedAt.getTime() - startedAt.getTime();
-  await manager.insert(WorkLogEntity, {
+  const length = endedAt.getTime() - startedAt.getTime();
+  timer.blockStartedAt = startedAt;
+  timer.pausedAt = endedAt;
+  if (timer.workLogId !== null) {
+    // The log may have been corrected or deleted meanwhile: then start anew.
+    const { affected } = await manager.update(
+      WorkLogEntity,
+      {
+        id: timer.workLogId,
+        userId: timer.userId,
+        startedAt: LessThan(endedAt),
+      },
+      { endedAt },
+    );
+    if (affected) {
+      timer.elapsedMilliseconds += length;
+      return;
+    }
+    timer.workLogId = null;
+  }
+  if (length < MIN_BLOCK_MS) return;
+  const { identifiers } = await manager.insert(WorkLogEntity, {
     userId: timer.userId,
     todoId: timer.todoId,
     occurrenceId: timer.occurrenceId,
@@ -69,6 +104,49 @@ export async function closeWorkSegment(
     endedAt,
     source: 'timer',
   });
+  timer.workLogId = (identifiers[0] as { id: number }).id;
+  timer.elapsedMilliseconds += length;
+}
+
+/**
+ * Starts the next stretch of a paused stopwatch at `now`. Within
+ * `BLOCK_GAP_MS` of the pause it continues the block before it: the stretch
+ * starts where that block started, so the pause counts as worked and the
+ * block's log is extended when it ends. Otherwise a new block begins. The
+ * caller sets the target moment.
+ */
+export function resumeWorkSegment(timer: TimerEntity, now: Date): void {
+  const { blockStartedAt, pausedAt } = timer;
+  const gap = pausedAt ? now.getTime() - pausedAt.getTime() : Infinity;
+  if (blockStartedAt && pausedAt && gap >= 0 && gap < BLOCK_GAP_MS) {
+    // The block is counted again, whole, when this stretch ends.
+    if (timer.workLogId !== null)
+      timer.elapsedMilliseconds -=
+        pausedAt.getTime() - blockStartedAt.getTime();
+    timer.segmentStartedAt = blockStartedAt;
+  } else {
+    timer.workLogId = null;
+    timer.segmentStartedAt = now;
+  }
+  timer.blockStartedAt = null;
+  timer.pausedAt = null;
+  timer.state = 'running';
+}
+
+/**
+ * The time already logged for a target, overlaps counted once: where a new
+ * stopwatch on it starts counting.
+ */
+export async function loggedMilliseconds(
+  manager: EntityManager,
+  userId: string,
+  target: { todoId: number } | { occurrenceId: number },
+): Promise<number> {
+  const logs = await manager.find(WorkLogEntity, {
+    select: { startedAt: true, endedAt: true },
+    where: { userId, ...target },
+  });
+  return coveredMilliseconds(logs);
 }
 
 /** Ends a stopwatch for good: its work stays on record, its row stops counting. */

@@ -11,6 +11,7 @@ import { ProgressBelowCampaign1795500000000 } from './migrations/1795500000000-P
 import { CategoryColor1795600000000 } from './migrations/1795600000000-CategoryColor';
 import { DailyCampaignAndRunNotes1795700000000 } from './migrations/1795700000000-DailyCampaignAndRunNotes';
 import { BacklogOrder1795800000000 } from './migrations/1795800000000-BacklogOrder';
+import { StopwatchBlocks1795900000000 } from './migrations/1795900000000-StopwatchBlocks';
 
 type PostgresOptions = Extract<DataSourceOptions, { type: 'postgres' }>;
 
@@ -44,6 +45,7 @@ export function databaseOptions(
       CategoryColor1795600000000,
       DailyCampaignAndRunNotes1795700000000,
       BacklogOrder1795800000000,
+      StopwatchBlocks1795900000000,
     ],
   };
 }

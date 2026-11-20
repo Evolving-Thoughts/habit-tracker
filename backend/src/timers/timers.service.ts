@@ -15,6 +15,8 @@ import {
   effectiveDuration,
   isOccurrenceTimerEligible,
   isTodoTimerEligible,
+  loggedMilliseconds,
+  resumeWorkSegment,
   stopTimer,
 } from './timer-target';
 import { Clock } from '../common/clock';
@@ -251,23 +253,40 @@ export class TimersService {
           });
         await stopTimer(manager, active, now);
       }
+      const todoId = dto.kind === 'todo' ? dto.targetId : null;
+      const occurrenceId = dto.kind === 'occurrence' ? dto.targetId : null;
+      // A target worked on before counts on from what is logged for it.
+      const logged = await loggedMilliseconds(
+        manager,
+        userId,
+        todoId !== null ? { todoId } : { occurrenceId: occurrenceId! },
+      );
       // The stretch starts only after every lock is held.
       now = this.clock.now();
       const timer = manager.create(TimerEntity, {
         userId,
-        todoId: dto.kind === 'todo' ? dto.targetId : null,
-        occurrenceId: dto.kind === 'occurrence' ? dto.targetId : null,
+        todoId,
+        occurrenceId,
         title: target instanceof TodoEntity ? target.title : target.habit.title,
         state: 'running',
         targetMinutes:
           target instanceof HabitOccurrenceEntity
             ? effectiveDuration(target, target.habit)
             : target.plannedDurationMinutes,
-        elapsedMilliseconds: 0,
+        elapsedMilliseconds: logged,
         segmentStartedAt: now,
+        blockStartedAt: null,
+        pausedAt: null,
+        workLogId: null,
         targetReachedAt: null,
+        pushHandledAt: null,
       });
       timer.targetReachesAt = targetReachesAt(timer);
+      if (hasReachedTarget(timer, now)) {
+        // Worked past the target before: reached, but nothing to announce.
+        timer.targetReachedAt = now;
+        timer.pushHandledAt = now;
+      }
       return this.response(await manager.save(TimerEntity, timer), now);
     });
   }
@@ -297,9 +316,11 @@ export class TimersService {
       if (action === 'pause' && timer.state === 'running')
         await this.pause(manager, timer, now);
       else if (action === 'resume' && timer.state === 'paused') {
-        timer.segmentStartedAt = now;
-        timer.state = 'running';
-        timer.targetReachesAt = targetReachesAt(timer);
+        resumeWorkSegment(timer, now);
+        // A block continued past its target stays reached; nothing is due again.
+        timer.targetReachesAt = timer.targetReachedAt
+          ? null
+          : targetReachesAt(timer);
       }
       return this.response(await manager.save(timer), now);
     });

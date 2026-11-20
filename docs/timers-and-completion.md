@@ -3,9 +3,10 @@
 ## Scope
 
 One running **or paused** stopwatch per signed-in user, shared by all devices.
-It counts up. The planned minutes of its target are an optional **target**: the
-moment it is reached is recorded and notified once, and the stopwatch runs on.
-Nothing is completed automatically.
+It counts up, starting from the time already logged for its target (see
+"Starting from logged time"). The planned minutes of its target are an optional
+**target**: the moment it is reached is recorded and notified once, and the
+stopwatch runs on. Nothing is completed automatically.
 
 ## UI
 
@@ -21,6 +22,16 @@ Nothing is completed automatically.
   worked, "von n Min." when there is a target, and round 44px controls:
   pause/resume, change target, complete, end. The label reads "Stoppuhr läuft",
   "Pausiert" or "Soll erreicht".
+- **Soll reached**: when the running stopwatch reaches its Soll while a page is
+  open, `useTargetNotice` (`frontend/src/composables/useTargetNotice.ts`,
+  mounted once in `TimerProvider.vue`) shows a `NoticeToast` on every view, the
+  Fokus-Modus included: "Soll erreicht: <Titel> · <Soll>. Die Stoppuhr läuft
+  weiter." It stays ten seconds or until "OK"; the bar's status line says the
+  same. Only a reach seen happening counts, once per stopwatch and Soll: not a
+  stopwatch already past its Soll when it appears (started again, page opened
+  later) and not a Soll lowered below the time worked. With notification
+  permission it also shows a system notification (see `timer-push.md` for the
+  dedupe with Web Push); permission "default" is never prompted for here.
 - Completing by a ring offers the undo toast everywhere (Heute, Questlog, Plan,
   Kalender, Kampagnen, Dailies); a campaign with open quests asks first (see
   `todo-hierarchy.md`). The bar's "Erledigen" and the Fokus-Modus' "Erledigt"
@@ -49,11 +60,21 @@ Nothing is completed automatically.
   range ("Termin 10:00–10:30") and has no "Später"; Heute's focus card leaves
   out the link to the Fokus-Modus while an appointment is on it. With an empty
   order and an appointment still to come, it says "Nichts in der Reihenfolge"
-  and names the next appointment instead of "Alles erledigt". "Erledigt" brings up the next one, "Später" puts
-  the quest behind the rest of the order and ends its stopwatch. Space
-  starts/pauses, Ctrl+Enter completes, Escape leads back to Heute. A quest
-  shows its notes below the actions (see `quest-notes.md`); while typing there,
-  Space writes a space and the first Escape only leaves the text.
+  and names the next appointment instead of "Alles erledigt". The primary
+  button reads "Starten" (▶), "Pausieren" (⏸) or "Fortsetzen" (▶). Nothing
+  previews the next quest. A fixed appointment (quest, timed daily or calendar
+  event) is named only from 15 minutes before it starts ("Gleich um 15:30:
+  Zahnarzt", `soonAppointment` in `utils/today-agenda.ts`; the view's clock
+  also wakes at that moment); while the stopwatch holds another quest past an
+  appointment's start, it says "Seit 15:30: Zahnarzt", and the appointment
+  comes into view as soon as that quest is done or put back. "Erledigt" brings
+  up the next one, "Später" puts the quest behind the rest of the order and
+  ends its stopwatch. Space starts/pauses, Ctrl+Enter completes, Escape leads
+  back to Heute. Campaign and Warum show when present, for a daily run its
+  own campaign or its goal's and its effective Warum. A quest shows its notes
+  below the actions, a daily run the notes of that run (see `quest-notes.md`);
+  while typing there, Space writes a space and the first Escape only leaves
+  the text.
 
 ## Time, devices and forgotten stopwatches
 
@@ -63,11 +84,44 @@ these instants (`timer-math.ts`), never from a counter that ticks, so a locked
 phone or a restarted server cannot make it drift. The browser counts on from the
 server's answer on a monotonic clock.
 
-Every stretch becomes a work log when it ends (pause, end, completion); the
-calendar shows them as the Logbuch (see `logbook.md`). A stretch
+Every stretch is logged as work when it ends (pause, end, completion); the
+calendar shows the logs as the Logbuch (see `logbook.md`). A stretch
 that nobody ends counts for at most **twelve hours**: the next read cuts it there
 and leaves the stopwatch paused, so a stopwatch forgotten overnight does not turn
 into work that never happened.
+
+### Blocks: short pauses and short stretches
+
+The stopwatch logs **blocks**, not every stretch (`closeWorkSegment` and
+`resumeWorkSegment` in `backend/src/timers/timer-target.ts`, constants
+`BLOCK_GAP_MS` and `MIN_BLOCK_MS`, both 60 seconds):
+
+- **Resumed within 60 seconds** of a pause, the stretch continues the block
+  before it: `segmentStartedAt` becomes the block's start, so the pause counts
+  as worked. When it ends, the block's work log (`timers.workLogId`) gets the
+  new `endedAt` instead of a second row; Google sync patches its event.
+- **A block shorter than 60 seconds** that continues nothing is not logged and
+  adds nothing to `elapsedMilliseconds` (a stretch of seconds after a mis-tap
+  disappears). Several short stretches with short pauses between them form one
+  block and are logged once they reach a minute together.
+- While paused, the timer row keeps `blockStartedAt`, `pausedAt` and
+  `workLogId` (migration `1795900000000-StopwatchBlocks`). `elapsedMilliseconds`
+  holds the logged blocks; resuming into a block takes that block's length off
+  again, and closing it adds the whole block back, so the total is exact. If the
+  block's log was deleted or corrected meanwhile so it cannot be extended, the
+  block is logged anew.
+- The twelve-hour cap applies per block (it is measured from
+  `segmentStartedAt`); a cut stretch pauses long ago, so it never continues.
+
+### Starting from logged time
+
+`POST /timers` starts `elapsedMilliseconds` at the time already logged for the
+target, all sources, overlaps counted once (`loggedMilliseconds`, using
+`coveredMilliseconds` of `work-logs/work-time.ts`): a reopened quest, or a
+daily run started again later, counts on from what it already has. The Soll
+compares against this total. When it is already passed at the start, the
+stopwatch is marked reached right away (`targetReachedAt` and `pushHandledAt`
+set to the start), so nothing announces it.
 
 Foreground devices poll every **3 seconds**, and refresh on focus/visibility
 return. This is eventual synchronization, not a real-time guarantee.

@@ -38,6 +38,8 @@ defineProps<{
     | "close"
     | "skip"
     | "stop"
+    | "play"
+    | "pause"
     | "arrow-up"
     | "arrow-down"
     // Campaign icons (keys of CAMPAIGN_ICONS; "code" is above).
@@ -162,6 +164,12 @@ defineProps<{
     </template>
     <template v-else-if="name === 'stop'">
       <rect x="6" y="6" width="12" height="12" rx="2" />
+    </template>
+    <template v-else-if="name === 'play'">
+      <path d="M8 5.5v13l10.5-6.5Z" />
+    </template>
+    <template v-else-if="name === 'pause'">
+      <path d="M9 5.5v13M15 5.5v13" />
     </template>
     <template v-else-if="name === 'edit'">
       <path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z" />

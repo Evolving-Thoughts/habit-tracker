@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import {
+  berlinTime,
   daysAfter,
   openCalendar,
   openView,
@@ -8,7 +9,7 @@ import {
 } from "./helpers";
 import { API_URL } from "./environment";
 
-test("Logbuch: a stopwatch stretch and time added by hand show in the day, the week and the month", async ({
+test("Logbuch: time added by hand shows in the day, the week and the month; a stopwatch stretch of seconds does not", async ({
   page,
   request,
 }) => {
@@ -19,7 +20,7 @@ test("Logbuch: a stopwatch stretch and time added by hand show in the day, the w
     expect(response.status()).toBe(201);
     return ((await response.json()) as { id: number }).id;
   };
-  await create({ title: "Mails", scheduledDate: date });
+  const mails = await create({ title: "Mails", scheduledDate: date });
   const chapter = await create({
     title: "Kapitel schreiben",
     parentId: await create({ title: "Buch" }),
@@ -37,6 +38,19 @@ test("Logbuch: a stopwatch stretch and time added by hand show in the day, the w
       })
     ).status(),
   ).toBe(201);
+  // And a single minute today, just after midnight.
+  expect(
+    (
+      await request.post(`${API_URL}/work-logs`, {
+        data: {
+          kind: "todo",
+          targetId: mails,
+          startedAt: berlinTime(date, "00:00").toISOString(),
+          endedAt: berlinTime(date, "00:01").toISOString(),
+        },
+      })
+    ).status(),
+  ).toBe(201);
 
   await page.goto("/");
   await openView(page, "Heute");
@@ -45,6 +59,7 @@ test("Logbuch: a stopwatch stretch and time added by hand show in the day, the w
     .click();
   const bar = page.getByRole("complementary", { name: "Aktuelle Stoppuhr" });
   await expect(bar).toContainText("Stoppuhr läuft");
+  // Ended within seconds: a stretch under a minute is not logged.
   await timerBarAction(page, "Stoppuhr beenden");
   await expect(bar).toHaveCount(0);
 
@@ -53,13 +68,13 @@ test("Logbuch: a stopwatch stretch and time added by hand show in the day, the w
   // One column: the plan and the Logbuch share the hour axis.
   const lane = logbook.getByRole("list", { name: "Zeitachse", exact: true });
   const stretch = lane.getByRole("button", { name: /^Mails, / });
-  await expect(stretch).toBeVisible();
+  await expect(stretch).toHaveCount(1);
   await expect(stretch).toHaveAccessibleName(/ohne Kampagne, korrigieren$/);
-  // A stretch of seconds is still drawn large enough to tap.
+  // A stretch of a minute is still drawn large enough to tap.
   expect((await stretch.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await stretch.click();
   const dialog = page.getByRole("dialog", { name: "Abschnitt korrigieren" });
-  await expect(dialog).toContainText("Stoppuhr");
+  await expect(dialog).toContainText("Nachtrag");
   await expect(dialog.getByLabel("Start", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Abbrechen", exact: true }).click();
   await expect(dialog).toHaveCount(0);

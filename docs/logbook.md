@@ -11,8 +11,12 @@ Every closed stretch of work is a row in `work_logs`
 `occurrenceId`), a copied `title`, `startedAt`, `endedAt` and
 `source: 'timer' | 'manual'`. The stopwatch writes a row when a stretch ends
 (pause, end, completion, see `timers-and-completion.md`); a running stretch has
-no row yet. Rows are added, corrected and deleted by hand through
-`POST /work-logs`, `PATCH /work-logs/:id` and `DELETE /work-logs/:id`.
+no row yet. It works in blocks: a stretch resumed within a minute of its pause
+extends the row of the block before it (`endedAt` moves on, the short pause is
+work), and a block shorter than a minute gets no row at all, so quick pause and
+play never leaves 0-minute stretches. Rows are added, corrected and deleted by
+hand through `POST /work-logs`, `PATCH /work-logs/:id` and
+`DELETE /work-logs/:id`.
 
 ## Rules
 
@@ -64,8 +68,9 @@ and other calendars are only read.
   `workLogId` (migration `1795200000000-LogbookEvents`).
 - `logChanges` in `calendar-sync.service.ts` follows the outgoing pattern of
   todos and runs: every stretch of **at least five minutes** becomes an event
-  at its real start and end; a correction patches it; a deleted stretch, or one
-  shortened below five minutes, deletes it. New stretches are exported back
+  at its real start and end; a correction, or a stopwatch block extended after a
+  short pause (same row, later `updatedAt`), patches it; a deleted stretch, or
+  one shortened below five minutes, deletes it. New stretches are exported back
   31 days, so connecting does not write the whole past at once.
 - The events say what they are: the stretch's title as summary and the
   description "Logbuch · gemessene Arbeitszeit", plus "Kampagne: …" when there

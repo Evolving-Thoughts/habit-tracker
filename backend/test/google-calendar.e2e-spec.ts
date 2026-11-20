@@ -108,6 +108,8 @@ class FakeGoogle {
 
 describe('Google calendar sync (e2e)', () => {
   let app: INestApplication, server: Server, db: DataSource, google: FakeGoogle;
+  /** How far the server's clock has moved on from `now`, for stopwatches. */
+  let shift = 0;
 
   const timed = (start: string, end: string) => ({
     start: { dateTime: start },
@@ -147,7 +149,10 @@ describe('Google calendar sync (e2e)', () => {
     google = new FakeGoogle();
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(Clock)
-      .useValue({ now: () => now, today: () => dayOf(now) })
+      .useValue({
+        now: () => new Date(now.getTime() + shift),
+        today: () => dayOf(now),
+      })
       .overrideProvider(GoogleCalendarClient)
       .useValue(google)
       .compile();
@@ -167,6 +172,7 @@ describe('Google calendar sync (e2e)', () => {
     google.calls = [];
     google.revoked = false;
     google.withoutList = false;
+    shift = 0;
   });
   afterAll(() => app.close());
 
@@ -622,6 +628,41 @@ describe('Google calendar sync (e2e)', () => {
       await sync();
       expect(live()).toEqual([]);
       expect(await db.getRepository(CalendarLinkEntity).count()).toBe(0);
+    });
+
+    it('extends the event of a stopwatch block resumed within a minute', async () => {
+      await connect();
+      const id = await quest();
+      const timer = (
+        (
+          await request(server)
+            .post('/timers')
+            .send({ kind: 'todo', targetId: id })
+            .expect(201)
+        ).body as { timer: { id: string } }
+      ).timer.id;
+      const step = (kind: string, minutes: number) => {
+        shift += minutes * 60_000;
+        return request(server)
+          .post(`/timers/${timer}/${kind}`)
+          .send({})
+          .expect(201);
+      };
+      await step('pause', 10);
+      await sync();
+      expect(live()).toHaveLength(1);
+
+      await step('resume', 0.5);
+      await step('pause', 5);
+      await sync();
+      expect(google.calls.map((call) => call.method)).toEqual([
+        'insert',
+        'patch',
+      ]);
+      expect(live()[0]).toMatchObject({
+        start: { dateTime: '2026-10-30T06:00:00.000Z' },
+        end: { dateTime: '2026-10-30T06:15:30.000Z' },
+      });
     });
 
     it('never takes a change from Google and does not bring a deleted event back', async () => {

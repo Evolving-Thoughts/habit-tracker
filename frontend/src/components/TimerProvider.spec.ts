@@ -89,6 +89,62 @@ describe("global Timer bar", () => {
     expect(w.get('[aria-label="Gearbeitete Zeit"]').text()).toBe("02:02");
     expect(updateTodoCompletion).not.toHaveBeenCalled();
   });
+  it("announces a reached Soll once on every view, also as a system notification", async () => {
+    const showNotification = vi.fn().mockResolvedValue(undefined);
+    const postMessage = vi.fn();
+    vi.stubGlobal("Notification", { permission: "granted" });
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        getRegistration: () =>
+          Promise.resolve({
+            getNotifications: () => Promise.resolve([]),
+            showNotification,
+            active: { postMessage },
+          }),
+      },
+    });
+    vi.mocked(getCurrentTimer).mockResolvedValue(response("running", 119_000));
+    // Without the bar, as in the Fokus-Modus.
+    const w = mount(TimerProvider, { props: { hideBar: true } });
+    await flushPromises();
+    expect(w.find(".notice-toast__body").exists()).toBe(false);
+    vi.mocked(performance.now).mockReturnValue(4000);
+    await vi.waitFor(
+      () =>
+        expect(w.get(".notice-toast__body").text()).toContain(
+          "Soll erreicht: Schreiben · 2 Min. Die Stoppuhr läuft weiter.",
+        ),
+      { timeout: 2000 },
+    );
+    await flushPromises();
+    expect(showNotification).toHaveBeenCalledTimes(1);
+    expect(showNotification).toHaveBeenCalledWith(
+      "Soll erreicht",
+      expect.objectContaining({ tag: "habit-timer-a" }),
+    );
+    expect(postMessage).toHaveBeenCalledWith({
+      type: "timer-notified",
+      timerId: "a",
+    });
+    await w.get(".notice-toast__body button").trigger("click");
+    expect(w.find(".notice-toast__body").exists()).toBe(false);
+    // The next answers about the same stopwatch announce nothing again.
+    vi.mocked(performance.now).mockReturnValue(9000);
+    await flushPromises();
+    expect(showNotification).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(navigator, "serviceWorker");
+  });
+  it("announces nothing for a stopwatch that was past its Soll when it appeared", async () => {
+    vi.mocked(getCurrentTimer).mockResolvedValue(response("running", 180_000));
+    const w = mount(TimerProvider);
+    await flushPromises();
+    vi.mocked(performance.now).mockReturnValue(4000);
+    await flushPromises();
+    expect(w.text()).toContain("Soll erreicht");
+    expect(w.find(".notice-toast__body").exists()).toBe(false);
+  });
   it("validates and saves a new target, also while running", async () => {
     const w = mount(TimerProvider);
     await flushPromises();

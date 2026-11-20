@@ -18,12 +18,16 @@ import type { DayPlannerItem, DayPlannerResponse } from "../types/day-planner";
 import CampaignChip from "../components/CampaignChip.vue";
 import { formatStopwatch } from "../utils/stopwatch";
 import {
+  APPOINTMENT_LEAD_MINUTES,
   appointmentWindow,
   arrangeToday,
   formatDuration,
   formatWindow,
   itemKey,
   nextChangeAt,
+  plannedClock,
+  soonAppointment,
+  type AppointmentEntry,
 } from "../utils/today-agenda";
 
 /**
@@ -45,9 +49,14 @@ const {
   refreshOnChange: () => !busy.value,
 });
 
-/* Wakes when an appointment's turn begins or ends, like Heute. */
+/*
+ * Wakes when an appointment's turn begins or ends, like Heute, and when one
+ * comes close enough to be named.
+ */
 const now = useDayClock((minutes) =>
-  planner.value ? nextChangeAt(planner.value, minutes) : null,
+  planner.value
+    ? nextChangeAt(planner.value, minutes, APPOINTMENT_LEAD_MINUTES)
+    : null,
 );
 
 const agenda = computed(() =>
@@ -99,16 +108,24 @@ const facts = computed(() => {
   return parts;
 });
 
-/** The order of the day after the one in view. */
-const upcoming = computed(() =>
-  (agenda.value?.queue ?? []).filter((item) => item !== current.value),
-);
+const titleOf = (entry: AppointmentEntry): string =>
+  entry.kind === "item" ? entry.item.title : entry.event.title;
 const nextAppointment = computed(() => {
+  const entry = agenda.value?.nextAppointment;
+  return entry ? `${entry.time} ${titleOf(entry)}` : null;
+});
+/**
+ * A fixed appointment about to begin, named from its last minutes before;
+ * or one whose turn began while the stopwatch holds another quest in view.
+ */
+const comingUp = computed(() => {
   const day = agenda.value;
   if (!day) return null;
-  const entry = day.nextAppointment;
-  if (!entry) return null;
-  return `${entry.time} ${entry.kind === "item" ? entry.item.title : entry.event.title}`;
+  const due = day.focus;
+  if (due && due !== current.value && due.timeOfDay)
+    return `Seit ${plannedClock(due)!.time}: ${due.title}`;
+  const entry = soonAppointment(day, now.value);
+  return entry ? `Gleich um ${entry.time}: ${titleOf(entry)}` : null;
 });
 /** Open appointments of today that are not their turn now. */
 const waitingAppointments = computed(() =>
@@ -254,6 +271,10 @@ useShortcutHandlers({
         <strong>{{ stateLabel }}</strong>
         <span v-for="fact in facts" :key="fact">{{ fact }}</span>
       </p>
+      <p v-if="comingUp" class="focus-view__soon">
+        <AppIcon name="calendar" />
+        <span>{{ comingUp }}</span>
+      </p>
 
       <div class="focus-view__actions">
         <button
@@ -262,7 +283,10 @@ useShortcutHandlers({
           :disabled="busy || !current.timerEligible || timer?.busy.value"
           @click="toggleStopwatch"
         >
-          {{ !timed ? "Starten" : running ? "Pausieren" : "Weiter" }}
+          <AppIcon :name="running ? 'pause' : 'play'" />
+          <span>{{
+            !timed ? "Starten" : running ? "Pausieren" : "Fortsetzen"
+          }}</span>
         </button>
         <button
           class="btn focus-view__done"
@@ -311,17 +335,6 @@ useShortcutHandlers({
             : { kind: 'occurrence', id: current.occurrenceId }
         "
       />
-
-      <dl v-if="upcoming.length || nextAppointment" class="focus-view__ahead">
-        <div v-if="upcoming.length">
-          <dt>Danach</dt>
-          <dd>{{ upcoming[0]!.title }}</dd>
-        </div>
-        <div v-if="nextAppointment">
-          <dt>Nächster Termin</dt>
-          <dd>{{ nextAppointment }}</dd>
-        </div>
-      </dl>
     </section>
 
     <!-- An appointment only comes into view during its turn. -->
@@ -473,6 +486,11 @@ useShortcutHandlers({
   min-width: 11rem;
 }
 
+.focus-view__primary :deep(svg) {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
 .focus-view__done {
   display: inline-flex;
   gap: var(--space-2);
@@ -496,31 +514,22 @@ useShortcutHandlers({
   margin-top: var(--space-5);
 }
 
-.focus-view__ahead {
-  display: grid;
+/* An appointment about to begin: named calmly, in ink, never as a warning. */
+.focus-view__soon {
+  display: inline-flex;
   gap: var(--space-2);
-  width: 100%;
-  margin: var(--space-5) 0 0;
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-line);
-  text-align: left;
-}
-
-.focus-view__ahead div {
-  display: grid;
-  grid-template-columns: 8.5rem minmax(0, 1fr);
-  gap: var(--space-3);
-}
-
-.focus-view__ahead dt {
-  color: var(--color-ink-muted);
-  font-size: 0.875rem;
-  font-weight: 700;
-}
-
-.focus-view__ahead dd {
+  align-items: center;
   margin: 0;
+  color: var(--color-ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
+}
+
+.focus-view__soon :deep(svg) {
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--color-ink-muted);
 }
 
 .focus-view__empty p {

@@ -19,6 +19,7 @@ import {
   itemKey,
   moved,
   nextChangeAt,
+  soonAppointment,
   withQueueOrder,
 } from "./today-agenda";
 
@@ -277,6 +278,24 @@ describe("nextChangeAt: when the focus card can change", () => {
     expect(nextChangeAt(day, at(8))).toBe(at(14, 1));
   });
 
+  it("also wakes the lead time before each start when asked to", () => {
+    const call = todo({ timeOfDay: "10:00", plannedDurationMinutes: 45 });
+    const day = planner(
+      [call],
+      [
+        {
+          id: 1,
+          title: "Zahnarzt",
+          start: "2026-10-02T12:00:00Z",
+          end: "2026-10-02T13:00:00Z",
+        },
+      ],
+    );
+    expect(nextChangeAt(day, at(9), 15)).toBe(at(9, 45));
+    expect(nextChangeAt(day, at(9, 45), 15)).toBe(at(10));
+    expect(nextChangeAt(day, at(10, 45), 15)).toBe(at(13, 45));
+  });
+
   it("writes a window as a time range", () => {
     expect(formatWindow({ start: at(9), end: at(10, 30) })).toBe(
       "09:00–10:30",
@@ -284,6 +303,25 @@ describe("nextChangeAt: when the focus card can change", () => {
     expect(formatWindow({ start: at(23, 30), end: at(24, 15) })).toBe(
       "23:30–00:15",
     );
+  });
+});
+
+describe("soonAppointment: an appointment named ahead", () => {
+  const dentist = todo({ todoId: 5, title: "Zahnarzt", timeOfDay: "15:30" });
+  const day = planner([todo(), dentist]);
+
+  it("names nothing until fifteen minutes before the start", () => {
+    expect(soonAppointment(arrangeToday(day, at(15, 14)), at(15, 14))).toBe(
+      null,
+    );
+    const soon = soonAppointment(arrangeToday(day, at(15, 15)), at(15, 15));
+    expect(soon).toMatchObject({ kind: "item", time: "15:30" });
+  });
+
+  it("leaves it to the turn rule once it begins", () => {
+    const agenda = arrangeToday(day, at(15, 30));
+    expect(agenda.focus).toBe(dentist);
+    expect(soonAppointment(agenda, at(15, 30))).toBeNull();
   });
 });
 

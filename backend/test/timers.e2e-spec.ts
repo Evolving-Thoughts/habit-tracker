@@ -129,22 +129,22 @@ describe('Synced timers and Dump completion (e2e)', () => {
   it('pauses, survives a long device absence, then counts on from the saved time', async () => {
     const id = await todo();
     const timer = (await start({ kind: 'todo', targetId: id })).timer!;
-    later(30_123);
+    later(90_123);
     const paused = await action(timer.id, 'pause');
     expect(paused.timer).toMatchObject({
       state: 'paused',
-      elapsedMilliseconds: 30_123,
+      elapsedMilliseconds: 90_123,
     });
     later(3_600_000);
     expect((await read()).timer).toMatchObject({
       state: 'paused',
-      elapsedMilliseconds: 30_123,
+      elapsedMilliseconds: 90_123,
     });
     await action(timer.id, 'resume');
     // A repeated resume does not start a second stretch.
     await action(timer.id, 'resume');
     later(10_000);
-    expect((await read()).timer?.elapsedMilliseconds).toBe(40_123);
+    expect((await read()).timer?.elapsedMilliseconds).toBe(100_123);
   });
   it('marks the target as reached, keeps running past it and completes nothing', async () => {
     const id = await todo(1);
@@ -200,6 +200,64 @@ describe('Synced timers and Dump completion (e2e)', () => {
         todoId: id,
       },
     ]);
+  });
+  it('continues the block after a pause under a minute and drops a lone stretch under a minute', async () => {
+    const id = await todo(30);
+    const first = now;
+    const timer = (await start({ kind: 'todo', targetId: id })).timer!;
+    later(5 * MINUTE);
+    await action(timer.id, 'pause');
+    later(30_000);
+    await action(timer.id, 'resume');
+    later(2 * MINUTE);
+    // The short pause counts as worked.
+    expect((await read()).timer?.elapsedMilliseconds).toBe(7.5 * MINUTE);
+    await action(timer.id, 'pause');
+    later(5 * MINUTE);
+    await action(timer.id, 'resume');
+    later(20_000);
+    await action(timer.id, 'stop');
+    expect(
+      (await logs()).map(({ startedAt, endedAt }) => ({ startedAt, endedAt })),
+    ).toEqual([
+      {
+        startedAt: first,
+        endedAt: new Date(first.getTime() + 7.5 * MINUTE),
+      },
+    ]);
+  });
+  it('counts on from the time already logged when the target is started again', async () => {
+    const id = await todo(10);
+    const first = (await start({ kind: 'todo', targetId: id })).timer!;
+    later(4 * MINUTE);
+    await action(first.id, 'stop');
+    later(60 * MINUTE);
+    const again = (await start({ kind: 'todo', targetId: id })).timer!;
+    expect(again).toMatchObject({
+      elapsedMilliseconds: 4 * MINUTE,
+      targetMinutes: 10,
+      targetReachedAt: null,
+    });
+    later(6 * MINUTE);
+    expect((await read()).timer?.targetReachedAt).toBe(now.toISOString());
+  });
+  it('starts a reopened quest worked past its target as reached, without a notification', async () => {
+    const id = await todo(2);
+    await start({ kind: 'todo', targetId: id });
+    later(3 * MINUTE);
+    await client().patch(`/todos/${id}`).send({ completed: true }).expect(200);
+    await client().patch(`/todos/${id}`).send({ completed: false }).expect(200);
+    later(MINUTE);
+    const reopened = (await start({ kind: 'todo', targetId: id })).timer!;
+    expect(reopened).toMatchObject({
+      elapsedMilliseconds: 3 * MINUTE,
+      targetReachedAt: now.toISOString(),
+    });
+    const stored = await db
+      .getRepository(TimerEntity)
+      .findOneByOrFail({ id: reopened.id });
+    expect(stored.pushHandledAt).toEqual(now);
+    expect(stored.targetReachesAt).toBeNull();
   });
   it('cuts a stopwatch nobody ended after twelve hours and leaves it paused', async () => {
     const id = await todo();
