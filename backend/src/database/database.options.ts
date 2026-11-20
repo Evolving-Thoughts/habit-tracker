@@ -8,6 +8,7 @@ import { LogbookEvents1795200000000 } from './migrations/1795200000000-LogbookEv
 import { QuestHours1795300000000 } from './migrations/1795300000000-QuestHours';
 import { WeekReviews1795400000000 } from './migrations/1795400000000-WeekReviews';
 import { ProgressBelowCampaign1795500000000 } from './migrations/1795500000000-ProgressBelowCampaign';
+import { CategoryColor1795600000000 } from './migrations/1795600000000-CategoryColor';
 
 type PostgresOptions = Extract<DataSourceOptions, { type: 'postgres' }>;
 
@@ -38,6 +39,7 @@ export function databaseOptions(
       QuestHours1795300000000,
       WeekReviews1795400000000,
       ProgressBelowCampaign1795500000000,
+      CategoryColor1795600000000,
     ],
   };
 }

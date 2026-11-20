@@ -91,7 +91,7 @@ const shownPerfectWeek = computed(() =>
           <span class="row__name">
             <i
               class="swatch"
-              :style="{ background: categoryMark(category.name) }"
+              :style="{ background: categoryMark(category.name, category.color) }"
               aria-hidden="true"
             />{{ category.name }}
           </span>

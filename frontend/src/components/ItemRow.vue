@@ -4,13 +4,16 @@ import ActionMenu from "./ActionMenu.vue";
 import CheckRing from "./CheckRing.vue";
 import ItemPlayButton from "./ItemPlayButton.vue";
 import { timerStateOf, useTimer } from "../composables/useTimer";
+import { onCardClick } from "../utils/card-click";
 import type { MenuEntry } from "../utils/row-actions";
 
 /**
- * The one row for quests and dailies (DESIGN.md › Zeilen): an optional
- * leading column (time, date or grip), the ring where the item can be done,
- * the title that opens the editor with its meta line, ▶ where measuring
- * makes sense, and every other action in one menu "Aktionen für …".
+ * The one row for quests and dailies (DESIGN.md › Karten): an optional
+ * leading column (time or date), the ring where the item can be done, the
+ * title that opens the editor with its meta line, ▶ where measuring makes
+ * sense, and every other action in one menu "Aktionen für …". A tap
+ * anywhere else on the card opens the editor too; where the list sorts,
+ * the whole card drags.
  */
 const props = withDefaults(
   defineProps<{
@@ -25,8 +28,10 @@ const props = withDefaults(
     checkLabel?: string;
     /** Passed to the ring as aria-pressed, where a list reads it so. */
     ringPressed?: boolean;
-    /** The title opens the editor. */
+    /** The title, and a tap anywhere else on the card, open the editor. */
     editable?: boolean;
+    /** The list drags the whole card (`useSortable`). */
+    draggable?: boolean;
     /** A write runs for this row: its controls wait. */
     busy?: boolean;
     /** The campaign's mark: a stripe on the left. */
@@ -48,6 +53,7 @@ const props = withDefaults(
     checkLabel: undefined,
     ringPressed: undefined,
     editable: true,
+    draggable: false,
     busy: false,
     campaignMark: null,
     measure: null,
@@ -67,6 +73,10 @@ const ringLabel = computed(
       : `${props.title} erledigen`),
 );
 
+function openFromCard(event: MouseEvent): void {
+  if (props.editable && !props.busy) onCardClick(event, () => emit("edit"));
+}
+
 /* The row whose stopwatch runs says so in words, not only by its button. */
 const controller = useTimer();
 const timerState = computed(() =>
@@ -84,8 +94,11 @@ const timerState = computed(() =>
       'item-row--skipped': state === 'skipped',
       'item-row--campaign': campaignMark,
       'item-row--leading': $slots.leading,
+      'card-target': editable,
+      'card-drag': draggable,
     }"
     :style="campaignMark ? { '--campaign-mark': campaignMark } : undefined"
+    @click="openFromCard"
   >
     <div class="item-row__main">
       <div v-if="$slots.leading" class="item-row__leading">

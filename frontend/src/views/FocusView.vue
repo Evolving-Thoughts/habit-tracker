@@ -15,7 +15,7 @@ import { toggleTimer, useTimer } from "../composables/useTimer";
 import { useShortcutHandlers } from "../composables/useShortcuts";
 import { hrefOf } from "../routes";
 import type { DayPlannerItem, DayPlannerResponse } from "../types/day-planner";
-import { campaignMark } from "../utils/category-mark";
+import CampaignChip from "../components/CampaignChip.vue";
 import { formatStopwatch } from "../utils/stopwatch";
 import {
   appointmentWindow,
@@ -235,11 +235,7 @@ useShortcutHandlers({
       aria-labelledby="focus-view-title"
     >
       <p v-if="current.campaign" class="focus-view__campaign">
-        <i
-          class="category-mark"
-          :style="{ background: campaignMark(current.campaign) ?? undefined }"
-          aria-hidden="true"
-        />{{ current.campaign.title }}
+        <CampaignChip :campaign="current.campaign" />
       </p>
       <h1 id="focus-view-title" class="focus-view__title">
         {{ current.title }}
@@ -404,23 +400,11 @@ useShortcutHandlers({
   text-align: center;
 }
 
+/* The campaign's chip; on the bare ground its own white carries it. */
 .focus-view__campaign {
-  display: inline-flex;
-  gap: 0.5rem;
-  align-items: center;
+  display: flex;
+  max-width: 100%;
   margin: 0;
-  padding: 0.25rem var(--space-3);
-  border-radius: var(--radius-pill);
-  background: var(--color-surface);
-  color: var(--color-ink-muted);
-  font-size: 0.875rem;
-  font-weight: 700;
-}
-
-.category-mark {
-  width: 0.625rem;
-  height: 0.625rem;
-  border-radius: 0.2rem;
 }
 
 .focus-view__title {

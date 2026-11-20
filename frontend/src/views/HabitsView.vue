@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { getHabits, updateOccurrenceStatus } from "../api/day-planner.api";
-import { getCategories } from "../api/categories.api";
+import { useCategoryLabels } from "../composables/useCategoryLabels";
 import { useListFocus } from "../composables/useListFocus";
+import ActionMenu from "../components/ActionMenu.vue";
 import CheckRing from "../components/CheckRing.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
 import UndoToast from "../components/UndoToast.vue";
@@ -16,7 +17,8 @@ import { getHistory } from "../api/history.api";
 import type { HabitResponse, HabitScheduleRule } from "../types/habit";
 import type { HistoryResponse } from "../types/history";
 import { shownWhy } from "../utils/why";
-import { categoryMark } from "../utils/category-mark";
+import { onCardClick } from "../utils/card-click";
+import { rowMenu, type MenuEntry } from "../utils/row-actions";
 import {
   formatDateForGermanDisplay,
   getCurrentDateInTimeZone,
@@ -31,16 +33,8 @@ const editingId = ref<number | null>(null);
 const editorBusy = ref(false);
 const creationOpen = ref(false);
 
-/** Category names for the meta line; the list stays usable without them. */
-const categoryNames = ref(new Map<number, string>());
-async function loadCategoryNames(): Promise<void> {
-  try {
-    const categories = await getCategories();
-    categoryNames.value = new Map(categories.map((c) => [c.id, c.name]));
-  } catch {
-    // Without names the cards simply show no category mark.
-  }
-}
+/** Category names and marks for the meta line. */
+const { load: loadCategories, labelOf } = useCategoryLabels();
 /*
  * The week as the calendar reads it, for each Daily's status this week; the
  * list stays usable without it. Read once with the list, so both agree.
@@ -58,7 +52,7 @@ async function loadWeek(): Promise<void> {
 async function loadAll(): Promise<HabitResponse[]> {
   const [habits] = await Promise.all([
     getHabits(),
-    loadCategoryNames(),
+    loadCategories(),
     loadWeek(),
   ]);
   return habits;
@@ -172,11 +166,15 @@ function nextScheduleOf(habit: HabitResponse): string | null {
   return `Ab ${shortDate(habit.upcomingSchedule.effectiveFrom)}: ${scheduleInWords(habit.upcomingSchedule.schedule)}`;
 }
 
-function categoryOf(habit: HabitResponse): string | null {
-  return habit.categoryId === null
-    ? null
-    : (categoryNames.value.get(habit.categoryId) ?? null);
+const categoryOf = (habit: HabitResponse) => labelOf(habit.categoryId);
+
+/* The card contract: a tap on the card opens the editor, as its title does. */
+const canEdit = () => !isBusy.value && editingId.value === null;
+function openFromCard(event: MouseEvent, habit: HabitResponse): void {
+  if (canEdit()) onCardClick(event, () => openEditing(habit));
 }
+const cardMenu = (habit: HabitResponse): MenuEntry[] =>
+  rowMenu(habit.title, { edit: () => openEditing(habit) }, !canEdit());
 
 function statusOf(habit: HabitResponse): string | null {
   return dailyWeekStatus(habit, week.value, today.value);
@@ -297,11 +295,12 @@ async function onCreated(): Promise<void> {
               :key="habit.id"
               :data-habit-id="habit.id"
               :data-focus-key="`habit-${habit.id}`"
-              class="habit-card"
+              class="habit-card card-target"
               :class="{
                 'habit-card--paused': !habit.isActive,
                 'habit-card--ring': anyRun && group.key === 'active',
               }"
+              @click="openFromCard($event, habit)"
             >
               <template v-if="anyRun && group.key === 'active'">
                 <CheckRing
@@ -343,9 +342,9 @@ async function onCreated(): Promise<void> {
                   <span v-if="categoryOf(habit)" class="habit-card__category">
                     <i
                       class="category-mark"
-                      :style="{ background: categoryMark(categoryOf(habit)!) }"
+                      :style="{ background: categoryOf(habit)!.mark }"
                       aria-hidden="true"
-                    />{{ categoryOf(habit) }}
+                    />{{ categoryOf(habit)!.name }}
                   </span>
                   <span v-for="part in detailsOf(habit)" :key="part">{{
                     part
@@ -355,14 +354,20 @@ async function onCreated(): Promise<void> {
                   {{ nextScheduleOf(habit) }}
                 </p>
               </div>
-              <ItemPlayButton
-                class="habit-card__play"
-                kind="occurrence"
-                :target-id="habit.timerOccurrenceId"
-                :title="habit.title"
-                :eligible="habit.isActive && habit.timerOccurrenceId !== null"
-                :disabled="isBusy"
-              />
+              <div class="habit-card__end">
+                <ItemPlayButton
+                  kind="occurrence"
+                  :target-id="habit.timerOccurrenceId"
+                  :title="habit.title"
+                  :eligible="habit.isActive && habit.timerOccurrenceId !== null"
+                  :disabled="isBusy"
+                />
+                <ActionMenu
+                  :title="habit.title"
+                  :entries="cardMenu(habit)"
+                  :disabled="isBusy"
+                />
+              </div>
             </li>
           </ul>
         </section>
@@ -423,6 +428,11 @@ async function onCreated(): Promise<void> {
 .habit-card__ring {
   width: var(--tap);
   height: var(--tap);
+}
+
+.habit-card__end {
+  display: flex;
+  align-items: center;
 }
 
 .habit-card__content {

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, useId } from "vue";
 import AppIcon from "./AppIcon.vue";
+import CampaignChip from "./CampaignChip.vue";
 import type { WeekReviewItem, WeekReviewResponse } from "../types/week-review";
-import { campaignMark } from "../utils/category-mark";
 import { dayLabel } from "../utils/history";
 
 const props = defineProps<{ days: WeekReviewResponse["days"] }>();
@@ -91,16 +91,10 @@ function details(item: WeekReviewItem): string[] {
                 v-if="item.campaign || details(item).length"
                 class="done-list__meta"
               >
-                <span v-if="item.campaign" class="done-list__campaign">
-                  <i
-                    class="done-list__mark"
-                    :style="{ background: campaignMark(item.campaign)! }"
-                    aria-hidden="true"
-                  />{{ item.campaign.title }}
-                </span>
                 <span v-for="part in details(item)" :key="part">{{
                   part
                 }}</span>
+                <CampaignChip v-if="item.campaign" :campaign="item.campaign" />
               </span>
             </span>
           </li>
@@ -197,22 +191,9 @@ function details(item: WeekReviewItem): string[] {
 .done-list__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 var(--space-3);
+  gap: 0.125rem var(--space-3);
+  align-items: center;
   color: var(--color-ink-muted);
   font-size: 0.875rem;
-}
-
-.done-list__campaign {
-  display: inline-flex;
-  gap: 0.375rem;
-  align-items: center;
-  font-weight: 700;
-}
-
-.done-list__mark {
-  flex: none;
-  width: 0.625rem;
-  height: 0.625rem;
-  border-radius: 0.2rem;
 }
 </style>

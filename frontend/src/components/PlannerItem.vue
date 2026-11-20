@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import AppIcon from "./AppIcon.vue";
+import CampaignChip from "./CampaignChip.vue";
 import ItemRow from "./ItemRow.vue";
 import { campaignMark as markOf, categoryMark } from "../utils/category-mark";
 import { formatDateForGermanDisplay } from "../utils/date";
@@ -10,7 +11,8 @@ import type { DayPlannerItem } from "../types/day-planner";
 /**
  * A row of Heute on the shared row (ItemRow): ring, title with its meta
  * line, ▶ and the menu the view builds. Carried-over rows are compact and
- * show the view's chips instead of ▶ and the menu.
+ * show the view's chips instead of ▶ and the menu. In the order of the day
+ * the whole card drags; its menu moves it a place up or down.
  */
 const props = defineProps<{
   item: DayPlannerItem;
@@ -21,7 +23,7 @@ const props = defineProps<{
   showDate?: boolean;
   /** Replaces ▶ and the menu with the choices in the slot. */
   compact?: boolean;
-  /** Shows a grip in the leading column: drag it, or use the arrow keys. */
+  /** In the order of the day: the whole card drags. */
   sortable?: boolean;
   /** "Aktionen für …": everything beyond ring, title and ▶. */
   menu?: MenuEntry[];
@@ -35,8 +37,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   toggle: [item: DayPlannerItem];
   edit: [item: DayPlannerItem];
-  /** The grip's arrow keys: one place up (-1) or down (1). */
-  shift: [item: DayPlannerItem, direction: -1 | 1];
 }>();
 
 const state = computed(() =>
@@ -64,8 +64,15 @@ const details = computed(() => {
   return parts;
 });
 
-/** Every campaign has its own quiet colour, like categories do. */
+/** Every campaign has its own colour, like categories do. */
 const campaignMark = computed(() => markOf(props.item.campaign));
+/** A campaign's own quest wears its stripe but does not repeat its name. */
+const campaignChip = computed(() => {
+  const { item } = props;
+  return item.type === "todo" && item.campaign?.id === item.todoId
+    ? null
+    : item.campaign;
+});
 
 const leading = computed(() =>
   props.showDate
@@ -97,33 +104,22 @@ const measure = computed(() =>
     :title="item.title"
     :state="state"
     :busy="isUpdating"
+    :draggable="sortable"
     :campaign-mark="campaignMark"
     :measure="measure"
     :menu="compact || state !== 'open' ? [] : (menu ?? [])"
     @toggle="emit('toggle', item)"
     @edit="emit('edit', item)"
   >
-    <template v-if="sortable || leading" #leading>
-      <button
-        v-if="sortable"
-        class="planner-item__grip sort-handle"
-        type="button"
-        :disabled="isUpdating"
-        :aria-label="`${item.title} in der Reihenfolge verschieben`"
-        title="Ziehen oder mit den Pfeiltasten verschieben"
-        @keydown.up.prevent="emit('shift', item, -1)"
-        @keydown.down.prevent="emit('shift', item, 1)"
-      >
-        <AppIcon name="grip" />
-      </button>
-      <span v-else class="planner-item__time">{{ leading }}</span>
+    <template v-if="leading" #leading>
+      <span class="planner-item__time">{{ leading }}</span>
     </template>
     <template
       v-if="
         item.type === 'habit' ||
         item.categoryName ||
         details.length ||
-        item.campaign
+        campaignChip
       "
       #meta
     >
@@ -134,14 +130,14 @@ const measure = computed(() =>
       <span v-if="item.categoryName" class="planner-item__category">
         <i
           class="category-mark"
-          :style="{ background: categoryMark(item.categoryName) }"
+          :style="{
+            background: categoryMark(item.categoryName, item.categoryColor),
+          }"
           aria-hidden="true"
         />{{ item.categoryName }}
       </span>
       <span v-for="part in details" :key="part">{{ part }}</span>
-      <span v-if="item.campaign" class="planner-item__campaign">
-        {{ item.campaign.title }}
-      </span>
+      <CampaignChip v-if="campaignChip" :campaign="campaignChip" />
     </template>
     <!-- What it is for, quietly and on one line; done rows need it no more. -->
     <template v-if="item.why && state === 'open'" #below>
@@ -160,10 +156,6 @@ const measure = computed(() =>
 </template>
 
 <style scoped>
-.planner-item__campaign {
-  font-weight: 700;
-}
-
 .planner-item__daily {
   display: inline-flex;
   gap: 0.25rem;
@@ -192,30 +184,6 @@ const measure = computed(() =>
   .planner-item__why--wide {
     display: none;
   }
-}
-
-.planner-item__grip {
-  display: grid;
-  width: 2.75rem;
-  height: var(--tap);
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--color-ink-soft);
-  cursor: grab;
-  /* A finger on the grip sorts; it must not scroll the page instead. */
-  touch-action: none;
-}
-
-.planner-item__grip:active {
-  cursor: grabbing;
-}
-
-.planner-item__grip :deep(svg) {
-  width: 1.25rem;
-  height: 1.25rem;
 }
 
 .planner-item__time {

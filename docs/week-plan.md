@@ -97,16 +97,16 @@ it.
 ## Widths, wrapping and where the board opens
 
 - A day column has slim side padding (0.375rem); an entry gives its title
-  the full width and puts the grip below it (beside the details, if any).
-  From a 15rem entry (a phone's single day) the grip sits beside title and
+  the full width and puts its menu "…" below it (beside the details, if any).
+  From a 15rem entry (a phone's single day) the menu sits beside title and
   details again. Below an 8.25rem entry the title is 0.875rem instead of
   0.9375rem.
 - Titles wrap between words (`overflow-wrap: break-word`); only a word
   longer than the whole line breaks inside. `hyphens: auto` (words of ten
   characters and more) helps where the platform has a German dictionary, but
   the widths never rely on it. A title is clamped to three lines; its tooltip
-  and accessible names keep it whole. The campaign has its own line with an
-  ellipsis in narrow columns.
+  and accessible names keep it whole. The campaign's chip (icon and name)
+  has its own line and ends in an ellipsis in narrow columns.
 - The quick add's placeholder is "Quest hinzufügen …" where it fits and
   "Hinzufügen …" where not, measured against the field (`utils/fit-text.ts`,
   re-measured on resize and once the web font is in).
@@ -130,17 +130,19 @@ it.
 - `components/PlanDay.vue`: one column (heading, "n offen · Dauer", the open
   list as a SortableJS list in the group `week-plan`, quick add, then what is
   done). Past columns take no drops and offer no quick add.
-- `components/PlanEntry.vue`: a compact row. A quest's title opens
-  `EditItemDialog`; its grip is its one move control: drag it, use Arrow
-  Up/Down (place in the day) and Left/Right (day before/after), or tap it for
-  `MoveItemDialog`. Dailies are fixed rows without controls. In the
-  Questlog column the same row takes a `menu` and a drag-only grip.
+- `components/PlanEntry.vue`: a compact card. A quest's title, or a tap
+  anywhere else on it, opens `EditItemDialog`; the whole card drags; its
+  menu (built by `PlanView` with `rowMenu`) holds Morgen / Nächste Woche,
+  "Anderer Tag …" (`MoveItemDialog`), Bearbeiten, Stoppuhr starten (a
+  compact card has no ▶) and Nach oben / Nach unten in the day. Dailies are
+  fixed rows without controls. In the Questlog column the menu holds the
+  board's days, Bearbeiten and Stoppuhr starten.
 - `components/PlanQuestlog.vue`: the Questlog column (list, drag source,
   menus, collapse toggle); `composables/useMediaQuery.ts` decides whether it
   exists.
 - `utils/week-plan.ts`: the pure rules: `dropOnDay` applies a drop to the plan
   at once and says what to write (also for an `incoming` quest from the
-  Questlog column), `arrowDrop` turns arrow keys into drops, `arrangeOpen`
+  Questlog column), `stepDrop` turns "Nach oben" / "Nach unten" into drops, `arrangeOpen`
   mirrors the server's sorting for the optimistic view, `questlogEntry` shows
   a Questlog quest as a row of the board.
 - Writes go through `useWrites` (one at a time, then `notifyDataChanged` and a

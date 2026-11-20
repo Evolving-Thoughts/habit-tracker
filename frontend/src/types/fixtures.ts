@@ -29,12 +29,14 @@ const PLANNER_CONTEXT = {
 
 export const PLANNER_TODO_FIELDS = {
   categoryName: null,
+  categoryColor: null,
   timeOfDay: null,
   ...PLANNER_CONTEXT,
 };
 
 export const PLANNER_HABIT_FIELDS = {
   categoryName: null,
+  categoryColor: null,
   timeOfDay: null,
   ...PLANNER_CONTEXT,
 };
@@ -53,7 +55,12 @@ export const WEEK_ENTRY_FIELDS = {
   isOverdue: false,
 };
 
-const HISTORY_CONTEXT = { categoryName: null, why: null };
+const HISTORY_CONTEXT = {
+  categoryName: null,
+  categoryColor: null,
+  why: null,
+  campaign: null,
+};
 
 export const HISTORY_ITEM_FIELDS = { ...HISTORY_CONTEXT, timeOfDay: null };
 

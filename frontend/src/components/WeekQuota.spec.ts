@@ -5,8 +5,8 @@ import WeekQuota from "./WeekQuota.vue";
 const perfectWeek = {
   perfect: false,
   categories: [
-    { id: 1, name: "Sport", target: 3, completed: 3, reached: true },
-    { id: 2, name: "Musik", target: 2, completed: 1, reached: false },
+    { id: 1, name: "Sport", color: "teal", target: 3, completed: 3, reached: true },
+    { id: 2, name: "Musik", color: null, target: 2, completed: 1, reached: false },
   ],
 };
 

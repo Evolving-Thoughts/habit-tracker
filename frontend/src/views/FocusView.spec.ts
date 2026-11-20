@@ -154,7 +154,9 @@ describe("FocusView", () => {
     const { wrapper, start, button } = await mountView();
 
     expect(wrapper.get("h1").text()).toBe("Kapitel schreiben");
-    expect(wrapper.get(".focus-view__campaign").text()).toBe("Buch schreiben");
+    expect(
+      wrapper.get(".focus-view__campaign .campaign-chip__name").text(),
+    ).toBe("Buch schreiben");
     expect(wrapper.get(".focus-view__why").text()).toBe(
       "Mein Wissen weitergeben",
     );

@@ -10,6 +10,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { UserEntity } from '../auth/auth.entities';
+import type { CampaignColor } from '../todos/campaign-style';
 
 @Entity({ name: 'categories' })
 export class CategoryEntity {
@@ -30,6 +31,10 @@ export class CategoryEntity {
   /** Wanted completions per week; a Perfect Week reaches all of them. */
   @Column({ type: 'integer', nullable: true })
   weeklyTarget!: number | null;
+
+  /** One of the campaign colours; null lets the name pick one. */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  color!: CampaignColor | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

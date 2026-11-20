@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import {
-  CAMPAIGN_COLORS,
   CAMPAIGN_ICONS,
   type CampaignColor,
   type CampaignIcon,
 } from "../types/campaign";
-import { COLOR_NAMES, ICON_NAMES, markToken } from "../utils/campaign-style";
+import { ICON_NAMES } from "../utils/campaign-style";
 import { categoryMark } from "../utils/category-mark";
 import { MAX_TARGET_HOURS } from "../utils/quest-hours";
 import AppIcon from "./AppIcon.vue";
+import MarkPicker from "./MarkPicker.vue";
 
 const props = defineProps<{
   idPrefix: string;
@@ -23,9 +23,6 @@ const icon = defineModel<CampaignIcon | null>("icon", { required: true });
 const target = defineModel<string | number>("target", { required: true });
 
 const automatic = computed(() => categoryMark(props.title));
-const colorName = computed(() =>
-  color.value ? COLOR_NAMES[color.value] : "Automatisch aus dem Titel",
-);
 const iconName = computed(() =>
   icon.value ? ICON_NAMES[icon.value] : "Kein Symbol",
 );
@@ -33,48 +30,13 @@ const iconName = computed(() =>
 
 <template>
   <div class="campaign-fields">
-    <fieldset class="campaign-fields__group">
-      <legend>Farbe der Kampagne</legend>
-      <div class="campaign-fields__choices">
-        <label
-          class="campaign-fields__swatch"
-          :style="{ '--swatch': automatic }"
-        >
-          <input
-            v-model="color"
-            class="visually-hidden"
-            type="radio"
-            :name="`${idPrefix}-color`"
-            :value="null"
-          />
-          <span class="campaign-fields__dot campaign-fields__dot--auto">
-            <AppIcon v-if="color === null" name="check" />
-          </span>
-          <span class="visually-hidden">Automatisch aus dem Titel</span>
-        </label>
-        <label
-          v-for="key in CAMPAIGN_COLORS"
-          :key="key"
-          class="campaign-fields__swatch"
-          :style="{ '--swatch': markToken(key) }"
-        >
-          <input
-            v-model="color"
-            class="visually-hidden"
-            type="radio"
-            :name="`${idPrefix}-color`"
-            :value="key"
-          />
-          <span class="campaign-fields__dot">
-            <AppIcon v-if="color === key" name="check" />
-          </span>
-          <span class="visually-hidden">{{ COLOR_NAMES[key] }}</span>
-        </label>
-      </div>
-      <p class="campaign-fields__chosen" aria-hidden="true">
-        {{ colorName }}
-      </p>
-    </fieldset>
+    <MarkPicker
+      v-model="color"
+      :name="`${idPrefix}-color`"
+      legend="Farbe der Kampagne"
+      :automatic="automatic"
+      automatic-label="Automatisch aus dem Titel"
+    />
 
     <fieldset class="campaign-fields__group">
       <legend>Symbol</legend>
@@ -163,7 +125,6 @@ const iconName = computed(() =>
   gap: var(--space-1);
 }
 
-.campaign-fields__swatch,
 .campaign-fields__icon {
   position: relative;
   display: grid;
@@ -173,37 +134,10 @@ const iconName = computed(() =>
   cursor: pointer;
 }
 
-.campaign-fields__dot {
-  display: grid;
-  width: 2rem;
-  height: 2rem;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--swatch);
-  color: var(--color-on-action);
-  transition: transform 420ms var(--spring);
-}
 
-/* The automatic colour shows as a ring, so it never looks chosen by hand. */
-.campaign-fields__dot--auto {
-  border: 0.3125rem solid var(--swatch);
-  background: var(--color-surface);
-  color: var(--color-ink);
-}
 
-.campaign-fields__dot :deep(svg) {
-  width: 1.125rem;
-  height: 1.125rem;
-  stroke-width: 3;
-}
 
-.campaign-fields__swatch:has(input:checked) .campaign-fields__dot {
-  box-shadow:
-    0 0 0 2px var(--color-surface),
-    0 0 0 4px var(--color-ink);
-}
 
-.campaign-fields__swatch:active .campaign-fields__dot,
 .campaign-fields__icon:active {
   transform: scale(0.92);
   transition-duration: 90ms;
@@ -227,7 +161,6 @@ const iconName = computed(() =>
   font-weight: 800;
 }
 
-.campaign-fields__swatch:has(input:focus-visible) .campaign-fields__dot,
 .campaign-fields__icon:has(input:focus-visible) {
   outline: 3px solid var(--color-action-strong);
   outline-offset: 2px;

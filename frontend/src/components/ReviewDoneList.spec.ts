@@ -42,10 +42,10 @@ describe("ReviewDoneList", () => {
     const headings = wrapper.findAll("h3").map((heading) => heading.text());
     expect(headings).toEqual(["Dienstag, 17. Nov. 2", "Freitag, 20. Nov. 1"]);
     const rows = wrapper.findAll(".done-list__item");
-    expect(rows[0]!.text()).toBe("Quest 1Buch");
-    expect(
-      rows[0]!.get(".done-list__mark").attributes("style"),
-    ).toContain("var(--color-mark-berry)");
+    expect(rows[0]!.text()).toBe("Quest 1Kampagne Buch");
+    expect(rows[0]!.get(".campaign-chip").attributes("style")).toContain(
+      "var(--color-mark-berry)",
+    );
     expect(rows[1]!.classes()).toContain("done-list__item--skipped");
     expect(rows[1]!.text()).toBe("LaufenDailyÜbersprungen");
     expect(rows[2]!.text()).toBe("Quest 3Gelöscht");

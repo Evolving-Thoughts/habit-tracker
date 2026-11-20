@@ -8,7 +8,6 @@ import type {
 } from "../types/week-plan";
 import {
   arrangeOpen,
-  arrowDrop,
   boardScroll,
   dayOrder,
   dropOnDay,
@@ -17,6 +16,7 @@ import {
   openSummary,
   questlogEntry,
   questlogStartsOpen,
+  stepDrop,
   weekFromQuery,
 } from "./week-plan";
 
@@ -234,29 +234,24 @@ describe("dropOnDay", () => {
   });
 });
 
-describe("arrowDrop", () => {
+describe("stepDrop", () => {
   const plan = week({
     [MONDAY]: [],
     [TODAY]: [quest(1, { timeOfDay: "09:00" }), quest(2), daily(null), quest(3)],
   });
 
   it("steps over rows that are not part of the order", () => {
-    const drop = arrowDrop(plan, 3, "up")!;
+    const drop = stepDrop(plan, 3, "up")!;
     expect(dropOnDay(plan, drop)!.write.order).toEqual([
       { type: "todo", id: 3 },
       { type: "todo", id: 2 },
     ]);
-    expect(arrowDrop(plan, 2, "up")).toBeNull();
-    expect(arrowDrop(plan, 3, "down")).toBeNull();
+    expect(stepDrop(plan, 2, "up")).toBeNull();
+    expect(stepDrop(plan, 3, "down")).toBeNull();
   });
 
-  it("goes to the end of the next day, but never into the past", () => {
-    expect(arrowDrop(plan, 2, "right")).toEqual({
-      todoId: 2,
-      toDate: WEDNESDAY,
-      index: 0,
-    });
-    expect(arrowDrop(plan, 2, "left")).toBeNull();
+  it("leaves an appointment where its time puts it", () => {
+    expect(stepDrop(plan, 1, "down")).toBeNull();
   });
 });
 

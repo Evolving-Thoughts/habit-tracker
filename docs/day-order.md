@@ -82,10 +82,13 @@ export only, as Logbuch events (see `logbook.md`).
   stored `dayPosition`, forecast runs (never sorted) last by title. See
   `history.md`.
 - Heute sorts by drag and drop: the focus card and the rows after it are one
-  list (`useSortable`, SortableJS). The grip (in a row's time column, at the
-  focus card's top right) also takes Arrow Up/Down, and a status line
-  announces the new place. The new order shows at once and is confirmed, or
-  taken back, by the reload after the write.
+  list (`useSortable`, SortableJS), and the whole card drags. A mouse lifts
+  it after 6px, a finger only after a 300ms press (`delayOnTouchOnly`), so a
+  swipe still scrolls and a short tap still opens the editor; the card's own
+  controls never start a drag. The keyboard sorts with "Nach oben" and "Nach
+  unten" in the card's menu; the focus stays on its menu button and a status
+  line announces the new place. The new order shows at once and is
+  confirmed, or taken back, by the reload after the write.
 - Moving a single entry sits in its menu "Aktionen für …" (Morgen, Nächste
   Woche, "Anderer Tag …"; an appointment only "Termin verschieben …", where
   the move is confirmed). The quick days run the same step as D and W

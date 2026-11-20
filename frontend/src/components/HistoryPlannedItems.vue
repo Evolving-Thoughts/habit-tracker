@@ -10,8 +10,14 @@ export type PlannedActions = {
   /** The title opens the editor where the entry is stored. */
   editable: (item: HistoryPlannedItem) => boolean;
   edit: (item: HistoryPlannedItem) => void;
-  /** "Aktionen für …": moving to today, tomorrow, next week or another day. */
+  /** "Aktionen für …": quick moves, "Anderer Tag …" and "Bearbeiten". */
   menu: (item: HistoryPlannedItem) => MenuEntry[];
+  /** ▶ on an open quest and on a daily run that is due. */
+  measure: (item: HistoryPlannedItem) => {
+    kind: "todo" | "occurrence";
+    targetId: number;
+    eligible: boolean;
+  } | null;
   busy: (item: HistoryPlannedItem) => boolean;
 };
 </script>
@@ -19,8 +25,9 @@ export type PlannedActions = {
 <script setup lang="ts">
 import { computed } from "vue";
 import AppIcon from "./AppIcon.vue";
+import CampaignChip from "./CampaignChip.vue";
 import ItemRow from "./ItemRow.vue";
-import { categoryMark } from "../utils/category-mark";
+import { campaignMark, categoryMark } from "../utils/category-mark";
 import { shortDate } from "../utils/history";
 
 const props = defineProps<{
@@ -65,13 +72,18 @@ const anyCheckable = computed(() =>
         :keep-ring-column="anyCheckable"
         :editable="can('editable', item)"
         :busy="actions?.busy(item) ?? false"
+        :campaign-mark="campaignMark(item.campaign)"
+        :measure="actions?.measure(item) ?? null"
         :menu="actions?.menu(item) ?? []"
         @toggle="actions?.complete(item)"
         @edit="actions?.edit(item)"
       >
         <template
           v-if="
-            item.type === 'habit' || item.categoryName || details(item).length
+            item.type === 'habit' ||
+            item.categoryName ||
+            details(item).length ||
+            item.campaign
           "
           #meta
         >
@@ -82,11 +94,14 @@ const anyCheckable = computed(() =>
           <span v-if="item.categoryName" class="planned-item__category">
             <i
               class="planned-item__mark"
-              :style="{ background: categoryMark(item.categoryName) }"
+              :style="{
+                background: categoryMark(item.categoryName, item.categoryColor),
+              }"
               aria-hidden="true"
             />{{ item.categoryName }}
           </span>
           <span v-for="part in details(item)" :key="part">{{ part }}</span>
+          <CampaignChip v-if="item.campaign" :campaign="item.campaign" />
         </template>
         <template v-if="item.why" #below>
           <p class="planned-item__why">{{ item.why }}</p>

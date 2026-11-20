@@ -15,11 +15,20 @@ number, never in a warning colour.
 - **Colour and icon** of a campaign: `todos.color` and `todos.icon`, each a
   key from a fixed list (`backend/src/todos/campaign-style.ts`,
   `frontend/src/types/campaign.ts`; the contract check holds both lists in
-  step). Ten colours (`moss`, `pine`, `sage`, `slate`, `indigo`, `heather`,
-  `plum`, `berry`, `walnut`, `ochre`) and sixteen icons (`book`, `code`,
+  step). Sixteen colours, the core eight first (`indigo`, `navy`, `ochre`,
+  `pine`, `berry`, `plum`, `teal`, `walnut`), then `moss`, `sage`, `sky`,
+  `slate`, `heather`, `wine`, `olive`, `lilac`; every key stored before the
+  palette grew is still one of them. Thirty-two icons: `book`, `code`,
   `dumbbell`, `heart`, `home`, `briefcase`, `graduation`, `music`, `leaf`,
-  `money`, `wrench`, `pen`, `camera`, `globe`, `star`, `flag`). The DTOs reject
-  any other key with 400.
+  `money`, `wrench`, `pen`, `camera`, `globe`, `star`, `flag`, `bike`,
+  `coffee`, `plane`, `palette`, `mountain`, `moon`, `people`, `chat`, `bulb`,
+  `trophy`, `pot`, `gamepad`, `paw`, `laptop`, `map`, `drop`. The DTOs reject
+  any other key with 400; the column is `varchar(16)` without a check, so
+  the list lives in code only.
+- **Colour of a category:** `categories.color` (nullable, migration
+  `CategoryColor`), a key from the same colours. Null lets the name pick one
+  (see below). `POST /categories` and `PATCH /categories/:id` take
+  `color` (a key or null); every category response carries it.
 - The three campaign fields belong to a todo without parent. Setting one on a
   todo with a parent is a 400, both on create and update; moving a campaign
   below another todo clears them (`TodosService.update`). The database holds
@@ -89,18 +98,31 @@ missing field, a fraction, 0 or more than 6000 is 400.
 `GET /day-planner/today` adds `questHours: { todayMinutes, weekMinutes,
 weeklyTargetMinutes }`, computed by the same functions from the week's
 stretches. Every answer that names a campaign (Heute, Plan, the calendar's
-Logbuch, quest hours) carries `{ id, title, color, icon }`.
+lists and Logbuch, quest hours, the week review) carries
+`{ id, title, color, icon }`. Answers that name a category by
+`categoryName` (Heute, the calendar's lists) also carry `categoryColor`,
+and the Perfect Week rows carry `color`; `categories/category-lookup.ts`
+resolves both from one read of the user's categories.
 
 ## Frontend
 
-- `utils/category-mark.ts` `campaignMark` is the one place that decides a
-  campaign's colour: the stored colour, else one derived from the title as
-  before. The colours are tokens in `style.css` (`--color-mark-<key>`); the
-  first six are also the category marks. None is the action orange; they
-  differ in lightness as well as hue, and every use names the campaign in text.
+- `utils/category-mark.ts` decides every colour: `categoryMark(name, color)`
+  takes a category's stored colour, else one of the eight core colours from
+  the name (FNV-1a); `campaignMark` does the same for a campaign and its
+  title. The colours are tokens in `style.css` (`--color-mark-<key>`), none
+  the action orange. The core eight stay apart under protanopia,
+  deuteranopia and tritanopia in both themes; `src/palette.spec.ts`
+  simulates them (Machado 2009 on linear sRGB, OKLab distance) and checks
+  3:1 against what a mark sits on. Every use names the campaign or category
+  in text as well; rows show `CampaignChip.vue` (icon and name) beside the
+  stripe.
+- `MarkPicker.vue` is the one palette: radio swatches, "Automatisch" first,
+  then the core colours, then the extra ones, each with its name as tooltip
+  and spoken label and the choice in words below. Campaigns use it in
+  `CampaignFields.vue`, categories behind their dot in
+  `CategorySettings.vue` (also when creating one).
 - Icons are drawn in `AppIcon.vue` in the app's stroke family.
-- `CampaignFields.vue` edits colour (radio swatches with spoken names, the
-  chosen one also named in words), icon (radio group) and "Wochenziel" in
+- `CampaignFields.vue` edits colour (`MarkPicker`), icon (radio group) and "Wochenziel" in
   hours (halves allowed, empty is none). `PlannerItemEditor.vue` offers it for
   a todo without parent, behind the disclosure "Kampagne", which starts open
   once one of the three is set; `CreateTodoForm.vue` shows it open when the

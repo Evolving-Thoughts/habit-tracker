@@ -1,7 +1,15 @@
 import type { APIRequestContext, Page } from "@playwright/test";
 import { API_URL } from "./environment";
 import { test, expect } from "./fixtures";
-import { dayLabel, daysAfter, openView, shortDate, today } from "./helpers";
+import {
+  cardMenu,
+  dayLabel,
+  daysAfter,
+  dragCard,
+  openView,
+  shortDate,
+  today,
+} from "./helpers";
 
 /** Monday of the week containing `date`. */
 function mondayOf(date: string): string {
@@ -32,9 +40,13 @@ const column = (page: Page, date: string) =>
 /** Open titles of a day as shown. */
 const shownDay = (page: Page, date: string) =>
   column(page, date).locator(".plan-day__list").first().locator("h3").allInnerTexts();
-/** A quest's one move control: drag it, step it with arrows, tap it for a day. */
-const grip = (page: Page, title: string) =>
-  page.getByRole("button", { name: `${title} verschieben`, exact: true });
+/** A quest's card on the board: it drags from anywhere but its controls. */
+const card = (page: Page, title: string) =>
+  page
+    .locator("section.plan-day li[data-todo-id]")
+    .filter({ has: page.getByRole("heading", { name: title, exact: true }) });
+const menuButton = (page: Page, title: string) =>
+  page.getByRole("button", { name: `Aktionen für ${title}`, exact: true });
 /** Waits until the board has loaded. */
 const loaded = async (page: Page) => {
   await expect(page.getByRole("status", { name: "Plan wird geladen" })).toHaveCount(0);
@@ -111,7 +123,7 @@ test("Plan: open it from the navigation, add a quest to a day and keep the week 
   await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
 });
 
-test("Plan: sort a day and move a quest to the next day with the grip's arrow keys", async ({
+test("Plan: sort a day with Nach oben and Nach unten in a card's menu", async ({
   page,
   request,
 }) => {
@@ -124,26 +136,27 @@ test("Plan: sort a day and move a quest to the next day with the grip's arrow ke
   await loaded(page);
   expect(await shownDay(page, nextMonday)).toEqual(["Erstes", "Zweites", "Drittes"]);
 
-  await grip(page, "Drittes").focus();
-  await page.keyboard.press("ArrowUp");
+  // No grip on the cards: they drag as a whole, the menu moves them by key.
+  await expect(column(page, nextMonday).locator(".sort-handle")).toHaveCount(0);
+  await cardMenu(page, "Drittes", "Drittes nach oben");
   await expect(page.getByRole("status").filter({ hasText: "Drittes" })).toHaveText(
     "„Drittes“ steht jetzt an Stelle 2 von 3.",
   );
-  await expect(grip(page, "Drittes")).toBeFocused();
+  await expect(menuButton(page, "Drittes")).toBeFocused();
   await expect
     .poll(() => storedDay(request, nextMonday))
     .toEqual(["Erstes", "Drittes", "Zweites"]);
 
-  await page.keyboard.press("ArrowRight");
+  await cardMenu(page, "Erstes", "Erstes nach unten");
   await expect
-    .poll(() => storedDay(request, tuesday))
-    .toEqual(["Am Dienstag", "Drittes"]);
-  await expect(grip(page, "Drittes")).toBeFocused();
-  expect(await shownDay(page, nextMonday)).toEqual(["Erstes", "Zweites"]);
+    .poll(() => storedDay(request, nextMonday))
+    .toEqual(["Drittes", "Erstes", "Zweites"]);
+  await expect(menuButton(page, "Erstes")).toBeFocused();
+  expect(await shownDay(page, tuesday)).toEqual(["Am Dienstag"]);
 
   await page.reload();
   await loaded(page);
-  expect(await shownDay(page, tuesday)).toEqual(["Am Dienstag", "Drittes"]);
+  expect(await shownDay(page, nextMonday)).toEqual(["Drittes", "Erstes", "Zweites"]);
 });
 
 test("Plan: move a quest to today without dragging, and Heute shows it", async ({
@@ -157,7 +170,7 @@ test("Plan: move a quest to today without dragging, and Heute shows it", async (
   await loaded(page);
   await expect(column(page, tomorrow)).toContainText("Steuer abgeben");
 
-  await grip(page, "Steuer abgeben").click();
+  await cardMenu(page, "Steuer abgeben", "Steuer abgeben verschieben");
   const dialog = page.getByRole("dialog", { name: "Verschieben" });
   await dialog.getByRole("button", { name: "Heute", exact: true }).click();
   await expect(dialog).not.toBeVisible();
@@ -209,6 +222,15 @@ test("Plan: a quest opens its editor; dailies are fixed rows", async ({
   await expect(
     page.getByRole("button", { name: "Zahnarzt bearbeiten", exact: true }),
   ).toBeFocused();
+
+  // A click anywhere else on the card opens the same editor.
+  await card(page, "Zahnarzt").getByText("45 Min.", { exact: true }).click();
+  await expect(dialog.locator('input[name="title"]')).toHaveValue("Zahnarzt");
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  // A daily's card opens nothing.
+  await dailyRow.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
 test("Plan: drag a quest onto another day and into place", async ({ page, request }, info) => {
@@ -224,16 +246,7 @@ test("Plan: drag a quest onto another day and into place", async ({ page, reques
   await page.goto(`/#/plan?woche=${nextMonday}`);
   await loaded(page);
 
-  const from = (await grip(page, "Wandert").boundingBox())!;
-  const to = (await grip(page, "Bleibt unten").boundingBox())!;
-  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
-  await page.mouse.down();
-  // Several steps, as a hand would move: SortableJS decides on the way.
-  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2 + 8, {
-    steps: 16,
-  });
-  await page.mouse.move(to.x + to.width / 2, to.y - 4, { steps: 6 });
-  await page.mouse.up();
+  await dragCard(page, card(page, "Wandert"), card(page, "Bleibt unten"));
 
   await expect
     .poll(() => storedDay(request, tuesday))
@@ -244,7 +257,7 @@ test("Plan: drag a quest onto another day and into place", async ({ page, reques
     "Bleibt unten",
   ]);
   expect(await shownDay(page, nextMonday)).toEqual([]);
-  // A drag is no tap: the day dialog stays closed.
+  // A drag is no tap: the editor stays closed.
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
@@ -271,17 +284,11 @@ test("Plan: drag a quest from the Questlog column onto a day and into place", as
   await loaded(page);
   await expect(questlogRow(page, "Aus dem Questlog")).toBeVisible();
 
-  const from = (await questlogRow(page, "Aus dem Questlog")
-    .locator(".sort-handle")
-    .boundingBox())!;
-  const to = (await grip(page, "Bleibt unten").boundingBox())!;
-  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2 + 8, {
-    steps: 16,
-  });
-  await page.mouse.move(to.x + to.width / 2, to.y - 4, { steps: 6 });
-  await page.mouse.up();
+  await dragCard(
+    page,
+    questlogRow(page, "Aus dem Questlog"),
+    card(page, "Bleibt unten"),
+  );
 
   await expect
     .poll(() => storedDay(request, tuesday))

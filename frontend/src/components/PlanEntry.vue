@@ -2,37 +2,36 @@
 import { computed } from "vue";
 import ActionMenu from "./ActionMenu.vue";
 import AppIcon from "./AppIcon.vue";
+import CampaignChip from "./CampaignChip.vue";
 import type { WeekPlanEntry } from "../types/week-plan";
+import { onCardClick } from "../utils/card-click";
 import { campaignMark as markOf } from "../utils/category-mark";
 import { shortDate } from "../utils/history";
 import type { MenuEntry } from "../utils/row-actions";
 import { isMovable } from "../utils/week-plan";
 
 /**
- * One row of the week plan, compact enough for seven columns. A quest opens
- * its editor from the title; its grip is the one move control: drag it, step
- * it with the arrow keys, or tap it to pick another day. A daily is a fixed
- * row the plan only shows. In the Questlog column the grip only drags; the
- * keyboard plans through the row's menu instead.
+ * One card of the week plan, compact enough for seven columns. A quest
+ * opens its editor from the title or a tap anywhere else on the card, drags
+ * from anywhere onto its place or another day, and keeps every other step
+ * in its menu "…" (the keyboard's way to move it). A daily is a fixed row
+ * the plan only shows.
  */
 const props = defineProps<{
   entry: WeekPlanEntry;
   /** A write is running: nothing starts until it is done. */
   busy: boolean;
-  /** "Aktionen für …" beside the grip, as in the Questlog column. */
+  /** "Aktionen für …" of an open quest. */
   menu?: MenuEntry[];
-  /** The grip is only a drag handle; the menu is the way for keys and taps. */
-  dragOnly?: boolean;
 }>();
 
-const emit = defineEmits<{
-  edit: [];
-  move: [];
-  /** The grip's arrow keys: up and down in the day, left and right a day. */
-  arrow: [key: "up" | "down" | "left" | "right"];
-}>();
+const emit = defineEmits<{ edit: [] }>();
 
 const movable = computed(() => isMovable(props.entry));
+const editable = computed(() => props.entry.type === "todo");
+function openFromCard(event: MouseEvent): void {
+  if (editable.value && !props.busy) onCardClick(event, () => emit("edit"));
+}
 const done = computed(() => props.entry.status !== "pending");
 
 const details = computed(() => {
@@ -48,15 +47,14 @@ const details = computed(() => {
   return parts;
 });
 
-/** Every campaign has its own quiet colour, as on Heute. */
+/** Every campaign has its own colour, as on Heute. */
 const campaignMark = computed(() => markOf(props.entry.campaign));
 /** A campaign's own quest wears its stripe but does not repeat its name. */
-const campaignName = computed(() => {
+const campaign = computed(() => {
   const { entry } = props;
-  if (!entry.campaign) return null;
-  return entry.type === "todo" && entry.campaign.id === entry.todoId
+  return entry.type === "todo" && entry.campaign?.id === entry.todoId
     ? null
-    : entry.campaign.title;
+    : entry.campaign;
 });
 </script>
 
@@ -67,8 +65,11 @@ const campaignName = computed(() => {
       'plan-entry--done': done,
       'plan-entry--daily': entry.type === 'habit',
       'plan-entry--campaign': campaignMark,
+      'card-target': editable,
+      'card-drag': movable,
     }"
     :style="campaignMark ? { '--campaign-mark': campaignMark } : undefined"
+    @click="openFromCard"
   >
     <div class="plan-entry__body">
       <!-- The heading keeps the plain title; the button inside says "bearbeiten". -->
@@ -101,38 +102,10 @@ const campaignName = computed(() => {
         </span>
         <span v-for="part in details" :key="part">{{ part }}</span>
       </p>
-      <!-- One line with an ellipsis: the stripe already shows whose it is. -->
-      <p
-        v-if="campaignName"
-        class="plan-entry__campaign"
-        :title="campaignName"
-      >
-        {{ campaignName }}
+      <!-- Icon and name; a long name ends in an ellipsis, its tooltip names it. -->
+      <p v-if="campaign" class="plan-entry__campaign">
+        <CampaignChip :campaign="campaign" />
       </p>
-      <span
-        v-if="movable && dragOnly"
-        class="plan-entry__grip plan-entry__grip--drag sort-handle"
-        aria-hidden="true"
-        title="Auf einen Tag ziehen"
-      >
-        <AppIcon name="grip" />
-      </span>
-      <button
-        v-else-if="movable"
-        class="plan-entry__grip sort-handle"
-        type="button"
-        :disabled="busy"
-        :aria-label="`${entry.title} verschieben`"
-        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
-        title="Ziehen, antippen oder mit den Pfeiltasten verschieben"
-        @click="emit('move')"
-        @keydown.up.prevent="emit('arrow', 'up')"
-        @keydown.down.prevent="emit('arrow', 'down')"
-        @keydown.left.prevent="emit('arrow', 'left')"
-        @keydown.right.prevent="emit('arrow', 'right')"
-      >
-        <AppIcon name="grip" />
-      </button>
       <div v-if="menu?.length" class="plan-entry__menu">
         <ActionMenu :title="entry.title" :entries="menu" :disabled="busy" />
       </div>
@@ -159,9 +132,9 @@ const campaignName = computed(() => {
 
 /*
  * Narrow columns give the title and the campaign the whole width and put
- * the grip below them, beside the details if there are any: a grip beside
+ * the menu below them, beside the details if there are any: a button beside
  * the title would leave a desktop column too little room for one German
- * word. A wide row (a phone's single day) keeps the grip on the right and
+ * word. A wide card (a phone's single day) keeps the menu on the right and
  * the campaign on the details' line.
  */
 .plan-entry__body {
@@ -169,46 +142,36 @@ const campaignName = computed(() => {
   grid-template-areas:
     "title title"
     "campaign campaign"
-    "details grip";
+    "details menu";
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   min-height: var(--tap);
   padding: var(--space-2) var(--space-1) var(--space-2) 0.625rem;
 }
 
-.plan-entry__body:has(.plan-entry__grip) {
+.plan-entry__body:has(.plan-entry__menu) {
   padding-bottom: 0;
 }
 
 @container (min-width: 15rem) {
   .plan-entry__body,
-  .plan-entry__body:has(.plan-entry__grip) {
+  .plan-entry__body:has(.plan-entry__menu) {
     grid-template-areas:
-      "title title grip"
-      "details campaign grip";
+      "title title menu"
+      "details campaign menu";
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-content: center;
     padding-block: var(--space-2);
     padding-left: var(--space-3);
   }
 
-  .plan-entry__body:has(.plan-entry__grip) {
+  .plan-entry__body:has(.plan-entry__menu) {
     padding-block: var(--space-1);
   }
 
   .plan-entry__details + .plan-entry__campaign {
     margin-left: var(--space-2);
   }
-}
-
-/* With a menu (the Questlog column) the menu follows the grip. */
-.plan-entry__body:has(.plan-entry__menu) {
-  grid-template-areas:
-    "title title title"
-    "campaign campaign campaign"
-    "details grip menu";
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  padding-bottom: 0;
 }
 
 .plan-entry__menu {
@@ -309,56 +272,9 @@ const campaignName = computed(() => {
 }
 
 .plan-entry__campaign {
+  display: flex;
   grid-area: campaign;
   min-width: 0;
-  margin: 0.125rem 0 0;
-  overflow: hidden;
-  color: var(--color-ink-muted);
-  font-size: 0.8125rem;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.plan-entry__grip {
-  display: grid;
-  grid-area: grip;
-  width: var(--tap);
-  height: var(--tap);
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--color-ink-soft);
-  cursor: grab;
-  /* A finger on the grip moves the quest; it must not scroll the board. */
-  touch-action: none;
-  transition: transform 420ms var(--spring);
-}
-
-.plan-entry__grip:hover:not(:disabled) {
-  background: var(--color-action-tint);
-  color: var(--color-action-strong);
-}
-
-.plan-entry__grip:active:not(:disabled) {
-  cursor: grabbing;
-  transform: var(--press);
-  transition-duration: 90ms;
-}
-
-.plan-entry__grip:disabled {
-  cursor: progress;
-}
-
-.plan-entry__grip--drag:hover {
-  background: var(--color-action-tint);
-  color: var(--color-action-strong);
-}
-
-.plan-entry__grip :deep(svg) {
-  width: 1.25rem;
-  height: 1.25rem;
+  margin: 0.25rem 0 0;
 }
 </style>

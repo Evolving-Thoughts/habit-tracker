@@ -5,6 +5,7 @@ import {
   deleteCategory,
   getCategories,
   renameCategory,
+  setCategoryColor,
   setCategoryTarget,
 } from "../api/categories.api";
 import CategorySettings from "./CategorySettings.vue";
@@ -14,6 +15,7 @@ vi.mock("../api/categories.api", () => ({
   createCategory: vi.fn(),
   renameCategory: vi.fn(),
   setCategoryTarget: vi.fn(),
+  setCategoryColor: vi.fn(),
   deleteCategory: vi.fn(),
 }));
 enableAutoUnmount(afterEach);
@@ -42,7 +44,45 @@ describe("CategorySettings", () => {
     await wrapper.find('input[name="name"]').setValue(" Musik ");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
-    expect(createCategory).toHaveBeenCalledWith("Musik");
+    expect(createCategory).toHaveBeenCalledWith("Musik", null);
+  });
+
+  it("picks a colour for a new category from the palette behind its dot", async () => {
+    const wrapper = await render();
+    await button(wrapper, "Farbe der neuen Kategorie: automatisch").trigger(
+      "click",
+    );
+    await wrapper.get('input[name="new-category-color"][value="navy"]').setValue(true);
+    await wrapper.find('input[name="name"]').setValue("Lesen");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(createCategory).toHaveBeenCalledWith("Lesen", "navy");
+  });
+
+  it("changes a category's colour from its dot, and back to automatic", async () => {
+    vi.mocked(setCategoryColor).mockResolvedValue({
+      id: 1,
+      name: "Sport",
+      color: "teal",
+    });
+    const wrapper = await render();
+    const dot = button(wrapper, "Farbe von Sport: automatisch");
+    expect(dot.attributes("aria-expanded")).toBe("false");
+    await dot.trigger("click");
+    expect(dot.attributes("aria-expanded")).toBe("true");
+    const picker = wrapper.get("#category-color-1");
+    // The core colours come first, each with its name.
+    const names = picker
+      .findAll("label")
+      .map((label) => label.attributes("title"));
+    expect(names.slice(0, 3)).toEqual([
+      "Automatisch aus dem Namen",
+      "Indigo",
+      "Nachtblau",
+    ]);
+    await picker.get('input[value="teal"]').setValue(true);
+    await flushPromises();
+    expect(setCategoryColor).toHaveBeenCalledWith(1, "teal");
   });
 
   it("renames a category", async () => {

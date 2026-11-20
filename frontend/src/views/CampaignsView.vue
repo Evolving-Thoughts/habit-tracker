@@ -4,7 +4,6 @@ import { useRoute, useRouter } from "vue-router";
 import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import { getQuestHours } from "../api/quest-hours.api";
 import { updateTodo, updateTodoCompletion } from "../api/day-planner.api";
-import { getCategories } from "../api/categories.api";
 import type { HierarchyTodo, TodoProgress } from "../types/todo-hierarchy";
 import type { TodoResponse } from "../types/todo";
 import { whyBelow } from "../utils/why";
@@ -39,7 +38,10 @@ import { useUndo } from "../composables/useUndo";
 import { useCampaignCompletion } from "../composables/useCampaignCompletion";
 import { useTimer } from "../composables/useTimer";
 import { useShortcutHandlers } from "../composables/useShortcuts";
-import { campaignMark, categoryMark } from "../utils/category-mark";
+import { campaignMark } from "../utils/category-mark";
+import { onCardClick } from "../utils/card-click";
+import { useCategoryLabels } from "../composables/useCategoryLabels";
+import ItemPlayButton from "../components/ItemPlayButton.vue";
 import {
   formatDateForGermanDisplay,
   getCurrentDateInTimeZone,
@@ -48,7 +50,11 @@ import {
 import { formatDuration } from "../utils/today-agenda";
 import { againstTargetParts, campaignTiles } from "../utils/quest-hours";
 import type { QuestHoursResponse } from "../types/quest-hours";
-import type { MenuEntry } from "../utils/row-actions";
+import {
+  rowMenu as cardMenu,
+  timerStep,
+  type MenuEntry,
+} from "../utils/row-actions";
 const page = ref<HTMLElement | null>(null),
   listFocus = useListFocus(page);
 const collapsed = ref(new Set<number>());
@@ -60,7 +66,6 @@ const action = ref<"create" | "move" | "edit" | "delete" | null>(null),
 const formBusy = ref(false),
   parent = ref("");
 const burnupTodo = ref<HierarchyTodo | null>(null);
-const categoryNames = ref(new Map<number, string>());
 const timer = useTimer();
 const {
   preview,
@@ -179,14 +184,8 @@ const parentOptions = computed(() => {
   return todos.value.filter((t) => !excluded.has(t.id));
 });
 // Category names only decorate the meta line, so a failure stays silent.
-onMounted(async () => {
-  try {
-    const categories = await getCategories();
-    categoryNames.value = new Map(categories.map((c) => [c.id, c.name]));
-  } catch {
-    categoryNames.value = new Map();
-  }
-});
+const { load: loadCategories, labelOf } = useCategoryLabels();
+onMounted(loadCategories);
 function shortDate(isoDate: string) {
   return formatDateForGermanDisplay(isoDate).slice(0, 6);
 }
@@ -208,89 +207,30 @@ function details(todo: HierarchyTodo): string[] {
     );
   return parts;
 }
-// The stopwatch entry in the menu follows the same rules as ItemPlayButton.
-function timerActive(todo: HierarchyTodo) {
-  const current = timer?.timer.value;
-  return current?.kind === "todo" && current.targetId === todo.id;
-}
-function timerLabel(todo: HierarchyTodo) {
-  return timerActive(todo)
-    ? `Stoppuhr für ${todo.title} läuft bereits`
-    : !todo.timerEligible
-      ? `Stoppuhr für ${todo.title}: keine offene fällige Ausführung`
-      : `Stoppuhr für ${todo.title} starten`;
-}
-function timerDisabled(todo: HierarchyTodo) {
-  return (
-    busy.value ||
-    !todo.timerEligible ||
-    timerActive(todo) ||
-    Boolean(timer?.busy.value)
-  );
-}
-function startTimer(todo: HierarchyTodo) {
-  if (timer)
-    void timer.start({ kind: "todo", targetId: todo.id, title: todo.title });
-}
-
-/*
- * "Aktionen für …": the tree structures campaigns, so measuring is one entry
- * here instead of a ▶ on every row.
- */
+/** "Aktionen für …" of a row; its ▶ measures, so the menu needs no stopwatch. */
 function rowMenu(todo: HierarchyTodo): MenuEntry[] {
-  const entries: MenuEntry[] = [
+  return cardMenu(
+    todo.title,
     {
-      id: "timer",
-      label: "Stoppuhr starten",
-      icon: "timer",
-      ariaLabel: timerLabel(todo),
-      disabled: timerDisabled(todo),
-      run: () => startTimer(todo),
+      edit: () => open("edit", todo),
+      child: () => open("create", todo),
+      progress:
+        todo.parentId === null ? () => showProgress(todo) : undefined,
+      reparent: () => open("move", todo),
+      remove: {
+        run: () => void requestDelete(todo),
+        ariaLabel: `${todo.title} mit allen Unter-Quests löschen`,
+      },
     },
-    {
-      id: "child",
-      label: "Unter-Quest hinzufügen",
-      icon: "child",
-      ariaLabel: `Unter-Quest zu ${todo.title} hinzufügen`,
-      disabled: busy.value,
-      run: () => open("create", todo),
-    },
-  ];
-  if (todo.parentId === null)
-    entries.push({
-      id: "progress",
-      label: "Fortschritt anzeigen",
-      icon: "chart",
-      ariaLabel: `Fortschritt von ${todo.title} anzeigen`,
-      disabled: busy.value,
-      run: () => showProgress(todo),
-    });
-  entries.push(
-    {
-      id: "move",
-      label: "Verschieben",
-      icon: "move",
-      ariaLabel: `${todo.title} verschieben`,
-      disabled: busy.value,
-      run: () => open("move", todo),
-    },
-    {
-      id: "delete",
-      label: "Löschen",
-      icon: "trash",
-      ariaLabel: `${todo.title} mit allen Unter-Quests löschen`,
-      disabled: busy.value,
-      last: true,
-      run: () => void requestDelete(todo),
-    },
+    busy.value,
   );
-  return entries;
 }
 
 /*
  * The opened campaign's "…": what its row offered, now that the detail card
  * stands for it. Its ring becomes "Kampagne abschließen" (asking as the ring
- * did), and its progress is already on the card.
+ * did), the card has no ▶, so the stopwatch is an entry, and its progress
+ * is already on the card.
  */
 function campaignMenu(todo: HierarchyTodo): MenuEntry[] {
   return [
@@ -304,8 +244,30 @@ function campaignMenu(todo: HierarchyTodo): MenuEntry[] {
       disabled: busy.value,
       run: () => void toggleCompletion(todo),
     },
-    ...rowMenu(todo).filter((entry) => entry.id !== "progress"),
+    ...cardMenu(
+      todo.title,
+      {
+        edit: () => open("edit", todo),
+        timer: timerStep(
+          timer,
+          { kind: "todo", targetId: todo.id, title: todo.title },
+          todo.timerEligible,
+        ),
+        child: () => open("create", todo),
+        reparent: () => open("move", todo),
+        remove: {
+          run: () => void requestDelete(todo),
+          ariaLabel: `${todo.title} mit allen Unter-Quests löschen`,
+        },
+      },
+      busy.value,
+    ),
   ];
+}
+
+/** The card contract: a tap anywhere on a row but its controls edits it. */
+function openFromCard(event: MouseEvent, todo: HierarchyTodo): void {
+  if (!busy.value) onCardClick(event, () => open("edit", todo));
 }
 
 function message(e: unknown) {
@@ -670,7 +632,7 @@ useShortcutHandlers({
         <li
           v-for="{ todo, depth } in rows"
           :key="todo.id"
-          class="row"
+          class="row card-target"
           :class="{
             'row--over': dropTarget === todo.id,
             'row--done': checked(todo),
@@ -689,6 +651,7 @@ useShortcutHandlers({
           @dragover.prevent="dropTarget = todo.id"
           @dragleave="dropTarget = undefined"
           @drop.stop="drop($event, todo.id)"
+          @click="openFromCard($event, todo)"
         >
           <button
             v-if="children.get(todo.id)?.length"
@@ -728,28 +691,15 @@ useShortcutHandlers({
               Gehört zu „{{ titles.get(todo.parentId) }}“
             </span>
             <p
-              v-if="
-                (todo.categoryId !== null &&
-                  categoryNames.has(todo.categoryId)) ||
-                details(todo).length
-              "
+              v-if="labelOf(todo.categoryId) || details(todo).length"
               class="row__meta"
             >
-              <span
-                v-if="
-                  todo.categoryId !== null && categoryNames.has(todo.categoryId)
-                "
-                class="row__category"
-              >
+              <span v-if="labelOf(todo.categoryId)" class="row__category">
                 <i
                   class="category-mark"
-                  :style="{
-                    background: categoryMark(
-                      categoryNames.get(todo.categoryId)!,
-                    ),
-                  }"
+                  :style="{ background: labelOf(todo.categoryId)!.mark }"
                   aria-hidden="true"
-                />{{ categoryNames.get(todo.categoryId) }}
+                />{{ labelOf(todo.categoryId)!.name }}
               </span>
               <span v-for="part in details(todo)" :key="part">{{ part }}</span>
             </p>
@@ -773,12 +723,22 @@ useShortcutHandlers({
               <span class="row__count">{{ progressText(todo.progress) }}</span>
             </div>
           </div>
-          <ActionMenu
-            :title="todo.title"
-            :entries="rowMenu(todo)"
-            :disabled="busy"
-            :trigger-key="todo.id"
-          />
+          <div class="row__end">
+            <ItemPlayButton
+              v-if="!checked(todo)"
+              kind="todo"
+              :target-id="todo.id"
+              :title="todo.title"
+              :eligible="todo.timerEligible"
+              :disabled="busy"
+            />
+            <ActionMenu
+              :title="todo.title"
+              :entries="rowMenu(todo)"
+              :disabled="busy"
+              :trigger-key="todo.id"
+            />
+          </div>
         </li>
       </ul>
       <div
@@ -938,7 +898,7 @@ useShortcutHandlers({
 .row {
   position: relative;
   display: grid;
-  grid-template-columns: var(--tap) var(--tap) minmax(0, 1fr) var(--tap);
+  grid-template-columns: var(--tap) var(--tap) minmax(0, 1fr) auto;
   gap: var(--space-1);
   align-items: start;
   margin-left: calc(var(--indent) * 1rem);
@@ -966,6 +926,11 @@ useShortcutHandlers({
 
 .row__spacer {
   width: var(--tap);
+}
+
+.row__end {
+  display: flex;
+  align-items: center;
 }
 
 .row__expander :deep(svg) {

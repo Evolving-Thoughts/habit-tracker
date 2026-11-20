@@ -54,7 +54,7 @@ test("Kampagnen-Stunden: goals, a campaign's colour and icon, its tile and the l
   await choose("Beere");
   await choose("Buch");
   // The chosen colour is also named in words.
-  await expect(dialog.locator(".campaign-fields__chosen").first()).toHaveText(
+  await expect(dialog.locator(".mark-picker__chosen")).toHaveText(
     "Beere",
   );
   await dialog.locator('[name="weeklyTarget"]').fill("6");

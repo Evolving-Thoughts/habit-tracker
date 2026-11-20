@@ -31,6 +31,8 @@ export type DayPlannerTodoItem = {
   todoId: number;
   title: string;
   categoryName: string | null;
+  /** A colour key from `campaign.ts`; null while the name picks one. */
+  categoryColor: string | null;
   status: TodoStatus;
   scheduledDate: string;
   /** HH:mm of an appointment; null for a quest that only has its day. */
@@ -49,6 +51,8 @@ export type DayPlannerHabitItem = {
   habitId: number;
   title: string;
   categoryName: string | null;
+  /** A colour key from `campaign.ts`; null while the name picks one. */
+  categoryColor: string | null;
   status: HabitOccurrenceStatus | "cancelled";
   scheduledDate: string;
   moveUntil: string | null;

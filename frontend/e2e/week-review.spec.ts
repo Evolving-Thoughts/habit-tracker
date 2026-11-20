@@ -99,7 +99,7 @@ test("Wochenrückblick: the week in numbers, its campaigns, what was done, and t
   // It names the quest with its campaign.
   await expect(
     view.locator(`[data-done-key="todo-${chapter}"]`),
-  ).toContainText("Kapitel schreibenBuch");
+  ).toContainText("Kapitel schreibenKampagne Buch");
   expect(
     await page.evaluate(
       () =>

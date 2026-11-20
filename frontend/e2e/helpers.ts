@@ -1,4 +1,9 @@
-import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import {
+  expect,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 import { API_URL } from "./environment";
 export async function today(request: APIRequestContext): Promise<string> {
   const result = await request.get(`${API_URL}/day-planner/today`);
@@ -189,4 +194,53 @@ export function berlinTime(date: string, time: string): Date {
     Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3, 5));
   const offset = (minutes(shown) - minutes(time) + 1440) % 1440;
   return new Date(guess.getTime() - offset * 60_000);
+}
+
+/** Opens a card's menu "…" and runs the entry with that spoken name. */
+export async function cardMenu(
+  page: Page,
+  title: string,
+  entry: string,
+): Promise<void> {
+  await page
+    .getByRole("button", { name: `Aktionen für ${title}`, exact: true })
+    .click();
+  await page
+    .getByRole("menu", { name: title, exact: true })
+    .getByRole("menuitem", { name: entry, exact: true })
+    .click();
+}
+
+/**
+ * A point on a card that belongs to no control: the right end of its
+ * heading, past the title button. The whole card drags from there.
+ */
+export async function grabPoint(
+  card: Locator,
+): Promise<{ x: number; y: number }> {
+  const box = (await card.locator("h3").first().boundingBox())!;
+  return { x: box.x + box.width - 6, y: box.y + box.height / 2 };
+}
+
+/**
+ * Drags a card by its body onto another card's upper edge, in steps as a
+ * hand would move: SortableJS decides on the way.
+ */
+export async function dragCard(
+  page: Page,
+  card: Locator,
+  onto: Locator,
+  { above = 2 }: { above?: number } = {},
+): Promise<void> {
+  const from = await grabPoint(card);
+  const target = (await onto.boundingBox())!;
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2 + 8, {
+    steps: 12,
+  });
+  await page.mouse.move(target.x + target.width / 2, target.y + above, {
+    steps: 6,
+  });
+  await page.mouse.up();
 }

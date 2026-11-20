@@ -2,6 +2,7 @@ import { enableAutoUnmount, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import { WEEK_ENTRY_FIELDS } from "../types/fixtures";
 import type { WeekPlanEntry } from "../types/week-plan";
+import type { MenuEntry } from "../utils/row-actions";
 import PlanEntry from "./PlanEntry.vue";
 
 enableAutoUnmount(afterEach);
@@ -18,22 +19,32 @@ const quest: WeekPlanEntry = {
   campaign: { id: 1, title: "Gesund bleiben", color: null, icon: null },
 };
 
+const MENU: MenuEntry[] = [
+  { id: "edit", label: "Bearbeiten", icon: "edit", run: () => undefined },
+];
 const mountEntry = (entry: WeekPlanEntry, busy = false) =>
-  mount(PlanEntry, { props: { entry, busy } });
+  mount(PlanEntry, {
+    props: {
+      entry,
+      busy,
+      menu:
+        entry.type === "todo" && entry.status === "pending" ? MENU : undefined,
+    },
+  });
 /** The pieces of the details line, as read one by one. */
 const parts = (wrapper: ReturnType<typeof mountEntry>) =>
   wrapper.findAll(".plan-entry__details > span").map((part) => part.text());
-const grip = (wrapper: ReturnType<typeof mountEntry>) =>
-  wrapper.get('button[aria-label="Zahnarzt verschieben"]');
+const trigger = (wrapper: ReturnType<typeof mountEntry>) =>
+  wrapper.get('button[aria-label="Aktionen für Zahnarzt"]');
 
 describe("PlanEntry", () => {
   it("shows time, planned duration and the campaign with its stripe", () => {
     const wrapper = mountEntry(quest);
     expect(parts(wrapper)).toEqual(["14:30", "45 Min."]);
-    // The campaign has a line of its own; cut short, its tooltip names it.
-    const campaign = wrapper.get(".plan-entry__campaign");
-    expect(campaign.text()).toBe("Gesund bleiben");
-    expect(campaign.attributes("title")).toBe("Gesund bleiben");
+    // The campaign's chip has a line of its own; cut short, its tooltip names it.
+    const chip = wrapper.get(".plan-entry__campaign .campaign-chip");
+    expect(chip.get(".campaign-chip__name").text()).toBe("Gesund bleiben");
+    expect(chip.attributes("title")).toBe("Gesund bleiben");
     expect(wrapper.classes()).toContain("plan-entry--campaign");
     expect(wrapper.attributes("style")).toContain("--campaign-mark");
   });
@@ -70,35 +81,33 @@ describe("PlanEntry", () => {
     expect(edit.attributes("title")).toBe(title);
   });
 
-  it("opens the editor from the title and moves through the grip", async () => {
+  it("opens the editor from the title and from a tap on the card", async () => {
     const wrapper = mountEntry(quest);
     await wrapper.get('button[aria-label="Zahnarzt bearbeiten"]').trigger("click");
-    await grip(wrapper).trigger("click");
-    for (const key of ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"])
-      await grip(wrapper).trigger("keydown", { key });
-
-    expect(wrapper.emitted("edit")).toHaveLength(1);
-    expect(wrapper.emitted("move")).toHaveLength(1);
-    expect(wrapper.emitted("arrow")).toEqual([
-      ["up"],
-      ["down"],
-      ["left"],
-      ["right"],
-    ]);
+    await wrapper.get(".plan-entry__details").trigger("click");
+    // The card's own controls keep their tap.
+    await trigger(wrapper).trigger("click");
+    expect(wrapper.emitted("edit")).toHaveLength(2);
+    expect(wrapper.classes()).toEqual(
+      expect.arrayContaining(["card-target", "card-drag"]),
+    );
+    expect(wrapper.find(".sort-handle").exists()).toBe(false);
   });
 
-  it("starts nothing while a write runs", () => {
+  it("starts nothing while a write runs", async () => {
     const wrapper = mountEntry(quest, true);
-    expect(grip(wrapper).attributes("disabled")).toBeDefined();
+    expect(trigger(wrapper).attributes("disabled")).toBeDefined();
+    await wrapper.get(".plan-entry__details").trigger("click");
+    expect(wrapper.emitted("edit")).toBeUndefined();
     expect(
       wrapper.get('button[aria-label="Zahnarzt bearbeiten"]').attributes("disabled"),
     ).toBeDefined();
   });
 
-  it("strikes a done quest through and offers no grip", () => {
+  it("strikes a done quest through; it no longer drags", () => {
     const wrapper = mountEntry({ ...quest, status: "completed" });
     expect(wrapper.classes()).toContain("plan-entry--done");
-    expect(wrapper.find(".sort-handle").exists()).toBe(false);
+    expect(wrapper.classes()).not.toContain("card-drag");
   });
 
   it("shows a daily as a fixed row without any control", () => {
@@ -116,5 +125,6 @@ describe("PlanEntry", () => {
     expect(wrapper.find("button").exists()).toBe(false);
     expect(wrapper.get("h3").text()).toBe("Laufen");
     expect(wrapper.get("h3").attributes("title")).toBe("Laufen");
+    expect(wrapper.classes()).not.toContain("card-target");
   });
 });

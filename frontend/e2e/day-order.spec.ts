@@ -1,4 +1,11 @@
-import { berlinTime, openView, today, daysAfter } from "./helpers";
+import {
+  berlinTime,
+  cardMenu,
+  dragCard,
+  openView,
+  today,
+  daysAfter,
+} from "./helpers";
 import { test, expect } from "./fixtures";
 import { API_URL } from "./environment";
 import type { APIRequestContext, Page } from "@playwright/test";
@@ -20,13 +27,15 @@ const storedOrder = async (request: APIRequestContext) =>
       items: { title: string }[];
     }
   ).items.map(({ title }) => title);
-const grip = (page: Page, title: string) =>
-  page.getByRole("button", {
-    name: `${title} in der Reihenfolge verschieben`,
-    exact: true,
-  });
+/** A row of the day's order, by its title. */
+const card = (page: Page, title: string) =>
+  page
+    .locator(".order .planner-item")
+    .filter({ has: page.getByRole("heading", { name: title, exact: true }) });
+const menuButton = (page: Page, title: string) =>
+  page.getByRole("button", { name: `Aktionen für ${title}`, exact: true });
 
-test("Heute: sort the day with the grip's arrow keys; the head becomes the focus and it persists", async ({
+test("Heute: sort the day with Nach oben in the menu; the head becomes the focus and it persists", async ({
   page,
   request,
 }) => {
@@ -37,13 +46,13 @@ test("Heute: sort the day with the grip's arrow keys; the head becomes the focus
   await expect(page.locator("#focus-title")).toHaveText("Erstes");
   expect(await shownOrder(page)).toEqual(["Erstes", "Zweites", "Drittes"]);
 
-  await grip(page, "Drittes").focus();
-  await page.keyboard.press("ArrowUp");
+  await cardMenu(page, "Drittes", "Drittes nach oben");
   await expect(page.getByRole("status").filter({ hasText: "Drittes" })).toHaveText(
     "„Drittes“ steht jetzt an Stelle 2 von 3.",
   );
-  await expect(grip(page, "Drittes")).toBeFocused();
-  await page.keyboard.press("ArrowUp");
+  // The keyboard stays on the moved card's menu button.
+  await expect(menuButton(page, "Drittes")).toBeFocused();
+  await cardMenu(page, "Drittes", "Drittes nach oben");
   await expect(page.locator("#focus-title")).toHaveText("Drittes");
   await expect
     .poll(() => storedOrder(request))
@@ -54,7 +63,10 @@ test("Heute: sort the day with the grip's arrow keys; the head becomes the focus
   expect(await shownOrder(page)).toEqual(["Drittes", "Erstes", "Zweites"]);
 });
 
-test("Heute: drag a quest above another one", async ({ page, request }, info) => {
+test("Heute: drag a quest by its card above another one; a click opens the editor", async ({
+  page,
+  request,
+}, info) => {
   test.skip(
     info.project.name !== "chromium",
     "Dragging is covered with the mouse; phones use the same code path by touch.",
@@ -65,16 +77,9 @@ test("Heute: drag a quest above another one", async ({ page, request }, info) =>
   await page.goto("/");
   await expect(page.locator("#focus-title")).toHaveText("Erstes");
 
-  const from = (await grip(page, "Viertes").boundingBox())!;
-  const to = (await grip(page, "Zweites").boundingBox())!;
-  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
-  await page.mouse.down();
-  // Several steps, as a hand would move: SortableJS decides on the way.
-  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2 + 8, {
-    steps: 12,
-  });
-  await page.mouse.move(to.x + to.width / 2, to.y + 2, { steps: 6 });
-  await page.mouse.up();
+  // No grip: the card itself drags, from anywhere but its controls.
+  await expect(page.locator(".order .sort-handle")).toHaveCount(0);
+  await dragCard(page, card(page, "Viertes"), card(page, "Zweites"));
 
   await expect
     .poll(() => storedOrder(request))
@@ -85,6 +90,14 @@ test("Heute: drag a quest above another one", async ({ page, request }, info) =>
     "Zweites",
     "Drittes",
   ]);
+
+  // A short click on the same spot is no drag: it opens the editor.
+  const meta = card(page, "Drittes").locator("h3");
+  const box = (await meta.boundingBox())!;
+  await page.mouse.click(box.x + box.width - 6, box.y + box.height / 2);
+  await expect(
+    page.getByRole("dialog", { name: "Quest bearbeiten" }),
+  ).toBeVisible();
 });
 
 test("Heute: quick add puts a quest at the end or at the head of today", async ({
@@ -133,7 +146,7 @@ test("Heute: appointments sit on the time axis and stay when the rest moves to t
   const axis = page.getByRole("region", { name: "Termine" });
   await expect(axis).toContainText("23:58");
   await expect(axis).toContainText("Zahnarzt");
-  await expect(grip(page, "Zahnarzt")).toHaveCount(0);
+  await expect(card(page, "Zahnarzt")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Auf morgen", exact: true }).click();
   const dialog = page.getByRole("dialog");

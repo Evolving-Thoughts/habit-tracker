@@ -288,7 +288,7 @@ describe("TodayView", () => {
     expect(wrapper.get(".timeline").text()).not.toContain("Bewerbung");
   });
 
-  it("sorts with the grip's arrow keys, shows it at once and stores it", async () => {
+  it("sorts with Nach oben in the menu, shows it at once and stores it", async () => {
     const first = makeTodo();
     const second = makeTodo({ todoId: 2, title: "Bewerbung" });
     const third = makeHabit({ title: "Lesen" });
@@ -302,11 +302,10 @@ describe("TodayView", () => {
     const wrapper = mount(TodayView, { attachTo: document.body });
     await flushPromises();
 
-    const grip = (title: string) =>
-      wrapper.get(
-        `button[aria-label="${title} in der Reihenfolge verschieben"]`,
-      );
-    await grip("Lesen").trigger("keydown", { key: "ArrowUp" });
+    const trigger = (title: string) =>
+      wrapper.get(`button[aria-label="Aktionen für ${title}"]`);
+    await trigger("Lesen").trigger("click");
+    await wrapper.get('[aria-label="Lesen nach oben"]').trigger("click");
 
     // Before the server has answered, the new order already shows.
     expect(
@@ -323,7 +322,8 @@ describe("TodayView", () => {
 
     stored();
     await flushPromises();
-    expect(document.activeElement).toBe(grip("Lesen").element);
+    // The keyboard stays on the moved card's menu button.
+    expect(document.activeElement).toBe(trigger("Lesen").element);
   });
 
   it("makes another quest the focus when it moves to the head of the order", async () => {
@@ -335,9 +335,8 @@ describe("TodayView", () => {
     const wrapper = mount(TodayView);
     await flushPromises();
 
-    await wrapper
-      .get('button[aria-label="Bewerbung in der Reihenfolge verschieben"]')
-      .trigger("keydown", { key: "ArrowUp" });
+    await wrapper.get('[aria-label="Aktionen für Bewerbung"]').trigger("click");
+    await wrapper.get('[aria-label="Bewerbung nach oben"]').trigger("click");
     await flushPromises();
 
     expect(wrapper.get("#focus-title").text()).toBe("Bewerbung");
@@ -356,9 +355,8 @@ describe("TodayView", () => {
     const wrapper = mount(TodayView);
     await flushPromises();
 
-    await wrapper
-      .get('button[aria-label="Einkaufen in der Reihenfolge verschieben"]')
-      .trigger("keydown", { key: "ArrowUp" });
+    await wrapper.get('[aria-label="Aktionen für Einkaufen"]').trigger("click");
+    await wrapper.get('[aria-label="Einkaufen nach oben"]').trigger("click");
     await flushPromises();
 
     expect(wrapper.get('[role="alert"]').text()).toBe("Offline");
@@ -1088,18 +1086,39 @@ describe("TodayView rows and focus card", () => {
     // No text buttons for Überspringen or Bearbeiten on the card.
     expect(texts(focus, "button")).not.toContain("Überspringen");
     expect(texts(focus, "button")).not.toContain("Bearbeiten");
-    // The grip sits in the card's head, beside the title, not in the actions.
-    expect(
-      focus.get(".focus__head .sort-handle").attributes("aria-label"),
-    ).toBe("Joggen in der Reihenfolge verschieben");
-    expect(actions.find(".sort-handle").exists()).toBe(false);
+    // No grip: the whole card drags, and its menu moves it down.
+    expect(focus.find(".sort-handle").exists()).toBe(false);
+    expect(focus.classes()).toEqual(
+      expect.arrayContaining(["card-target", "card-drag"]),
+    );
 
     await actions.get('[aria-label="Aktionen für Joggen"]').trigger("click");
     expect(texts(wrapper, "[role=menuitem] .action-menu__label")).toEqual([
-      "Überspringen",
       "Morgen",
       "Anderer Tag …",
+      "Überspringen",
+      "Bearbeiten",
+      "Fokus-Modus",
+      "Nach unten",
     ]);
+  });
+
+  it("opens the editor from a tap anywhere on the focus card but its controls", async () => {
+    getTodayMock.mockResolvedValue(makePlanner([makeTodo()]));
+    const wrapper = mount(TodayView, {
+      global: {
+        stubs: {
+          EditItemDialog: {
+            props: ["kind", "entityId"],
+            template:
+              '<div class="editor-stub">{{ kind }} {{ entityId }}</div>',
+          },
+        },
+      },
+    });
+    await flushPromises();
+    await wrapper.get(".focus__meta").trigger("click");
+    expect(wrapper.get(".editor-stub").text()).toBe("todo 1");
   });
 
   it("opens the editor from the focus card's title", async () => {
@@ -1135,7 +1154,6 @@ describe("TodayView rows and focus card", () => {
     expect(
       row.findAll("button").map((button) => button.attributes("aria-label")),
     ).toEqual([
-      "Zweitens in der Reihenfolge verschieben",
       "Zweitens erledigen",
       "Zweitens bearbeiten",
       "Stoppuhr für Zweitens starten",
@@ -1157,7 +1175,13 @@ describe("TodayView rows and focus card", () => {
     const entries = wrapper.findAll("[role=menuitem]");
     expect(
       entries.map((entry) => entry.get(".action-menu__label").text()),
-    ).toEqual(["Morgen", "Nächste Woche", "Anderer Tag …"]);
+    ).toEqual([
+      "Morgen",
+      "Nächste Woche",
+      "Anderer Tag …",
+      "Bearbeiten",
+      "Nach oben",
+    ]);
     // The keys that do the same are named for assistive technology.
     expect(entries[0]!.attributes("aria-keyshortcuts")).toBe("D");
     expect(entries[1]!.attributes("aria-keyshortcuts")).toBe("W");
@@ -1181,6 +1205,7 @@ describe("TodayView rows and focus card", () => {
     await wrapper.get('[aria-label="Aktionen für Zahnarzt"]').trigger("click");
     expect(texts(wrapper, "[role=menuitem] .action-menu__label")).toEqual([
       "Termin verschieben …",
+      "Bearbeiten",
     ]);
     await wrapper.get('[aria-label="Zahnarzt verschieben"]').trigger("click");
     expect(wrapper.find('[data-test="move-confirm"]').exists()).toBe(true);
@@ -1293,11 +1318,12 @@ describe("TodayView: an appointment's turn on the focus card", () => {
       "Stoppuhr für Teamrunde starten",
       "Aktionen für Teamrunde",
     ]);
-    // Not part of the order: no grip on the card.
-    expect(wrapper.find(".focus__grip").exists()).toBe(false);
+    // Not part of the order: the card does not drag.
+    expect(wrapper.get(".focus").classes()).not.toContain("card-drag");
     await actions.get('[aria-label="Aktionen für Teamrunde"]').trigger("click");
     expect(texts(wrapper, "[role=menuitem] .action-menu__label")).toEqual([
       "Termin verschieben …",
+      "Bearbeiten",
     ]);
   });
 

@@ -132,7 +132,7 @@ describe("WeekReviewView", () => {
       perfectWeek: {
         perfect: false,
         categories: [
-          { id: 1, name: "Sport", target: 2, completed: 1, reached: false },
+          { id: 1, name: "Sport", color: null, target: 2, completed: 1, reached: false },
         ],
       },
     });
@@ -268,7 +268,7 @@ describe("WeekReviewView", () => {
         perfectWeek: {
           perfect: false,
           categories: [
-            { id: 1, name: "Sport", target: 2, completed: 0, reached: false },
+            { id: 1, name: "Sport", color: null, target: 2, completed: 0, reached: false },
           ],
         },
       }),

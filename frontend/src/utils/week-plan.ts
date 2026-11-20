@@ -166,14 +166,13 @@ export function dropOnDay(
 }
 
 /**
- * Where the grip's arrow keys take a quest: up and down to the next place
- * in the day's order, left and right to the end of the day before or after.
- * Returns null where there is no such place (the edge, the past, a time).
+ * Where "Nach oben" and "Nach unten" take a quest: to the next place in the
+ * day's order. Returns null where there is no such place (the edge, a time).
  */
-export function arrowDrop(
+export function stepDrop(
   plan: WeekPlanResponse,
   todoId: number,
-  key: "up" | "down" | "left" | "right",
+  direction: "up" | "down",
 ): Drop | null {
   const dayIndex = plan.days.findIndex((day) =>
     openEntries(day).some(
@@ -186,14 +185,10 @@ export function arrowDrop(
   const entry = open.find(
     (item) => item.type === "todo" && item.todoId === todoId,
   )!;
-  if (key === "left" || key === "right") {
-    const next = plan.days[dayIndex + (key === "left" ? -1 : 1)];
-    if (!next || next.date < plan.today) return null;
-    return { todoId, toDate: next.date, index: openEntries(next).length };
-  }
   if (!isSequenced(entry)) return null;
   const sequence = open.filter(isSequenced);
-  const neighbour = sequence[sequence.indexOf(entry) + (key === "up" ? -1 : 1)];
+  const neighbour =
+    sequence[sequence.indexOf(entry) + (direction === "up" ? -1 : 1)];
   if (!neighbour) return null;
   return { todoId, toDate: day.date, index: open.indexOf(neighbour) };
 }

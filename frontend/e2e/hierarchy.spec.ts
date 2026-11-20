@@ -473,6 +473,7 @@ test("Kampagnen: the tree holds campaigns only, an opened one starts below its c
   const menu = page.getByRole("menu", { name: "Buch schreiben", exact: true });
   await expect(menu.getByRole("menuitem")).toHaveText([
     "Kampagne abschließen",
+    "Bearbeiten",
     "Stoppuhr starten",
     "Unter-Quest hinzufügen",
     "Verschieben",

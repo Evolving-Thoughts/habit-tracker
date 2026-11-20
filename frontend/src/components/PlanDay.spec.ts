@@ -24,8 +24,18 @@ const quest = (
   ...overrides,
 });
 
+const menu = vi.fn((entry: WeekPlanTodoEntry) => [
+  {
+    id: "edit",
+    label: "Bearbeiten",
+    icon: "edit" as const,
+    run: () => undefined,
+    ariaLabel: `${entry.title}: Bearbeiten`,
+  },
+]);
+
 const mountDay = (day: WeekPlanDay, today = "2026-11-17") =>
-  mount(PlanDay, { props: { day, today, busy: false } });
+  mount(PlanDay, { props: { day, today, busy: false, menu } });
 
 describe("PlanDay", () => {
   it("is a region named by its day, with open and done as separate lists", () => {
@@ -48,14 +58,26 @@ describe("PlanDay", () => {
     expect(wrapper.attributes("aria-current")).toBeUndefined();
   });
 
-  it("hands a quest's actions up with the quest", async () => {
+  it("hands a quest's edit up and gives each open quest the view's menu", async () => {
+    const entry = quest(1);
+    const done = quest(2, { status: "completed" });
+    const wrapper = mountDay({ date: "2026-11-18", entries: [entry, done] });
+    await wrapper.get('button[aria-label="Quest 1 bearbeiten"]').trigger("click");
+    expect(wrapper.emitted("edit")).toEqual([[entry]]);
+    expect(menu).toHaveBeenCalledWith(entry);
+    expect(menu).not.toHaveBeenCalledWith(done);
+    expect(
+      wrapper.find('button[aria-label="Aktionen für Quest 1"]').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('button[aria-label="Aktionen für Quest 2"]').exists(),
+    ).toBe(false);
+  });
+
+  it("opens the editor from a tap anywhere on the card", async () => {
     const entry = quest(1);
     const wrapper = mountDay({ date: "2026-11-18", entries: [entry] });
-    await wrapper.get('button[aria-label="Quest 1 verschieben"]').trigger("keydown", {
-      key: "ArrowRight",
-    });
-    await wrapper.get('button[aria-label="Quest 1 bearbeiten"]').trigger("click");
-    expect(wrapper.emitted("arrow")).toEqual([[entry, "right"]]);
+    await wrapper.get(".plan-entry__details, .plan-entry").trigger("click");
     expect(wrapper.emitted("edit")).toEqual([[entry]]);
   });
 

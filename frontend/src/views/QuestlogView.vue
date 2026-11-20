@@ -7,11 +7,12 @@ import {
   updateTodo,
   updateTodoCompletion,
 } from "../api/day-planner.api";
-import { getCategories } from "../api/categories.api";
 import { planQuest } from "../api/questlog.api";
 import { useListFocus } from "../composables/useListFocus";
 import AppIcon from "../components/AppIcon.vue";
+import CampaignChip from "../components/CampaignChip.vue";
 import ItemRow from "../components/ItemRow.vue";
+import { useCategoryLabels } from "../composables/useCategoryLabels";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import { useUndo } from "../composables/useUndo";
@@ -27,12 +28,13 @@ import { shownWhy } from "../utils/why";
 import PlanFields from "../components/PlanFields.vue";
 import AppointmentFields from "../components/AppointmentFields.vue";
 import QuestNotes from "../components/QuestNotes.vue";
-import { campaignMark, categoryMark } from "../utils/category-mark";
+import { campaignMark } from "../utils/category-mark";
 import { buildTodoInput } from "../utils/todo-input";
 import { dayLabel, fullStop } from "../utils/history";
 import {
   quickMoveEntries,
   quickMoves,
+  rowMenu as cardMenu,
   type MenuEntry,
 } from "../utils/row-actions";
 
@@ -69,18 +71,10 @@ const editDate = ref("");
 const editTime = ref("");
 const editDuration = ref<string | number>("");
 
-/** Category names for the meta line; the list stays usable without them. */
-const categoryNames = ref(new Map<number, string>());
-async function loadCategoryNames(): Promise<void> {
-  try {
-    const categories = await getCategories();
-    categoryNames.value = new Map(categories.map((c) => [c.id, c.name]));
-  } catch {
-    // Without names the items simply show no category mark.
-  }
-}
+/** Category names and marks for the meta line. */
+const { load: loadCategories, labelOf } = useCategoryLabels();
 async function loadDump(): Promise<TodoResponse[]> {
-  const [backlog] = await Promise.all([getBacklogTodos(), loadCategoryNames()]);
+  const [backlog] = await Promise.all([getBacklogTodos(), loadCategories()]);
   return backlog;
 }
 
@@ -122,11 +116,10 @@ function forgetDone(id: number): void {
 
 const { undo, offer, take: takeUndo } = useUndo<TodoResponse>();
 
-function categoryOf(todo: TodoResponse): string | null {
-  return todo.categoryId === null
-    ? null
-    : (categoryNames.value.get(todo.categoryId) ?? null);
-}
+const categoryOf = (todo: TodoResponse) => labelOf(todo.categoryId);
+/** A campaign's own quest wears its stripe but does not repeat its name. */
+const campaignOf = (todo: TodoResponse) =>
+  todo.campaign && todo.campaign.id !== todo.id ? todo.campaign : null;
 
 function detailsOf(todo: TodoResponse): string[] {
   const parts: string[] = [];
@@ -305,26 +298,27 @@ function plan(key: string | null, date: string): boolean {
 
 /*
  * "Aktionen für …": Einplanen for today, tomorrow or next week runs the same
- * step as T, D and W; "Tag wählen …" opens the editor at its day field.
+ * step as T, D and W; "Anderer Tag …" opens the editor at its day field.
  */
 function rowMenu(todo: TodoResponse): MenuEntry[] {
   const key = `todo-${todo.id}`;
-  return [
-    ...quickMoveEntries(
-      todo.title,
-      quickMoves(getCurrentDateInTimeZone(), { date: null }),
-      (move) => void plan(key, move.date),
-      { disabled: isBusy.value, plan: true },
-    ),
+  return cardMenu(
+    todo.title,
     {
-      id: "choose-day",
-      label: "Tag wählen …",
-      icon: "calendar",
-      ariaLabel: `Tag für ${todo.title} wählen`,
-      disabled: isBusy.value,
-      run: () => openEditing(todo, { atDay: true }),
+      quickMoves: quickMoveEntries(
+        todo.title,
+        quickMoves(getCurrentDateInTimeZone(), { date: null }),
+        (move) => void plan(key, move.date),
+        { disabled: isBusy.value, plan: true },
+      ),
+      otherDay: {
+        run: () => openEditing(todo, { atDay: true }),
+        plan: true,
+      },
+      edit: () => openEditing(todo),
     },
-  ];
+    isBusy.value,
+  );
 }
 useShortcutHandlers({
   "quest.new": () => {
@@ -566,26 +560,24 @@ useShortcutHandlers({
             >
               <template
                 v-if="
-                  categoryOf(todo) || detailsOf(todo).length || todo.campaign
+                  categoryOf(todo) || detailsOf(todo).length || campaignOf(todo)
                 "
                 #meta
               >
                 <span v-if="categoryOf(todo)" class="dump-item__category">
                   <i
                     class="category-mark"
-                    :style="{ background: categoryMark(categoryOf(todo)!) }"
+                    :style="{ background: categoryOf(todo)!.mark }"
                     aria-hidden="true"
-                  />{{ categoryOf(todo) }}
+                  />{{ categoryOf(todo)!.name }}
                 </span>
                 <span v-for="part in detailsOf(todo)" :key="part">{{
                   part
                 }}</span>
-                <span
-                  v-if="todo.campaign && todo.campaign.id !== todo.id"
-                  class="dump-item__campaign"
-                >
-                  {{ todo.campaign.title }}
-                </span>
+                <CampaignChip
+                  v-if="campaignOf(todo)"
+                  :campaign="campaignOf(todo)!"
+                />
               </template>
               <template v-if="shownWhy(todo)" #below>
                 <p class="dump-item__why">{{ shownWhy(todo) }}</p>
@@ -679,10 +671,6 @@ useShortcutHandlers({
   display: inline-flex;
   gap: 0.375rem;
   align-items: center;
-}
-
-.dump-item__campaign {
-  font-weight: 700;
 }
 
 .category-mark {

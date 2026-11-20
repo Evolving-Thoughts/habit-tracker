@@ -24,7 +24,8 @@ const response = ({
   id,
   name,
   weeklyTarget,
-}: CategoryEntity): CategoryResponse => ({ id, name, weeklyTarget });
+  color,
+}: CategoryEntity): CategoryResponse => ({ id, name, weeklyTarget, color });
 
 @Controller('categories')
 export class CategoriesController {
@@ -40,7 +41,9 @@ export class CategoriesController {
     @CurrentUser() user: AuthUser,
     @Body() dto: CategoryInputDto,
   ): Promise<CategoryResponse> {
-    return response(await this.categories.create(user.id, dto.name));
+    return response(
+      await this.categories.create(user.id, dto.name, dto.color ?? null),
+    );
   }
 
   @Patch(':id')

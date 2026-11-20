@@ -239,7 +239,7 @@ describe("CalendarView month", () => {
     expect(wrapper.get(".selected-day h2").text()).toBe("Mittwoch, 7. Okt.");
   });
 
-  it("gives an open quest the ring and its moves a menu; today's forecast run only the ring", async () => {
+  it("gives an open quest the ring, ▶ and its moves in a menu; today's forecast run no moves", async () => {
     const wrapper = await render();
     const rows = wrapper.findAll(".planned-item");
     expect(rows[0]!.text()).toContain("Saugen");
@@ -253,10 +253,19 @@ describe("CalendarView month", () => {
     expect(
       rows[0]!.findAll("button").some((b) => b.text() === "Verschieben"),
     ).toBe(false);
+    expect(
+      rows[0]!.find('[aria-label="Stoppuhr für Saugen starten"]').exists(),
+    ).toBe(true);
     expect(rows[1]!.text()).toContain("voraussichtlich");
-    // A Daily run due today can be ticked; moving a forecast is not possible.
+    // A Daily run due today can be ticked; moving a forecast is not possible,
+    // so its menu only edits it.
     expect(rows[1]!.find(".check-ring").exists()).toBe(true);
-    expect(rows[1]!.find('[aria-haspopup="menu"]').exists()).toBe(false);
+    await rows[1]!.get('[aria-haspopup="menu"]').trigger("click");
+    expect(
+      wrapper
+        .findAll("[role=menuitem] .action-menu__label")
+        .map((entry) => entry.text()),
+    ).toEqual(["Bearbeiten"]);
   });
 
   it("opens the move dialog for a planned entry from its menu", async () => {
@@ -266,7 +275,7 @@ describe("CalendarView month", () => {
       wrapper
         .findAll("[role=menuitem] .action-menu__label")
         .map((entry) => entry.text()),
-    ).toEqual(["Morgen", "Nächste Woche", "Anderer Tag …"]);
+    ).toEqual(["Morgen", "Nächste Woche", "Anderer Tag …", "Bearbeiten"]);
     await wrapper.get('[aria-label="Saugen verschieben"]').trigger("click");
     expect(wrapper.text()).toContain("Nächster Montag");
   });
@@ -877,7 +886,7 @@ describe("CalendarView week", () => {
       perfectWeek: {
         perfect: true,
         categories: [
-          { id: 1, name: "Sport", target: 4, completed: 4, reached: true },
+          { id: 1, name: "Sport", color: null, target: 4, completed: 4, reached: true },
         ],
       },
     });

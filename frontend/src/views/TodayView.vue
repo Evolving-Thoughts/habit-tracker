@@ -21,6 +21,7 @@ import {
 } from "../composables/useShortcuts";
 import ActionMenu from "../components/ActionMenu.vue";
 import AppIcon from "../components/AppIcon.vue";
+import CampaignChip from "../components/CampaignChip.vue";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
@@ -51,10 +52,13 @@ import { tallyLine } from "../utils/day-tally";
 import { useDayClock } from "../composables/useDayClock";
 import { categoryMark } from "../utils/category-mark";
 import { workLine } from "../utils/quest-hours";
+import { useRouter } from "vue-router";
 import { hrefOf } from "../routes";
+import { onCardClick } from "../utils/card-click";
 import {
   quickMoveEntries,
   quickMoves,
+  rowMenu as cardMenu,
   type MenuEntry,
 } from "../utils/row-actions";
 
@@ -126,14 +130,22 @@ const hasItems = computed(
     (planner.value?.items.length ?? 0) > 0 ||
     (planner.value?.externalEvents.length ?? 0) > 0,
 );
+/* A daily's goal and its count; which campaign it serves, the chip says. */
 const focusGoal = computed(() => {
   const goal = agenda.value?.focus?.goal;
-  if (!goal) return null;
-  if (goal.target === null) return `Teil von: ${goal.title}`;
+  if (!goal || goal.target === null) return null;
   const until = goal.periodEnd
     ? ` bis ${formatDateForGermanDisplay(goal.periodEnd)}`
     : "";
   return `${goal.title}: ${goal.completed} von ${goal.target}${until}`;
+});
+/* Which campaign the focus serves; a campaign's own quest needs no chip. */
+const focusCampaign = computed(() => {
+  const focus = agenda.value?.focus;
+  if (!focus?.campaign) return null;
+  return focus.type === "todo" && focus.campaign.id === focus.todoId
+    ? null
+    : focus.campaign;
 });
 /* An appointment on the focus card names its time range above everything else. */
 const focusSlot = computed(() =>
@@ -356,26 +368,28 @@ async function moveInOrder(from: number, to: number): Promise<void> {
   });
 }
 
-/** The grip's arrow keys move an item one place and keep the grip focused. */
+/**
+ * "Nach oben" and "Nach unten" in the menu: the keyboard's way to sort.
+ * The focus stays on the moved card's menu button.
+ */
 async function shiftInOrder(
   item: DayPlannerItem,
   direction: -1 | 1,
 ): Promise<void> {
   const from = agenda.value?.queue.indexOf(item) ?? -1;
   if (from === -1) return;
-  listFocus.remember(getItemKey(item));
   await moveInOrder(from, from + direction);
   await nextTick();
   page.value
     ?.querySelector<HTMLElement>(
-      `[data-focus-key="${getItemKey(item)}"] .sort-handle`,
+      `[data-focus-key="${getItemKey(item)}"] [aria-haspopup="menu"]`,
     )
     ?.focus();
 }
 
+/* The whole card drags: the focus card and every row of the order. */
 useSortable(order, {
   item: "[data-sort-key]",
-  handle: ".sort-handle",
   onMove: (from, to) => void moveInOrder(from, to),
 });
 
@@ -457,46 +471,53 @@ function canMoveByDialog(item: DayPlannerItem): boolean {
   if (item.type === "todo") return true;
   return (item.moveUntil ?? "") > item.scheduledDate;
 }
+const router = useRouter();
 function rowMenu(item: DayPlannerItem): MenuEntry[] {
   const today = planner.value?.date;
   if (!today || item.status !== "pending") return [];
   const busy = isUpdating(item);
-  const entries: MenuEntry[] = [];
-  if (item.type === "habit")
-    entries.push({
-      id: "skip",
-      label: "Überspringen",
-      icon: "skip",
-      ariaLabel: `${item.title} überspringen`,
-      disabled: busy,
-      run: () => void skipHabit(item),
-    });
   const moves = quickMoves(today, {
     date: item.scheduledDate,
     timeOfDay: item.type === "todo" ? item.timeOfDay : null,
     moveUntil: item.type === "habit" ? item.moveUntil : undefined,
   });
-  entries.push(
-    ...quickMoveEntries(
-      item.title,
-      moves,
-      (move) => void moveByKey(getItemKey(item), move.date),
-      { disabled: busy },
-    ),
+  const queue = agenda.value?.queue ?? [];
+  const place = queue.indexOf(item);
+  const isFocus = item === agenda.value?.focus;
+  return cardMenu(
+    item.title,
+    {
+      quickMoves: quickMoveEntries(
+        item.title,
+        moves,
+        (move) => void moveByKey(getItemKey(item), move.date),
+        { disabled: busy },
+      ),
+      otherDay: canMoveByDialog(item)
+        ? {
+            run: () => openMoving(item),
+            appointment: item.type === "todo" && !!item.timeOfDay,
+          }
+        : undefined,
+      skip: item.type === "habit" ? () => void skipHabit(item) : undefined,
+      edit: () => openEditing(item),
+      // The Fokus-Modus has no Später or Überspringen for an appointment.
+      focusMode:
+        isFocus && !focusSlot.value
+          ? () => void router.push({ name: "focus" })
+          : undefined,
+      up: place > 0 ? () => void shiftInOrder(item, -1) : undefined,
+      down:
+        place !== -1 && place < queue.length - 1
+          ? () => void shiftInOrder(item, 1)
+          : undefined,
+    },
+    busy,
   );
-  if (canMoveByDialog(item))
-    entries.push({
-      id: "move",
-      label:
-        item.type === "todo" && item.timeOfDay
-          ? "Termin verschieben …"
-          : "Anderer Tag …",
-      icon: "move",
-      ariaLabel: `${item.title} verschieben`,
-      disabled: busy,
-      run: () => openMoving(item),
-    });
-  return entries;
+}
+/** A tap anywhere on the focus card but its controls opens the editor. */
+function openFocusFromCard(event: MouseEvent, item: DayPlannerItem): void {
+  if (!isUpdating(item)) onCardClick(event, () => openEditing(item));
 }
 /** The focus card says in words when its stopwatch runs. */
 const focusTimer = computed(() => {
@@ -700,10 +721,12 @@ useShortcutHandlers(
       <div ref="order" class="order">
         <section
           v-if="agenda.focus"
-          class="focus"
+          class="focus card-target"
+          :class="{ 'card-drag': focusInQueue }"
           :data-focus-key="getItemKey(agenda.focus)"
           :data-sort-key="focusInQueue ? getItemKey(agenda.focus) : undefined"
           aria-labelledby="focus-title"
+          @click="openFocusFromCard($event, agenda.focus)"
         >
           <div class="focus__head">
             <!-- The heading keeps the plain title; the button inside says "bearbeiten". -->
@@ -723,18 +746,6 @@ useShortcutHandlers(
                 {{ agenda.focus.title }}
               </button>
             </h2>
-            <!-- Top right, where the plus button never covers it. -->
-            <button
-              v-if="focusInQueue && rows.length"
-              class="focus__grip sort-handle"
-              type="button"
-              :disabled="isUpdating(agenda.focus)"
-              :aria-label="`${agenda.focus.title} in der Reihenfolge verschieben`"
-              title="Ziehen oder mit den Pfeiltasten verschieben"
-              @keydown.down.prevent="shiftInOrder(agenda.focus, 1)"
-            >
-              <AppIcon name="grip" />
-            </button>
           </div>
           <p v-if="focusSlot" class="focus__slot">
             <AppIcon name="calendar" />
@@ -748,7 +759,8 @@ useShortcutHandlers(
               focusMeta.length ||
               focusGoal ||
               focusTimer ||
-              agenda.focus.type === 'habit'
+              agenda.focus.type === 'habit' ||
+              focusCampaign
             "
             class="focus__meta"
           >
@@ -763,12 +775,18 @@ useShortcutHandlers(
             <span v-if="agenda.focus.categoryName" class="focus__category">
               <i
                 class="category-mark"
-                :style="{ background: categoryMark(agenda.focus.categoryName) }"
+                :style="{
+                  background: categoryMark(
+                    agenda.focus.categoryName,
+                    agenda.focus.categoryColor,
+                  ),
+                }"
                 aria-hidden="true"
               />{{ agenda.focus.categoryName }}
             </span>
             <span v-for="part in focusMeta" :key="part">{{ part }}</span>
             <span v-if="focusGoal">{{ focusGoal }}</span>
+            <CampaignChip v-if="focusCampaign" :campaign="focusCampaign" />
           </p>
           <div class="focus__actions">
             <button
@@ -839,7 +857,6 @@ useShortcutHandlers(
           sortable
           @toggle="toggleItem"
           @edit="openEditing"
-          @shift="shiftInOrder"
         />
       </div>
 
@@ -1350,36 +1367,6 @@ useShortcutHandlers(
   margin-bottom: var(--space-1);
 }
 
-.focus__grip {
-  display: grid;
-  flex: none;
-  width: var(--tap);
-  height: var(--tap);
-  place-items: center;
-  margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) 0 0;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--color-ink-soft);
-  cursor: grab;
-  touch-action: none;
-}
-
-.focus__grip :deep(svg) {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
-/* What is being dragged, and the gap it leaves behind. */
-.order :deep(.sortable-ghost) {
-  opacity: 0.35;
-}
-
-.order :deep(.sortable-fallback) {
-  box-shadow: var(--shadow-card);
-  cursor: grabbing;
-}
 
 .postpone__lead {
   margin: 0 0 var(--space-4);

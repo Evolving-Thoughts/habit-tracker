@@ -3,14 +3,16 @@ import { computed, ref } from "vue";
 import AppIcon from "./AppIcon.vue";
 import PlanEntry from "./PlanEntry.vue";
 import { useSortable } from "../composables/useSortable";
+import { useTimer } from "../composables/useTimer";
 import type { TodoResponse } from "../types/todo";
-import type { MenuEntry } from "../utils/row-actions";
+import { rowMenu, timerStep, type MenuEntry } from "../utils/row-actions";
 import { questlogEntry, type Drop } from "../utils/week-plan";
 
 /**
  * The Questlog beside the board (Plan, from 56rem): open quests without a
- * day, each a drag source onto any day of the board. The keyboard plans
- * through each row's menu ("Einplanen auf …"). Collapsed it is a slim rail.
+ * day, each card a drag source onto any day of the board. The keyboard
+ * plans through each card's menu (its days first). Collapsed it is a slim
+ * rail.
  */
 const props = defineProps<{
   todos: TodoResponse[];
@@ -30,7 +32,6 @@ const emit = defineEmits<{
 const list = ref<HTMLElement | null>(null);
 useSortable(list, {
   item: "[data-todo-id]",
-  handle: ".sort-handle",
   group: "week-plan",
   // A quest goes back to the Questlog through its editor, not by dragging.
   accepts: () => false,
@@ -47,15 +48,29 @@ const entries = computed(() =>
   props.todos.map((todo) => ({ todo, entry: questlogEntry(todo, "") })),
 );
 
+const timer = useTimer();
+/* The board's days are this card's quick moves; no ▶ fits the column. */
 function menu(todo: TodoResponse): MenuEntry[] {
-  return props.days.map((day) => ({
-    id: `plan-${day.date}`,
-    label: day.label,
-    icon: "calendar",
-    ariaLabel: `${todo.title} einplanen am ${day.label}`,
-    disabled: props.busy,
-    run: () => emit("plan", todo, day.date),
-  }));
+  return rowMenu(
+    todo.title,
+    {
+      quickMoves: props.days.map((day) => ({
+        id: `plan-${day.date}`,
+        label: day.label,
+        icon: "calendar",
+        ariaLabel: `${todo.title} einplanen am ${day.label}`,
+        disabled: props.busy,
+        run: () => emit("plan", todo, day.date),
+      })),
+      edit: () => emit("edit", todo),
+      timer: timerStep(
+        timer,
+        { kind: "todo", targetId: todo.id, title: todo.title },
+        todo.timerEligible,
+      ),
+    },
+    props.busy,
+  );
 }
 </script>
 
@@ -98,7 +113,6 @@ function menu(todo: TodoResponse): MenuEntry[] {
             :entry="entry"
             :busy="busy"
             :menu="menu(todo)"
-            drag-only
             @edit="emit('edit', todo)"
           />
         </li>
@@ -200,15 +214,5 @@ function menu(todo: TodoResponse): MenuEntry[] {
   writing-mode: vertical-rl;
   transform: rotate(180deg);
   font-size: 0.875rem;
-}
-
-/* What is being dragged, and the gap it leaves behind. */
-.plan-questlog__list :deep(.sortable-ghost) {
-  opacity: 0.35;
-}
-
-.plan-questlog__list :deep(.sortable-fallback) {
-  box-shadow: var(--shadow-card);
-  cursor: grabbing;
 }
 </style>

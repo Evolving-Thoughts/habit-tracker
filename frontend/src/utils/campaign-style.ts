@@ -7,16 +7,22 @@ import {
 
 /** Spoken names of the colours, for the picker and for screen readers. */
 export const COLOR_NAMES: Record<CampaignColor, string> = {
-  moss: "Moos",
-  pine: "Tanne",
-  sage: "Salbei",
-  slate: "Schiefer",
   indigo: "Indigo",
-  heather: "Heide",
-  plum: "Pflaume",
-  berry: "Beere",
-  walnut: "Walnuss",
+  navy: "Nachtblau",
   ochre: "Ocker",
+  pine: "Tanne",
+  berry: "Beere",
+  plum: "Pflaume",
+  teal: "Petrol",
+  walnut: "Walnuss",
+  moss: "Moos",
+  sage: "Salbei",
+  sky: "Himmel",
+  slate: "Schiefer",
+  heather: "Heide",
+  wine: "Weinrot",
+  olive: "Oliv",
+  lilac: "Flieder",
 };
 
 export const ICON_NAMES: Record<CampaignIcon, string> = {
@@ -36,6 +42,22 @@ export const ICON_NAMES: Record<CampaignIcon, string> = {
   globe: "Globus",
   star: "Stern",
   flag: "Fahne",
+  bike: "Fahrrad",
+  coffee: "Tasse",
+  plane: "Papierflieger",
+  palette: "Farbpalette",
+  mountain: "Berg",
+  moon: "Mond",
+  people: "Menschen",
+  chat: "Sprechblase",
+  bulb: "Glühbirne",
+  trophy: "Pokal",
+  pot: "Kochtopf",
+  gamepad: "Controller",
+  paw: "Pfote",
+  laptop: "Laptop",
+  map: "Karte",
+  drop: "Tropfen",
 };
 
 /* Responses carry the keys as plain strings; these narrow them. */

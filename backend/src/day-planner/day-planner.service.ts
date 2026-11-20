@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { eventsOfDays } from '../calendar/day-events';
 import { CategoryEntity } from '../categories/category.entity';
+import { categoryLabels } from '../categories/category-lookup';
 import { dayOf, weekRange } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
@@ -52,7 +53,12 @@ import {
 
 /** Fields filled after mapping, from lookups across all items. */
 type ContextField =
-  'categoryName' | 'why' | 'goal' | 'campaign' | 'workedMinutes';
+  | 'categoryName'
+  | 'categoryColor'
+  | 'why'
+  | 'goal'
+  | 'campaign'
+  | 'workedMinutes';
 
 @Injectable()
 export class DayPlannerService {
@@ -71,9 +77,7 @@ export class DayPlannerService {
       this.scheduling.getToday(userId),
       this.db.getRepository(CategoryEntity).findBy({ userId }),
     ]);
-    const names = new Map(categories.map((item) => [item.id, item.name]));
-    const categoryName = (id: number | null): string | null =>
-      (id !== null && names.get(id)) || null;
+    const category = categoryLabels(categories);
 
     // The week's stretches: today's work and the week's quest hours.
     const { startDate, endDate } = weekRange(today);
@@ -101,7 +105,7 @@ export class DayPlannerService {
           todo.parentId === null ? undefined : parents.get(todo.parentId);
         const item: DayPlannerItemDto = {
           ...this.mapTodo(todo, today),
-          categoryName: categoryName(todo.categoryId),
+          ...category(todo.categoryId),
           why: ancestry.todoWhy(todo),
           goal: parent
             ? { title: parent, completed: null, target: null, periodEnd: null }
@@ -114,7 +118,7 @@ export class DayPlannerService {
       ...occurrences.map((occurrence) => {
         const item: DayPlannerItemDto = {
           ...this.mapOccurrence(occurrence, today),
-          categoryName: categoryName(occurrence.habit.categoryId),
+          ...category(occurrence.habit.categoryId),
           why: ancestry.habitWhy(occurrence.habit),
           goal: habitGoalsByHabit.get(occurrence.habitId) ?? null,
           campaign: ancestry.habitCampaign(occurrence.habitId),

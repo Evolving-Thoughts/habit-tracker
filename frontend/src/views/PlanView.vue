@@ -29,6 +29,13 @@ import { useUndo } from "../composables/useUndo";
 import { useWrites } from "../composables/useWrites";
 import type { TodoResponse } from "../types/todo";
 import type { WeekPlanResponse, WeekPlanTodoEntry } from "../types/week-plan";
+import {
+  quickMoveEntries,
+  quickMoves,
+  rowMenu,
+  timerStep,
+  type MenuEntry,
+} from "../utils/row-actions";
 import { addDays, getCurrentDateInTimeZone, weekStart } from "../utils/date";
 import {
   dayLabel,
@@ -38,7 +45,6 @@ import {
   weekLabel,
 } from "../utils/history";
 import {
-  arrowDrop,
   boardScroll,
   dropOnDay,
   entryKey,
@@ -48,6 +54,7 @@ import {
   openEntries,
   questlogEntry,
   questlogStartsOpen,
+  stepDrop,
   weekFromQuery,
   type Drop,
   type QuestlogChoice,
@@ -213,19 +220,22 @@ async function applyDrop(drop: Drop): Promise<void> {
   void reload(false);
 }
 
-/** The grip's arrow keys move the quest and keep its grip focused. */
-async function onArrow(
+/**
+ * "Nach oben" and "Nach unten" in a card's menu: the keyboard's way to sort
+ * a day. The focus stays on the moved card's menu button.
+ */
+async function stepInDay(
   entry: WeekPlanTodoEntry,
-  key: "up" | "down" | "left" | "right",
+  direction: "up" | "down",
 ): Promise<void> {
   if (!plan.value) return;
-  const drop = arrowDrop(plan.value, entry.todoId, key);
+  const drop = stepDrop(plan.value, entry.todoId, direction);
   if (!drop) return;
   await applyDrop(drop);
   await nextTick();
   page.value
     ?.querySelector<HTMLElement>(
-      `[data-focus-key="todo-${entry.todoId}"] .sort-handle`,
+      `[data-focus-key="todo-${entry.todoId}"] [aria-haspopup="menu"]`,
     )
     ?.focus();
 }
@@ -460,6 +470,49 @@ function moveRowByKey(
 }
 
 const timer = useTimer();
+
+/**
+ * A card's menu: the quick moves T, D and W run, "Anderer Tag …" (the
+ * dialog the grip used to open), Bearbeiten, the stopwatch a compact card
+ * has no ▶ for, and up or down in the day.
+ */
+function entryMenu(entry: WeekPlanTodoEntry): MenuEntry[] {
+  const current = plan.value;
+  if (!current) return [];
+  const busy = writes.busy.value || dialogBusy.value;
+  const step = (direction: "up" | "down") =>
+    stepDrop(current, entry.todoId, direction)
+      ? () => void stepInDay(entry, direction)
+      : undefined;
+  return rowMenu(
+    entry.title,
+    {
+      quickMoves: quickMoveEntries(
+        entry.title,
+        quickMoves(current.today, {
+          date: entry.scheduledDate,
+          timeOfDay: entry.timeOfDay,
+        }),
+        (move) => void moveByShortcut(entry, move.date),
+        { disabled: busy },
+      ),
+      otherDay: {
+        run: () => openMoving(entry),
+        appointment: entry.timeOfDay !== null,
+      },
+      edit: () => openEditing(entry),
+      timer: timerStep(
+        timer,
+        { kind: "todo", targetId: entry.todoId, title: entry.title },
+        true,
+      ),
+      up: step("up"),
+      down: step("down"),
+    },
+    busy,
+  );
+}
+
 useShortcutHandlers({
   "quest.new": () => {
     if (isLoading.value) {
@@ -616,9 +669,8 @@ useShortcutHandlers({
           :day="day"
           :today="plan.today"
           :busy="writes.busy.value || dialogBusy"
+          :menu="entryMenu"
           @edit="openEditing"
-          @move="openMoving"
-          @arrow="onArrow"
           @drop="applyDrop"
           @created="writes.applied()"
         />

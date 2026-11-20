@@ -2,6 +2,7 @@
  * Holds the backend DTOs against the frontend's hand-written types, so drift
  * fails `npm run check:contract` instead of the app. Types only; nothing runs.
  */
+import type { CategoryResponse as CategoryResponseDto } from '../src/categories/category.dto';
 import type { DayPlannerResponseDto } from '../src/day-planner/dto/day-planner-response.dto';
 import type { WeekPlanResponseDto } from '../src/day-planner/dto/week-plan.dto';
 import type { HabitOccurrenceResponseDto } from '../src/habit-occurrences/dto/habit-occurrence-response.dto';
@@ -40,6 +41,7 @@ import type {
   CAMPAIGN_COLORS,
   CAMPAIGN_ICONS,
 } from '../../frontend/src/types/campaign';
+import type { CategoryResponse } from '../../frontend/src/types/category';
 import type { HistoryResponse } from '../../frontend/src/types/history';
 import type {
   QuestHoursResponse,
@@ -82,6 +84,7 @@ type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
 export type Contract = [
   Assert<Reads<TodoResponseDto, TodoResponse>>,
+  Assert<Reads<CategoryResponseDto, CategoryResponse>>,
   Assert<Reads<HabitResponseDto, HabitResponse>>,
   Assert<Reads<HabitOccurrenceResponseDto, HabitOccurrenceResponse>>,
   Assert<Reads<DayPlannerResponseDto, DayPlannerResponse>>,

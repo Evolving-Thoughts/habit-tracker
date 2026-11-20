@@ -796,7 +796,8 @@ describe("QuestlogView Einplanen", () => {
       "Heute",
       "Morgen",
       "Nächste Woche",
-      "Tag wählen …",
+      "Anderer Tag …",
+      "Bearbeiten",
     ]);
     await wrapper
       .get('[aria-label="Fahrrad einplanen für morgen"]')
@@ -823,7 +824,7 @@ describe("QuestlogView Einplanen", () => {
     );
   });
 
-  it("opens the editor at its day field for Tag wählen …", async () => {
+  it("opens the editor at its day field for Anderer Tag …", async () => {
     const wrapper = await mountAttached();
     await wrapper.get('[aria-label="Aktionen für Steuer"]').trigger("click");
     await wrapper.get('[aria-label="Tag für Steuer wählen"]').trigger("click");
@@ -832,14 +833,14 @@ describe("QuestlogView Einplanen", () => {
     expect(document.activeElement?.getAttribute("name")).toBe("scheduledDate");
   });
 
-  it("shows each quest's campaign as a stripe and in the meta line", async () => {
+  it("shows each quest's campaign as a stripe and as a chip in the meta line", async () => {
     const wrapper = await mountAttached();
     const row = wrapper.get('[data-focus-key="todo-1"] .item-row');
     expect(row.classes()).toContain("item-row--campaign");
     expect(row.attributes("style")).toContain(
       "--campaign-mark: var(--color-mark-slate)",
     );
-    expect(row.get(".dump-item__campaign").text()).toBe("Ordnung");
+    expect(row.get(".campaign-chip__name").text()).toBe("Ordnung");
     expect(
       wrapper.find('[data-focus-key="todo-2"] .item-row--campaign').exists(),
     ).toBe(false);

@@ -475,6 +475,29 @@ describe("HabitsView", () => {
     expect(createHabit).not.toHaveBeenCalled();
     expect(getHabits).toHaveBeenCalledTimes(1);
   });
+  it("opens the editor from a tap on the card and from Bearbeiten in its menu", async () => {
+    vi.mocked(getHabits).mockResolvedValue([habit()]);
+    vi.mocked(getHabit).mockResolvedValue(habit());
+    const wrapper = mount(HabitsView, { attachTo: document.body });
+    await flushPromises();
+    const card = wrapper.get(".habit-card");
+    expect(card.classes()).toContain("card-target");
+    await card.get(".habit-card__details").trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".item-editor").exists()).toBe(true);
+    wrapper.unmount();
+
+    const again = mount(HabitsView, { attachTo: document.body });
+    await flushPromises();
+    await again.get('[aria-label="Aktionen für Joggen"]').trigger("click");
+    expect(
+      again.findAll("[role=menuitem] .action-menu__label").map((l) => l.text()),
+    ).toEqual(["Bearbeiten"]);
+    await again.get("[role=menuitem]").trigger("click");
+    await flushPromises();
+    expect(again.find(".item-editor").exists()).toBe(true);
+    again.unmount();
+  });
   it("reactivates a paused habit through the existing editor", async () => {
     const paused = habit({ isActive: false });
     vi.mocked(getHabits)

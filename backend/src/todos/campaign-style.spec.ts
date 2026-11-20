@@ -18,6 +18,7 @@ describe('campaign fields', () => {
       for (const body of [
         { color: 'moss', icon: 'book', weeklyTargetMinutes: 90 },
         { color: 'ochre', icon: 'flag', weeklyTargetMinutes: 6000 },
+        { color: 'navy', icon: 'drop', weeklyTargetMinutes: 60 },
         { color: null, icon: null, weeklyTargetMinutes: null },
       ])
         expect(await problems(type, { title: 'Buch', ...body })).toEqual([]);

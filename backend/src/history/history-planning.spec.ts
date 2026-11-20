@@ -217,15 +217,25 @@ describe('Read-only weekly forecasts', () => {
       categoryId: 4,
       why: 'F�r ruhige Abende',
     });
-    const names = new Map([[4, 'Musik']]);
+    const campaign = { id: 9, title: 'Konzert', color: null, icon: null };
     expect(
-      plannedHabits([named], slots, [], today, (id) =>
-        id === null ? null : (names.get(id) ?? null),
-      )[0],
-    ).toMatchObject({ categoryName: 'Musik', why: 'F�r ruhige Abende' });
+      plannedHabits([named], slots, [], today, (entry) => ({
+        categoryName: entry.categoryId === 4 ? 'Musik' : null,
+        categoryColor: 'plum',
+        why: entry.why ?? null,
+        campaign,
+      }))[0],
+    ).toMatchObject({
+      categoryName: 'Musik',
+      categoryColor: 'plum',
+      campaign,
+      why: 'F�r ruhige Abende',
+    });
     expect(plannedHabits([habit], slots, [], today)[0]).toMatchObject({
       categoryName: null,
+      categoryColor: null,
       why: null,
+      campaign: null,
     });
   });
   it('keeps interval calendar spacing through both Berlin DST transitions', () => {
@@ -340,7 +350,9 @@ describe('Open weekly target runs and the order of a day', () => {
       habitId: null,
       title: key,
       categoryName: null,
+      categoryColor: null,
       why: null,
+      campaign: null,
       date: today,
       scheduledDate: today,
       isOverdue: false,

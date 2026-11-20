@@ -296,7 +296,9 @@ describe('History API (e2e)', () => {
     });
     expect(items.find((item) => item.title === 'Ohne')).toMatchObject({
       categoryName: null,
+      categoryColor: null,
       why: null,
+      campaign: null,
     });
   });
   it('returns year-crossing weeks', async () => {

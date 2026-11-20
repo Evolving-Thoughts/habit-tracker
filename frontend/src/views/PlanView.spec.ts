@@ -103,8 +103,17 @@ const openTitles = (wrapper: Awaited<ReturnType<typeof mountPlan>>["wrapper"], d
     .get(".plan-day__list")
     .findAll("h3")
     .map((title) => title.text());
-const grip = (wrapper: Awaited<ReturnType<typeof mountPlan>>["wrapper"], title: string) =>
-  wrapper.get(`button[aria-label="${title} verschieben"]`);
+const menuButton = (wrapper: Awaited<ReturnType<typeof mountPlan>>["wrapper"], title: string) =>
+  wrapper.get(`button[aria-label="Aktionen für ${title}"]`);
+/** Opens a card's menu "…" and runs the entry with that spoken name. */
+async function choose(
+  wrapper: Awaited<ReturnType<typeof mountPlan>>["wrapper"],
+  title: string,
+  entry: string,
+): Promise<void> {
+  await menuButton(wrapper, title).trigger("click");
+  await wrapper.get(`[role="menuitem"][aria-label="${entry}"]`).trigger("click");
+}
 
 describe("PlanView", () => {
   beforeEach(() => {
@@ -136,7 +145,7 @@ describe("PlanView", () => {
     expect(today.text()).toContain("09:30");
     expect(today.get(".plan-day__list--done").text()).toContain("Quest 2");
 
-    // A daily is a fixed row: no grip, no move, no editor.
+    // A daily is a fixed row: no menu, no move, no editor.
     const dailyRow = today.findAll(".plan-entry--daily")[0]!;
     expect(dailyRow.text()).toContain("Daily");
     expect(dailyRow.find("button").exists()).toBe(false);
@@ -172,7 +181,7 @@ describe("PlanView", () => {
     expect(document.activeElement).toBe(wrapper.get("h1").element);
   });
 
-  it("sorts a day with the grip's arrow keys and keeps the grip focused", async () => {
+  it("sorts a day with Nach oben in the menu and keeps the menu button focused", async () => {
     vi.mocked(getWeekPlan).mockResolvedValue(
       week(MONDAY, { [TODAY]: [quest(1), quest(2)] }),
     );
@@ -181,7 +190,7 @@ describe("PlanView", () => {
       week(MONDAY, { [TODAY]: [quest(2), quest(1)] }),
     );
 
-    await grip(wrapper, "Quest 2").trigger("keydown", { key: "ArrowUp" });
+    await choose(wrapper, "Quest 2", "Quest 2 nach oben");
     await flushPromises();
 
     expect(reorderDay).toHaveBeenCalledWith([
@@ -193,10 +202,30 @@ describe("PlanView", () => {
     expect(wrapper.get('[role="status"]').text()).toBe(
       "„Quest 2“ steht jetzt an Stelle 1 von 2.",
     );
-    expect(document.activeElement).toBe(grip(wrapper, "Quest 2").element);
+    expect(document.activeElement).toBe(menuButton(wrapper, "Quest 2").element);
   });
 
-  it("moves a quest to the next day, then sorts that day", async () => {
+  it("gives an open quest's menu its moves in the one order", async () => {
+    vi.mocked(getWeekPlan).mockResolvedValue(
+      week(MONDAY, { [TODAY]: [quest(1), quest(2)] }),
+    );
+    const { wrapper } = await mountPlan();
+    await menuButton(wrapper, "Quest 1").trigger("click");
+    expect(
+      wrapper
+        .findAll("[role=menuitem] .action-menu__label")
+        .map((label) => label.text()),
+    ).toEqual([
+      "Morgen",
+      "Nächste Woche",
+      "Anderer Tag …",
+      "Bearbeiten",
+      "Stoppuhr starten",
+      "Nach unten",
+    ]);
+  });
+
+  it("moves a quest to tomorrow from its menu, at the end of that day", async () => {
     vi.mocked(getWeekPlan).mockResolvedValue(
       week(MONDAY, {
         [TODAY]: [quest(1)],
@@ -205,7 +234,7 @@ describe("PlanView", () => {
     );
     const { wrapper } = await mountPlan();
 
-    await grip(wrapper, "Quest 1").trigger("keydown", { key: "ArrowRight" });
+    await choose(wrapper, "Quest 1", "Quest 1 auf morgen");
     await flushPromises();
 
     expect(rescheduleTodo).toHaveBeenCalledWith(1, "2026-11-18", false);
@@ -224,7 +253,7 @@ describe("PlanView", () => {
     vi.mocked(rescheduleTodo).mockRejectedValueOnce(new Error("Offline"));
     const { wrapper } = await mountPlan();
 
-    await grip(wrapper, "Quest 1").trigger("keydown", { key: "ArrowRight" });
+    await choose(wrapper, "Quest 1", "Quest 1 auf morgen");
     await flushPromises();
 
     expect(wrapper.get(".plan-view__alert").text()).toBe("Offline");
@@ -243,12 +272,21 @@ describe("PlanView", () => {
     wrapper.getComponent({ name: "EditItemDialog" }).vm.$emit("close");
     await flushPromises();
 
-    await wrapper
-      .get('button[aria-label="Quest 1 verschieben"]')
-      .trigger("click");
+    await choose(wrapper, "Quest 1", "Quest 1 verschieben");
     expect(
       wrapper.getComponent({ name: "MoveItemDialog" }).props(),
     ).toMatchObject({ today: TODAY, item: { todoId: 1 } });
+  });
+
+  it("opens the editor from a tap anywhere on the card", async () => {
+    vi.mocked(getWeekPlan).mockResolvedValue(
+      week(MONDAY, { [TODAY]: [quest(1, { plannedDurationMinutes: 30 })] }),
+    );
+    const { wrapper } = await mountPlan();
+    await column(wrapper, TODAY).get(".plan-entry__details").trigger("click");
+    expect(
+      wrapper.getComponent({ name: "EditItemDialog" }).props(),
+    ).toMatchObject({ kind: "todo", entityId: 1 });
   });
 
   it("invites planning when the week is still empty", async () => {
@@ -466,9 +504,10 @@ describe("PlanView Questlog column", () => {
     expect(row.attributes("style")).toContain(
       "--campaign-mark: var(--color-mark-ochre)",
     );
-    expect(row.text()).toContain("Ordnung");
-    // Its grip only drags; keys and taps go through the menu.
-    expect(row.get(".sort-handle").element.tagName).toBe("SPAN");
+    expect(row.get(".campaign-chip").text()).toContain("Ordnung");
+    // The whole card drags; keys and taps go through the menu.
+    expect(row.classes()).toContain("card-drag");
+    expect(row.find(".sort-handle").exists()).toBe(false);
     expect(
       row.find('[aria-label="Aktionen für Fahrrad putzen"]').exists(),
     ).toBe(true);
@@ -528,6 +567,8 @@ describe("PlanView Questlog column", () => {
       "Freitag, 20. Nov.",
       "Samstag, 21. Nov.",
       "Sonntag, 22. Nov.",
+      "Bearbeiten",
+      "Stoppuhr starten",
     ]);
     await wrapper
       .get('[aria-label="Fahrrad putzen einplanen am Mittwoch, 18. Nov."]')

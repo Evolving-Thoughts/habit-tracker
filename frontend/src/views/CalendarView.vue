@@ -46,7 +46,11 @@ import {
   supportedHistoryDate,
   weekLabel,
 } from "../utils/history";
-import { quickMoveEntries, quickMoves } from "../utils/row-actions";
+import {
+  quickMoveEntries,
+  quickMoves,
+  rowMenu,
+} from "../utils/row-actions";
 
 type Mode = "month" | "week" | "day";
 
@@ -404,31 +408,46 @@ const plannedActions: PlannedActions = {
   },
   menu: (item) => {
     const today = result.value?.today;
-    if (!moveTarget(item) || !today) return [];
+    if (!today) return [];
     const disabled = writes.busy.value;
-    return [
-      ...quickMoveEntries(
-        item.title,
-        quickMoves(today, {
-          date: item.scheduledDate,
-          timeOfDay: item.timeOfDay,
-          moveUntil: item.type === "habit" ? item.moveUntil : undefined,
-        }),
-        (move) => quickMove(item, move.date),
-        { disabled },
-      ),
+    const movable = !!moveTarget(item);
+    return rowMenu(
+      item.title,
       {
-        id: "move",
-        label:
-          item.type === "todo" && item.timeOfDay
-            ? "Termin verschieben …"
-            : "Anderer Tag …",
-        icon: "move",
-        ariaLabel: `${item.title} verschieben`,
-        disabled,
-        run: () => startMoving(item),
+        quickMoves: movable
+          ? quickMoveEntries(
+              item.title,
+              quickMoves(today, {
+                date: item.scheduledDate,
+                timeOfDay: item.timeOfDay,
+                moveUntil: item.type === "habit" ? item.moveUntil : undefined,
+              }),
+              (move) => quickMove(item, move.date),
+              { disabled },
+            )
+          : [],
+        otherDay: movable
+          ? {
+              run: () => startMoving(item),
+              appointment: item.type === "todo" && !!item.timeOfDay,
+            }
+          : undefined,
+        edit: plannedActions.editable(item)
+          ? () => plannedActions.edit(item)
+          : undefined,
       },
-    ];
+      disabled,
+    );
+  },
+  measure: (item) => {
+    if (item.id === null) return null;
+    if (item.type === "todo")
+      return { kind: "todo", targetId: item.id, eligible: true };
+    const today = result.value?.today;
+    // A stored run can be measured once it is due.
+    return today && item.date <= today
+      ? { kind: "occurrence", targetId: item.id, eligible: true }
+      : null;
   },
   busy: (item) => writes.isWriting(busyKey(item)),
 };

@@ -184,7 +184,7 @@ describe("CampaignsView", () => {
     expect(
       w.findAll(`#${menuId} [role=menuitem]`).map((b) => b.text()),
     ).toEqual([
-      "Stoppuhr starten",
+      "Bearbeiten",
       "Unter-Quest hinzufügen",
       "Fortschritt anzeigen",
       "Verschieben",
@@ -193,6 +193,18 @@ describe("CampaignsView", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     await flushPromises();
     expect(w.find(`#${menuId}`).exists()).toBe(false);
+  });
+  it("gives each open row ▶ and opens its editor from a tap on the card", async () => {
+    const w = view();
+    await flushPromises();
+    const row = w.get('[data-todo-id="2"]');
+    expect(
+      row.find('[aria-label="Stoppuhr für Quest 2 starten"]').exists(),
+    ).toBe(true);
+    expect(row.classes()).toContain("card-target");
+    await row.get(".row__content").trigger("click");
+    await flushPromises();
+    expect(w.findComponent({ name: "PlannerItemEditor" }).exists()).toBe(true);
   });
   it("collapses and expands without changing data", async () => {
     const w = view();
@@ -562,6 +574,7 @@ describe("CampaignsView", () => {
       const menu = w.get(`#${trigger.attributes("aria-controls")}`);
       expect(menu.findAll("[role=menuitem]").map((b) => b.text())).toEqual([
         "Kampagne abschließen",
+        "Bearbeiten",
         "Stoppuhr starten",
         "Unter-Quest hinzufügen",
         "Verschieben",

@@ -5,6 +5,7 @@ import QuickAddQuest from "./QuickAddQuest.vue";
 import { useSortable } from "../composables/useSortable";
 import type { WeekPlanDay, WeekPlanTodoEntry } from "../types/week-plan";
 import { dayLabel, shortDate, weekdayName } from "../utils/history";
+import type { MenuEntry } from "../utils/row-actions";
 import {
   dayOrder,
   doneEntries,
@@ -17,19 +18,20 @@ import {
 
 /**
  * One day of the week plan: its open rows in the order of the day, a quick
- * add, then what is done. Open quests are dragged within the day or onto
- * another day of the same board.
+ * add, then what is done. Open quests are dragged by the whole card within
+ * the day or onto another day of the same board; their menu, which the
+ * view builds, is the way for keys and taps.
  */
 const props = defineProps<{
   day: WeekPlanDay;
   today: string;
   busy: boolean;
+  /** "Aktionen für …" of an open quest. */
+  menu: (entry: WeekPlanTodoEntry) => MenuEntry[];
 }>();
 
 const emit = defineEmits<{
   edit: [entry: WeekPlanTodoEntry];
-  move: [entry: WeekPlanTodoEntry];
-  arrow: [entry: WeekPlanTodoEntry, key: "up" | "down" | "left" | "right"];
   drop: [drop: Drop];
   created: [];
 }>();
@@ -45,7 +47,6 @@ const headingId = computed(() => `plan-day-${props.day.date}`);
 const list = ref<HTMLElement | null>(null);
 useSortable(list, {
   item: "[data-todo-id]",
-  handle: ".sort-handle",
   group: "week-plan",
   accepts: () => !isPast.value && !props.busy,
   onMove: (_from, _to, { item, list: target, index }) => {
@@ -96,9 +97,8 @@ useSortable(list, {
         <PlanEntry
           :entry="entry"
           :busy="busy"
+          :menu="isMovable(entry) ? menu(entry) : undefined"
           @edit="isMovable(entry) && emit('edit', entry)"
-          @move="isMovable(entry) && emit('move', entry)"
-          @arrow="(key) => isMovable(entry) && emit('arrow', entry, key)"
         />
       </li>
       <li v-if="!open.length" class="plan-day__empty">
@@ -231,15 +231,5 @@ useSortable(list, {
 .plan-day__add :deep(.input:focus) {
   border-color: var(--color-line);
   background: var(--color-surface);
-}
-
-/* What is being dragged, and the gap it leaves behind. */
-.plan-day__list :deep(.sortable-ghost) {
-  opacity: 0.35;
-}
-
-.plan-day__list :deep(.sortable-fallback) {
-  box-shadow: var(--shadow-card);
-  cursor: grabbing;
 }
 </style>

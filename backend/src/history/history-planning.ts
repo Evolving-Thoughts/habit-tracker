@@ -20,6 +20,20 @@ import { HistoryPlannedItem, HistoryWeeklyTarget } from './history.dto';
 import { effectiveDuration } from '../timers/timer-target';
 import { compareInDay } from '../day-planner/day-order';
 
+/** What a planned run shows beside its own fields, resolved by the caller. */
+export type PlannedContext = Pick<
+  HistoryPlannedItem,
+  'categoryName' | 'categoryColor' | 'why' | 'campaign'
+>;
+
+/** Without a caller's lookups: no category or campaign, the habit's own reason. */
+const ownContext = (habit: HabitEntity): PlannedContext => ({
+  categoryName: null,
+  categoryColor: null,
+  why: habit.why ?? null,
+  campaign: null,
+});
+
 export type ForecastSlot = {
   version: HabitScheduleVersionEntity;
   date: string;
@@ -86,10 +100,7 @@ export function plannedHabits(
   slots: ForecastSlot[],
   occurrences: HabitOccurrenceEntity[],
   today: string,
-  categoryName: (id: number | null) => string | null = () => null,
-  /** The reason to show: the habit's own unless the caller resolves inheritance. */
-  habitWhy: (habit: HabitEntity) => string | null = (habit) =>
-    habit.why ?? null,
+  context: (habit: HabitEntity) => PlannedContext = ownContext,
 ): HistoryPlannedItem[] {
   const byId = new Map(habits.map((habit) => [habit.id, habit]));
   const existing = new Map(
@@ -121,8 +132,7 @@ export function plannedHabits(
         id: stored?.id ?? null,
         habitId: habit.id,
         title: habit.title,
-        categoryName: categoryName(habit.categoryId),
-        why: habitWhy(habit),
+        ...context(habit),
         date: stored?.movedToDate ?? slot.date,
         scheduledDate: slot.scheduledDate,
         isOverdue: (stored?.movedToDate ?? slot.scheduledDate) < today,
@@ -149,9 +159,7 @@ export function openTargetRuns(
   versions: HabitScheduleVersionEntity[],
   occurrences: HabitOccurrenceEntity[],
   today: string,
-  categoryName: (id: number | null) => string | null = () => null,
-  habitWhy: (habit: HabitEntity) => string | null = (habit) =>
-    habit.why ?? null,
+  context: (habit: HabitEntity) => PlannedContext = ownContext,
 ): HistoryPlannedItem[] {
   return occurrences.flatMap((occurrence) => {
     const habit = habits.find((item) => item.id === occurrence.habitId);
@@ -177,8 +185,7 @@ export function openTargetRuns(
         id: occurrence.id,
         habitId: habit.id,
         title: habit.title,
-        categoryName: categoryName(habit.categoryId),
-        why: habitWhy(habit),
+        ...context(habit),
         date: today,
         scheduledDate: occurrence.scheduledDate,
         isOverdue: false,
