@@ -14,6 +14,14 @@ export type OrderRef = { type: "todo" | "habit"; id: number };
 /** A quest dropped on a day: `index` is its place among the day's open rows. */
 export type Drop = { todoId: number; toDate: string; index: number };
 
+/** A quest dropped into the Questlog column, at `index` of its list. */
+export type ShelfDrop = { todoId: number; index: number };
+
+/** Where a drag on the board ended: on a day or in the Questlog column. */
+export type BoardDrop =
+  | { kind: "day"; drop: Drop }
+  | { kind: "questlog"; drop: ShelfDrop };
+
 /** What a drop asks of the server: move the quest, then sort its day. */
 export type DropWrite = {
   todoId: number;
@@ -25,11 +33,53 @@ export type DropWrite = {
   order: OrderRef[] | null;
 };
 
-/** The Monday of the week in the address, or of `today` when it is unusable. */
-export function weekFromQuery(value: unknown, today: string): string {
-  return typeof value === "string" && isValidIsoDate(value)
-    ? weekStart(value)
-    : weekStart(today);
+/** What the Questlog column shows of a quest. */
+export type QuestlogQuest = Pick<
+  TodoResponse,
+  "id" | "title" | "plannedDurationMinutes" | "campaign" | "timerEligible"
+>;
+
+/**
+ * The first day the board shows, from `?ab=` in the address: a valid day
+ * after today, otherwise today. The board never starts in the past.
+ */
+export function firstDayFromQuery(value: unknown, today: string): string {
+  return typeof value === "string" && isValidIsoDate(value) && value > today
+    ? value
+    : today;
+}
+
+/** The address of a first day: today has the plain `#/plan`. */
+export function planQuery(first: string, today: string): { ab?: string } {
+  return first === today ? {} : { ab: first };
+}
+
+/**
+ * Where an old link with a week (`?woche=<Monday>`) goes now: to the first
+ * day of that week still ahead, so the current week opens on today, and a
+ * past or unusable one too.
+ */
+export function planQueryFromWeek(
+  week: unknown,
+  today: string,
+): { ab?: string } {
+  if (typeof week !== "string" || !isValidIsoDate(week)) return {};
+  const monday = weekStart(week);
+  return planQuery(monday > today ? monday : today, today);
+}
+
+/**
+ * The first day after a step of the arrows: as many days as are shown,
+ * back or ahead, but never before today.
+ */
+export function shiftedStart(
+  first: string,
+  count: number,
+  direction: -1 | 1,
+  today: string,
+): string {
+  const next = addDays(first, direction * count);
+  return next < today ? today : next;
 }
 
 /** A key unique on the board; quests keep the key Heute uses. */
@@ -54,12 +104,11 @@ export function doneEntries(day: WeekPlanDay): WeekPlanEntry[] {
 }
 
 /**
- * Whether an entry takes part in the day's stored order: not anchored by the
- * clock, not carried over from an earlier day, and stored on the server.
+ * Whether an entry takes part in the day's stored order: not anchored by
+ * the clock and stored on the server.
  */
 function isSequenced(entry: WeekPlanEntry): boolean {
   if (entry.status !== "pending" || entry.timeOfDay !== null) return false;
-  if (entry.isOverdue) return false;
   return entry.type === "todo" || entry.occurrenceId !== null;
 }
 
@@ -74,20 +123,18 @@ export function dayOrder(open: readonly WeekPlanEntry[]): OrderRef[] {
 
 /**
  * The open rows of a day the way the server sorts them (day-order.ts), with
- * the sequenced ones in the order given: carried-over items first, then the
- * clock, then the order of the day, then forecast dailies, which have none.
+ * the sequenced ones in the order given: the clock first, then the order of
+ * the day, then forecast dailies, which have none.
  */
 export function arrangeOpen(open: readonly WeekPlanEntry[]): WeekPlanEntry[] {
-  const carried = open.filter((entry) => entry.isOverdue);
   const timed = open
-    .filter((entry) => !carried.includes(entry) && entry.timeOfDay !== null)
+    .filter((entry) => entry.timeOfDay !== null)
     .sort((first, second) => first.timeOfDay!.localeCompare(second.timeOfDay!));
   const sequenced = open.filter(isSequenced);
   const rest = open.filter(
-    (entry) =>
-      !carried.includes(entry) && !timed.includes(entry) && !isSequenced(entry),
+    (entry) => !timed.includes(entry) && !isSequenced(entry),
   );
-  return [...carried, ...timed, ...sequenced, ...rest];
+  return [...timed, ...sequenced, ...rest];
 }
 
 const withOpen = (day: WeekPlanDay, open: WeekPlanEntry[]): WeekPlanDay => ({
@@ -95,11 +142,22 @@ const withOpen = (day: WeekPlanDay, open: WeekPlanEntry[]): WeekPlanDay => ({
   entries: [...open, ...doneEntries(day)],
 });
 
+/** The open quest `todoId` among `entries`, if it is there. */
+function questIn(
+  entries: readonly WeekPlanEntry[],
+  todoId: number,
+): WeekPlanTodoEntry | undefined {
+  return entries.find(
+    (item): item is WeekPlanTodoEntry =>
+      isMovable(item) && item.todoId === todoId,
+  );
+}
+
 /**
  * Applies a drop to the plan at once and says what to write. Dropped on a
- * day it is not planned for (another day, or today for an overdue quest),
- * the quest moves there; an untimed quest then takes its place in that
- * day's order. Returns null when the drop changes nothing.
+ * day it is not planned for (another day, or any day for a quest left
+ * behind), the quest moves there; an untimed quest then takes its place in
+ * that day's order. Returns null when the drop changes nothing.
  *
  * `incoming` is a quest from the Questlog column: it has no day yet, so it
  * comes from no column of the board and always moves.
@@ -109,22 +167,15 @@ export function dropOnDay(
   drop: Drop,
   incoming?: WeekPlanTodoEntry,
 ): { plan: WeekPlanResponse; write: DropWrite } | null {
-  const source = incoming
-    ? undefined
-    : plan.days.find((day) =>
-        day.entries.some(
-          (entry) => entry.type === "todo" && entry.todoId === drop.todoId,
-        ),
-      );
+  const overdue = incoming ? undefined : questIn(plan.overdue, drop.todoId);
+  const source =
+    incoming || overdue
+      ? undefined
+      : plan.days.find((day) => questIn(day.entries, drop.todoId));
   const target = plan.days.find((day) => day.date === drop.toDate);
   const entry =
-    incoming ??
-    source?.entries.find(
-      (item): item is WeekPlanTodoEntry =>
-        item.type === "todo" && item.todoId === drop.todoId,
-    );
-  if ((!source && !incoming) || !target || !entry || !isMovable(entry))
-    return null;
+    incoming ?? overdue ?? (source && questIn(source.entries, drop.todoId));
+  if (!target || !entry) return null;
   if (drop.toDate < plan.today) return null;
 
   const moves = !!incoming || entry.scheduledDate !== drop.toDate;
@@ -146,6 +197,9 @@ export function dropOnDay(
   return {
     plan: {
       ...plan,
+      overdue: overdue
+        ? plan.overdue.filter((item) => item !== overdue)
+        : plan.overdue,
       days: plan.days.map((day) => {
         if (day === target) return withOpen(day, arranged);
         if (day === source)
@@ -177,16 +231,12 @@ export function stepDrop(
   direction: "up" | "down" | "left" | "right",
 ): Drop | null {
   const dayIndex = plan.days.findIndex((day) =>
-    openEntries(day).some(
-      (entry) => entry.type === "todo" && entry.todoId === todoId,
-    ),
+    questIn(openEntries(day), todoId),
   );
   const day = plan.days[dayIndex];
   if (!day) return null;
   const open = openEntries(day);
-  const entry = open.find(
-    (item) => item.type === "todo" && item.todoId === todoId,
-  )!;
+  const entry = questIn(open, todoId)!;
   if (direction === "left" || direction === "right") {
     const next = plan.days[dayIndex + (direction === "left" ? -1 : 1)];
     if (!next || next.date < plan.today) return null;
@@ -205,10 +255,7 @@ export function stepDrop(
  * the days do and a drop can place it before the server answers.
  */
 export function questlogEntry(
-  todo: Pick<
-    TodoResponse,
-    "id" | "title" | "plannedDurationMinutes" | "campaign"
-  >,
+  todo: QuestlogQuest,
   date: string,
 ): WeekPlanTodoEntry {
   return {
@@ -224,6 +271,85 @@ export function questlogEntry(
   };
 }
 
+/** The board without the open quest `todoId`. */
+function withoutQuest(
+  plan: WeekPlanResponse,
+  todoId: number,
+): WeekPlanResponse {
+  const keep = (entry: WeekPlanEntry) =>
+    !(isMovable(entry) && entry.todoId === todoId);
+  return {
+    ...plan,
+    overdue: plan.overdue.filter(keep),
+    days: plan.days.map((day) => ({
+      ...day,
+      entries: day.entries.filter(keep),
+    })),
+  };
+}
+
+/**
+ * Applies a drop into the Questlog column at once and says what to write:
+ * a quest of the column takes its new place; a quest from a day (or one
+ * left behind) loses its day and lands where it was dropped. `order` is the
+ * column's whole new order. Returns null when nothing changes.
+ */
+export function shelveQuest(
+  plan: WeekPlanResponse,
+  backlog: readonly QuestlogQuest[],
+  drop: ShelfDrop,
+): {
+  plan: WeekPlanResponse;
+  backlog: QuestlogQuest[];
+  write: { todoId: number; unplan: boolean; order: number[] };
+} | null {
+  const queued = backlog.find((quest) => quest.id === drop.todoId);
+  const entry = queued
+    ? undefined
+    : questIn(
+        [...plan.overdue, ...plan.days.flatMap((day) => day.entries)],
+        drop.todoId,
+      );
+  const quest: QuestlogQuest | undefined =
+    queued ??
+    (entry && {
+      id: entry.todoId,
+      title: entry.title,
+      plannedDurationMinutes: entry.plannedDurationMinutes,
+      campaign: entry.campaign,
+      timerEligible: true,
+    });
+  if (!quest) return null;
+  const rows = backlog.filter((item) => item !== quest);
+  rows.splice(Math.max(0, Math.min(drop.index, rows.length)), 0, quest);
+  const order = rows.map(({ id }) => id);
+  if (queued && order.every((id, index) => backlog[index]?.id === id))
+    return null;
+  return {
+    plan: queued ? plan : withoutQuest(plan, quest.id),
+    backlog: rows,
+    write: { todoId: quest.id, unplan: !queued, order },
+  };
+}
+
+/**
+ * What a drag means, read from the list it landed in: a day's list names
+ * its date (`data-date`), the Questlog column's list says so
+ * (`data-questlog`). The column of what was left behind takes no drops.
+ */
+export function boardDrop(
+  item: HTMLElement,
+  list: HTMLElement,
+  index: number,
+): BoardDrop | null {
+  const todoId = Number(item.dataset.todoId);
+  if (!todoId) return null;
+  if (list.dataset.questlog !== undefined)
+    return { kind: "questlog", drop: { todoId, index } };
+  const toDate = list.dataset.date;
+  return toDate ? { kind: "day", drop: { todoId, toDate, index } } : null;
+}
+
 /** "3 offen · 1 Std. 30 Min.": what is still open on a day; empty when nothing is. */
 export function openSummary(day: WeekPlanDay): string {
   const open = openEntries(day);
@@ -237,27 +363,13 @@ export function openSummary(day: WeekPlanDay): string {
     : `${open.length} offen`;
 }
 
-/** The weeks before and after, for the switcher. */
-export function neighbourWeek(start: string, direction: -1 | 1): string {
-  return addDays(start, direction * 7);
-}
-
-/**
- * The way back to now ("Diese Woche" in Plan and Wochenrückblick, "Heute"
- * in the Kalender) only shows once the shown range has left today: on the
- * current week it would change nothing.
- */
-export function offersWayBack(shownWeek: string, currentWeek: string): boolean {
-  return shownWeek !== currentWeek;
-}
-
 /** What `localStorage` keeps under `plan:questlog`: an explicit choice. */
 export type QuestlogChoice = "open" | "closed";
 
 /**
  * Whether the Questlog column starts open. A choice made on this device
- * wins; without one it opens only where seven days still fit beside it
- * (`roomy`, from 80rem), so a smaller window shows the whole week first.
+ * wins; without one it opens only on a wide window (`roomy`, from 80rem),
+ * so a smaller one gives its room to the days first.
  */
 export function questlogStartsOpen(
   stored: string | null,
@@ -268,30 +380,67 @@ export function questlogStartsOpen(
   return roomy;
 }
 
-/** A day column's horizontal extent inside the board, in pixels. */
+/**
+ * The board's measures in rem. A day column is never narrower than readable
+ * titles need; the Questlog column is open or a rail as wide as its toggle.
+ */
+export const BOARD = {
+  column: 14,
+  gap: 0.5,
+  questlogOpen: 12,
+  questlogRail: 2.75,
+} as const;
+
+/** The most days one read of the board answers (as the server allows). */
+export const MAX_PLAN_DAYS = 31;
+
+/** The Questlog column's width in rem. */
+export function questlogWidth(open: boolean): number {
+  return open ? BOARD.questlogOpen : BOARD.questlogRail;
+}
+
+/**
+ * How many days fit beside the Questlog column (and the column of what was
+ * left behind, when there is one) in `width` rem, but at least `least`:
+ * today always shows, and with too little room the board scrolls instead.
+ */
+export function fittingDays(
+  width: number,
+  board: { questlogOpen: boolean; overdue: boolean; least: number },
+): number {
+  let room = width - questlogWidth(board.questlogOpen);
+  if (board.overdue) room -= BOARD.gap + BOARD.column;
+  const fit = Math.floor((room + 0.001) / (BOARD.gap + BOARD.column));
+  return Math.max(board.least, fit);
+}
+
+/** The board's grid columns: Questlog, what was left behind, the days. */
+export function boardColumns(board: {
+  questlogOpen: boolean;
+  overdue: boolean;
+  days: number;
+}): string {
+  const day = `minmax(${BOARD.column}rem, 1fr)`;
+  return [
+    `${questlogWidth(board.questlogOpen)}rem`,
+    ...(board.overdue ? [day] : []),
+    `repeat(${board.days}, ${day})`,
+  ].join(" ");
+}
+
+/** A column's horizontal extent inside the board, in pixels. */
 export type ColumnSpan = { start: number; end: number };
 
 /**
- * Where the board opens when its days do not all fit. It stays at the start
- * while today is fully visible from there (always so when the week fits).
- * Otherwise it scrolls as little as it must for today to be fully visible,
- * landing on a column's start, so no day is cut at the left edge and the
- * days before today stay in view as far as they can. `padding` is the
- * board's scroll padding on each side (a phone's gutter).
+ * Where the board opens when its columns do not all fit: at the start while
+ * today is fully visible from there, otherwise just far enough that today
+ * stands right beside the Questlog column, which stays in place (`sticky`
+ * is its width with the gap).
  */
-export function boardScroll(
-  columns: readonly ColumnSpan[],
-  todayIndex: number,
-  view: { width: number; padding: number },
+export function todayScroll(
+  today: ColumnSpan,
+  view: { width: number; sticky: number },
 ): number {
-  const today = columns[todayIndex];
-  if (!today) return 0;
-  const shows = (left: number): boolean =>
-    today.end <= left + view.width - view.padding;
-  if (shows(0)) return 0;
-  for (const column of columns.slice(0, todayIndex + 1)) {
-    const left = Math.max(0, column.start - view.padding);
-    if (shows(left)) return left;
-  }
-  return Math.max(0, today.start - view.padding);
+  if (today.end <= view.width) return 0;
+  return Math.max(0, today.start - view.sticky);
 }

@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import {
   getBacklogTodos,
+  reorderBacklog,
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { planQuest } from "../api/questlog.api";
 import { useListFocus } from "../composables/useListFocus";
+import { useSortable } from "../composables/useSortable";
 import AppIcon from "../components/AppIcon.vue";
 import CampaignChip from "../components/CampaignChip.vue";
 import ItemRow from "../components/ItemRow.vue";
@@ -26,6 +28,7 @@ import type { TodoResponse } from "../types/todo";
 import { shownWhy } from "../utils/why";
 import { campaignMark } from "../utils/category-mark";
 import { dayLabel, fullStop } from "../utils/history";
+import { moved } from "../utils/today-agenda";
 import {
   quickMoveEntries,
   quickMoves,
@@ -179,6 +182,50 @@ async function onCreated(): Promise<void> {
 }
 
 /*
+ * The Questlog keeps the order it is sorted into: the whole card drags (a
+ * finger after a long press), and "Nach oben" / "Nach unten" in its menu
+ * do the same by key. The new order shows at once and is then stored.
+ */
+const openList = ref<HTMLElement | null>(null);
+function listRef(key: string) {
+  return (element: unknown) => {
+    if (key === "open") openList.value = (element as HTMLElement | null) ?? null;
+  };
+}
+async function moveInList(from: number, to: number): Promise<void> {
+  if (isBusy.value || selectedTodo.value) return;
+  const before = todos.value;
+  const order = moved(before, from, to);
+  const todo = order[to];
+  if (!todo || order[from] === todo) return;
+  todos.value = order;
+  successMessage.value = `„${todo.title}“ steht jetzt an Stelle ${to + 1} von ${order.length}.`;
+  const written = await write(
+    () => reorderBacklog(order.map(({ id }) => id)),
+    { fallbackError: "Die Reihenfolge konnte nicht gespeichert werden." },
+  );
+  if (written) return;
+  // Taken back at once; the error says why.
+  todos.value = before;
+  successMessage.value = null;
+}
+useSortable(openList, {
+  item: "[data-todo-id]",
+  onMove: (from, to) => void moveInList(from, to),
+});
+async function shiftInList(todo: TodoResponse, direction: -1 | 1): Promise<void> {
+  const from = todos.value.indexOf(todo);
+  if (from === -1) return;
+  await moveInList(from, from + direction);
+  await nextTick();
+  page.value
+    ?.querySelector<HTMLElement>(
+      `[data-focus-key="todo-${todo.id}"] [aria-haspopup="menu"]`,
+    )
+    ?.focus();
+}
+
+/*
  * Keyboard shortcuts on a row: the same writes as its buttons and as saving
  * a day in the editor. Finished rows ignore them.
  */
@@ -216,6 +263,7 @@ function plan(key: string | null, date: string): boolean {
  */
 function rowMenu(todo: TodoResponse): MenuEntry[] {
   const key = `todo-${todo.id}`;
+  const place = todos.value.indexOf(todo);
   return cardMenu(
     todo.title,
     {
@@ -231,6 +279,11 @@ function rowMenu(todo: TodoResponse): MenuEntry[] {
       },
       edit: () => openEditing(todo),
       reparent: () => openDialog("move", todo),
+      up: place > 0 ? () => void shiftInList(todo, -1) : undefined,
+      down:
+        place !== -1 && place < todos.value.length - 1
+          ? () => void shiftInList(todo, 1)
+          : undefined,
       remove: { run: () => openDialog("delete", todo) },
     },
     isBusy.value,
@@ -369,6 +422,7 @@ useShortcutHandlers({
         <ul
           v-if="list.items.length"
           :id="list.key === 'done' ? 'dump-done-list' : undefined"
+          :ref="listRef(list.key)"
           class="dump-list"
           :aria-label="list.key === 'done' ? 'Erledigt' : 'Offene Quests'"
         >
@@ -384,6 +438,7 @@ useShortcutHandlers({
               :state="todo.completed ? 'completed' : 'open'"
               :ring-pressed="todo.completed"
               :busy="isBusy"
+              :draggable="!todo.completed"
               :campaign-mark="campaignMark(todo.campaign)"
               :measure="
                 todo.completed

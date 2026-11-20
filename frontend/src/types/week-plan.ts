@@ -11,7 +11,7 @@ type WeekPlanEntryContext = {
     color: string | null;
     icon: string | null;
   } | null;
-  /** Open and carried to today from an earlier day. */
+  /** Open and from an earlier day: it stands in `overdue`, not on a day. */
   isOverdue: boolean;
 };
 
@@ -19,7 +19,7 @@ export type WeekPlanTodoEntry = {
   type: "todo";
   todoId: number;
   status: "pending" | "completed";
-  /** The day it is planned for; earlier than its column when overdue. */
+  /** The day it is planned for; before today when overdue. */
   scheduledDate: string;
 } & WeekPlanEntryContext;
 
@@ -39,10 +39,14 @@ export type WeekPlanDay = {
   entries: WeekPlanEntry[];
 };
 
+/** GET /day-planner/plan: the board's days and what was left behind. */
 export type WeekPlanResponse = {
-  /** The Monday the week starts on. */
+  /** The first day asked for. */
   startDate: string;
   endDate: string;
   today: string;
+  /** One column per day from `startDate` to `endDate`. */
   days: WeekPlanDay[];
+  /** Open from an earlier day (Liegen geblieben), earliest first. */
+  overdue: WeekPlanEntry[];
 };

@@ -10,6 +10,7 @@ import {
   createTodo,
   getTodo,
   getBacklogTodos,
+  reorderBacklog,
   updateTodo,
   updateTodoCompletion,
 } from "../api/day-planner.api";
@@ -29,6 +30,7 @@ vi.mock("../api/todo-hierarchy.api", () => ({
 vi.mock("../api/day-planner.api", () => ({
   getTodo: vi.fn(),
   getBacklogTodos: vi.fn(),
+  reorderBacklog: vi.fn(),
   createTodo: vi.fn(),
   updateTodo: vi.fn(),
   updateTodoCompletion: vi.fn(),
@@ -605,6 +607,7 @@ describe("QuestlogView Einplanen", () => {
       "Anderer Tag …",
       "Bearbeiten",
       "In Kampagne verschieben …",
+      "Nach oben",
       "Löschen",
     ]);
     await wrapper
@@ -630,6 +633,47 @@ describe("QuestlogView Einplanen", () => {
       1,
       expect.objectContaining({ scheduledDate: "2026-10-05" }),
     );
+  });
+
+  it("keeps the order it is sorted into: Nach unten in the menu, or dragging the whole card", async () => {
+    vi.mocked(reorderBacklog).mockResolvedValue(undefined);
+    const wrapper = await mountAttached();
+    expect(
+      wrapper.get('[data-focus-key="todo-1"] .item-row').classes(),
+    ).toContain("card-drag");
+    backlogMock.mockResolvedValue([
+      makeTodo({ id: 2, title: "Fahrrad", plannedDurationMinutes: null }),
+      makeTodo({ id: 1, title: "Steuer" }),
+    ]);
+
+    await wrapper.get('[aria-label="Aktionen für Steuer"]').trigger("click");
+    expect(labels(wrapper)).toContain("Nach unten");
+    expect(labels(wrapper)).not.toContain("Nach oben");
+    await wrapper.get('[aria-label="Steuer nach unten"]').trigger("click");
+    await flushPromises();
+
+    expect(reorderBacklog).toHaveBeenCalledWith([2, 1]);
+    expect(
+      wrapper.findAll("[data-todo-id]").map((row) => row.attributes("data-todo-id")),
+    ).toEqual(["2", "1"]);
+    expect(wrapper.get(".questlog__status").text()).toBe(
+      "„Steuer“ steht jetzt an Stelle 2 von 2.",
+    );
+    expect(document.activeElement).toBe(
+      wrapper.get('[aria-label="Aktionen für Steuer"]').element,
+    );
+  });
+
+  it("takes a failed sort back and says why", async () => {
+    vi.mocked(reorderBacklog).mockRejectedValueOnce(new Error("Offline"));
+    const wrapper = await mountAttached();
+    await wrapper.get('[aria-label="Aktionen für Fahrrad"]').trigger("click");
+    await wrapper.get('[aria-label="Fahrrad nach oben"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[role="alert"]').text()).toBe("Offline");
+    expect(
+      wrapper.findAll("[data-todo-id]").map((row) => row.attributes("data-todo-id")),
+    ).toEqual(["1", "2"]);
   });
 
   it("opens the editor at its day field for Anderer Tag …", async () => {

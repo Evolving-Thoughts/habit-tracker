@@ -36,6 +36,7 @@ function todo(
     scheduledDate: null,
     timeOfDay: null,
     dayPosition: null,
+    backlogPosition: null,
     plannedDurationMinutes: null,
     weeklyTargetMinutes: null,
     color: null,
@@ -49,6 +50,8 @@ function todo(
 describe('TodosService', () => {
   let service: TodosService;
   let rows: TodoEntity[];
+  /** The highest Questlog place the database would report. */
+  let lastBacklog: number | null;
   const softDelete = jest.fn();
   const repository = {
     find: jest.fn(() => Promise.resolve(rows)),
@@ -59,15 +62,18 @@ describe('TodosService', () => {
       Object.assign(new TodoEntity(), value, { id: 9 }),
     ),
     save: jest.fn((value: TodoEntity) => Promise.resolve(value)),
+    update: jest.fn(() => Promise.resolve()),
     createQueryBuilder: () => {
       const chain = {
         softDelete: () => chain,
+        select: () => chain,
         where: () => chain,
-        andWhere: (_: string, params: object) => {
-          softDelete(params);
+        andWhere: (_: string, params?: object) => {
+          if (params) softDelete(params);
           return chain;
         },
         execute: () => Promise.resolve(),
+        getRawOne: () => Promise.resolve({ last: lastBacklog }),
       };
       return chain;
     },
@@ -80,6 +86,7 @@ describe('TodosService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     rows = [todo()];
+    lastBacklog = null;
     chain.mockImplementation((_m, _u, id) =>
       Promise.resolve(
         // Ancestor chain of `id` within `rows`.
@@ -106,6 +113,23 @@ describe('TodosService', () => {
   });
 
   describe('create', () => {
+    it('puts a quest without a day at the end of the Questlog', async () => {
+      lastBacklog = 4;
+      expect(await service.create(USER, { title: 'Neu' })).toMatchObject({
+        scheduledDate: null,
+        backlogPosition: 5,
+      });
+      lastBacklog = null;
+      expect(await service.create(USER, { title: 'Erste' })).toMatchObject({
+        backlogPosition: 0,
+      });
+      expect(
+        await service.create(USER, {
+          title: 'Geplant',
+          scheduledDate: '2026-10-02',
+        }),
+      ).toMatchObject({ backlogPosition: null });
+    });
     it('creates a root todo', async () => {
       const created = await service.create(USER, { title: 'Root' });
       expect(created).toMatchObject({
@@ -210,6 +234,16 @@ describe('TodosService', () => {
         dayPosition: null,
       });
     });
+    it('joins the end of the Questlog without a day and leaves it with one', async () => {
+      rows = [Object.assign(todo(), { scheduledDate: '2026-10-02' })];
+      lastBacklog = 6;
+      expect(
+        await service.update(USER, 1, { scheduledDate: null }),
+      ).toMatchObject({ scheduledDate: null, backlogPosition: 7 });
+      expect(
+        await service.update(USER, 1, { scheduledDate: '2026-10-05' }),
+      ).toMatchObject({ scheduledDate: '2026-10-05', backlogPosition: null });
+    });
     it('rejects a time of day without a day', async () => {
       await expect(
         service.update(USER, 1, { timeOfDay: '10:00' }),
@@ -295,6 +329,33 @@ describe('TodosService', () => {
       expect(rows[1].parentId).toBe(4);
       await service.update(USER, 2, { parentId: null });
       expect(rows[1].parentId).toBeNull();
+    });
+  });
+
+  describe('reorderBacklog', () => {
+    beforeEach(() => {
+      rows = [1, 2, 3, 4].map((id) =>
+        Object.assign(todo(id), { backlogPosition: id - 1 }),
+      );
+    });
+    it('puts the given quests first and keeps the rest in their order', async () => {
+      await service.reorderBacklog(USER, [3, 1]);
+      expect(repository.update.mock.calls).toEqual([
+        [{ id: 3, userId: USER }, { backlogPosition: 0 }],
+        [{ id: 1, userId: USER }, { backlogPosition: 1 }],
+        [{ id: 2, userId: USER }, { backlogPosition: 2 }],
+      ]);
+    });
+    it('writes nothing when a quest is not in the Questlog', async () => {
+      await expect(service.reorderBacklog(USER, [2, 99])).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+    it('refuses a quest named twice', async () => {
+      await expect(service.reorderBacklog(USER, [2, 2])).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 

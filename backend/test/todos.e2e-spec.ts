@@ -543,6 +543,64 @@ describe('Todos API (e2e)', () => {
     });
   });
 
+  describe('PUT /todos/backlog/order', () => {
+    const create = async (body: object) =>
+      (
+        (await request(httpServer).post('/todos').send(body).expect(201))
+          .body as TodoResponseDto
+      ).id;
+    const backlog = async () =>
+      (
+        (await request(httpServer).get('/todos/backlog').expect(200))
+          .body as TodoResponseDto[]
+      ).map((t) => t.title);
+    const sort = (ids: unknown) =>
+      request(httpServer).put('/todos/backlog/order').send({ ids });
+
+    it('keeps the order the Questlog was sorted into; a quest back from a day joins the end', async () => {
+      const first = await create({ title: 'Erstes' });
+      const second = await create({ title: 'Zweites' });
+      const third = await create({ title: 'Drittes' });
+      expect(await backlog()).toEqual(['Erstes', 'Zweites', 'Drittes']);
+
+      await sort([third, first]).expect(204);
+      expect(await backlog()).toEqual(['Drittes', 'Erstes', 'Zweites']);
+
+      // Planned it leaves the order; back without a day it joins the end.
+      await request(httpServer)
+        .patch(`/todos/${third}`)
+        .send({ scheduledDate: dayOf(new Date()) })
+        .expect(200);
+      expect(await backlog()).toEqual(['Erstes', 'Zweites']);
+      await create({ title: 'Neu' });
+      await request(httpServer)
+        .patch(`/todos/${third}`)
+        .send({ scheduledDate: null })
+        .expect(200);
+      expect(await backlog()).toEqual(['Erstes', 'Zweites', 'Neu', 'Drittes']);
+
+      // The board drops it where it belongs.
+      await sort([first, third, second]).expect(204);
+      expect(await backlog()).toEqual(['Erstes', 'Drittes', 'Zweites', 'Neu']);
+    });
+
+    it('writes nothing unless every quest is in the Questlog', async () => {
+      await create({ title: 'Lose' });
+      const planned = await create({
+        title: 'Geplant',
+        scheduledDate: dayOf(new Date()),
+      });
+      const other = await create({ title: 'Andere' });
+
+      await sort([other, planned]).expect(404);
+      await sort([other, 999_999]).expect(404);
+      await sort([other, other]).expect(400);
+      await sort(['eins']).expect(400);
+      await sort('nichts').expect(400);
+      expect(await backlog()).toEqual(['Lose', 'Andere']);
+    });
+  });
+
   describe('GET /todos/:id', () => {
     it('returns 400 for a non-numeric ID', async () => {
       const response = await request(httpServer)

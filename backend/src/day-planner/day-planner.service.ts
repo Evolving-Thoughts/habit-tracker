@@ -27,6 +27,7 @@ import { workedMinutes } from '../work-logs/work-time';
 import {
   completedTodos,
   openScheduledTodos,
+  overdueTodos,
   placeOpenTodo,
 } from '../todos/todo-agenda';
 import { resolvedOccurrences } from '../habit-occurrences/resolved-occurrences';
@@ -44,11 +45,11 @@ import {
 } from './dto/day-planner-response.dto';
 import { WeekPlanResponseDto } from './dto/week-plan.dto';
 import {
-  arrangeWeek,
+  arrangePlan,
+  planDates,
   plannedHabitCandidate,
   resolvedHabitCandidate,
   todoCandidate,
-  weekDates,
 } from './week-plan';
 
 /** Fields filled after mapping, from lookups across all items. */
@@ -162,27 +163,35 @@ export class DayPlannerService {
   }
 
   /**
-   * The week from Monday `start` as a board of days, from one consistent
-   * read that reconciles nothing. Todos follow the todo agenda, habits the
-   * forecast history uses; past days only show what was done.
+   * `days` days from `from` as a board of columns, and what is overdue,
+   * from one consistent read that reconciles nothing. Todos follow the todo
+   * agenda, habits the forecast history uses; past days only show what was
+   * done.
    */
-  getWeek(userId: string, start: string): Promise<WeekPlanResponseDto> {
-    const dates = weekDates(start);
+  getPlan(
+    userId: string,
+    from: string,
+    days: number,
+  ): Promise<WeekPlanResponseDto> {
+    const dates = planDates(from, days);
     const firstDay = dates[0];
     const lastDay = dates[dates.length - 1];
     const now = this.clock.now();
     const today = dayOf(now);
-    // Open items only exist from today on; earlier ones are carried to today.
-    const plansAhead = lastDay >= today;
+    // Open items only exist from today on; earlier ones are overdue.
+    const ahead = dates.filter((date) => date >= today);
+    // Today is always forecast: its carried-over runs are overdue.
+    const forecastDates = [today, ...ahead.filter((date) => date !== today)];
     return this.db.transaction('REPEATABLE READ', async (manager) => {
       const ancestry = await loadTodoAncestry(manager, userId, today);
-      const open = plansAhead
+      const open = ahead.length
         ? await openScheduledTodos(manager, userId, {
-            firstDay,
+            firstDay: ahead[0],
             lastDay,
-            includeOverdue: dates.includes(today),
+            includeOverdue: false,
           })
         : [];
+      const overdue = await overdueTodos(manager, userId, today);
       const completed = await completedTodos(manager, userId, {
         firstDay,
         lastDay,
@@ -191,41 +200,38 @@ export class DayPlannerService {
         firstDay,
         lastDay,
       });
-      const forecast = plansAhead
-        ? await loadHabitForecast(manager, userId, dates, today, now)
-        : null;
-      const positions = new Map(
-        (forecast?.occurrences ?? []).map(({ id, dayPosition }) => [
-          id,
-          dayPosition,
-        ]),
+      const forecast = await loadHabitForecast(
+        manager,
+        userId,
+        forecastDates,
+        today,
+        now,
       );
-      const planned = forecast
-        ? [
-            ...plannedHabits(
+      const positions = new Map(
+        forecast.occurrences.map(({ id, dayPosition }) => [id, dayPosition]),
+      );
+      const planned = [
+        ...plannedHabits(
+          forecast.habits,
+          forecast.slots,
+          forecast.occurrences,
+          today,
+        ),
+        // Today's run of a weekly target, as Heute lists it.
+        ...(dates.includes(today)
+          ? openTargetRuns(
               forecast.habits,
-              forecast.slots,
+              forecast.versions,
               forecast.occurrences,
               today,
-            ),
-            // Today's run of a weekly target, as Heute lists it.
-            ...(dates.includes(today)
-              ? openTargetRuns(
-                  forecast.habits,
-                  forecast.versions,
-                  forecast.occurrences,
-                  today,
-                )
-              : []),
-          ]
-            // A stable start for runs that were never sorted.
-            .sort((first, second) =>
-              first.title.localeCompare(second.title, 'de'),
             )
-        : [];
+          : []),
+      ]
+        // A stable start for runs that were never sorted.
+        .sort((first, second) => first.title.localeCompare(second.title, 'de'));
 
       const candidates = [
-        ...[...open, ...completed].map((todo) =>
+        ...[...overdue, ...open, ...completed].map((todo) =>
           todoCandidate(todo, today, ancestry.campaignOf(todo)),
         ),
         ...planned.map((item) =>
@@ -255,7 +261,7 @@ export class DayPlannerService {
         startDate: firstDay,
         endDate: lastDay,
         today,
-        days: arrangeWeek(dates, candidates),
+        ...arrangePlan(dates, candidates),
       };
     });
   }

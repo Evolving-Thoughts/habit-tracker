@@ -21,12 +21,13 @@ import type {
 } from "../types/week-review";
 import { getCurrentDateInTimeZone } from "../utils/date";
 import { weekLabel } from "../utils/history";
-import { isQuietWeek, weekDistance } from "../utils/week-review";
 import {
+  isQuietWeek,
   neighbourWeek,
   offersWayBack,
+  weekDistance,
   weekFromQuery,
-} from "../utils/week-plan";
+} from "../utils/week-review";
 
 const route = useRoute();
 const router = useRouter();

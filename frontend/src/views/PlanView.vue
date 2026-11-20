@@ -1,20 +1,29 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   getBacklogTodos,
-  getWeekPlan,
+  getPlan,
+  reorderBacklog,
   reorderDay,
   rescheduleTodo,
   updateTodoCompletion,
 } from "../api/day-planner.api";
-import { planQuest } from "../api/questlog.api";
+import { planQuest, unplanQuest } from "../api/questlog.api";
 import AppIcon from "../components/AppIcon.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
 import MoveItemDialog from "../components/MoveItemDialog.vue";
 import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
 import DeleteItemDialog from "../components/DeleteItemDialog.vue";
 import PlanDay from "../components/PlanDay.vue";
+import PlanOverdue from "../components/PlanOverdue.vue";
 import PlanQuestlog from "../components/PlanQuestlog.vue";
 import UndoToast from "../components/UndoToast.vue";
 import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
@@ -29,7 +38,6 @@ import {
 import { toggleTimer, useTimer } from "../composables/useTimer";
 import { useUndo } from "../composables/useUndo";
 import { useWrites } from "../composables/useWrites";
-import type { TodoResponse } from "../types/todo";
 import type { WeekPlanResponse, WeekPlanTodoEntry } from "../types/week-plan";
 import {
   quickMoveEntries,
@@ -42,30 +50,38 @@ import { addDays, getCurrentDateInTimeZone, weekStart } from "../utils/date";
 import {
   dayLabel,
   fullStop,
+  rangeLabel,
   shortDate,
   weekdayName,
-  weekLabel,
 } from "../utils/history";
 import {
-  boardScroll,
+  boardColumns,
   dropOnDay,
   entryKey,
+  firstDayFromQuery,
+  fittingDays,
   isMovable,
-  neighbourWeek,
-  offersWayBack,
+  MAX_PLAN_DAYS,
   openEntries,
+  planQuery,
   questlogEntry,
   questlogStartsOpen,
+  shelveQuest,
+  shiftedStart,
   stepDrop,
-  weekFromQuery,
+  todayScroll,
+  type BoardDrop,
   type Drop,
   type QuestlogChoice,
+  type QuestlogQuest,
+  type ShelfDrop,
 } from "../utils/week-plan";
 
 const route = useRoute();
 const router = useRouter();
 
 const page = ref<HTMLElement | null>(null);
+const frame = ref<HTMLElement | null>(null);
 const board = ref<HTMLElement | null>(null);
 const heading = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
@@ -83,60 +99,51 @@ const dialogBusy = ref(false);
 const dialogOpen = () =>
   !!editing.value || !!moving.value || !!menuDialog.value || dialogBusy.value;
 
-/* The week lives in the address (#/plan?woche=…), so Back and reload keep it. */
-const week = computed(() =>
-  weekFromQuery(route.query.woche, getCurrentDateInTimeZone()),
-);
-/** Asked fresh each time: the app may stay open into the next week. */
-const thisWeek = (): string =>
-  weekFromQuery(null, getCurrentDateInTimeZone());
-function showWeek(start: string): Promise<unknown> {
-  return router.push({
-    query: start === thisWeek() ? {} : { woche: start },
-  });
+/** Asked fresh each time: the app may stay open into the next day. */
+const today = (): string => getCurrentDateInTimeZone();
+/* The first day lives in the address (#/plan?ab=…), so Back and reload keep it. */
+const first = computed(() => firstDayFromQuery(route.query.ab, today()));
+function showFrom(day: string): Promise<unknown> {
+  return router.push({ query: planQuery(day, today()) });
 }
-/** "Diese Woche" only shows away from it; on it, the button would change nothing. */
-const offersThisWeek = computed(() => offersWayBack(week.value, thisWeek()));
-async function showThisWeek(): Promise<void> {
-  await showWeek(thisWeek());
+/** "Heute" only shows away from today; there it would change nothing. */
+const startsToday = computed(() => first.value === today());
+async function showToday(): Promise<void> {
+  await showFrom(today());
   // The button leaves with the step; the heading names where it went.
   await nextTick();
   heading.value?.focus();
 }
 
-const {
-  data: plan,
-  isLoading,
-  errorMessage: loadError,
-  reload,
-} = useLoader<WeekPlanResponse | null>(
-  (signal) => getWeekPlan(week.value, signal),
-  {
-    initial: null,
-    fallbackError: "Der Plan konnte nicht geladen werden.",
-    params: [week],
-    resetOnLoad: true,
-    refreshOnChange: () => !dialogOpen() && !writes.busy.value,
-  },
-);
 /*
- * The Questlog column (from 56rem): open quests without a day, to drag onto
- * the board. A phone shows the Plan as before and loads nothing for it.
+ * As many days as fit: the board measures its frame and fills it with day
+ * columns of at least the readable width, beside the Questlog column and
+ * the column of what was left behind. Today and the Questlog always show;
+ * from 56rem at least two days do, and where even that is too wide the
+ * board scrolls sideways. Without layout (tests, before the first measure)
+ * it shows a week.
  */
+const WITHOUT_LAYOUT_DAYS = 7;
+/** One read covers this many days, so a resize rarely needs another. */
+const LOADED_DAYS = 14;
+const frameWidth = ref(0);
+let resizeObserver: ResizeObserver | null = null;
+function measure(): void {
+  const element = frame.value;
+  if (!element) return;
+  const rem =
+    parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  frameWidth.value = element.clientWidth / rem;
+}
+onMounted(() => {
+  measure();
+  if (typeof ResizeObserver === "undefined" || !frame.value) return;
+  resizeObserver = new ResizeObserver(measure);
+  resizeObserver.observe(frame.value);
+});
+onBeforeUnmount(() => resizeObserver?.disconnect());
+
 const wide = useMediaQuery("(min-width: 56rem)");
-const {
-  data: backlog,
-  errorMessage: backlogError,
-  reload: reloadBacklog,
-} = useLoader<TodoResponse[]>(
-  () => (wide.value ? getBacklogTodos() : Promise.resolve([])),
-  {
-    initial: [],
-    fallbackError: "Der Questlog konnte nicht geladen werden.",
-    params: [wide],
-    refreshOnChange: () => !dialogOpen() && !writes.busy.value,
-  },
-);
 const QUESTLOG_KEY = "plan:questlog";
 function readQuestlogChoice(): string | null {
   try {
@@ -145,7 +152,7 @@ function readQuestlogChoice(): string | null {
     return null;
   }
 }
-/* From 80rem seven days still fit beside the open column. */
+/* From 80rem the open column still leaves room for several days. */
 const roomy = useMediaQuery("(min-width: 80rem)");
 /** A choice made on this device; until then the window's width decides. */
 const questlogChoice = ref<string | null>(readQuestlogChoice());
@@ -161,17 +168,76 @@ function toggleQuestlog(): void {
     // Without storage the choice lasts until the page is left.
   }
 }
-/** Where a quest of the column can go: the board's days from today on. */
+
+/** The days that fit, with or without the column of what was left behind. */
+function daysThatFit(overdue: boolean): number {
+  return frameWidth.value > 0
+    ? fittingDays(frameWidth.value, {
+        questlogOpen: questlogOpen.value,
+        overdue,
+        least: wide.value ? 2 : 1,
+      })
+    : WITHOUT_LAYOUT_DAYS;
+}
+const loadedDays = computed(() =>
+  Math.min(MAX_PLAN_DAYS, Math.max(LOADED_DAYS, daysThatFit(false))),
+);
+
+const {
+  data: plan,
+  isLoading,
+  errorMessage: loadError,
+  reload,
+} = useLoader<WeekPlanResponse | null>(
+  (signal) => getPlan(first.value, loadedDays.value, signal),
+  {
+    initial: null,
+    fallbackError: "Der Plan konnte nicht geladen werden.",
+    params: [first, loadedDays],
+    resetOnLoad: true,
+    refreshOnChange: () => !dialogOpen() && !writes.busy.value,
+  },
+);
+/* The Questlog column: open quests without a day, in the Questlog's order. */
+const {
+  data: backlog,
+  errorMessage: backlogError,
+  reload: reloadBacklog,
+} = useLoader<QuestlogQuest[]>(() => getBacklogTodos(), {
+  initial: [],
+  fallbackError: "Der Questlog konnte nicht geladen werden.",
+  refreshOnChange: () => !dialogOpen() && !writes.busy.value,
+});
+
+const hasOverdue = computed(() => !!plan.value?.overdue.length);
+const shownCount = computed(() => daysThatFit(hasOverdue.value));
+const shownDays = computed(() =>
+  (plan.value?.days ?? []).slice(0, shownCount.value),
+);
+/** The board as shown: the arrow keys never move a card out of view. */
+const shownPlan = computed<WeekPlanResponse | null>(() =>
+  plan.value ? { ...plan.value, days: shownDays.value } : null,
+);
+const columns = computed(() =>
+  boardColumns({
+    questlogOpen: questlogOpen.value,
+    overdue: hasOverdue.value,
+    days: shownCount.value,
+  }),
+);
+const rangeTitle = computed(() =>
+  rangeLabel(first.value, addDays(first.value, shownCount.value - 1)),
+);
+
+/** Where a quest of the column can go: the days shown. */
 const plannableDays = computed(() =>
-  (plan.value?.days ?? [])
-    .filter((day) => day.date >= plan.value!.today)
-    .map((day) => ({
-      date: day.date,
-      label:
-        day.date === plan.value!.today
-          ? `Heute, ${shortDate(day.date)}`
-          : `${weekdayName(day.date)}, ${shortDate(day.date)}`,
-    })),
+  shownDays.value.map((day) => ({
+    date: day.date,
+    label:
+      day.date === plan.value!.today
+        ? `Heute, ${shortDate(day.date)}`
+        : `${weekdayName(day.date)}, ${shortDate(day.date)}`,
+  })),
 );
 
 /* Kept apart from the load error: the quiet reload after a write must not hide it. */
@@ -180,12 +246,11 @@ const writes = useWrites(async (showPageLoading) => {
   await Promise.all([reload(showPageLoading), reloadBacklog(false)]);
 }, writeError);
 
-/* Only a week still ahead invites planning; a past one just stays quiet. */
 const nothingPlanned = computed(
   () =>
     !!plan.value &&
-    plan.value.endDate >= plan.value.today &&
-    plan.value.days.every((day) => !day.entries.length),
+    !hasOverdue.value &&
+    shownDays.value.every((day) => !day.entries.length),
 );
 
 /* The order of a day and moves between days, shown at once. */
@@ -235,15 +300,19 @@ async function stepEntry(
   direction: "up" | "down" | "left" | "right",
   focusOn: "menu" | "card" = "menu",
 ): Promise<void> {
-  if (!plan.value || writes.busy.value || dialogBusy.value) return;
-  const drop = stepDrop(plan.value, entry.todoId, direction);
+  if (!shownPlan.value || writes.busy.value || dialogBusy.value) return;
+  const drop = stepDrop(shownPlan.value, entry.todoId, direction);
   if (!drop) return;
   await applyDrop(drop);
   await nextTick();
+  focusCard(entry.todoId, focusOn);
+}
+
+function focusCard(todoId: number, on: "menu" | "card"): void {
   page.value
     ?.querySelector<HTMLElement>(
-      `[data-focus-key="todo-${entry.todoId}"] ${
-        focusOn === "menu" ? '[aria-haspopup="menu"]' : "[data-edit-button]"
+      `[data-focus-key="todo-${todoId}"] ${
+        on === "menu" ? '[aria-haspopup="menu"]' : "[data-edit-button]"
       }`,
     )
     ?.focus();
@@ -288,8 +357,66 @@ async function applyQuestlogDrop(drop: Drop): Promise<void> {
   void reloadBacklog(false);
 }
 
+/**
+ * A quest dropped into the Questlog column: a quest of the column takes its
+ * new place, one from the board loses its day and lands where it was
+ * dropped. Shown at once; the Questlog's order is then stored as shown.
+ */
+async function applyShelve(drop: ShelfDrop): Promise<boolean> {
+  const before = plan.value;
+  const backlogBefore = backlog.value;
+  if (!before || writes.busy.value) return false;
+  const result = shelveQuest(before, backlogBefore, drop);
+  if (!result) return false;
+  const { write } = result;
+  const place = write.order.indexOf(write.todoId);
+  const quest = result.backlog[place]!;
+  plan.value = result.plan;
+  backlog.value = result.backlog;
+  status.value = `„${quest.title}“ steht jetzt im Questlog an Stelle ${
+    place + 1
+  } von ${write.order.length}.`;
+  const done = await writes.write(
+    async () => {
+      if (write.unplan) await unplanQuest(write.todoId);
+      await reorderBacklog(write.order);
+    },
+    {
+      key: "plan",
+      fallbackError: write.unplan
+        ? "Die Quest konnte nicht zurück in den Questlog."
+        : "Die Reihenfolge konnte nicht gespeichert werden.",
+    },
+  );
+  if (done) return true;
+  plan.value = before;
+  backlog.value = backlogBefore;
+  status.value = "";
+  void reload(false);
+  void reloadBacklog(false);
+  return false;
+}
+
+/** A card was dropped: on a day (from wherever it came) or into the column. */
+function onMove(move: BoardDrop): void {
+  if (move.kind === "questlog") {
+    void applyShelve(move.drop);
+    return;
+  }
+  const queued = backlog.value.some((todo) => todo.id === move.drop.todoId);
+  void (queued ? applyQuestlogDrop(move.drop) : applyDrop(move.drop));
+}
+
+/** "Nach oben" / "Nach unten" in the column; the focus stays on the menu. */
+async function stepQuestlog(drop: ShelfDrop): Promise<void> {
+  if (dialogBusy.value) return;
+  await applyShelve(drop);
+  await nextTick();
+  focusCard(drop.todoId, "menu");
+}
+
 /** The keyboard's way from the column: "Einplanen auf …" puts it at the end of that day. */
-function planFromQuestlog(todo: TodoResponse, date: string): void {
+function planFromQuestlog(todo: QuestlogQuest, date: string): void {
   const day = plan.value?.days.find((item) => item.date === date);
   if (!day) return;
   void listFocus.around(`todo-${todo.id}`, () =>
@@ -329,23 +456,27 @@ async function onDialogDone(): Promise<void> {
 }
 
 /*
- * A freshly shown board starts at Monday while today is in view from there;
- * otherwise (a phone's single day, a narrow window) it scrolls just far
- * enough for today, onto a column's start.
+ * A freshly shown board starts at its first column while today is in view
+ * from there; otherwise (a phone with the Questlog open, the column of
+ * what was left behind) it scrolls just far enough for today to stand
+ * beside the Questlog column, which stays in place.
  */
 watch(
   board,
   (scroller) => {
     if (!scroller || !plan.value) return;
-    const columns = [...scroller.querySelectorAll<HTMLElement>(".plan-day")];
-    const padding = parseFloat(getComputedStyle(scroller).scrollPaddingLeft);
-    scroller.scrollLeft = boardScroll(
-      columns.map((column) => ({
-        start: column.offsetLeft,
-        end: column.offsetLeft + column.offsetWidth,
-      })),
-      columns.findIndex((column) => column.dataset.date === plan.value!.today),
-      { width: scroller.clientWidth, padding: padding || 0 },
+    const todayColumn = scroller.querySelector<HTMLElement>(
+      `.plan-day[data-date="${plan.value.today}"]`,
+    );
+    const questlog = scroller.querySelector<HTMLElement>(".plan-questlog");
+    if (!todayColumn || !questlog) return;
+    const gap = parseFloat(getComputedStyle(scroller).columnGap) || 0;
+    scroller.scrollLeft = todayScroll(
+      {
+        start: todayColumn.offsetLeft,
+        end: todayColumn.offsetLeft + todayColumn.offsetWidth,
+      },
+      { width: scroller.clientWidth, sticky: questlog.offsetWidth + gap },
     );
   },
   { flush: "post" },
@@ -398,7 +529,7 @@ function moveByShortcut(entry: WeekPlanTodoEntry, date: string): boolean {
     return true;
   }
   const key = entryKey(entry, "");
-  const day = current.days.find((item) => item.date === date);
+  const day = shownDays.value.find((item) => item.date === date);
   void listFocus.around(key, async () => {
     if (day) {
       await applyDrop({
@@ -424,8 +555,7 @@ function moveByShortcut(entry: WeekPlanTodoEntry, date: string): boolean {
 }
 
 /** A quest of the Questlog column by its row key. */
-function questlogQuest(key: string | null): TodoResponse | null {
-  if (!wide.value) return null;
+function questlogQuest(key: string | null): QuestlogQuest | null {
   return backlog.value.find((todo) => `todo-${todo.id}` === key) ?? null;
 }
 
@@ -433,10 +563,10 @@ function questlogQuest(key: string | null): TodoResponse | null {
  * T, D and W on a row of the column plan it like its menu: onto that day of
  * the board, or, beyond the board, with the Questlog's own save.
  */
-function planQuestlogByKey(todo: TodoResponse, date: string): boolean {
+function planQuestlogByKey(todo: QuestlogQuest, date: string): boolean {
   if (!plan.value || writes.busy.value || dialogBusy.value) return false;
   if (date < plan.value.today) return false;
-  if (plan.value.days.some((day) => day.date === date)) {
+  if (shownDays.value.some((day) => day.date === date)) {
     planFromQuestlog(todo, date);
     return true;
   }
@@ -456,18 +586,19 @@ function planQuestlogByKey(todo: TodoResponse, date: string): boolean {
 
 /** An open quest of the board by its row key; dailies and done rows give none. */
 function openQuest(key: string | null): WeekPlanTodoEntry | null {
-  for (const day of plan.value?.days ?? [])
+  const current = plan.value;
+  if (!current) return null;
+  for (const entry of current.overdue)
+    if (isMovable(entry) && entryKey(entry, "") === key) return entry;
+  for (const day of shownDays.value)
     for (const entry of day.entries)
       if (isMovable(entry) && entryKey(entry, day.date) === key) return entry;
   return null;
 }
 
-/** Today's quick add, or the first day's when this week has not begun. */
+/** The first column's quick add: today's, unless the board starts later. */
 function quickAddField(): HTMLElement | null {
-  const current = plan.value;
-  if (!current) return null;
-  const ahead = current.days.filter((day) => day.date >= current.today);
-  const day = ahead.find((item) => item.date === current.today) ?? ahead[0];
+  const day = shownDays.value[0];
   return day
     ? (page.value?.querySelector<HTMLElement>(
         `.plan-day[data-date="${day.date}"] input[name="quickTitle"]`,
@@ -491,12 +622,12 @@ function moveRowByKey(
 const timer = useTimer();
 
 /**
- * A card's menu: the quick moves T, D and W run, "Anderer Tag …" (the
- * dialog the grip used to open), Bearbeiten, the stopwatch a compact card
- * has no ▶ for, and up or down in the day.
+ * A card's menu: the quick moves T, D and W run, "Anderer Tag …",
+ * Bearbeiten, the stopwatch a compact card has no ▶ for, and up or down in
+ * the day (not for what was left behind: it has no place in a day yet).
  */
 function entryMenu(entry: WeekPlanTodoEntry): MenuEntry[] {
-  const current = plan.value;
+  const current = shownPlan.value;
   if (!current) return [];
   const busy = writes.busy.value || dialogBusy.value;
   const step = (direction: "up" | "down") =>
@@ -540,7 +671,6 @@ useShortcutHandlers({
       void focusWhenReady(quickAddField);
       return;
     }
-    // A past week takes nothing new; the app-wide default goes to Heute.
     const field = quickAddField();
     if (!field) return false;
     field.focus();
@@ -580,39 +710,40 @@ useShortcutHandlers({
   <main ref="page" class="page plan-view">
     <header class="page-header">
       <h1 ref="heading" class="page-title" tabindex="-1">
-        <span class="visually-hidden">Plan für </span>{{ weekLabel(week) }}
+        <span class="visually-hidden">Plan für </span>{{ rangeTitle }}
       </h1>
-      <!-- "Diese Woche" before the arrows, so they keep their place when it leaves. -->
+      <!-- "Heute" before the arrows, so they keep their place when it leaves. -->
       <div class="plan-view__nav">
         <button
-          v-if="offersThisWeek"
+          v-if="!startsToday"
           type="button"
           class="btn"
-          @click="showThisWeek"
+          @click="showToday"
         >
-          Diese Woche
+          Heute
         </button>
         <button
           type="button"
           class="btn btn--icon"
-          aria-label="Vorige Woche"
-          @click="showWeek(neighbourWeek(week, -1))"
+          aria-label="Vorige Tage"
+          :disabled="startsToday"
+          @click="showFrom(shiftedStart(first, shownCount, -1, today()))"
         >
           <AppIcon name="chevron-left" />
         </button>
         <button
           type="button"
           class="btn btn--icon"
-          aria-label="Nächste Woche"
-          @click="showWeek(neighbourWeek(week, 1))"
+          aria-label="Nächste Tage"
+          @click="showFrom(shiftedStart(first, shownCount, 1, today()))"
         >
           <AppIcon name="chevron" />
         </button>
       </div>
     </header>
     <p v-if="nothingPlanned" class="page-lead plan-view__lead">
-      Für diese Woche ist noch nichts geplant. Schreib einfach in einen Tag,
-      was ansteht.
+      Für diese Tage ist noch nichts geplant. Schreib einfach in einen Tag, was
+      ansteht.
     </p>
 
     <EditItemDialog
@@ -659,59 +790,66 @@ useShortcutHandlers({
     </div>
     <p class="visually-hidden" role="status">{{ status }}</p>
 
-    <!-- Bones in the board's own layout; they never scroll sideways. -->
-    <div
-      v-if="isLoading"
-      class="plan-view__skeleton"
-      :class="{
-        'plan-view__skeleton--questlog': wide,
-        'plan-view__skeleton--questlog-open': wide && questlogOpen,
-      }"
-      role="status"
-      aria-label="Plan wird geladen"
-    >
-      <span
-        v-if="wide"
-        class="plan-view__bone plan-view__bone--questlog"
-      />
-      <span v-for="index in 7" :key="index" class="plan-view__bone" />
-    </div>
-    <div v-else-if="loadError" class="alert" role="alert">
-      <p>{{ loadError }}</p>
-      <button type="button" class="btn" @click="reload()">
-        Erneut versuchen
-      </button>
-    </div>
-    <div
-      v-else-if="plan"
-      class="plan-view__layout"
-      :class="{
-        'plan-view__layout--questlog': wide,
-        'plan-view__layout--questlog-open': wide && questlogOpen,
-      }"
-    >
-      <PlanQuestlog
-        v-if="wide"
-        :todos="backlog"
-        :open="questlogOpen"
-        :busy="writes.busy.value || dialogBusy"
-        :days="plannableDays"
-        @toggle="toggleQuestlog"
-        @drop="applyQuestlogDrop"
-        @plan="planFromQuestlog"
-        @edit="(todo) => openEditing({ todoId: todo.id })"
-        @reparent="
-          (todo) =>
-            openMenuDialog('move', { todoId: todo.id, title: todo.title })
-        "
-        @remove="
-          (todo) =>
-            openMenuDialog('delete', { todoId: todo.id, title: todo.title })
-        "
-      />
-      <div ref="board" class="plan-view__board">
+    <!-- Measured for the columns that fit; always there, whatever it holds. -->
+    <div ref="frame" class="plan-view__frame">
+      <!-- Bones in the board's own layout; they never scroll sideways. -->
+      <div
+        v-if="isLoading"
+        class="plan-view__skeleton"
+        :style="{
+          gridTemplateColumns: boardColumns({
+            questlogOpen,
+            overdue: false,
+            days: shownCount,
+          }),
+        }"
+        role="status"
+        aria-label="Plan wird geladen"
+      >
+        <span class="plan-view__bone plan-view__bone--questlog" />
+        <span v-for="index in shownCount" :key="index" class="plan-view__bone" />
+      </div>
+      <div v-else-if="loadError" class="alert" role="alert">
+        <p>{{ loadError }}</p>
+        <button type="button" class="btn" @click="reload()">
+          Erneut versuchen
+        </button>
+      </div>
+      <div
+        v-else-if="plan"
+        ref="board"
+        class="plan-view__board"
+        :style="{ gridTemplateColumns: columns }"
+      >
+        <PlanQuestlog
+          :todos="backlog"
+          :open="questlogOpen"
+          :busy="writes.busy.value || dialogBusy"
+          :days="plannableDays"
+          @toggle="toggleQuestlog"
+          @move="onMove"
+          @step="stepQuestlog"
+          @plan="planFromQuestlog"
+          @edit="(todo) => openEditing({ todoId: todo.id })"
+          @reparent="
+            (todo) =>
+              openMenuDialog('move', { todoId: todo.id, title: todo.title })
+          "
+          @remove="
+            (todo) =>
+              openMenuDialog('delete', { todoId: todo.id, title: todo.title })
+          "
+        />
+        <PlanOverdue
+          v-if="hasOverdue"
+          :entries="plan.overdue"
+          :busy="writes.busy.value || dialogBusy"
+          :menu="entryMenu"
+          @edit="openEditing"
+          @move="onMove"
+        />
         <PlanDay
-          v-for="day in plan.days"
+          v-for="day in shownDays"
           :key="day.date"
           :day="day"
           :today="plan.today"
@@ -719,12 +857,12 @@ useShortcutHandlers({
           :menu="entryMenu"
           @edit="openEditing"
           @arrow="(entry, key) => void stepEntry(entry, key, 'card')"
-          @drop="applyDrop"
+          @move="onMove"
           @created="writes.applied()"
         />
       </div>
     </div>
-    <p v-if="wide && backlogError" class="plan-view__quiet" role="status">
+    <p v-if="backlogError" class="plan-view__quiet" role="status">
       {{ backlogError }}
     </p>
 
@@ -737,13 +875,12 @@ useShortcutHandlers({
     />
     <UndoToast :label="undo?.label ?? null" @undo="undoLast" />
   </main>
-
 </template>
 
 <style scoped>
-/* The board needs more room than a page column: seven days side by side. */
+/* The board takes the window's width: as many days as fit, side by side. */
 .plan-view {
-  width: min(100% - 2rem, 90rem);
+  width: min(100% - 2rem, 120rem);
 }
 
 .plan-view__nav {
@@ -761,43 +898,27 @@ useShortcutHandlers({
 }
 
 /*
- * Seven columns where they fit; otherwise the days scroll sideways inside
- * the board, never the page. A column is never narrower than common German
- * words need (see PlanEntry): 10.5rem on a tablet, where the board scrolls
- * anyway, 8.5rem beside the Questlog column from 56rem.
+ * Questlog, what was left behind, then the days, each day at least as
+ * wide as readable titles need (the view counts how many fit, see
+ * utils/week-plan.ts). Only where even today does not fit beside the
+ * Questlog does the board scroll sideways, inside itself and never the
+ * page; the Questlog column then stays at the left edge.
  */
 .plan-view__board {
   position: relative;
   display: grid;
-  grid-auto-columns: minmax(10.5rem, 1fr);
-  grid-auto-flow: column;
   gap: var(--space-2);
   align-items: start;
   overflow-x: auto;
   overscroll-behavior-x: contain;
-  scroll-padding-inline: 0;
-  scroll-snap-type: x proximity;
   padding-bottom: var(--space-2);
-}
-
-.plan-view__board > * {
-  scroll-snap-align: start;
 }
 
 /* The bones take the board's columns but are clipped, never scrolled. */
 .plan-view__skeleton {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: var(--space-2);
   overflow: hidden;
-}
-
-.plan-view__skeleton--questlog {
-  grid-template-columns: var(--tap) repeat(7, minmax(0, 1fr));
-}
-
-.plan-view__skeleton--questlog-open {
-  grid-template-columns: 12rem repeat(7, minmax(0, 1fr));
 }
 
 .plan-view__bone {
@@ -813,48 +934,9 @@ useShortcutHandlers({
   }
 }
 
-/*
- * From 56rem the Questlog column stands left of the board, open (12rem) or
- * as a rail. The days narrow to 8.5rem, so from about 1100px the whole week
- * fits beside the rail, and from 80rem beside the open column.
- */
-.plan-view__layout--questlog {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--space-2);
-  align-items: start;
-}
-
-.plan-view__layout--questlog .plan-view__board {
-  grid-auto-columns: minmax(8.5rem, 1fr);
-}
-
-.plan-view__layout--questlog-open {
-  grid-template-columns: 12rem minmax(0, 1fr);
-}
-
 .plan-view__quiet {
   margin: var(--space-2) 0 0;
   color: var(--color-ink-muted);
   font-size: 0.875rem;
-}
-
-/* A phone shows one day at a time, the next one peeking in. */
-@media (max-width: 40rem) {
-  .plan-view__board {
-    grid-auto-columns: 85%;
-    margin-inline: -1rem;
-    padding-inline: 1rem;
-    scroll-padding-inline: 1rem;
-    scroll-snap-type: x mandatory;
-  }
-
-  .plan-view__skeleton {
-    grid-template-columns: none;
-    grid-auto-columns: 85%;
-    grid-auto-flow: column;
-    margin-inline: -1rem;
-    padding-inline: 1rem;
-  }
 }
 </style>

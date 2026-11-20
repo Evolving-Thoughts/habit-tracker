@@ -3,8 +3,11 @@ import {
   changeHabitSchedule,
   createHabit,
   getHabits,
+  getPlan,
+  reorderBacklog,
   updateHabit,
 } from "./day-planner.api";
+import { unplanQuest } from "./questlog.api";
 const fetchMock = vi.fn<typeof fetch>();
 beforeEach(() => {
   vi.resetAllMocks();
@@ -121,4 +124,32 @@ it("loads all non-deleted habits from the management endpoint", async () => {
   const [url, init] = fetchMock.mock.calls[0]!;
   expect(String(url)).toMatch(/\/habits$/);
   expect(init?.method ?? "GET").toBe("GET");
+});
+
+describe("plan board API contracts", () => {
+  it("asks for days from a first day", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ days: [], overdue: [] }), { status: 200 }),
+    );
+    await getPlan("2026-11-20", 14);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toMatch(/\/day-planner\/plan\?from=2026-11-20&days=14$/);
+    expect(init?.method ?? "GET").toBe("GET");
+  });
+  it("stores the Questlog's order and takes a quest's day away", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 4 }), { status: 200 }),
+      );
+    await reorderBacklog([3, 1, 2]);
+    await unplanQuest(4);
+    const [[orderUrl, order], [questUrl, quest]] = fetchMock.mock.calls;
+    expect(String(orderUrl)).toMatch(/\/todos\/backlog\/order$/);
+    expect(order?.method).toBe("PUT");
+    expect(JSON.parse(String(order?.body))).toEqual({ ids: [3, 1, 2] });
+    expect(String(questUrl)).toMatch(/\/todos\/4$/);
+    expect(quest?.method).toBe("PATCH");
+    expect(JSON.parse(String(quest?.body))).toEqual({ scheduledDate: null });
+  });
 });

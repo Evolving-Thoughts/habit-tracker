@@ -55,6 +55,27 @@ export function openScheduledTodos(
     .getMany();
 }
 
+/**
+ * Open todos planned for a day before `today`: overdue by `placeOpenTodo`'s
+ * rule. Heute carries them as Nachholen; the Plan shows them apart.
+ */
+export function overdueTodos(
+  manager: EntityManager,
+  userId: string,
+  today: string,
+): Promise<TodoEntity[]> {
+  return manager
+    .getRepository(TodoEntity)
+    .createQueryBuilder('todo')
+    .where('"todo"."userId" = :userId', { userId })
+    .andWhere('"todo"."completed" = false')
+    .andWhere('"todo"."scheduledDate" < :today', { today })
+    .orderBy('"todo"."scheduledDate"', 'ASC')
+    .addOrderBy('"todo"."dayPosition"', 'ASC', 'NULLS LAST')
+    .addOrderBy('"todo"."id"', 'ASC')
+    .getMany();
+}
+
 /** Todos completed on `firstDay`..`lastDay` (optionally including deleted ones, for history). */
 export function completedTodos(
   manager: EntityManager,
@@ -105,7 +126,11 @@ export function workableBacklog<T extends TreeNode & CampaignFields>(
   );
 }
 
-/** Open todos without a day that one can work on: the Questlog. */
+/**
+ * Open todos without a day that one can work on: the Questlog, in the
+ * order the user sorted it (`backlogPosition`); what was never sorted
+ * follows, oldest first.
+ */
 export async function backlogTodos(
   manager: EntityManager,
   userId: string,
@@ -114,7 +139,11 @@ export async function backlogTodos(
   const [candidates, live] = await Promise.all([
     repository.find({
       where: { userId, completed: false, scheduledDate: IsNull() },
-      order: { id: 'ASC' },
+      order: {
+        backlogPosition: { direction: 'ASC', nulls: 'LAST' },
+        createdAt: 'ASC',
+        id: 'ASC',
+      },
     }),
     repository.find({
       select: { id: true, parentId: true, completed: true },

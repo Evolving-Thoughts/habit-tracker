@@ -48,6 +48,7 @@ describe('TodosController', () => {
     scheduledDate: null,
     timeOfDay: null,
     dayPosition: null,
+    backlogPosition: null,
     plannedDurationMinutes: null,
     createdAt: new Date('2026-09-18T10:00:00.000Z'),
     updatedAt: new Date('2026-09-18T10:00:00.000Z'),

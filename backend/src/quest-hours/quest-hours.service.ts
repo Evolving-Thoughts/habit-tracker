@@ -3,7 +3,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { UserEntity } from '../auth/auth.entities';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
-import { weekDates } from '../day-planner/week-plan';
+import { weekDates } from '../history/history-range';
 import { loadTodoAncestry } from '../todos/todo-ancestry';
 import { withCampaigns } from '../work-logs/day-logs';
 import { WorkLogEntity } from '../work-logs/work-log.entity';

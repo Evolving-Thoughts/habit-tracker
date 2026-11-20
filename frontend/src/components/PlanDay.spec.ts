@@ -92,9 +92,14 @@ describe("PlanDay", () => {
     ).toBe("Quest für Mittwoch, 18. Nov. hinzufügen");
   });
 
-  it("offers nothing new on a past day", () => {
-    const wrapper = mountDay({ date: "2026-11-16", entries: [] });
-    expect(wrapper.find("form").exists()).toBe(false);
-    expect(wrapper.get(".plan-day__empty").text()).toBe("Nichts mehr offen.");
+  it("puts the quick add on top, above the cards, with where new quests go", () => {
+    const wrapper = mountDay({ date: "2026-11-18", entries: [quest(1)] });
+    const children = [...wrapper.element.children].map((node) => node.tagName);
+    expect(children.indexOf("FORM")).toBeLessThan(children.indexOf("OL"));
+    const toggles = wrapper.get('[role="group"]').findAll("button");
+    expect(toggles.map((button) => button.attributes("aria-label"))).toEqual([
+      "Oben einfügen",
+      "Unten einfügen",
+    ]);
   });
 });

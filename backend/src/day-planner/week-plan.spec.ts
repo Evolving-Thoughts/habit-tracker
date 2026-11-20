@@ -1,15 +1,16 @@
 import { BadRequestException } from '@nestjs/common';
 import { HistoryPlannedItem } from '../history/history.dto';
 import {
-  arrangeWeek,
+  arrangePlan,
+  MAX_PLAN_DAYS,
+  planDates,
   plannedHabitCandidate,
   resolvedHabitCandidate,
   todoCandidate,
-  weekDates,
 } from './week-plan';
 
 const TODAY = '2026-11-17';
-const WEEK = weekDates('2026-11-16');
+const WEEK = planDates('2026-11-16', 7);
 
 const todo = (
   id: number,
@@ -59,28 +60,33 @@ const planned = (
     { id: 9, title: 'Marathon', color: null, icon: null },
   );
 
+const arrangeWeek = (candidates: Parameters<typeof arrangePlan>[1]) =>
+  arrangePlan(WEEK, candidates).days;
 const titlesOn = (date: string, days: ReturnType<typeof arrangeWeek>) =>
   days.find((day) => day.date === date)!.entries.map(({ title }) => title);
 
-describe('weekDates', () => {
-  it('lists Monday to Sunday', () => {
-    expect(WEEK).toEqual([
-      '2026-11-16',
-      '2026-11-17',
-      '2026-11-18',
-      '2026-11-19',
-      '2026-11-20',
-      '2026-11-21',
-      '2026-11-22',
+describe('planDates', () => {
+  it('lists the days from the first one, on any weekday and across a month', () => {
+    expect(planDates('2026-11-28', 4)).toEqual([
+      '2026-11-28',
+      '2026-11-29',
+      '2026-11-30',
+      '2026-12-01',
     ]);
+    expect(planDates('2026-11-20', 1)).toEqual(['2026-11-20']);
+    expect(planDates('2026-11-20', MAX_PLAN_DAYS)).toHaveLength(MAX_PLAN_DAYS);
   });
 
-  it.each(['2026-11-17', '2026-11-22', '2026-02-30', '16.11.2026'])(
-    'refuses %s as the start of a week',
-    (start) => {
-      expect(() => weekDates(start)).toThrow(BadRequestException);
-    },
-  );
+  it.each([
+    ['2026-11-20', 0],
+    ['2026-11-20', MAX_PLAN_DAYS + 1],
+    ['2026-11-20', 1.5],
+    ['2026-02-30', 3],
+    ['20.11.2026', 3],
+    ['9999-12-30', 3],
+  ])('refuses %s with %p days', (from, days) => {
+    expect(() => planDates(from, days)).toThrow(BadRequestException);
+  });
 });
 
 describe('todoCandidate', () => {
@@ -90,7 +96,7 @@ describe('todoCandidate', () => {
     expect(entry).toMatchObject({ status: 'pending', isOverdue: false });
   });
 
-  it('carries an overdue todo to today and keeps the day it was planned for', () => {
+  it('marks an overdue todo and keeps the day it was planned for', () => {
     const { date, entry } = todo(1, { scheduledDate: '2026-11-10' });
     expect(date).toBe(TODAY);
     expect(entry).toMatchObject({
@@ -124,7 +130,7 @@ describe('plannedHabitCandidate', () => {
     expect(order.dayPosition).toBeNull();
   });
 
-  it('shows an open run moved to an earlier day on today', () => {
+  it('marks an open run from an earlier day as overdue on today', () => {
     const { date } = planned({
       id: 5,
       date: '2026-11-16',
@@ -135,17 +141,15 @@ describe('plannedHabitCandidate', () => {
   });
 });
 
-describe('arrangeWeek', () => {
-  it('orders a day like Heute: earlier days, then the clock, then positions', () => {
-    const days = arrangeWeek(WEEK, [
+describe('arrangePlan', () => {
+  it('orders a day like Heute: the clock, then positions, then the rest', () => {
+    const days = arrangeWeek([
       todo(1, { dayPosition: 1 }),
       todo(2, { dayPosition: 0 }),
       todo(3, { timeOfDay: '09:00' }),
-      todo(4, { scheduledDate: '2026-11-12' }),
       todo(5),
     ]);
     expect(titlesOn(TODAY, days)).toEqual([
-      'Quest 4',
       'Quest 3',
       'Quest 2',
       'Quest 1',
@@ -153,8 +157,35 @@ describe('arrangeWeek', () => {
     ]);
   });
 
+  it('keeps what is overdue apart from today, earliest day first, whatever days are shown', () => {
+    const { days, overdue } = arrangePlan(
+      ['2026-11-20', '2026-11-21'],
+      [
+        todo(1, { scheduledDate: '2026-11-14', dayPosition: 0 }),
+        todo(2, { scheduledDate: '2026-11-12' }),
+        planned({
+          id: 6,
+          title: 'Liegengebliebener Lauf',
+          date: '2026-11-15',
+          scheduledDate: '2026-11-15',
+          isOverdue: true,
+        }),
+        todo(3),
+      ],
+    );
+    expect(overdue.map(({ title }) => title)).toEqual([
+      'Quest 2',
+      'Quest 1',
+      'Liegengebliebener Lauf',
+    ]);
+    expect(days.every(({ entries }) => entries.length === 0)).toBe(true);
+    expect(
+      titlesOn(TODAY, arrangeWeek([todo(2, { scheduledDate: '2026-11-12' })])),
+    ).toEqual([]);
+  });
+
   it('sorts stored runs into the order and lets forecast runs follow it', () => {
-    const days = arrangeWeek(WEEK, [
+    const days = arrangeWeek([
       todo(1, { scheduledDate: '2026-11-18', dayPosition: 1 }),
       todo(2, { scheduledDate: '2026-11-18' }),
       planned({ title: 'Vorhergesagt' }),
@@ -169,7 +200,7 @@ describe('arrangeWeek', () => {
   });
 
   it('puts what is done after what is open', () => {
-    const days = arrangeWeek(WEEK, [
+    const days = arrangeWeek([
       todo(1, {
         completed: true,
         completedAt: new Date('2026-11-17T08:00:00Z'),
@@ -194,7 +225,7 @@ describe('arrangeWeek', () => {
   });
 
   it('gives every day of the week a column and drops what lies outside', () => {
-    const days = arrangeWeek(WEEK, [todo(1, { scheduledDate: '2026-11-30' })]);
+    const days = arrangeWeek([todo(1, { scheduledDate: '2026-11-30' })]);
     expect(days.map(({ date }) => date)).toEqual(WEEK);
     expect(days.every(({ entries }) => entries.length === 0)).toBe(true);
   });

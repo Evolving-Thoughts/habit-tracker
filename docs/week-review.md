@@ -107,8 +107,8 @@ Monday that has begun; a week ahead is 400. The answer is the stored
   one-line lead ("Wie weit die Woche deine Kampagnen gebracht hat.") and the
   switcher: Diese Woche, Vorige Woche, the range with "diese Woche",
   "vorige Woche", "vor 3 Wochen" below it, Nächste Woche. "Diese Woche"
-  shows only away from the current week (`utils/week-plan.ts`
-  `offersWayBack`, the same rule as the Plan and the Kalender's "Heute");
+  shows only away from the current week (`utils/week-review.ts`
+  `offersWayBack`, the same rule as the "Heute" of the Plan and the Kalender);
   after it the focus goes to the range. On the phone it sits
   behind Mehr; from 56rem it is the last labelled tab of the top bar, a group
   of its own (`groupStart` in `router.ts`, see `DESIGN.md` for the bar).

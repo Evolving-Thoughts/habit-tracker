@@ -16,6 +16,8 @@ import {
   daysPassed,
   durationParts,
   isQuietWeek,
+  neighbourWeek,
+  offersWayBack,
   percentOf,
   progressChange,
   questCount,
@@ -23,6 +25,7 @@ import {
   weekTrend,
   weekDistance,
   weekTrendText,
+  weekFromQuery,
 } from "./week-review";
 
 const MONDAY = "2026-11-16";
@@ -356,5 +359,26 @@ describe("weekDistance", () => {
     ["2026-10-19", "vor 4 Wochen"],
   ])("names %s from the week of 16 November as %p", (week, text) => {
     expect(weekDistance(week, "2026-11-16")).toBe(text);
+  });
+});
+
+describe("weekFromQuery", () => {
+  it("takes the Monday of the week in the address", () => {
+    expect(weekFromQuery("2026-11-19", "2026-11-17")).toBe("2026-11-16");
+  });
+
+  it("falls back to the current week for anything else", () => {
+    expect(weekFromQuery("2026-02-30", "2026-11-17")).toBe("2026-11-16");
+    expect(weekFromQuery(["2026-11-23"], "2026-11-17")).toBe("2026-11-16");
+    expect(weekFromQuery(undefined, "2026-11-17")).toBe("2026-11-16");
+  });
+});
+
+describe("neighbourWeek and offersWayBack", () => {
+  it("steps a week and offers the way back only away from the current one", () => {
+    expect(neighbourWeek("2026-11-16", 1)).toBe("2026-11-23");
+    expect(neighbourWeek("2026-11-16", -1)).toBe("2026-11-09");
+    expect(offersWayBack("2026-11-16", "2026-11-16")).toBe(false);
+    expect(offersWayBack("2026-11-23", "2026-11-16")).toBe(true);
   });
 });

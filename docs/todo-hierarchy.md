@@ -92,7 +92,8 @@ view, offers the undo toast.
 
 `GET /todos/backlog` (`todo-agenda.ts`: `backlogTodos`, the pure rule
 `workableBacklog`) is the one definition of the Questlog; the Questlog view and
-the Plan's Questlog column only show it. A todo is in it when it is open, has
+the Plan's Questlog column only show it, in the order the user sorted it
+(`backlogPosition`, see `day-order.md` › The Questlog's order). A todo is in it when it is open, has
 no day, and
 
 - has no open todo below it: a Questreihe is worked on through its quests; one

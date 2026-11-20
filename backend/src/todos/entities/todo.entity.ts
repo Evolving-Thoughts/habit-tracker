@@ -128,6 +128,13 @@ export class TodoEntity {
   @Column({ type: 'integer', nullable: true })
   dayPosition!: number | null;
 
+  /**
+   * Place in the Questlog's order while the todo has no day, set when it
+   * enters the backlog and by sorting; null sorts last.
+   */
+  @Column({ type: 'integer', nullable: true })
+  backlogPosition!: number | null;
+
   @Column({
     type: 'integer',
     nullable: true,

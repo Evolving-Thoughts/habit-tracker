@@ -116,7 +116,10 @@ test("Heute: quick add puts a quest at the end or at the head of today", async (
   await expect(field).toHaveValue("");
   await expect.poll(() => shownOrder(page)).toEqual(["Schon da", "Hinten dran"]);
 
-  await page.getByRole("button", { name: "Oben", exact: true }).click();
+  // The small toggle beside the field; the choice holds on this device.
+  const top = page.getByRole("button", { name: "Oben einfügen", exact: true });
+  await top.click();
+  await expect(top).toHaveAttribute("aria-pressed", "true");
   await field.fill("Ganz vorn");
   await field.press("Enter");
   await expect(page.locator("#focus-title")).toHaveText("Ganz vorn");

@@ -100,13 +100,17 @@ Per row kind:
 | Heute: appointment | stopwatch | tick | opens "Verschieben", where moving is confirmed |
 | Heute: Daily run | stopwatch if eligible | tick, undo toast | move only up to its `moveUntil`, like the chips; otherwise nothing |
 | Heute: done or skipped | nothing | nothing (reopening stays a click) | nothing |
-| Plan: open quest | stopwatch | tick, new undo toast in Plan | onto a day of the board like dragging (optimistic, at the end of the day's order); next Monday beyond the board via `reschedule`; never into the past |
+| Plan: open quest (also one left behind) | stopwatch | tick, new undo toast in Plan | onto a day shown on the board like dragging (optimistic, at the end of the day's order); a day beyond the board via `reschedule`; never into the past |
 | Plan: appointment | stopwatch | tick | opens "Verschieben" |
 | Plan: Daily, done quest | nothing | nothing | nothing |
-| Plan: open quest, focus on its card | as above | as above | as above; in addition ArrowUp / ArrowDown move it one place in the day's order and ArrowLeft / ArrowRight to the end of the day before or after (as "Nach oben" / "Nach unten" in its menu and dragging; never into the past) |
+| Plan: open quest of a day, focus on its card | as above | as above | as above; in addition ArrowUp / ArrowDown move it one place in the day's order and ArrowLeft / ArrowRight to the end of the day before or after among the days shown (as "Nach oben" / "Nach unten" in its menu and dragging; never into the past) |
 | Questlog: open quest | stopwatch | tick, undo toast | plans it for that day with the editor's own save (`PATCH /todos/:id`), message in the status line |
 | Questlog: ticked here | nothing | nothing | nothing |
-| Plan: row of the Questlog column | stopwatch | tick, undo toast in Plan | onto that day of the board like dropping it (end of the day's order); next Monday beyond the board with the editor's save |
+| Plan: row of the Questlog column | stopwatch | tick, undo toast in Plan | onto that day of the board like dropping it (end of the day's order); a day beyond the board with the editor's save |
+
+"Nach oben" / "Nach unten" in the menus of Heute, the Plan's days, the
+Questlog and the Plan's Questlog column sort by key; the focus stays on the
+card's menu button.
 
 The row menus "Aktionen für …" (Heute, Questlog, Kalender) name the same
 keys on their entries: Heute/Morgen/Nächste Woche carry `aria-keyshortcuts`
@@ -115,10 +119,10 @@ the same code as the key. While a menu is open its scrim lies over the page,
 so a row key under the pointer does nothing; inside the menu the arrow keys,
 Home, End, Escape and Tab belong to the menu.
 
-N: Heute focuses its quick add; Plan focuses today's quick add, or the first
-day's when the shown week lies ahead; Questlog opens its "Quest erstellen"
-dialog; Kampagnen opens its plus dialog (a new top quest). Everywhere else,
-and in a past week of the Plan, N goes to Heute and focuses the quick add
+N: Heute focuses its quick add; Plan focuses the quick add of its first
+column (today's, or the first day shown when the board starts later);
+Questlog opens its "Quest erstellen" dialog; Kampagnen opens its plus dialog
+(a new top quest). Everywhere else N goes to Heute and focuses the quick add
 once it has loaded (`focusWhenReady`).
 
 ## Off switch (WCAG 2.1.4)

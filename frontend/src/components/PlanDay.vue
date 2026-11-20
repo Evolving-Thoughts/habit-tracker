@@ -7,20 +7,22 @@ import type { WeekPlanDay, WeekPlanTodoEntry } from "../types/week-plan";
 import { dayLabel, shortDate, weekdayName } from "../utils/history";
 import type { MenuEntry } from "../utils/row-actions";
 import {
+  boardDrop,
   dayOrder,
   doneEntries,
   entryKey,
   isMovable,
   openEntries,
   openSummary,
-  type Drop,
+  type BoardDrop,
 } from "../utils/week-plan";
 
 /**
- * One day of the week plan: its open rows in the order of the day, a quick
- * add, then what is done. Open quests are dragged by the whole card within
- * the day or onto another day of the same board; for keys and taps the
- * focused card's arrow keys and its menu, which the view builds, do the same.
+ * One day of the Plan: a quick add on top, its open rows in the order of
+ * the day, then what is done. Open quests are dragged by the whole card
+ * within the day, onto another day of the board or into the Questlog
+ * column; for keys and taps the focused card's arrow keys and its menu,
+ * which the view builds, do the same.
  */
 const props = defineProps<{
   day: WeekPlanDay;
@@ -33,7 +35,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   edit: [entry: WeekPlanTodoEntry];
   arrow: [entry: WeekPlanTodoEntry, key: "up" | "down" | "left" | "right"];
-  drop: [drop: Drop];
+  /** A card of this day was dropped on a day or into the Questlog column. */
+  move: [drop: BoardDrop];
   created: [];
 }>();
 
@@ -41,20 +44,16 @@ const open = computed(() => openEntries(props.day));
 const done = computed(() => doneEntries(props.day));
 const summary = computed(() => openSummary(props.day));
 const isToday = computed(() => props.day.date === props.today);
-/** Past days only show what happened; nothing new goes there. */
-const isPast = computed(() => props.day.date < props.today);
 const headingId = computed(() => `plan-day-${props.day.date}`);
 
 const list = ref<HTMLElement | null>(null);
 useSortable(list, {
   item: "[data-todo-id]",
   group: "week-plan",
-  accepts: () => !isPast.value && !props.busy,
+  accepts: () => !props.busy,
   onMove: (_from, _to, { item, list: target, index }) => {
-    const todoId = Number(item.dataset.todoId);
-    const toDate = target.dataset.date;
-    if (!todoId || !toDate || props.busy) return;
-    emit("drop", { todoId, toDate, index });
+    const drop = boardDrop(item, target, index);
+    if (drop && !props.busy) emit("move", drop);
   },
 });
 </script>
@@ -62,7 +61,7 @@ useSortable(list, {
 <template>
   <section
     class="plan-day"
-    :class="{ 'plan-day--today': isToday, 'plan-day--past': isPast }"
+    :class="{ 'plan-day--today': isToday }"
     :aria-labelledby="headingId"
     :aria-current="isToday ? 'date' : undefined"
     :data-date="day.date"
@@ -82,6 +81,14 @@ useSortable(list, {
         >
       </p>
     </header>
+
+    <QuickAddQuest
+      class="plan-day__add"
+      :date="day.date"
+      :order="dayOrder(open)"
+      :label="`Quest für ${dayLabel(day.date)} hinzufügen`"
+      @created="emit('created')"
+    />
 
     <ol
       ref="list"
@@ -104,20 +111,8 @@ useSortable(list, {
           @arrow="(key) => isMovable(entry) && emit('arrow', entry, key)"
         />
       </li>
-      <li v-if="!open.length" class="plan-day__empty">
-        {{ isPast ? "Nichts mehr offen." : "Noch frei." }}
-      </li>
+      <li v-if="!open.length" class="plan-day__empty">Noch frei.</li>
     </ol>
-
-    <QuickAddQuest
-      v-if="!isPast"
-      class="plan-day__add"
-      :date="day.date"
-      :order="dayOrder(open)"
-      :label="`Quest für ${dayLabel(day.date)} hinzufügen`"
-      :choose-place="false"
-      @created="emit('created')"
-    />
 
     <ol
       v-if="done.length"

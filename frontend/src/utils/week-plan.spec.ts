@@ -8,16 +8,23 @@ import type {
 } from "../types/week-plan";
 import {
   arrangeOpen,
-  boardScroll,
+  boardColumns,
+  boardDrop,
   dayOrder,
   dropOnDay,
   entryKey,
-  offersWayBack,
+  firstDayFromQuery,
+  fittingDays,
   openSummary,
+  planQuery,
+  planQueryFromWeek,
   questlogEntry,
   questlogStartsOpen,
+  shelveQuest,
+  shiftedStart,
   stepDrop,
-  weekFromQuery,
+  todayScroll,
+  type QuestlogQuest,
 } from "./week-plan";
 
 const MONDAY = "2026-11-16";
@@ -50,7 +57,10 @@ const daily = (
   ...overrides,
 });
 
-function week(days: Record<string, WeekPlanDay["entries"]>): WeekPlanResponse {
+function week(
+  days: Record<string, WeekPlanDay["entries"]>,
+  overdue: WeekPlanResponse["overdue"] = [],
+): WeekPlanResponse {
   const dates = Array.from({ length: 7 }, (_, index) => {
     const date = new Date(`${MONDAY}T12:00:00Z`);
     date.setUTCDate(date.getUTCDate() + index);
@@ -61,21 +71,56 @@ function week(days: Record<string, WeekPlanDay["entries"]>): WeekPlanResponse {
     endDate: dates[6]!,
     today: TODAY,
     days: dates.map((date) => ({ date, entries: days[date] ?? [] })),
+    overdue,
   };
 }
+
+const queued = (id: number, title = `Questlog ${id}`): QuestlogQuest => ({
+  id,
+  title,
+  plannedDurationMinutes: null,
+  campaign: null,
+  timerEligible: true,
+});
 
 const titles = (plan: WeekPlanResponse, date: string) =>
   plan.days.find((day) => day.date === date)!.entries.map(({ title }) => title);
 
-describe("weekFromQuery", () => {
-  it("takes the Monday of the week in the address", () => {
-    expect(weekFromQuery("2026-11-19", TODAY)).toBe(MONDAY);
+describe("firstDayFromQuery", () => {
+  it("takes a day after today from the address", () => {
+    expect(firstDayFromQuery("2026-11-24", TODAY)).toBe("2026-11-24");
   });
 
-  it("falls back to the current week for anything else", () => {
-    expect(weekFromQuery("2026-02-30", TODAY)).toBe(MONDAY);
-    expect(weekFromQuery(["2026-11-23"], TODAY)).toBe(MONDAY);
-    expect(weekFromQuery(undefined, TODAY)).toBe(MONDAY);
+  it("starts at today for today, the past and anything unusable", () => {
+    expect(firstDayFromQuery(TODAY, TODAY)).toBe(TODAY);
+    expect(firstDayFromQuery(MONDAY, TODAY)).toBe(TODAY);
+    expect(firstDayFromQuery("2026-02-30", TODAY)).toBe(TODAY);
+    expect(firstDayFromQuery(["2026-11-24"], TODAY)).toBe(TODAY);
+    expect(firstDayFromQuery(undefined, TODAY)).toBe(TODAY);
+  });
+});
+
+describe("planQuery and planQueryFromWeek", () => {
+  it("keeps today on the plain address", () => {
+    expect(planQuery(TODAY, TODAY)).toEqual({});
+    expect(planQuery("2026-11-24", TODAY)).toEqual({ ab: "2026-11-24" });
+  });
+
+  it("sends an old week link to the first day of that week still ahead", () => {
+    expect(planQueryFromWeek("2026-11-23", TODAY)).toEqual({ ab: "2026-11-23" });
+    expect(planQueryFromWeek("2026-11-25", TODAY)).toEqual({ ab: "2026-11-23" });
+    expect(planQueryFromWeek(MONDAY, TODAY)).toEqual({});
+    expect(planQueryFromWeek("2026-11-09", TODAY)).toEqual({});
+    expect(planQueryFromWeek("kaputt", TODAY)).toEqual({});
+  });
+});
+
+describe("shiftedStart", () => {
+  it("steps by the days shown, never before today", () => {
+    expect(shiftedStart(TODAY, 4, 1, TODAY)).toBe("2026-11-21");
+    expect(shiftedStart("2026-11-21", 4, -1, TODAY)).toBe(TODAY);
+    expect(shiftedStart("2026-11-19", 4, -1, TODAY)).toBe(TODAY);
+    expect(shiftedStart("2026-11-29", 4, -1, TODAY)).toBe("2026-11-25");
   });
 });
 
@@ -93,10 +138,9 @@ describe("entryKey", () => {
 });
 
 describe("dayOrder", () => {
-  it("names what the day's stored order holds: no times, no carried, no forecast", () => {
+  it("names what the day's stored order holds: no times, no forecast", () => {
     expect(
       dayOrder([
-        quest(1, { isOverdue: true, scheduledDate: MONDAY }),
         quest(2, { timeOfDay: "09:00" }),
         quest(3),
         daily(7),
@@ -110,17 +154,16 @@ describe("dayOrder", () => {
 });
 
 describe("arrangeOpen", () => {
-  it("sorts like the server: carried, the clock, the order, then forecasts", () => {
+  it("sorts like the server: the clock, the order, then forecasts", () => {
     expect(
       arrangeOpen([
         daily(null, { title: "Vorhersage" }),
         quest(1),
         quest(2, { timeOfDay: "14:00" }),
-        quest(3, { isOverdue: true }),
         quest(4, { timeOfDay: "08:00" }),
         quest(5),
       ]).map(({ title }) => title),
-    ).toEqual(["Quest 3", "Quest 4", "Quest 2", "Quest 1", "Quest 5", "Vorhersage"]);
+    ).toEqual(["Quest 4", "Quest 2", "Quest 1", "Quest 5", "Vorhersage"]);
   });
 });
 
@@ -180,10 +223,11 @@ describe("dropOnDay", () => {
     ).toBeNull();
   });
 
-  it("plans an overdue quest for today when it is dropped there", () => {
-    const plan = week({
-      [TODAY]: [quest(1, { isOverdue: true, scheduledDate: MONDAY }), quest(2)],
-    });
+  it("plans a quest left behind for the day it is dropped on", () => {
+    const plan = week({ [TODAY]: [quest(2)] }, [
+      quest(1, { isOverdue: true, scheduledDate: MONDAY }),
+      daily(4, { isOverdue: true }),
+    ]);
     const result = dropOnDay(plan, { todoId: 1, toDate: TODAY, index: 1 })!;
     expect(result.write).toMatchObject({
       moveTo: TODAY,
@@ -191,6 +235,12 @@ describe("dropOnDay", () => {
         { type: "todo", id: 2 },
         { type: "todo", id: 1 },
       ],
+    });
+    expect(result.plan.overdue.map(({ title }) => title)).toEqual(["Laufen"]);
+    expect(titles(result.plan, TODAY)).toEqual(["Quest 2", "Quest 1"]);
+    expect(result.plan.days[1]!.entries[1]).toMatchObject({
+      isOverdue: false,
+      scheduledDate: TODAY,
     });
   });
 
@@ -208,7 +258,7 @@ describe("dropOnDay", () => {
       [WEDNESDAY]: [quest(2, { scheduledDate: WEDNESDAY })],
     });
     const incoming = questlogEntry(
-      { id: 7, title: "Neu", plannedDurationMinutes: 20, campaign: null },
+      { ...queued(7, "Neu"), plannedDurationMinutes: 20 },
       WEDNESDAY,
     );
     const result = dropOnDay(
@@ -266,6 +316,68 @@ describe("stepDrop", () => {
   });
 });
 
+describe("shelveQuest", () => {
+  it("sorts the Questlog column and says its whole new order", () => {
+    const plan = week({});
+    const backlog = [queued(1), queued(2), queued(3)];
+    const result = shelveQuest(plan, backlog, { todoId: 3, index: 0 })!;
+    expect(result.backlog.map(({ id }) => id)).toEqual([3, 1, 2]);
+    expect(result.write).toEqual({ todoId: 3, unplan: false, order: [3, 1, 2] });
+    expect(result.plan).toBe(plan);
+    expect(shelveQuest(plan, backlog, { todoId: 2, index: 1 })).toBeNull();
+  });
+
+  it("takes a quest off its day, or off what was left behind, and puts it where it was dropped", () => {
+    const plan = week({ [WEDNESDAY]: [quest(5, { scheduledDate: WEDNESDAY })] }, [
+      quest(6, { isOverdue: true, scheduledDate: MONDAY }),
+    ]);
+    const fromDay = shelveQuest(plan, [queued(1), queued(2)], {
+      todoId: 5,
+      index: 1,
+    })!;
+    expect(fromDay.write).toEqual({ todoId: 5, unplan: true, order: [1, 5, 2] });
+    expect(fromDay.backlog[1]).toMatchObject({ id: 5, title: "Quest 5" });
+    expect(titles(fromDay.plan, WEDNESDAY)).toEqual([]);
+
+    const fromOverdue = shelveQuest(plan, [], { todoId: 6, index: 4 })!;
+    expect(fromOverdue.write.order).toEqual([6]);
+    expect(fromOverdue.plan.overdue).toEqual([]);
+  });
+
+  it("ignores dailies and done quests", () => {
+    const plan = week({
+      [TODAY]: [daily(8), quest(9, { status: "completed" })],
+    });
+    expect(shelveQuest(plan, [], { todoId: 8, index: 0 })).toBeNull();
+    expect(shelveQuest(plan, [], { todoId: 9, index: 0 })).toBeNull();
+  });
+});
+
+describe("boardDrop", () => {
+  const element = (data: Record<string, string>) => {
+    const node = document.createElement("li");
+    Object.assign(node.dataset, data);
+    return node;
+  };
+
+  it("reads a drop on a day or into the Questlog column from the list", () => {
+    const card = element({ todoId: "4" });
+    expect(boardDrop(card, element({ date: WEDNESDAY }), 2)).toEqual({
+      kind: "day",
+      drop: { todoId: 4, toDate: WEDNESDAY, index: 2 },
+    });
+    expect(boardDrop(card, element({ questlog: "" }), 0)).toEqual({
+      kind: "questlog",
+      drop: { todoId: 4, index: 0 },
+    });
+  });
+
+  it("ignores a daily and the column of what was left behind", () => {
+    expect(boardDrop(element({}), element({ date: TODAY }), 0)).toBeNull();
+    expect(boardDrop(element({ todoId: "4" }), element({}), 0)).toBeNull();
+  });
+});
+
 describe("openSummary", () => {
   it("counts what is open and adds up its planned time", () => {
     expect(
@@ -286,14 +398,6 @@ describe("openSummary", () => {
   });
 });
 
-describe("offersWayBack", () => {
-  it("offers the way back to now only away from the current week", () => {
-    expect(offersWayBack(MONDAY, MONDAY)).toBe(false);
-    expect(offersWayBack("2026-11-23", MONDAY)).toBe(true);
-    expect(offersWayBack("2026-11-09", MONDAY)).toBe(true);
-  });
-});
-
 describe("questlogStartsOpen", () => {
   it("follows a choice made on this device", () => {
     expect(questlogStartsOpen("open", false)).toBe(true);
@@ -307,40 +411,50 @@ describe("questlogStartsOpen", () => {
   });
 });
 
-describe("boardScroll", () => {
-  /** Seven columns of `width` with 8px between them, from `offset`. */
-  const columns = (width: number, offset = 0) =>
-    Array.from({ length: 7 }, (_, index) => {
-      const start = offset + index * (width + 8);
-      return { start, end: start + width };
-    });
-
-  it("stays at Monday when the whole week fits", () => {
-    expect(boardScroll(columns(140), 6, { width: 1028, padding: 0 })).toBe(0);
+describe("fittingDays", () => {
+  it("fills the width with readable day columns beside the Questlog", () => {
+    // 78rem: the open column (12rem) leaves 66rem, four days of 14rem plus gaps.
+    expect(fittingDays(78, { questlogOpen: true, overdue: false, least: 2 })).toBe(4);
+    // The rail leaves room for a fifth.
+    expect(fittingDays(78, { questlogOpen: false, overdue: false, least: 2 })).toBe(5);
+    // What was left behind takes a column of its own.
+    expect(fittingDays(78, { questlogOpen: true, overdue: true, least: 2 })).toBe(3);
   });
 
-  it("stays at Monday while today is in view from there", () => {
-    // 900px show Monday to Thursday whole.
-    expect(boardScroll(columns(140), 3, { width: 900, padding: 0 })).toBe(0);
+  it("counts a column that just fits", () => {
+    // Rail 2.75 + 3 x (0.5 + 14) = 46.25rem.
+    expect(fittingDays(46.25, { questlogOpen: false, overdue: false, least: 1 })).toBe(3);
+    expect(fittingDays(46.2, { questlogOpen: false, overdue: false, least: 1 })).toBe(2);
   });
 
-  it("scrolls as little as needed for today, onto a column's start", () => {
-    // Sunday ends at 1028; 900px from Tuesday's start (148) end at 1048.
-    expect(boardScroll(columns(140), 6, { width: 900, padding: 0 })).toBe(148);
-    // Friday ends at 732; from Monday it ends at 700: one column on.
-    expect(boardScroll(columns(140), 4, { width: 700, padding: 0 })).toBe(148);
+  it("keeps today, and from a desktop two days, where nothing fits", () => {
+    // A phone: rail and today.
+    expect(fittingDays(23.75, { questlogOpen: false, overdue: false, least: 1 })).toBe(1);
+    expect(fittingDays(20, { questlogOpen: true, overdue: true, least: 1 })).toBe(1);
+    expect(fittingDays(30, { questlogOpen: true, overdue: true, least: 2 })).toBe(2);
   });
+});
 
-  it("puts today at the start where only one day fits, minus the gutter", () => {
-    // A phone: 85 % columns behind a 16px gutter.
-    const phone = columns(291, 16);
-    expect(boardScroll(phone, 2, { width: 375, padding: 16 })).toBe(
-      phone[2]!.start - 16,
+describe("boardColumns", () => {
+  it("lays out the Questlog, what was left behind and the days", () => {
+    expect(boardColumns({ questlogOpen: true, overdue: true, days: 3 })).toBe(
+      "12rem minmax(14rem, 1fr) repeat(3, minmax(14rem, 1fr))",
     );
-    expect(boardScroll(phone, 0, { width: 375, padding: 16 })).toBe(0);
+    expect(boardColumns({ questlogOpen: false, overdue: false, days: 1 })).toBe(
+      "2.75rem repeat(1, minmax(14rem, 1fr))",
+    );
+  });
+});
+
+describe("todayScroll", () => {
+  it("stays at the start while today is fully in view", () => {
+    expect(todayScroll({ start: 52, end: 276 }, { width: 380, sticky: 52 })).toBe(0);
   });
 
-  it("stays at the start of a week without today", () => {
-    expect(boardScroll(columns(140), -1, { width: 500, padding: 0 })).toBe(0);
+  it("brings today right beside the Questlog column, which stays in place", () => {
+    // Rail (44 + 8), then what was left behind (224 + 8), then today.
+    expect(todayScroll({ start: 284, end: 508 }, { width: 380, sticky: 52 })).toBe(
+      232,
+    );
   });
 });

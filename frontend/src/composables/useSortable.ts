@@ -17,6 +17,8 @@ type SortableOptions = {
   group?: string;
   /** Whether this list takes items from the rest of its group. */
   accepts?: () => boolean;
+  /** False for a list whose items only leave it, never change places in it. */
+  sort?: boolean;
 };
 
 /** A finger has to rest this long before a card lifts, so a swipe still scrolls. */
@@ -55,6 +57,7 @@ export function useSortable(
           name: options.group,
           put: () => options.accepts?.() ?? true,
         },
+        sort: options.sort ?? true,
         animation: 160,
         delay: TOUCH_HOLD_MS,
         delayOnTouchOnly: true,

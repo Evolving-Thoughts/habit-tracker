@@ -16,7 +16,9 @@ import SettingsView from "./views/SettingsView.vue";
 import TodayView from "./views/TodayView.vue";
 import WeekReviewView from "./views/WeekReviewView.vue";
 import { PATHS, SECTION_QUERY, sectionId, type ViewName } from "./routes";
+import { getCurrentDateInTimeZone } from "./utils/date";
 import { holdScroll } from "./utils/scroll-hold";
+import { planQueryFromWeek } from "./utils/week-plan";
 
 export type { ViewName };
 
@@ -180,6 +182,15 @@ export function createAppRouter(
       holdScroll(place);
       return saved ?? { top: place() };
     },
+  });
+  // The Plan used to show a week (?woche=<Monday>); it now starts at a day.
+  router.beforeEach((to) => {
+    if (to.name !== "plan" || to.query.woche === undefined) return;
+    return {
+      name: "plan",
+      query: planQueryFromWeek(to.query.woche, getCurrentDateInTimeZone()),
+      replace: true,
+    };
   });
   router.afterEach((to) => {
     document.title = to.meta.title

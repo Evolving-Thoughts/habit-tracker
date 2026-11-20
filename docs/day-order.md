@@ -30,7 +30,8 @@ The time-based replanner ("Neu planen"), the day-end setting and the per-calenda
 - Moving a todo to another day (PATCH `scheduledDate`, `POST /todos/:id/reschedule`,
   or an edit in Google) resets `dayPosition`: it joins the new day at the end.
 - Putting a todo back into the backlog (`scheduledDate: null`) also drops its
-  time. Clearing only the time turns an appointment into a todo of its day.
+  time and puts it at the end of the Questlog's order (below). Clearing only
+  the time turns an appointment into a todo of its day.
 - An appointment only moves with `confirmFixed`, as before, and keeps its time.
 - Completing or skipping does not touch positions.
 
@@ -46,9 +47,31 @@ The time-based replanner ("Neu planen"), the day-end setting and the per-calenda
   occurrence id. All items must be the caller's own, otherwise 404 and nothing
   is written. It runs in the per-user unit of work. It orders any day, not only
   today: a position only counts among the items of the day an item is on. The
-  week plan (`week-plan.md`) sorts every day of its board through it.
-- `GET /day-planner/week?start=<Monday>` answers a whole week in this order;
-  see `week-plan.md`.
+  Plan (`week-plan.md`) sorts every day of its board through it.
+- `GET /day-planner/plan?from=<day>&days=<1–31>` answers the Plan's days in
+  this order, with what is overdue apart; see `week-plan.md`.
+- `PUT /todos/backlog/order` with `{ ids: number[] }` stores the Questlog's
+  order (below).
+
+## The Questlog's order
+
+The backlog keeps an order of its own: `todos.backlogPosition` (nullable
+integer, migration `1795800000000-BacklogOrder`, which numbers every todo
+without a day by creation). A todo that enters the backlog, by being created
+without a day or by losing its day, takes the place after the last one
+(`TodosService.nextBacklogPosition`); one that gets a day loses its place.
+`backlogTodos` lists by `backlogPosition` (nulls last), then creation, so
+the Questlog view and the Plan's Questlog column show the same order. A todo
+the Google sync puts back into the backlog has no place yet and follows.
+
+`PUT /todos/backlog/order` takes ids of the caller's Questlog (the workable
+backlog of `backlogTodos`) and stores them first, in that order, followed by
+the rest of the Questlog in the order it had; every id must be in the
+caller's Questlog and appear once (404 / 400, nothing is written). It runs
+in the per-user unit of work. The Questlog view sorts by dragging the whole
+card (`useSortable`, a finger after a long press) and by "Nach oben" /
+"Nach unten" in each card's menu, the focus staying on its menu button; the
+new order shows at once and a failed write takes it back.
 
 ## Google Calendar
 
@@ -99,8 +122,11 @@ export only, as Logbuch events (see `logbook.md`).
   the move is confirmed). The quick days run the same step as D and W
   (`utils/row-actions.ts` `quickMoves` decides which days apply).
 - `QuickAddQuest.vue`: type a title, press Enter, the quest is planned for
-  today, at the end or at the head of the order. The week plan uses it per day,
-  always at the end.
+  today, at the end or at the head of the order. Two small toggles beside the
+  field, ↑ "Oben einfügen" and ↓ "Unten einfügen" (`aria-pressed`), choose
+  which; the choice holds per device for every quick add
+  (`composables/useInsertPlace.ts`, `localStorage` `quickAdd:place`). The
+  Plan puts one on top of every day.
 - "Auf morgen" moves everything open that only has its day to tomorrow, after
   asking. Appointments and dailies that cannot move stay.
 

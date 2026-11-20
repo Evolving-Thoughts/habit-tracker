@@ -19,6 +19,7 @@ import {
   HierarchyTodoResponse,
 } from './dto/todo-hierarchy-response.dto';
 import { CreateTodoDto } from './dto/create-todo.dto';
+import { ReorderBacklogDto } from './dto/reorder-backlog.dto';
 import { RescheduleTodoDto } from './dto/reschedule-todo.dto';
 import { NotesResponse, SetNotesDto } from './dto/todo-notes.dto';
 import { TodoResponseDto } from './dto/todo-response.dto';
@@ -56,6 +57,16 @@ export class TodosController {
     const todos = await this.todosService.backlog(user.id);
 
     return this.respond(user.id, todos);
+  }
+
+  /** Declared before the `:id` routes, so "backlog" is never read as an id. */
+  @Put('backlog/order')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  reorderBacklog(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ReorderBacklogDto,
+  ): Promise<void> {
+    return this.todosService.reorderBacklog(user.id, dto.ids);
   }
 
   @Get('hierarchy')

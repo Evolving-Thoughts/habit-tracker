@@ -3,12 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import {
   getBacklogTodos,
-  getWeekPlan,
+  getPlan,
+  reorderBacklog,
   reorderDay,
   rescheduleTodo,
   updateTodo,
   updateTodoCompletion,
 } from "../api/day-planner.api";
+import PlanDay from "../components/PlanDay.vue";
+import PlanOverdue from "../components/PlanOverdue.vue";
 import PlanQuestlog from "../components/PlanQuestlog.vue";
 import { TODO_FIELDS, WEEK_ENTRY_FIELDS } from "../types/fixtures";
 import type { TodoResponse } from "../types/todo";
@@ -20,10 +23,12 @@ import type {
 } from "../types/week-plan";
 import PlanView from "./PlanView.vue";
 import { reloadShortcutSettings } from "../composables/useShortcuts";
+import { createAppRouter } from "../router";
 
 vi.mock("../api/day-planner.api", () => ({
-  getWeekPlan: vi.fn(),
+  getPlan: vi.fn(),
   getBacklogTodos: vi.fn(),
+  reorderBacklog: vi.fn(),
   reorderDay: vi.fn(),
   rescheduleTodo: vi.fn(),
   updateTodo: vi.fn(),
@@ -39,6 +44,7 @@ enableAutoUnmount(afterEach);
 
 const MONDAY = "2026-11-16";
 const TODAY = "2026-11-17";
+const WEDNESDAY = "2026-11-18";
 
 const quest = (
   todoId: number,
@@ -61,21 +67,39 @@ const daily = (overrides: Partial<WeekPlanHabitEntry> = {}): WeekPlanHabitEntry 
   status: "pending",
   ...overrides,
 });
+const backlogQuest = (overrides: Partial<TodoResponse> = {}): TodoResponse => ({
+  ...TODO_FIELDS,
+  id: 7,
+  parentId: 9,
+  title: "Fahrrad putzen",
+  completed: false,
+  completedAt: null,
+  scheduledDate: null,
+  timeOfDay: null,
+  plannedDurationMinutes: 20,
+  timerEligible: true,
+  campaign: { id: 9, title: "Ordnung", color: "ochre", icon: null },
+  ...overrides,
+});
 
-function week(
+/** The board as the server answers it: `days` days from `start`. */
+function board(
   start: string,
   entries: Record<string, WeekPlanEntry[]> = {},
+  overdue: WeekPlanEntry[] = [],
+  days = 14,
 ): WeekPlanResponse {
-  const dates = Array.from({ length: 7 }, (_, index) => {
+  const dates = Array.from({ length: days }, (_, index) => {
     const date = new Date(`${start}T12:00:00Z`);
     date.setUTCDate(date.getUTCDate() + index);
     return date.toISOString().slice(0, 10);
   });
   return {
     startDate: start,
-    endDate: dates[6]!,
+    endDate: dates[days - 1]!,
     today: TODAY,
     days: dates.map((date) => ({ date, entries: entries[date] ?? [] })),
+    overdue,
   };
 }
 
@@ -95,36 +119,95 @@ async function mountPlan(path = "/plan") {
   await flushPromises();
   return { wrapper, router };
 }
+type Wrapper = Awaited<ReturnType<typeof mountPlan>>["wrapper"];
 
-const column = (wrapper: Awaited<ReturnType<typeof mountPlan>>["wrapper"], date: string) =>
+const column = (wrapper: Wrapper, date: string) =>
   wrapper.get(`section[data-date="${date}"]`);
-const openTitles = (wrapper: Awaited<ReturnType<typeof mountPlan>>["wrapper"], date: string) =>
+const shownDates = (wrapper: Wrapper) =>
+  wrapper
+    .findAll("section.plan-day")
+    .map((section) => section.attributes("data-date"));
+const openTitles = (wrapper: Wrapper, date: string) =>
   column(wrapper, date)
     .get(".plan-day__list")
     .findAll("h3")
     .map((title) => title.text());
-const menuButton = (wrapper: Awaited<ReturnType<typeof mountPlan>>["wrapper"], title: string) =>
+const columnTitles = (wrapper: Wrapper) =>
+  wrapper
+    .get(".plan-questlog__list")
+    .findAll("h3")
+    .map((h) => h.text());
+const menuButton = (wrapper: Wrapper, title: string) =>
   wrapper.get(`button[aria-label="Aktionen für ${title}"]`);
+const menuLabels = (wrapper: Wrapper) =>
+  wrapper
+    .findAll("[role=menuitem] .action-menu__label")
+    .map((label) => label.text());
 /** Opens a card's menu "…" and runs the entry with that spoken name. */
 async function choose(
-  wrapper: Awaited<ReturnType<typeof mountPlan>>["wrapper"],
+  wrapper: Wrapper,
   title: string,
   entry: string,
 ): Promise<void> {
   await menuButton(wrapper, title).trigger("click");
   await wrapper.get(`[role="menuitem"][aria-label="${entry}"]`).trigger("click");
 }
+const buttonNamed = (wrapper: Wrapper, text: string) =>
+  wrapper.findAll("button").find((button) => button.text() === text);
+
+/** A window of `width` px: the board measures its frame through a ResizeObserver. */
+function layoutWidth(width: number): void {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      callback: () => void;
+      constructor(callback: () => void) {
+        this.callback = callback;
+      }
+      observe(element: Element) {
+        if (element.classList.contains("plan-view__frame")) this.callback();
+      }
+      disconnect() {}
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
+    function (this: HTMLElement) {
+      return this.classList.contains("plan-view__frame") ? width : 0;
+    },
+  );
+}
+/** Media queries: from 56rem (`wide`) and from 80rem (`roomy`). */
+function screen(wide: boolean, roomy = wide): void {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches:
+      (wide && query === "(min-width: 56rem)") ||
+      (roomy && query === "(min-width: 80rem)"),
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+}
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  localStorage.clear();
+  vi.mocked(getBacklogTodos).mockResolvedValue([]);
+  vi.mocked(reorderDay).mockResolvedValue(undefined);
+  vi.mocked(reorderBacklog).mockResolvedValue(undefined);
+  vi.mocked(rescheduleTodo).mockResolvedValue({} as never);
+  vi.mocked(updateTodo).mockResolvedValue({} as never);
+  vi.mocked(updateTodoCompletion).mockResolvedValue(undefined);
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  document.body.innerHTML = "";
+});
 
 describe("PlanView", () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    vi.mocked(reorderDay).mockResolvedValue(undefined);
-    vi.mocked(rescheduleTodo).mockResolvedValue({} as never);
-  });
-
-  it("shows the week as seven days and marks today", async () => {
-    vi.mocked(getWeekPlan).mockResolvedValue(
-      week(MONDAY, {
+  it("starts with today: the Questlog, then today and the days after it", async () => {
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, {
         [TODAY]: [
           quest(1, { timeOfDay: "09:30", plannedDurationMinutes: 45 }),
           daily({ plannedDurationMinutes: 15 }),
@@ -134,9 +217,15 @@ describe("PlanView", () => {
     );
     const { wrapper } = await mountPlan();
 
-    expect(getWeekPlan).toHaveBeenCalledWith(MONDAY, expect.any(AbortSignal));
-    expect(wrapper.get("h1").text()).toBe("Plan für 16.–22. Nov.");
-    expect(wrapper.findAll("h2").map((heading) => heading.text())).toHaveLength(7);
+    expect(getPlan).toHaveBeenCalledWith(TODAY, 14, expect.any(AbortSignal));
+    // Without layout the board shows a week from today; never a past day.
+    expect(shownDates(wrapper)).toHaveLength(7);
+    expect(shownDates(wrapper)[0]).toBe(TODAY);
+    expect(wrapper.get("h1").text()).toBe("Plan für 17.–23. Nov.");
+    const sections = wrapper.findAll("aside, section");
+    expect(sections[0]!.classes()).toContain("plan-questlog");
+    expect(wrapper.find(".plan-overdue").exists()).toBe(false);
+
     const today = column(wrapper, TODAY);
     expect(today.attributes("aria-current")).toBe("date");
     expect(today.get("h2").text()).toBe("Dienstag17. Nov.Heute");
@@ -149,45 +238,161 @@ describe("PlanView", () => {
     const dailyRow = today.findAll(".plan-entry--daily")[0]!;
     expect(dailyRow.text()).toContain("Daily");
     expect(dailyRow.find("button").exists()).toBe(false);
-    // The past takes nothing new; today and later offer the quick add.
-    expect(column(wrapper, MONDAY).find("form").exists()).toBe(false);
-    expect(
-      today.find('input[aria-label="Quest für Dienstag, 17. Nov. hinzufügen"]').exists(),
-    ).toBe(true);
+    // Every day has its quick add on top, with where new quests go.
+    const field = today.get(
+      'input[aria-label="Quest für Dienstag, 17. Nov. hinzufügen"]',
+    );
+    expect(field.element.closest("form")!.querySelector('[aria-label="Oben einfügen"]')).not.toBeNull();
   });
 
-  it("keeps the shown week in the address", async () => {
-    vi.mocked(getWeekPlan).mockImplementation(async (start) => week(start));
-    const { wrapper, router } = await mountPlan("/plan?woche=2026-11-25");
-    expect(getWeekPlan).toHaveBeenLastCalledWith("2026-11-23", expect.any(AbortSignal));
+  it("shows as many days as fit beside the Questlog and steps by them", async () => {
+    // 78rem: the open Questlog (12rem) and four days of 14rem.
+    layoutWidth(1248);
+    screen(true);
+    vi.mocked(getPlan).mockImplementation(async (from) => board(from));
+    const { wrapper, router } = await mountPlan();
 
-    await wrapper.get('button[aria-label="Nächste Woche"]').trigger("click");
+    expect(shownDates(wrapper)).toEqual([
+      TODAY,
+      WEDNESDAY,
+      "2026-11-19",
+      "2026-11-20",
+    ]);
+    expect(wrapper.get("h1").text()).toBe("Plan für 17.–20. Nov.");
+    expect(
+      (wrapper.get(".plan-view__board").element as HTMLElement).style
+        .gridTemplateColumns,
+    ).toBe("12rem repeat(4, minmax(14rem, 1fr))");
+    // At today there is no going back.
+    expect(
+      wrapper.get('button[aria-label="Vorige Tage"]').attributes("disabled"),
+    ).toBeDefined();
+
+    await wrapper.get('button[aria-label="Nächste Tage"]').trigger("click");
     await flushPromises();
-    expect(router.currentRoute.value.query).toEqual({ woche: "2026-11-30" });
-    expect(getWeekPlan).toHaveBeenLastCalledWith("2026-11-30", expect.any(AbortSignal));
+    expect(router.currentRoute.value.query).toEqual({ ab: "2026-11-21" });
+    expect(getPlan).toHaveBeenLastCalledWith(
+      "2026-11-21",
+      14,
+      expect.any(AbortSignal),
+    );
+    expect(shownDates(wrapper)[0]).toBe("2026-11-21");
+  });
 
-    await wrapper
-      .findAll("button")
-      .find((button) => button.text() === "Diese Woche")!
-      .trigger("click");
+  it("gives what was left behind a column of its own, before today", async () => {
+    layoutWidth(1248);
+    screen(true);
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, { [TODAY]: [quest(1)] }, [
+        quest(5, { isOverdue: true, scheduledDate: MONDAY }),
+        daily({ occurrenceId: 8, isOverdue: true }),
+      ]),
+    );
+    const { wrapper } = await mountPlan();
+
+    const overdue = wrapper.get("section.plan-overdue");
+    expect(overdue.get("h2").text()).toContain("Liegen geblieben");
+    expect(overdue.text()).toContain("seit 16. Nov.");
+    // Its column takes the room of one day.
+    expect(shownDates(wrapper)).toHaveLength(3);
+    const order = wrapper
+      .findAll("aside, section")
+      .map((node) => node.classes()[0]);
+    expect(order.slice(0, 3)).toEqual(["plan-questlog", "plan-overdue", "plan-day"]);
+    expect(openTitles(wrapper, TODAY)).toEqual(["Quest 1"]);
+
+    await menuButton(wrapper, "Quest 5").trigger("click");
+    expect(menuLabels(wrapper)).toEqual([
+      "Heute",
+      "Morgen",
+      "Nächste Woche",
+      "Anderer Tag …",
+      "Bearbeiten",
+      "Stoppuhr starten",
+      "In Kampagne verschieben …",
+      "Löschen",
+    ]);
+  });
+
+  it("plans a quest left behind for the day it is dropped on", async () => {
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, { [WEDNESDAY]: [quest(2, { scheduledDate: WEDNESDAY })] }, [
+        quest(5, { isOverdue: true, scheduledDate: MONDAY }),
+      ]),
+    );
+    const { wrapper } = await mountPlan();
+    // What the server holds after the write, for the quiet reload.
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, {
+        [WEDNESDAY]: [quest(5, { scheduledDate: WEDNESDAY }), quest(2, { scheduledDate: WEDNESDAY })],
+      }),
+    );
+
+    wrapper.getComponent(PlanOverdue).vm.$emit("move", {
+      kind: "day",
+      drop: { todoId: 5, toDate: WEDNESDAY, index: 0 },
+    });
+    await flushPromises();
+
+    expect(rescheduleTodo).toHaveBeenCalledWith(5, WEDNESDAY, false);
+    expect(reorderDay).toHaveBeenCalledWith([
+      { type: "todo", id: 5 },
+      { type: "todo", id: 2 },
+    ]);
+    expect(wrapper.find("section.plan-overdue").exists()).toBe(false);
+  });
+
+  it("keeps the first day in the address and comes back with Heute", async () => {
+    vi.mocked(getPlan).mockImplementation(async (from) => board(from));
+    const { wrapper, router } = await mountPlan("/plan?ab=2026-11-25");
+    expect(getPlan).toHaveBeenLastCalledWith(
+      "2026-11-25",
+      14,
+      expect.any(AbortSignal),
+    );
+    expect(wrapper.get("h1").text()).toBe("Plan für 25. Nov. – 1. Dez.");
+
+    await wrapper.get('button[aria-label="Vorige Tage"]').trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({ ab: WEDNESDAY });
+    // Never before today: the next step back lands on today itself.
+    await wrapper.get('button[aria-label="Vorige Tage"]').trigger("click");
     await flushPromises();
     expect(router.currentRoute.value.query).toEqual({});
-    expect(getWeekPlan).toHaveBeenLastCalledWith(MONDAY, expect.any(AbortSignal));
-    // On the current week the way back would change nothing: it leaves, and
-    // the heading that names the week takes the focus.
-    expect(
-      wrapper.findAll("button").some((button) => button.text() === "Diese Woche"),
-    ).toBe(false);
+
+    await router.push("/plan?ab=2026-12-08");
+    await flushPromises();
+    await buttonNamed(wrapper, "Heute")!.trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({});
+    expect(getPlan).toHaveBeenLastCalledWith(TODAY, 14, expect.any(AbortSignal));
+    // On today the way back would change nothing: it leaves, and the
+    // heading that names the days takes the focus.
+    expect(buttonNamed(wrapper, "Heute")).toBeUndefined();
     expect(document.activeElement).toBe(wrapper.get("h1").element);
   });
 
+  it("starts at today for a day in the past", async () => {
+    vi.mocked(getPlan).mockImplementation(async (from) => board(from));
+    await mountPlan("/plan?ab=2026-11-09");
+    expect(getPlan).toHaveBeenLastCalledWith(TODAY, 14, expect.any(AbortSignal));
+  });
+
+  it("sends an old week link to the first day of that week still ahead", async () => {
+    const router = createAppRouter(createMemoryHistory());
+    await router.push("/plan?woche=2026-11-23");
+    expect(router.currentRoute.value.fullPath).toBe("/plan?ab=2026-11-23");
+    await router.push("/plan?woche=2026-11-16");
+    expect(router.currentRoute.value.fullPath).toBe("/plan");
+  });
+
   it("sorts a day with Nach oben in the menu and keeps the menu button focused", async () => {
-    vi.mocked(getWeekPlan).mockResolvedValue(
-      week(MONDAY, { [TODAY]: [quest(1), quest(2)] }),
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, { [TODAY]: [quest(1), quest(2)] }),
     );
     const { wrapper } = await mountPlan();
-    vi.mocked(getWeekPlan).mockResolvedValue(
-      week(MONDAY, { [TODAY]: [quest(2), quest(1)] }),
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, { [TODAY]: [quest(2), quest(1)] }),
     );
 
     await choose(wrapper, "Quest 2", "Quest 2 nach oben");
@@ -199,19 +404,19 @@ describe("PlanView", () => {
     ]);
     expect(rescheduleTodo).not.toHaveBeenCalled();
     expect(openTitles(wrapper, TODAY)).toEqual(["Quest 2", "Quest 1"]);
-    expect(wrapper.get('[role="status"]').text()).toBe(
+    expect(wrapper.get('[role="status"].visually-hidden').text()).toBe(
       "„Quest 2“ steht jetzt an Stelle 1 von 2.",
     );
     expect(document.activeElement).toBe(menuButton(wrapper, "Quest 2").element);
   });
 
   it("sorts a day with the arrow keys on a focused card and keeps it focused", async () => {
-    vi.mocked(getWeekPlan).mockResolvedValue(
-      week(MONDAY, { [TODAY]: [quest(1), quest(2)] }),
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, { [TODAY]: [quest(1), quest(2)] }),
     );
     const { wrapper } = await mountPlan();
-    vi.mocked(getWeekPlan).mockResolvedValue(
-      week(MONDAY, { [TODAY]: [quest(2), quest(1)] }),
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, { [TODAY]: [quest(2), quest(1)] }),
     );
     const card = () => wrapper.get('button[aria-label="Quest 2 bearbeiten"]');
     expect(card().attributes("aria-keyshortcuts")).toBe(
@@ -230,21 +435,34 @@ describe("PlanView", () => {
     expect(document.activeElement).toBe(card().element);
   });
 
-  it("moves a focused card to the next day with ArrowRight, at the end of that day", async () => {
-    vi.mocked(getWeekPlan).mockResolvedValue(
-      week(MONDAY, {
+  it("moves a focused card to the next day with ArrowRight, but not out of view or into the past", async () => {
+    layoutWidth(1248);
+    screen(true);
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, {
         [TODAY]: [quest(1)],
-        "2026-11-18": [quest(2, { scheduledDate: "2026-11-18" })],
+        [WEDNESDAY]: [quest(2, { scheduledDate: WEDNESDAY })],
+        "2026-11-20": [quest(3, { scheduledDate: "2026-11-20" })],
       }),
     );
     const { wrapper } = await mountPlan();
 
     await wrapper
       .get('button[aria-label="Quest 1 bearbeiten"]')
+      .trigger("keydown", { key: "ArrowLeft" });
+    // The last day shown has no neighbour on the board.
+    await wrapper
+      .get('button[aria-label="Quest 3 bearbeiten"]')
+      .trigger("keydown", { key: "ArrowRight" });
+    await flushPromises();
+    expect(rescheduleTodo).not.toHaveBeenCalled();
+
+    await wrapper
+      .get('button[aria-label="Quest 1 bearbeiten"]')
       .trigger("keydown", { key: "ArrowRight" });
     await flushPromises();
 
-    expect(rescheduleTodo).toHaveBeenCalledWith(1, "2026-11-18", false);
+    expect(rescheduleTodo).toHaveBeenCalledWith(1, WEDNESDAY, false);
     expect(reorderDay).toHaveBeenCalledWith([
       { type: "todo", id: 2 },
       { type: "todo", id: 1 },
@@ -252,16 +470,12 @@ describe("PlanView", () => {
   });
 
   it("gives an open quest's menu its moves in the one order", async () => {
-    vi.mocked(getWeekPlan).mockResolvedValue(
-      week(MONDAY, { [TODAY]: [quest(1), quest(2)] }),
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, { [TODAY]: [quest(1), quest(2)] }),
     );
     const { wrapper } = await mountPlan();
     await menuButton(wrapper, "Quest 1").trigger("click");
-    expect(
-      wrapper
-        .findAll("[role=menuitem] .action-menu__label")
-        .map((label) => label.text()),
-    ).toEqual([
+    expect(menuLabels(wrapper)).toEqual([
       "Morgen",
       "Nächste Woche",
       "Anderer Tag …",
@@ -274,10 +488,10 @@ describe("PlanView", () => {
   });
 
   it("moves a quest to tomorrow from its menu, at the end of that day", async () => {
-    vi.mocked(getWeekPlan).mockResolvedValue(
-      week(MONDAY, {
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, {
         [TODAY]: [quest(1)],
-        "2026-11-18": [quest(2, { scheduledDate: "2026-11-18" })],
+        [WEDNESDAY]: [quest(2, { scheduledDate: WEDNESDAY })],
       }),
     );
     const { wrapper } = await mountPlan();
@@ -285,7 +499,7 @@ describe("PlanView", () => {
     await choose(wrapper, "Quest 1", "Quest 1 auf morgen");
     await flushPromises();
 
-    expect(rescheduleTodo).toHaveBeenCalledWith(1, "2026-11-18", false);
+    expect(rescheduleTodo).toHaveBeenCalledWith(1, WEDNESDAY, false);
     expect(reorderDay).toHaveBeenCalledWith([
       { type: "todo", id: 2 },
       { type: "todo", id: 1 },
@@ -296,8 +510,9 @@ describe("PlanView", () => {
   });
 
   it("takes a failed move back and says why", async () => {
-    const plan = week(MONDAY, { [TODAY]: [quest(1), quest(2)] });
-    vi.mocked(getWeekPlan).mockResolvedValue(plan);
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, { [TODAY]: [quest(1), quest(2)] }),
+    );
     vi.mocked(rescheduleTodo).mockRejectedValueOnce(new Error("Offline"));
     const { wrapper } = await mountPlan();
 
@@ -310,7 +525,7 @@ describe("PlanView", () => {
   });
 
   it("opens the editor and the move dialog of a quest", async () => {
-    vi.mocked(getWeekPlan).mockResolvedValue(week(MONDAY, { [TODAY]: [quest(1)] }));
+    vi.mocked(getPlan).mockResolvedValue(board(TODAY, { [TODAY]: [quest(1)] }));
     const { wrapper } = await mountPlan();
 
     await wrapper.get('button[aria-label="Quest 1 bearbeiten"]').trigger("click");
@@ -327,8 +542,8 @@ describe("PlanView", () => {
   });
 
   it("opens the editor from a tap anywhere on the card", async () => {
-    vi.mocked(getWeekPlan).mockResolvedValue(
-      week(MONDAY, { [TODAY]: [quest(1, { plannedDurationMinutes: 30 })] }),
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, { [TODAY]: [quest(1, { plannedDurationMinutes: 30 })] }),
     );
     const { wrapper } = await mountPlan();
     await column(wrapper, TODAY).get(".plan-entry__details").trigger("click");
@@ -337,18 +552,18 @@ describe("PlanView", () => {
     ).toMatchObject({ kind: "todo", entityId: 1 });
   });
 
-  it("invites planning when the week is still empty", async () => {
-    vi.mocked(getWeekPlan).mockResolvedValue(week(MONDAY));
+  it("invites planning when the days are still empty", async () => {
+    vi.mocked(getPlan).mockResolvedValue(board(TODAY));
     const { wrapper } = await mountPlan();
     expect(wrapper.get(".page-lead").text()).toContain(
-      "Für diese Woche ist noch nichts geplant.",
+      "Für diese Tage ist noch nichts geplant.",
     );
     expect(column(wrapper, "2026-11-20").text()).toContain("Noch frei.");
   });
 
   it("explains a failed load and tries again", async () => {
-    vi.mocked(getWeekPlan).mockRejectedValueOnce(new Error("Server weg"));
-    vi.mocked(getWeekPlan).mockResolvedValueOnce(week(MONDAY));
+    vi.mocked(getPlan).mockRejectedValueOnce(new Error("Server weg"));
+    vi.mocked(getPlan).mockResolvedValueOnce(board(TODAY));
     const { wrapper } = await mountPlan();
 
     expect(wrapper.get('[role="alert"]').text()).toContain("Server weg");
@@ -356,18 +571,21 @@ describe("PlanView", () => {
     await flushPromises();
     expect(wrapper.findAll("section.plan-day")).toHaveLength(7);
   });
+
+  it("keeps the loading bones in the board's columns", async () => {
+    screen(true);
+    vi.mocked(getPlan).mockReturnValue(new Promise(() => {}));
+    const { wrapper } = await mountPlan();
+    const bones = wrapper.get('[aria-label="Plan wird geladen"]');
+    expect((bones.element as HTMLElement).style.gridTemplateColumns).toBe(
+      "12rem repeat(7, minmax(14rem, 1fr))",
+    );
+    expect(bones.findAll(".plan-view__bone")).toHaveLength(8);
+  });
 });
 
 describe("PlanView keyboard shortcuts", () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    localStorage.clear();
-    reloadShortcutSettings();
-    vi.mocked(reorderDay).mockResolvedValue(undefined);
-    vi.mocked(rescheduleTodo).mockResolvedValue({} as never);
-    vi.mocked(updateTodoCompletion).mockResolvedValue(undefined);
-  });
-  afterEach(() => (document.body.innerHTML = ""));
+  beforeEach(() => reloadShortcutSettings());
 
   const row = (key: string) =>
     document.querySelector<HTMLElement>(`[data-focus-key="${key}"]`)!;
@@ -385,44 +603,55 @@ describe("PlanView keyboard shortcuts", () => {
   }
 
   it("moves the hovered quest to tomorrow with D, the way dragging does", async () => {
-    vi.mocked(getWeekPlan).mockResolvedValue(
-      week(MONDAY, { [TODAY]: [quest(1), quest(2)] }),
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, { [TODAY]: [quest(1), quest(2)] }),
     );
     const { wrapper } = await mountPlan();
-    vi.mocked(getWeekPlan).mockResolvedValue(
-      week(MONDAY, {
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, {
         [TODAY]: [quest(2)],
-        "2026-11-18": [quest(1, { scheduledDate: "2026-11-18" })],
+        [WEDNESDAY]: [quest(1, { scheduledDate: WEDNESDAY })],
       }),
     );
     hover("todo-1");
     expect(press("d").defaultPrevented).toBe(true);
     await flushPromises();
-    expect(rescheduleTodo).toHaveBeenCalledWith(1, "2026-11-18", false);
-    expect(openTitles(wrapper, "2026-11-18")).toEqual(["Quest 1"]);
+    expect(rescheduleTodo).toHaveBeenCalledWith(1, WEDNESDAY, false);
+    expect(openTitles(wrapper, WEDNESDAY)).toEqual(["Quest 1"]);
     expect(wrapper.get(".visually-hidden[role='status']").text()).toBe(
       "„Quest 1“ steht jetzt am Mittwoch, 18. Nov.",
     );
   });
 
-  it("moves to next Monday with W, beyond the board", async () => {
-    vi.mocked(getWeekPlan).mockResolvedValue(
-      week(MONDAY, { [TODAY]: [quest(1)] }),
+  it("moves a quest left behind to today with T", async () => {
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, {}, [quest(5, { isOverdue: true, scheduledDate: MONDAY })]),
     );
+    await mountPlan();
+    hover("todo-5");
+    press("t");
+    await flushPromises();
+    expect(rescheduleTodo).toHaveBeenCalledWith(5, TODAY, false);
+    expect(reorderDay).toHaveBeenCalledWith([{ type: "todo", id: 5 }]);
+  });
+
+  it("moves beyond the board the way of Verschieben", async () => {
+    layoutWidth(1248);
+    screen(true);
+    vi.mocked(getPlan).mockResolvedValue(board(TODAY, { [TODAY]: [quest(1)] }));
     const { wrapper } = await mountPlan();
     hover("todo-1");
     press("w");
     await flushPromises();
     expect(rescheduleTodo).toHaveBeenCalledWith(1, "2026-11-23", false);
+    expect(reorderDay).not.toHaveBeenCalled();
     expect(wrapper.get(".visually-hidden[role='status']").text()).toBe(
       "„Quest 1“ steht jetzt am Montag, 23. Nov.",
     );
   });
 
   it("ticks the hovered quest with X and offers undo", async () => {
-    vi.mocked(getWeekPlan).mockResolvedValue(
-      week(MONDAY, { [TODAY]: [quest(1)] }),
-    );
+    vi.mocked(getPlan).mockResolvedValue(board(TODAY, { [TODAY]: [quest(1)] }));
     const { wrapper } = await mountPlan();
     hover("todo-1");
     press("x");
@@ -435,8 +664,8 @@ describe("PlanView keyboard shortcuts", () => {
   });
 
   it("leaves dailies, done quests and appointments to their own ways", async () => {
-    vi.mocked(getWeekPlan).mockResolvedValue(
-      week(MONDAY, {
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, {
         [TODAY]: [
           quest(1, { timeOfDay: "09:30" }),
           daily({ occurrenceId: 9 }),
@@ -461,8 +690,8 @@ describe("PlanView keyboard shortcuts", () => {
     );
   });
 
-  it("puts N into today's quick add, or the first day's of a later week", async () => {
-    vi.mocked(getWeekPlan).mockImplementation(async (start) => week(start));
+  it("puts N into the first column's quick add: today's, or the first day shown", async () => {
+    vi.mocked(getPlan).mockImplementation(async (from) => board(from));
     await mountPlan();
     press("n");
     expect(document.activeElement).toBe(
@@ -472,7 +701,7 @@ describe("PlanView keyboard shortcuts", () => {
     );
     document.body.innerHTML = "";
 
-    await mountPlan("/plan?woche=2026-11-23");
+    await mountPlan("/plan?ab=2026-11-23");
     press("n");
     expect(document.activeElement).toBe(
       document.querySelector(
@@ -480,70 +709,18 @@ describe("PlanView keyboard shortcuts", () => {
       ),
     );
   });
-
-  it("declines N in a past week, so the app can take it to Heute", async () => {
-    vi.mocked(getWeekPlan).mockImplementation(async (start) => week(start));
-    await mountPlan("/plan?woche=2026-11-09");
-    expect(press("n").defaultPrevented).toBe(false);
-  });
 });
 
 describe("PlanView Questlog column", () => {
-  const backlogQuest = (
-    overrides: Partial<TodoResponse> = {},
-  ): TodoResponse => ({
-    ...TODO_FIELDS,
-    id: 7,
-    parentId: 9,
-    title: "Fahrrad putzen",
-    completed: false,
-    completedAt: null,
-    scheduledDate: null,
-    timeOfDay: null,
-    plannedDurationMinutes: 20,
-    timerEligible: true,
-    campaign: { id: 9, title: "Ordnung", color: "ochre", icon: null },
-    ...overrides,
-  });
-  let wide = true;
-  /** From 80rem: room for seven days beside the open column. */
-  let roomy = true;
-
   beforeEach(() => {
-    vi.resetAllMocks();
-    localStorage.clear();
-    wide = true;
-    roomy = true;
-    vi.stubGlobal("matchMedia", (query: string) => ({
-      matches:
-        (wide && query === "(min-width: 56rem)") ||
-        (wide && roomy && query === "(min-width: 80rem)"),
-      media: query,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    }));
-    vi.mocked(reorderDay).mockResolvedValue(undefined);
-    vi.mocked(updateTodo).mockResolvedValue({} as never);
+    screen(true);
     vi.mocked(getBacklogTodos).mockResolvedValue([backlogQuest()]);
-    vi.mocked(getWeekPlan).mockResolvedValue(
-      week(MONDAY, {
-        "2026-11-18": [quest(2, { scheduledDate: "2026-11-18" })],
-      }),
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, { [WEDNESDAY]: [quest(2, { scheduledDate: WEDNESDAY })] }),
     );
   });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    document.body.innerHTML = "";
-  });
 
-  type Wrapper = Awaited<ReturnType<typeof mountPlan>>["wrapper"];
-  const columnTitles = (wrapper: Wrapper) =>
-    wrapper
-      .get(".plan-questlog__list")
-      .findAll("h3")
-      .map((h) => h.text());
-
-  it("lists the quests without a day beside the board, with their campaign stripe", async () => {
+  it("lists the quests without a day at the left, with their campaign stripe", async () => {
     const { wrapper } = await mountPlan();
     const aside = wrapper.get("aside.plan-questlog");
     expect(aside.get("h2").text()).toContain("Questlog");
@@ -555,7 +732,6 @@ describe("PlanView Questlog column", () => {
     expect(row.get(".campaign-chip").text()).toContain("Ordnung");
     // The whole card drags; keys and taps go through the menu.
     expect(row.classes()).toContain("card-drag");
-    expect(row.find(".sort-handle").exists()).toBe(false);
     expect(
       row.find('[aria-label="Aktionen für Fahrrad putzen"]').exists(),
     ).toBe(true);
@@ -570,22 +746,20 @@ describe("PlanView Questlog column", () => {
     );
     const { wrapper } = await mountPlan();
 
-    wrapper
-      .getComponent(PlanQuestlog)
-      .vm.$emit("drop", { todoId: 7, toDate: "2026-11-18", index: 0 });
+    wrapper.getComponent(PlanQuestlog).vm.$emit("move", {
+      kind: "day",
+      drop: { todoId: 7, toDate: WEDNESDAY, index: 0 },
+    });
     await flushPromises();
     // Shown before the server answers.
-    expect(openTitles(wrapper, "2026-11-18")).toEqual([
-      "Fahrrad putzen",
-      "Quest 2",
-    ]);
+    expect(openTitles(wrapper, WEDNESDAY)).toEqual(["Fahrrad putzen", "Quest 2"]);
     expect(columnTitles(wrapper)).toEqual([]);
 
     finish();
     await flushPromises();
     expect(updateTodo).toHaveBeenCalledWith(7, {
       title: "Fahrrad putzen",
-      scheduledDate: "2026-11-18",
+      scheduledDate: WEDNESDAY,
       timeOfDay: null,
       plannedDurationMinutes: 20,
     });
@@ -598,23 +772,78 @@ describe("PlanView Questlog column", () => {
     );
   });
 
+  it("takes a quest from a day back into the column, where it was dropped", async () => {
+    vi.mocked(getBacklogTodos).mockResolvedValue([
+      backlogQuest(),
+      backlogQuest({ id: 8, title: "Keller" }),
+    ]);
+    const { wrapper } = await mountPlan();
+    // Shown at once; the reload after the write sees the same.
+    vi.mocked(getPlan).mockResolvedValue(board(TODAY));
+    vi.mocked(getBacklogTodos).mockResolvedValue([
+      backlogQuest(),
+      backlogQuest({ id: 2, title: "Quest 2", campaign: null }),
+      backlogQuest({ id: 8, title: "Keller" }),
+    ]);
+
+    wrapper
+      .findAllComponents(PlanDay)
+      .find((day) => day.props("day").date === WEDNESDAY)!
+      .vm.$emit("move", { kind: "questlog", drop: { todoId: 2, index: 1 } });
+    await flushPromises();
+
+    expect(columnTitles(wrapper)).toEqual(["Fahrrad putzen", "Quest 2", "Keller"]);
+    expect(openTitles(wrapper, WEDNESDAY)).toEqual([]);
+    expect(updateTodo).toHaveBeenCalledWith(2, { scheduledDate: null });
+    expect(reorderBacklog).toHaveBeenCalledWith([7, 2, 8]);
+    expect(vi.mocked(updateTodo).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(reorderBacklog).mock.invocationCallOrder[0]!,
+    );
+    expect(wrapper.get('[role="status"].visually-hidden').text()).toBe(
+      "„Quest 2“ steht jetzt im Questlog an Stelle 2 von 3.",
+    );
+  });
+
+  it("sorts the column by dragging and with Nach unten in a card's menu", async () => {
+    vi.mocked(getBacklogTodos).mockResolvedValue([
+      backlogQuest(),
+      backlogQuest({ id: 8, title: "Keller" }),
+    ]);
+    const { wrapper } = await mountPlan();
+    vi.mocked(getBacklogTodos).mockResolvedValue([
+      backlogQuest({ id: 8, title: "Keller" }),
+      backlogQuest(),
+    ]);
+
+    await choose(wrapper, "Fahrrad putzen", "Fahrrad putzen nach unten");
+    await flushPromises();
+    expect(reorderBacklog).toHaveBeenLastCalledWith([8, 7]);
+    expect(updateTodo).not.toHaveBeenCalled();
+    expect(columnTitles(wrapper)).toEqual(["Keller", "Fahrrad putzen"]);
+    expect(document.activeElement).toBe(
+      menuButton(wrapper, "Fahrrad putzen").element,
+    );
+
+    wrapper.getComponent(PlanQuestlog).vm.$emit("move", {
+      kind: "questlog",
+      drop: { todoId: 7, index: 0 },
+    });
+    await flushPromises();
+    expect(reorderBacklog).toHaveBeenLastCalledWith([7, 8]);
+  });
+
   it("plans from the row's menu by keyboard: Einplanen auf a day of the board", async () => {
     const { wrapper } = await mountPlan();
-    await wrapper
-      .get('[aria-label="Aktionen für Fahrrad putzen"]')
-      .trigger("click");
-    // Today and the days after it; Monday has passed.
-    expect(
-      wrapper
-        .findAll("[role=menuitem] .action-menu__label")
-        .map((label) => label.text()),
-    ).toEqual([
+    await menuButton(wrapper, "Fahrrad putzen").trigger("click");
+    // The days shown, today first.
+    expect(menuLabels(wrapper)).toEqual([
       "Heute, 17. Nov.",
       "Mittwoch, 18. Nov.",
       "Donnerstag, 19. Nov.",
       "Freitag, 20. Nov.",
       "Samstag, 21. Nov.",
       "Sonntag, 22. Nov.",
+      "Montag, 23. Nov.",
       "Bearbeiten",
       "Stoppuhr starten",
       "In Kampagne verschieben …",
@@ -626,7 +855,7 @@ describe("PlanView Questlog column", () => {
     await flushPromises();
     expect(updateTodo).toHaveBeenCalledWith(
       7,
-      expect.objectContaining({ scheduledDate: "2026-11-18" }),
+      expect.objectContaining({ scheduledDate: WEDNESDAY }),
     );
     // At the end of that day's order.
     expect(reorderDay).toHaveBeenCalledWith([
@@ -638,14 +867,15 @@ describe("PlanView Questlog column", () => {
   it("puts the quest back into the column when planning fails", async () => {
     vi.mocked(updateTodo).mockRejectedValueOnce(new Error("Offline"));
     const { wrapper } = await mountPlan();
-    wrapper
-      .getComponent(PlanQuestlog)
-      .vm.$emit("drop", { todoId: 7, toDate: "2026-11-18", index: 0 });
+    wrapper.getComponent(PlanQuestlog).vm.$emit("move", {
+      kind: "day",
+      drop: { todoId: 7, toDate: WEDNESDAY, index: 0 },
+    });
     await flushPromises();
     expect(wrapper.get(".plan-view__alert").text()).toBe("Offline");
     expect(reorderDay).not.toHaveBeenCalled();
     expect(columnTitles(wrapper)).toEqual(["Fahrrad putzen"]);
-    expect(openTitles(wrapper, "2026-11-18")).toEqual(["Quest 2"]);
+    expect(openTitles(wrapper, WEDNESDAY)).toEqual(["Quest 2"]);
   });
 
   it("remembers a collapsed column on this device", async () => {
@@ -669,8 +899,8 @@ describe("PlanView Questlog column", () => {
     expect(wrapper.get(".plan-questlog .count").text()).toBe("1");
   });
 
-  it("starts collapsed below 80rem, so the whole week shows first", async () => {
-    roomy = false;
+  it("starts collapsed below 80rem, so the days get the room first", async () => {
+    screen(true, false);
     const first = await mountPlan();
     const toggle = first.wrapper.get(".plan-questlog__toggle");
     expect(toggle.attributes("aria-expanded")).toBe("false");
@@ -685,15 +915,6 @@ describe("PlanView Questlog column", () => {
     expect(
       wrapper.get(".plan-questlog__toggle").attributes("aria-expanded"),
     ).toBe("true");
-  });
-
-  it("keeps the loading bones in the board's columns", async () => {
-    vi.mocked(getWeekPlan).mockReturnValue(new Promise(() => {}));
-    const { wrapper } = await mountPlan();
-    const bones = wrapper.get('[aria-label="Plan wird geladen"]');
-    expect(bones.classes()).toContain("plan-view__skeleton");
-    expect(bones.classes()).toContain("plan-view__skeleton--questlog-open");
-    expect(bones.findAll(".plan-view__bone")).toHaveLength(8);
   });
 
   it("plans a column row with T like its menu", async () => {
@@ -716,10 +937,16 @@ describe("PlanView Questlog column", () => {
     );
   });
 
-  it("leaves the phone's Plan as it was: no column, nothing loaded", async () => {
-    wide = false;
+  it("keeps the Questlog and today on a phone: the rail beside one day", async () => {
+    screen(false);
+    // 380px, the frame of a phone: the rail (2.75rem) and today.
+    layoutWidth(380);
     const { wrapper } = await mountPlan();
-    expect(wrapper.find("aside.plan-questlog").exists()).toBe(false);
-    expect(getBacklogTodos).not.toHaveBeenCalled();
+    expect(wrapper.find("aside.plan-questlog").exists()).toBe(true);
+    expect(
+      wrapper.get(".plan-questlog__toggle").attributes("aria-expanded"),
+    ).toBe("false");
+    expect(getBacklogTodos).toHaveBeenCalled();
+    expect(shownDates(wrapper)).toEqual([TODAY]);
   });
 });

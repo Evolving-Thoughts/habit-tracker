@@ -5,7 +5,7 @@ import plainRequest from 'supertest';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { UserEntity } from '../src/auth/auth.entities';
-import { addDays, dayOf, weekRange } from '../src/common/date/local-day';
+import { addDays, dayOf } from '../src/common/date/local-day';
 import { configureApp } from '../src/configure-app';
 import type {
   WeekPlanEntryDto,
@@ -20,11 +20,11 @@ import { authenticatedRequest as request, seedAuth } from './auth-fixture';
 
 const OTHER_USER = '22222222-2222-4222-8222-222222222222';
 
-describe('Week plan (e2e)', () => {
+describe('Plan board (e2e)', () => {
   let app: INestApplication, server: Server, db: DataSource;
   const today = dayOf(new Date());
-  const monday = weekRange(today).startDate;
-  const nextMonday = addDays(monday, 7);
+  /** A day well ahead, where nothing is generated yet. */
+  const nextMonday = addDays(today, 7);
 
   const todo = async (title: string, body: object = {}): Promise<number> =>
     (
@@ -35,9 +35,12 @@ describe('Week plan (e2e)', () => {
           .expect(201)
       ).body as { id: number }
     ).id;
-  const week = async (start: string): Promise<WeekPlanResponseDto> =>
-    (await request(server).get(`/day-planner/week?start=${start}`).expect(200))
-      .body as WeekPlanResponseDto;
+  const week = async (start: string, days = 7): Promise<WeekPlanResponseDto> =>
+    (
+      await request(server)
+        .get(`/day-planner/plan?from=${start}&days=${days}`)
+        .expect(200)
+    ).body as WeekPlanResponseDto;
   const entriesOn = async (
     start: string,
     date: string,
@@ -76,22 +79,27 @@ describe('Week plan (e2e)', () => {
 
   it('requires authentication', async () => {
     await plainRequest(server)
-      .get(`/day-planner/week?start=${monday}`)
+      .get(`/day-planner/plan?from=${today}&days=3`)
       .expect(401);
   });
 
   it.each([
     '',
-    'start=',
-    `start=${addDays(monday, 1)}`,
-    'start=2026-02-30',
-    'start=16.11.2026',
-    `start=${monday}&extra=1`,
+    `from=${today}`,
+    'days=3',
+    `from=&days=3`,
+    `from=${today}&days=0`,
+    `from=${today}&days=32`,
+    `from=${today}&days=2.5`,
+    `from=${today}&days=drei`,
+    'from=2026-02-30&days=3',
+    'from=16.11.2026&days=3',
+    `from=${today}&days=3&extra=1`,
   ])('rejects the query %p', async (query) => {
-    await request(server).get(`/day-planner/week?${query}`).expect(400);
+    await request(server).get(`/day-planner/plan?${query}`).expect(400);
   });
 
-  it('answers seven days from Monday, each in the order of its day', async () => {
+  it('answers the days asked for, from any weekday, each in the order of its day', async () => {
     const first = await todo('Erstes');
     await todo('Zweites');
     await todo('Zahnarzt', { timeOfDay: '09:30', plannedDurationMinutes: 45 });
@@ -131,15 +139,19 @@ describe('Week plan (e2e)', () => {
 
     // Done today: it sits on today, after what is still open there.
     await todo('Heute offen', { scheduledDate: today });
-    expect(await titlesOn(monday, today)).toEqual([
+    expect(await titlesOn(today, today)).toEqual([
       'Heute offen',
       'Schon erledigt',
     ]);
+    expect(
+      (await week(addDays(today, 2), 3)).days.map(({ date }) => date),
+    ).toEqual([addDays(today, 2), addDays(today, 3), addDays(today, 4)]);
   });
 
-  it('carries overdue quests to today and shows past days only with what was done', async () => {
-    const lastWeek = addDays(monday, -7);
+  it('keeps overdue quests apart from today, whatever days are shown, and past days only with what was done', async () => {
+    const lastWeek = addDays(today, -7);
     await todo('Liegengeblieben', { scheduledDate: lastWeek });
+    await todo('Vorgestern', { scheduledDate: addDays(today, -2) });
     await db
       .getRepository(TodoEntity)
       .update(
@@ -148,13 +160,19 @@ describe('Week plan (e2e)', () => {
       );
 
     expect(await titlesOn(lastWeek, lastWeek)).toEqual(['Damals erledigt']);
-    const carried = (await entriesOn(monday, today)).find(
-      ({ title }) => title === 'Liegengeblieben',
-    );
-    expect(carried).toMatchObject({
-      scheduledDate: lastWeek,
-      isOverdue: true,
-    });
+    for (const start of [today, nextMonday]) {
+      const body = await week(start, 3);
+      expect(body.overdue.map(({ title }) => title)).toEqual([
+        'Liegengeblieben',
+        'Vorgestern',
+      ]);
+      expect(body.overdue[0]).toMatchObject({
+        type: 'todo',
+        scheduledDate: lastWeek,
+        isOverdue: true,
+      });
+    }
+    expect(await titlesOn(today, today)).toEqual([]);
   });
 
   it('forecasts dailies on days whose runs are not generated yet', async () => {
@@ -239,12 +257,12 @@ describe('Week plan (e2e)', () => {
       habitId: habit.id,
       type: HabitScheduleType.INTERVAL,
       intervalDays: 1,
-      effectiveAt: new Date(`${monday}T00:00:00Z`),
-      firstDueDate: monday,
+      effectiveAt: new Date(`${addDays(today, -1)}T00:00:00Z`),
+      firstDueDate: addDays(today, -1),
       missedOccurrencePolicy: MissedOccurrencePolicy.SKIP,
     });
 
-    for (const start of [monday, nextMonday])
+    for (const start of [today, nextMonday])
       for (const day of (await week(start)).days)
         expect(day.entries.map(({ title }) => title)).not.toEqual(
           expect.arrayContaining(['Fremdes', 'Fremdes Daily']),

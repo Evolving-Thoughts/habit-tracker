@@ -7,7 +7,7 @@ import type {
   WeekReviewResponse,
 } from "../types/week-review";
 import { campaignMark } from "./category-mark";
-import { addDays } from "./date";
+import { addDays, isValidIsoDate, weekStart } from "./date";
 import { dayLabel, shortDate } from "./history";
 import { formatDuration } from "./today-agenda";
 import { questWord } from "./todo-hierarchy";
@@ -301,4 +301,25 @@ export function weekDistance(week: string, thisWeek: string): string {
   if (weeks === -1) return "vorige Woche";
   if (weeks === 1) return "nächste Woche";
   return weeks < 0 ? `vor ${-weeks} Wochen` : `in ${weeks} Wochen`;
+}
+
+/** The Monday of the week in the address, or of `today` when it is unusable. */
+export function weekFromQuery(value: unknown, today: string): string {
+  return typeof value === "string" && isValidIsoDate(value)
+    ? weekStart(value)
+    : weekStart(today);
+}
+
+/** The weeks before and after, for the switcher. */
+export function neighbourWeek(start: string, direction: -1 | 1): string {
+  return addDays(start, direction * 7);
+}
+
+/**
+ * The way back to now ("Diese Woche" here, "Heute" in the Plan and the
+ * Kalender) only shows once the shown range has left today: on the current
+ * week it would change nothing.
+ */
+export function offersWayBack(shownWeek: string, currentWeek: string): boolean {
+  return shownWeek !== currentWeek;
 }

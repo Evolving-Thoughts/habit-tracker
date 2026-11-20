@@ -4,18 +4,24 @@ import AppIcon from "./AppIcon.vue";
 import PlanEntry from "./PlanEntry.vue";
 import { useSortable } from "../composables/useSortable";
 import { useTimer } from "../composables/useTimer";
-import type { TodoResponse } from "../types/todo";
 import { rowMenu, timerStep, type MenuEntry } from "../utils/row-actions";
-import { questlogEntry, type Drop } from "../utils/week-plan";
+import {
+  boardDrop,
+  questlogEntry,
+  type BoardDrop,
+  type QuestlogQuest,
+  type ShelfDrop,
+} from "../utils/week-plan";
 
 /**
- * The Questlog beside the board (Plan, from 56rem): open quests without a
- * day, each card a drag source onto any day of the board. The keyboard
- * plans through each card's menu (its days first). Collapsed it is a slim
- * rail.
+ * The Questlog at the far left of the board: open quests without a day in
+ * the Questlog's own order. Each card drags onto any day, or to another
+ * place in the column; a quest from the board dropped here loses its day.
+ * The keyboard plans and sorts through each card's menu (its days first).
+ * Collapsed it is a slim rail.
  */
 const props = defineProps<{
-  todos: TodoResponse[];
+  todos: QuestlogQuest[];
   open: boolean;
   busy: boolean;
   /** The days a quest can go to: the board's days from today on. */
@@ -24,25 +30,25 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   toggle: [];
-  drop: [drop: Drop];
-  plan: [todo: TodoResponse, date: string];
-  edit: [todo: TodoResponse];
+  /** A card was dropped on a day or at a place in the column. */
+  move: [drop: BoardDrop];
+  /** "Nach oben" / "Nach unten": a card to another place in the column. */
+  step: [drop: ShelfDrop];
+  plan: [todo: QuestlogQuest, date: string];
+  edit: [todo: QuestlogQuest];
   /** "In Kampagne verschieben …" */
-  reparent: [todo: TodoResponse];
-  remove: [todo: TodoResponse];
+  reparent: [todo: QuestlogQuest];
+  remove: [todo: QuestlogQuest];
 }>();
 
 const list = ref<HTMLElement | null>(null);
 useSortable(list, {
   item: "[data-todo-id]",
   group: "week-plan",
-  // A quest goes back to the Questlog through its editor, not by dragging.
-  accepts: () => false,
+  accepts: () => props.open && !props.busy,
   onMove: (_from, _to, { item, list: target, index }) => {
-    const todoId = Number(item.dataset.todoId);
-    const toDate = target.dataset.date;
-    if (!todoId || !toDate || props.busy) return;
-    emit("drop", { todoId, toDate, index });
+    const drop = boardDrop(item, target, index);
+    if (drop && !props.busy) emit("move", drop);
   },
 });
 
@@ -52,8 +58,15 @@ const entries = computed(() =>
 );
 
 const timer = useTimer();
+/** "Nach oben" / "Nach unten": the keyboard's way to sort the column. */
+function step(todo: QuestlogQuest, direction: -1 | 1): (() => void) | undefined {
+  const index = props.todos.indexOf(todo) + direction;
+  if (index < 0 || index >= props.todos.length) return undefined;
+  return () => emit("step", { todoId: todo.id, index });
+}
+
 /* The board's days are this card's quick moves; no ▶ fits the column. */
-function menu(todo: TodoResponse): MenuEntry[] {
+function menu(todo: QuestlogQuest): MenuEntry[] {
   return rowMenu(
     todo.title,
     {
@@ -72,6 +85,8 @@ function menu(todo: TodoResponse): MenuEntry[] {
         todo.timerEligible,
       ),
       reparent: () => emit("reparent", todo),
+      up: step(todo, -1),
+      down: step(todo, 1),
       remove: { run: () => emit("remove", todo) },
     },
     props.busy,
@@ -107,7 +122,12 @@ function menu(todo: TodoResponse): MenuEntry[] {
       <p class="plan-questlog__lead">
         Auf einen Tag ziehen oder über „…“ einplanen.
       </p>
-      <ol ref="list" class="plan-questlog__list" aria-label="Quests ohne Tag">
+      <ol
+        ref="list"
+        class="plan-questlog__list"
+        aria-label="Quests ohne Tag"
+        data-questlog
+      >
         <li
           v-for="{ todo, entry } in entries"
           :key="todo.id"
@@ -121,23 +141,36 @@ function menu(todo: TodoResponse): MenuEntry[] {
             @edit="emit('edit', todo)"
           />
         </li>
+        <li v-if="!todos.length" class="plan-questlog__empty">
+          Nichts im Questlog.
+        </li>
       </ol>
-      <p v-if="!todos.length" class="plan-questlog__empty">
-        Nichts im Questlog.
-      </p>
     </div>
   </aside>
 </template>
 
 <style scoped>
+/*
+ * It stays at the left edge when the board has to scroll sideways, so the
+ * Questlog never leaves the view: its translucent surface lies on an opaque
+ * ground, and the ground also covers the gap the days scroll through.
+ */
 .plan-questlog {
+  position: sticky;
+  left: 0;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   min-width: 0;
   padding: var(--space-2) var(--space-2) var(--space-2);
   border-radius: var(--radius-card);
-  background: var(--color-surface-faint);
+  background-color: var(--color-ground);
+  background-image: linear-gradient(
+    var(--color-surface-faint),
+    var(--color-surface-faint)
+  );
+  box-shadow: var(--space-2) 0 0 0 var(--color-ground);
 }
 
 .plan-questlog__header {
@@ -182,16 +215,18 @@ function menu(todo: TodoResponse): MenuEntry[] {
   gap: var(--space-2);
 }
 
+/* The list is also where drops land, so it never collapses. */
 .plan-questlog__list {
   display: grid;
   gap: var(--space-2);
+  align-content: start;
+  min-height: var(--tap);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .plan-questlog__empty {
-  margin: 0;
   padding: var(--space-2);
   color: var(--color-ink-muted);
   font-size: 0.875rem;

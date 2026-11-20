@@ -11,7 +11,7 @@ import type { MenuEntry } from "../utils/row-actions";
 import { isMovable } from "../utils/week-plan";
 
 /**
- * One card of the week plan, compact enough for seven columns. A quest
+ * One card of the Plan, compact enough for its narrowest columns. A quest
  * opens its editor from the title or a tap anywhere else on the card, drags
  * from anywhere onto its place or another day, and keeps every other step
  * in its menu "…". With the focus on the card (its title), the arrow keys

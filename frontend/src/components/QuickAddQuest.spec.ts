@@ -42,6 +42,7 @@ function mountField() {
 
 describe("QuickAddQuest", () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.resetAllMocks();
     vi.mocked(createTodo).mockResolvedValue(created);
     vi.mocked(reorderDay).mockResolvedValue(undefined);
@@ -64,24 +65,27 @@ describe("QuickAddQuest", () => {
     ).toBe("");
   });
 
-  it("says in words what Oben and Unten decide", () => {
+  it("names its two small toggles and which one holds", () => {
     const { wrapper } = mountField();
     const group = wrapper.get('[role="group"]');
-    const label = wrapper.get(`#${group.attributes("aria-labelledby")}`);
-    expect(label.text()).toBe("Neue Quests");
-    expect(label.classes()).not.toContain("visually-hidden");
-    expect(group.findAll("button").map((button) => button.text())).toEqual([
-      "Oben",
-      "Unten",
+    expect(group.attributes("aria-label")).toBe("Neue Quests einfügen");
+    expect(
+      group.findAll("button").map((button) => [
+        button.attributes("aria-label"),
+        button.attributes("aria-pressed"),
+      ]),
+    ).toEqual([
+      ["Oben einfügen", "false"],
+      ["Unten einfügen", "true"],
     ]);
   });
 
   it("puts the quest in front of the day's order when asked", async () => {
     const { wrapper, type } = mountField();
-    await wrapper
-      .findAll("button")
-      .find((button) => button.text() === "Oben")!
-      .trigger("click");
+    await wrapper.get('button[aria-label="Oben einfügen"]').trigger("click");
+    expect(
+      wrapper.get('button[aria-label="Oben einfügen"]').attributes("aria-pressed"),
+    ).toBe("true");
     await type("Kapitel schreiben");
 
     expect(reorderDay).toHaveBeenCalledWith([
@@ -91,15 +95,31 @@ describe("QuickAddQuest", () => {
     expect(wrapper.emitted("created")).toHaveLength(1);
   });
 
-  it("names its day and always joins the end when the place is not offered", async () => {
+  it("keeps the choice for every quick add on the device", async () => {
+    const first = mountField().wrapper;
+    const second = mountField().wrapper;
+    await first.get('button[aria-label="Oben einfügen"]').trigger("click");
+    expect(
+      second.get('button[aria-label="Oben einfügen"]').attributes("aria-pressed"),
+    ).toBe("true");
+    expect(localStorage.getItem("quickAdd:place")).toBe("top");
+    first.unmount();
+    second.unmount();
+
+    const later = mountField().wrapper;
+    expect(
+      later.get('button[aria-label="Oben einfügen"]').attributes("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("names its day and joins the end of a day without an order", async () => {
     const wrapper = mount(QuickAddQuest, {
       props: {
         date: "2026-11-19",
         label: "Quest für Donnerstag, 19. Nov. hinzufügen",
-        choosePlace: false,
       },
     });
-    expect(wrapper.find('[role="group"]').exists()).toBe(false);
+    await wrapper.get('button[aria-label="Oben einfügen"]').trigger("click");
     const field = wrapper.get('input[name="quickTitle"]');
     expect(field.attributes("aria-label")).toBe(
       "Quest für Donnerstag, 19. Nov. hinzufügen",
@@ -138,10 +158,7 @@ describe("QuickAddQuest", () => {
   it("still shows the new quest when only sorting it to the top fails", async () => {
     vi.mocked(reorderDay).mockRejectedValueOnce(new Error("Offline"));
     const { wrapper, type } = mountField();
-    await wrapper
-      .findAll("button")
-      .find((button) => button.text() === "Oben")!
-      .trigger("click");
+    await wrapper.get('button[aria-label="Oben einfügen"]').trigger("click");
     await type("Kapitel schreiben");
 
     expect(wrapper.emitted("created")).toHaveLength(1);

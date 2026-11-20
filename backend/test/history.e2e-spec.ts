@@ -611,7 +611,7 @@ describe('History API (e2e)', () => {
     ).toEqual([date]);
     // The Plan shows the same run on today.
     const plan = await request(server)
-      .get(`/day-planner/week?start=${historyRange(date, 'week')[0]}`)
+      .get(`/day-planner/plan?from=${date}&days=7`)
       .expect(200);
     const today = (
       plan.body as {

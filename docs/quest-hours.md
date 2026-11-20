@@ -76,7 +76,7 @@ number, never in a warning colour.
 
 ### `GET /quest-hours?week=YYYY-MM-DD`
 
-`week` must be a Monday (validated like `GET /day-planner/week`: a malformed
+`week` must be a Monday (validated by `weekDates` in `history-range.ts`: a malformed
 date, another weekday or an unknown query field is 400). One endpoint carries
 what the tiles, Heute and the weekly review (`week-review.md`) need:
 

@@ -22,3 +22,11 @@ export function planQuest(
     }),
   );
 }
+
+/**
+ * Takes a quest's day away: it goes back into the Questlog (without a time)
+ * and joins the end of its order; the Plan then sorts it where it was dropped.
+ */
+export function unplanQuest(todoId: number): Promise<TodoResponse> {
+  return updateTodo(todoId, { scheduledDate: null });
+}

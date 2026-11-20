@@ -11,6 +11,7 @@ import {
   longDate,
   monthLabel,
   rangeContains,
+  rangeLabel,
   shortDate,
   supportedHistoryDate,
   weekLabel,
@@ -35,6 +36,11 @@ describe("history calendar", () => {
   it("names a week inside one month and across two", () => {
     expect(weekLabel("2026-11-12")).toBe("9.–15. Nov.");
     expect(weekLabel("2026-12-01")).toBe("30. Nov. – 6. Dez.");
+  });
+  it("names any range of days, or one day alone", () => {
+    expect(rangeLabel("2026-11-20", "2026-11-23")).toBe("20.–23. Nov.");
+    expect(rangeLabel("2026-11-28", "2026-12-02")).toBe("28. Nov. – 2. Dez.");
+    expect(rangeLabel("2026-11-20", "2026-11-20")).toBe("20. Nov.");
   });
   it.each(["", "07.10.2026", "2026-02-30", "0000-01-01", "9999-12-31"])(
     "rejects invalid/unsupported %s",
