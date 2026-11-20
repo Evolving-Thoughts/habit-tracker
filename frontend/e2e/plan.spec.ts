@@ -292,7 +292,7 @@ test("Plan: what was left behind has its own column before today and moves onto 
     .toEqual(["Für heute", "Liegt noch"]);
 });
 
-test("Plan: a quest opens its editor; dailies are fixed rows", async ({
+test("Plan: a quest opens its editor; a forecast daily opens its daily", async ({
   page,
   request,
 }) => {
@@ -316,10 +316,18 @@ test("Plan: a quest opens its editor; dailies are fixed rows", async ({
   const monday = column(page, nextMonday);
   await expect(monday).toContainText("08:15");
   await expect(monday).toContainText("45 Min.");
-  const dailyRow = monday.locator(".plan-entry--daily");
-  await expect(dailyRow).toContainText("Laufen");
+  const dailyRow = monday
+    .locator(".plan-entry")
+    .filter({ has: page.getByRole("heading", { name: "Laufen", exact: true }) });
   await expect(dailyRow).toContainText("Daily");
-  await expect(dailyRow.getByRole("button")).toHaveCount(0);
+  // Only forecast so far: nothing stored to drag, but its daily can be edited.
+  await dailyRow
+    .getByRole("button", { name: "Aktionen für Laufen", exact: true })
+    .click();
+  await expect(
+    page.getByRole("menu", { name: "Laufen", exact: true }).getByRole("menuitem"),
+  ).toHaveText(["Bearbeiten", "Löschen"]);
+  await page.keyboard.press("Escape");
 
   await page
     .getByRole("button", { name: "Zahnarzt bearbeiten", exact: true })
@@ -337,9 +345,57 @@ test("Plan: a quest opens its editor; dailies are fixed rows", async ({
   await expect(dialog.locator('input[name="title"]')).toHaveValue("Zahnarzt");
   await page.keyboard.press("Escape");
   await expect(dialog).not.toBeVisible();
-  // A daily's card opens nothing.
-  await dailyRow.click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // A daily's card opens its daily's editor.
+  await dailyRow.getByText("Daily", { exact: true }).click();
+  const daily = page.getByRole("dialog", { name: "Daily bearbeiten" });
+  await expect(daily.locator('input[name="title"]')).toHaveValue("Laufen");
+  await page.keyboard.press("Escape");
+  await expect(daily).not.toBeVisible();
+});
+
+test("Plan: today's run of a daily sorts, moves within its window and opens with its notes", async ({
+  page,
+  request,
+}) => {
+  const date = await today(request);
+  const tomorrow = daysAfter(date, 1);
+  await plan(request, { title: "Erstes", scheduledDate: date });
+  // Every second day: today's run may wait until tomorrow.
+  expect(
+    (
+      await request.post(`${API_URL}/habits`, {
+        data: { title: "Laufen", schedule: { type: "interval", intervalDays: 2 } },
+      })
+    ).status(),
+  ).toBe(201);
+  await page.goto("/#/plan");
+  await loaded(page);
+
+  const run = column(page, date)
+    .locator("li[data-run-id]")
+    .filter({ has: page.getByRole("heading", { name: "Laufen", exact: true }) });
+  await expect(run).toContainText("Daily");
+  // The same steps as on Heute, the order of the day among them.
+  await run.getByRole("button", { name: "Aktionen für Laufen", exact: true }).click();
+  const menu = page.getByRole("menu", { name: "Laufen", exact: true });
+  await expect(menu.getByRole("menuitem", { name: "Laufen überspringen", exact: true })).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Laufen auf morgen", exact: true }).click();
+  await expect.poll(() => storedDay(request, tomorrow)).toContain("Laufen");
+  await expect(
+    column(page, tomorrow).locator("li[data-run-id]").filter({
+      has: page.getByRole("heading", { name: "Laufen", exact: true }),
+    }),
+  ).toBeVisible();
+  expect(await storedDay(request, date)).toEqual(["Erstes"]);
+
+  // Its card opens the daily with the notes of this one run.
+  await column(page, tomorrow)
+    .getByRole("button", { name: "Laufen bearbeiten", exact: true })
+    .click();
+  const editor = page.getByRole("dialog", { name: "Daily bearbeiten" });
+  await expect(editor).toContainText("Notizen zu diesem Lauf");
+  await page.keyboard.press("Escape");
+  await expect(editor).not.toBeVisible();
 });
 
 test("Plan: drag a quest onto another day and into place", async ({ page, request }, info) => {

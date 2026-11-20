@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { getHabits, updateOccurrenceStatus } from "../api/day-planner.api";
 import { useCategoryLabels } from "../composables/useCategoryLabels";
 import { useListFocus } from "../composables/useListFocus";
@@ -28,6 +29,16 @@ import {
   getCurrentDateInTimeZone,
 } from "../utils/date";
 import { WEEKDAY_OPTIONS, dailyWeekStatus } from "../utils/habit";
+import { streakSummary } from "../utils/streak";
+import {
+  WITHOUT,
+  dailyCampaigns,
+  dailyFilterFromQuery,
+  dailyFilterQuery,
+  dailyGroups,
+  passesFilter,
+  type DailyFilter,
+} from "../utils/daily-groups";
 
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
@@ -41,7 +52,11 @@ const editorBusy = ref(false);
 const creationOpen = ref(false);
 
 /** Category names and marks for the meta line. */
-const { load: loadCategories, labelOf } = useCategoryLabels();
+const {
+  load: loadCategories,
+  labelOf,
+  list: categories,
+} = useCategoryLabels();
 /*
  * The week as the calendar reads it, for each Daily's status this week; the
  * list stays usable without it. Read once with the list, so both agree.
@@ -129,18 +144,30 @@ async function undoLast(): Promise<void> {
 }
 
 const isBusy = computed(() => isLoading.value || editorBusy.value);
-const groups = computed(() => [
-  {
-    key: "active",
-    title: "Aktiv",
-    items: habits.value.filter((habit) => habit.isActive),
-  },
-  {
-    key: "paused",
-    title: "Pausiert",
-    items: habits.value.filter((habit) => !habit.isActive),
-  },
-]);
+
+/* The filter lives in the address (#/dailies?kategorie=…&kampagne=…). */
+const route = useRoute();
+const router = useRouter();
+const filter = computed(() => dailyFilterFromQuery(route.query));
+function setFilter(change: Partial<DailyFilter>): void {
+  void router.replace({
+    query: dailyFilterQuery({ ...filter.value, ...change }),
+  });
+}
+/** A select's value as a filter value: "" is all. */
+function chosen(event: Event): number | typeof WITHOUT | null {
+  const value = (event.target as HTMLSelectElement).value;
+  if (value === WITHOUT) return WITHOUT;
+  return value ? Number(value) : null;
+}
+const campaignOptions = computed(() => dailyCampaigns(habits.value));
+/* Grouped by category; the paused ones last. */
+const groups = computed(() =>
+  dailyGroups(
+    habits.value.filter((habit) => passesFilter(habit, filter.value)),
+    categories.value,
+  ),
+);
 
 /** The schedule as a person would say it: "Mo, Mi, Fr", "3× pro Woche". */
 function scheduleInWords(rule: HabitScheduleRule): string {
@@ -316,38 +343,89 @@ async function onCreated(): Promise<void> {
       <span>Tippe auf Plus, um dein erstes Daily anzulegen.</span>
     </div>
     <template v-else-if="habits.length > 0">
+      <!-- Narrows the list; the choice stays in the address. -->
+      <div class="habit-filter" role="group" aria-label="Dailies filtern">
+        <label class="habit-filter__field">
+          <span>Kategorie</span>
+          <select
+            class="input habit-filter__select"
+            name="filterCategory"
+            :value="filter.category ?? ''"
+            @change="setFilter({ category: chosen($event) })"
+          >
+            <option value="">Alle</option>
+            <option
+              v-for="category in categories"
+              :key="category.id"
+              :value="category.id"
+            >
+              {{ category.name }}
+            </option>
+            <option :value="WITHOUT">Ohne Kategorie</option>
+          </select>
+        </label>
+        <label class="habit-filter__field">
+          <span>Kampagne</span>
+          <select
+            class="input habit-filter__select"
+            name="filterCampaign"
+            :value="filter.campaign ?? ''"
+            @change="setFilter({ campaign: chosen($event) })"
+          >
+            <option value="">Alle</option>
+            <option
+              v-for="campaign in campaignOptions"
+              :key="campaign.id"
+              :value="campaign.id"
+            >
+              {{ campaign.title }}
+            </option>
+            <option :value="WITHOUT">Ohne Kampagne</option>
+          </select>
+        </label>
+      </div>
+      <div v-if="!groups.length" class="empty-state">
+        <strong>Keine Dailies für diesen Filter.</strong>
+        <button
+          type="button"
+          class="btn"
+          @click="setFilter({ category: null, campaign: null })"
+        >
+          Alle zeigen
+        </button>
+      </div>
       <template v-for="group in groups" :key="group.key">
         <section
-          v-if="group.items.length"
           :data-group="group.key"
           class="habit-group"
-          :aria-label="group.key === 'active' ? group.title : undefined"
+          :aria-labelledby="`habit-group-${group.key}`"
         >
-          <template v-if="group.key === 'paused'">
-            <h2 class="section-title">
-              {{ group.title }}
-              <span class="count">{{ group.items.length }}</span>
-            </h2>
-            <p class="habit-group__hint">
-              Pausierte Dailies stehen nicht in Heute.
-            </p>
-          </template>
-          <!-- Unseen, but the cards' h3 need an h2 above them. -->
-          <h2 v-else class="visually-hidden">{{ group.title }}</h2>
+          <h2 :id="`habit-group-${group.key}`" class="section-title">
+            <i
+              v-if="group.mark"
+              class="category-mark habit-group__mark"
+              :style="{ background: group.mark }"
+              aria-hidden="true"
+            />{{ group.title }}
+            <span class="count">{{ group.habits.length }}</span>
+          </h2>
+          <p v-if="group.key === 'paused'" class="habit-group__hint">
+            Pausierte Dailies stehen nicht in Heute.
+          </p>
           <ul class="habit-group__items">
             <li
-              v-for="habit in group.items"
+              v-for="habit in group.habits"
               :key="habit.id"
               :data-habit-id="habit.id"
               :data-focus-key="`habit-${habit.id}`"
               class="habit-card card-target"
               :class="{
                 'habit-card--paused': !habit.isActive,
-                'habit-card--ring': anyRun && group.key === 'active',
+                'habit-card--ring': anyRun && habit.isActive,
               }"
               @click="openFromCard($event, habit)"
             >
-              <template v-if="anyRun && group.key === 'active'">
+              <template v-if="anyRun && habit.isActive">
                 <CheckRing
                   v-if="runToday(habit)"
                   class="habit-card__ring"
@@ -384,6 +462,11 @@ async function onCreated(): Promise<void> {
                   <span v-if="statusOf(habit)" class="habit-card__status">{{
                     statusOf(habit)
                   }}</span>
+                  <span
+                    v-if="streakSummary(habit.streak)"
+                    class="habit-card__streak"
+                    >{{ streakSummary(habit.streak) }}</span
+                  >
                   <span v-if="categoryOf(habit)" class="habit-card__category">
                     <i
                       class="category-mark"
@@ -441,6 +524,40 @@ async function onCreated(): Promise<void> {
 .habits-view__status {
   color: var(--color-ink-muted);
   font-weight: 600;
+}
+
+/* Two compact selects on one line; under each other only when too narrow. */
+.habit-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+
+.habit-filter__field {
+  display: flex;
+  flex: 1 1 12rem;
+  gap: var(--space-2);
+  align-items: center;
+  min-width: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.habit-filter__select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.habit-group + .habit-group {
+  margin-top: var(--space-5);
+}
+
+.habit-group .section-title {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
 }
 
 .habit-group__hint {
@@ -553,6 +670,11 @@ async function onCreated(): Promise<void> {
 /* Where the week stands, first and in ink; a number, never a warning colour. */
 .habit-card__status {
   color: var(--color-ink);
+}
+
+/* The series is a number too, even when it broke. */
+.habit-card__streak {
+  white-space: nowrap;
 }
 
 .habit-card__category {

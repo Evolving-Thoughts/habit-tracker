@@ -1,4 +1,4 @@
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { getCategories } from "../api/categories.api";
 import type { CategoryResponse } from "../types/category";
 import { categoryMark } from "../utils/category-mark";
@@ -31,5 +31,8 @@ export function useCategoryLabels() {
       : null;
   }
 
-  return { load, labelOf };
+  /** The categories in the order the server lists them (as in the settings). */
+  const list = computed(() => [...categories.value.values()]);
+
+  return { load, labelOf, list };
 }

@@ -19,6 +19,7 @@ import {
 } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { lastMovableDate } from '../habits/scheduling/schedule-rules';
+import { loadStreaks, NO_STREAK } from '../habits/streaks';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { habitGoals } from '../todos/habit-goal';
 import { loadTodoAncestry } from '../todos/todo-ancestry';
@@ -59,7 +60,8 @@ type ContextField =
   | 'why'
   | 'goal'
   | 'campaign'
-  | 'workedMinutes';
+  | 'workedMinutes'
+  | 'streak';
 
 @Injectable()
 export class DayPlannerService {
@@ -82,7 +84,7 @@ export class DayPlannerService {
 
     // The week's stretches: today's work and the week's quest hours.
     const { startDate, endDate } = weekRange(today);
-    const [parents, habitGoalsByHabit, logs, ancestry, questTarget] =
+    const [parents, habitGoalsByHabit, logs, ancestry, questTarget, streaks] =
       await Promise.all([
         this.parentsOf(userId, todos),
         this.habitGoalsFor(
@@ -93,6 +95,11 @@ export class DayPlannerService {
         logsOfDays(this.db.manager, userId, startDate, endDate),
         loadTodoAncestry(this.db.manager, userId, today),
         weeklyQuestTarget(this.db.manager, userId),
+        loadStreaks(
+          this.db.manager,
+          occurrences.map((occurrence) => occurrence.habitId),
+          this.clock.now(),
+        ),
       ]);
     const workedOn = (key: 'todoId' | 'occurrenceId', id: number): number =>
       workedMinutes(
@@ -124,6 +131,7 @@ export class DayPlannerService {
           goal: habitGoalsByHabit.get(occurrence.habitId) ?? null,
           campaign: ancestry.habitCampaign(occurrence.habitId),
           workedMinutes: workedOn('occurrenceId', occurrence.id),
+          streak: streaks.get(occurrence.habitId) ?? NO_STREAK,
         };
         return { item, id: occurrence.id, dayPosition: occurrence.dayPosition };
       }),
@@ -164,11 +172,12 @@ export class DayPlannerService {
 
   /**
    * `days` days from `from` as a board of columns, and what is overdue,
-   * from one consistent read that reconciles nothing. Todos follow the todo
-   * agenda, habits the forecast history uses; past days only show what was
-   * done.
+   * from one consistent read. Todos follow the todo agenda, habits the
+   * forecast history uses; past days only show what was done. Today's runs
+   * are stored first, as Heute does, so the board can sort, move and open
+   * them like Heute; later days keep their forecast.
    */
-  getPlan(
+  async getPlan(
     userId: string,
     from: string,
     days: number,
@@ -182,6 +191,7 @@ export class DayPlannerService {
     const ahead = dates.filter((date) => date >= today);
     // Today is always forecast: its carried-over runs are overdue.
     const forecastDates = [today, ...ahead.filter((date) => date !== today)];
+    await this.scheduling.reconcileAll(userId);
     return this.db.transaction('REPEATABLE READ', async (manager) => {
       const ancestry = await loadTodoAncestry(manager, userId, today);
       const open = ahead.length
@@ -210,6 +220,15 @@ export class DayPlannerService {
       const positions = new Map(
         forecast.occurrences.map(({ id, dayPosition }) => [id, dayPosition]),
       );
+      const streaks = await loadStreaks(
+        manager,
+        [
+          ...forecast.habits.map(({ id }) => id),
+          ...resolved.map(({ habitId }) => habitId),
+        ],
+        now,
+      );
+      const streakOf = (habitId: number) => streaks.get(habitId) ?? NO_STREAK;
       const planned = [
         ...plannedHabits(
           forecast.habits,
@@ -240,6 +259,7 @@ export class DayPlannerService {
             item.id === null ? null : (positions.get(item.id) ?? null),
             today,
             ancestry.habitCampaign(item.habitId!),
+            streakOf(item.habitId!),
           ),
         ),
         ...resolved.map((occurrence) =>
@@ -254,6 +274,7 @@ export class DayPlannerService {
             occurrence.habit,
             effectiveDuration(occurrence, occurrence.habit),
             ancestry.habitCampaign(occurrence.habitId),
+            streakOf(occurrence.habitId),
           ),
         ),
       ];

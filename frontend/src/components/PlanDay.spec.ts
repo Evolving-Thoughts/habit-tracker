@@ -1,7 +1,12 @@
 import { enableAutoUnmount, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { WEEK_ENTRY_FIELDS } from "../types/fixtures";
-import type { WeekPlanDay, WeekPlanTodoEntry } from "../types/week-plan";
+import { WEEK_ENTRY_FIELDS, WEEK_HABIT_FIELDS } from "../types/fixtures";
+import type {
+  WeekPlanDay,
+  WeekPlanEntry,
+  WeekPlanHabitEntry,
+  WeekPlanTodoEntry,
+} from "../types/week-plan";
 import PlanDay from "./PlanDay.vue";
 
 vi.mock("../api/day-planner.api", () => ({
@@ -24,7 +29,7 @@ const quest = (
   ...overrides,
 });
 
-const menu = vi.fn((entry: WeekPlanTodoEntry) => [
+const menu = vi.fn((entry: WeekPlanEntry) => [
   {
     id: "edit",
     label: "Bearbeiten",
@@ -72,6 +77,27 @@ describe("PlanDay", () => {
     expect(
       wrapper.find('button[aria-label="Aktionen für Quest 2"]').exists(),
     ).toBe(false);
+  });
+
+  it("lets a stored run drag like a quest; a forecast run stays put", () => {
+    const run = (occurrenceId: number | null): WeekPlanHabitEntry => ({
+      ...WEEK_ENTRY_FIELDS,
+      ...WEEK_HABIT_FIELDS,
+      type: "habit",
+      habitId: 4,
+      occurrenceId,
+      title: occurrenceId ? "Laufen" : "Lesen",
+      status: "pending",
+    });
+    const wrapper = mountDay({
+      date: "2026-11-18",
+      entries: [run(12), run(null)],
+    });
+    const [stored, forecast] = wrapper.findAll("ol li");
+    expect(stored!.attributes("data-run-id")).toBe("12");
+    expect(stored!.attributes("data-todo-id")).toBeUndefined();
+    expect(forecast!.attributes("data-run-id")).toBeUndefined();
+    expect(menu).toHaveBeenCalledWith(run(12));
   });
 
   it("opens the editor from a tap anywhere on the card", async () => {

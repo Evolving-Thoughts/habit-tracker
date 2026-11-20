@@ -163,6 +163,7 @@ describe('questWeek', () => {
       endDate: '2026-11-22',
       questMinutes: 130,
       otherMinutes: 15,
+      totalQuestMinutes: 220,
     });
     expect(week.days.map(({ date }) => date)).toEqual(
       Array.from({ length: 7 }, (_, index) => addDays(MONDAY, index)),

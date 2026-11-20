@@ -584,6 +584,18 @@ describe('Todos API (e2e)', () => {
       expect(await backlog()).toEqual(['Erstes', 'Drittes', 'Zweites', 'Neu']);
     });
 
+    it('puts a new quest at the head of the order when asked', async () => {
+      await create({ title: 'Erstes' });
+      await create({ title: 'Zweites' });
+      await create({ title: 'Oben', backlogPlace: 'top' });
+      await create({ title: 'Unten', backlogPlace: 'bottom' });
+      expect(await backlog()).toEqual(['Oben', 'Erstes', 'Zweites', 'Unten']);
+      await request(httpServer)
+        .post('/todos')
+        .send({ title: 'Seitwärts', backlogPlace: 'middle' })
+        .expect(400);
+    });
+
     it('writes nothing unless every quest is in the Questlog', async () => {
       await create({ title: 'Lose' });
       const planned = await create({

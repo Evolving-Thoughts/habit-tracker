@@ -183,8 +183,17 @@ describe("trendText", () => {
   it("names every week and its time", () => {
     expect(
       trendText([0, 90], ["2026-11-09", "2026-11-16"], (date) => date.slice(5)),
-    ).toBe(
-      "Kampagnen-Stunden der letzten 2 Wochen. Woche ab 11-09: 0 Min., Woche ab 11-16: 1 Std. 30 Min.",
-    );
+    ).toBe("Letzte 2 Wochen: ab 11-09 0 Min., ab 11-16 1 Std. 30 Min.");
+  });
+
+  it("calls the running week this week", () => {
+    expect(
+      trendText(
+        [120, 240],
+        ["2026-11-09", "2026-11-16"],
+        (date) => date.slice(5),
+        "2026-11-16",
+      ),
+    ).toBe("Letzte 2 Wochen: ab 11-09 2 Std., diese Woche 4 Std.");
   });
 });

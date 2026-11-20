@@ -3,15 +3,17 @@ import { computed, ref } from "vue";
 import PlanEntry from "./PlanEntry.vue";
 import QuickAddQuest from "./QuickAddQuest.vue";
 import { useSortable } from "../composables/useSortable";
-import type { WeekPlanDay, WeekPlanTodoEntry } from "../types/week-plan";
+import type { WeekPlanDay, WeekPlanEntry } from "../types/week-plan";
 import { dayLabel, shortDate, weekdayName } from "../utils/history";
 import type { MenuEntry } from "../utils/row-actions";
 import {
   boardDrop,
   dayOrder,
   doneEntries,
+  DRAGGABLE,
   entryKey,
   isMovable,
+  isMovableRun,
   openEntries,
   openSummary,
   type BoardDrop,
@@ -21,20 +23,21 @@ import {
  * One day of the Plan: a quick add on top, its open rows in the order of
  * the day, then what is done. Open quests are dragged by the whole card
  * within the day, onto another day of the board or into the Questlog
- * column; for keys and taps the focused card's arrow keys and its menu,
+ * column; a daily's stored run within the day or onto another day of its
+ * window. For keys and taps the focused card's arrow keys and its menu,
  * which the view builds, do the same.
  */
 const props = defineProps<{
   day: WeekPlanDay;
   today: string;
   busy: boolean;
-  /** "Aktionen für …" of an open quest. */
-  menu: (entry: WeekPlanTodoEntry) => MenuEntry[];
+  /** "Aktionen für …" of an open entry (empty for none). */
+  menu: (entry: WeekPlanEntry) => MenuEntry[];
 }>();
 
 const emit = defineEmits<{
-  edit: [entry: WeekPlanTodoEntry];
-  arrow: [entry: WeekPlanTodoEntry, key: "up" | "down" | "left" | "right"];
+  edit: [entry: WeekPlanEntry];
+  arrow: [entry: WeekPlanEntry, key: "up" | "down" | "left" | "right"];
   /** A card of this day was dropped on a day or into the Questlog column. */
   move: [drop: BoardDrop];
   created: [];
@@ -48,7 +51,7 @@ const headingId = computed(() => `plan-day-${props.day.date}`);
 
 const list = ref<HTMLElement | null>(null);
 useSortable(list, {
-  item: "[data-todo-id]",
+  item: DRAGGABLE,
   group: "week-plan",
   accepts: () => !props.busy,
   onMove: (_from, _to, { item, list: target, index }) => {
@@ -101,14 +104,15 @@ useSortable(list, {
         :key="entryKey(entry, day.date)"
         :data-focus-key="entryKey(entry, day.date)"
         :data-todo-id="isMovable(entry) ? entry.todoId : undefined"
+        :data-run-id="isMovableRun(entry) ? entry.occurrenceId : undefined"
       >
         <PlanEntry
           :entry="entry"
           :busy="busy"
-          :menu="isMovable(entry) ? menu(entry) : undefined"
-          :arrows="isMovable(entry)"
-          @edit="isMovable(entry) && emit('edit', entry)"
-          @arrow="(key) => isMovable(entry) && emit('arrow', entry, key)"
+          :menu="menu(entry)"
+          :arrows="isMovable(entry) || isMovableRun(entry)"
+          @edit="emit('edit', entry)"
+          @arrow="(key) => emit('arrow', entry, key)"
         />
       </li>
       <li v-if="!open.length" class="plan-day__empty">Noch frei.</li>
@@ -124,11 +128,7 @@ useSortable(list, {
         :key="entryKey(entry, day.date)"
         :data-focus-key="entryKey(entry, day.date)"
       >
-        <PlanEntry
-          :entry="entry"
-          :busy="busy"
-          @edit="entry.type === 'todo' && emit('edit', entry)"
-        />
+        <PlanEntry :entry="entry" :busy="busy" @edit="emit('edit', entry)" />
       </li>
     </ol>
   </section>

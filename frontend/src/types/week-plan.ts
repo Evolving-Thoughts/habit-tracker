@@ -29,6 +29,12 @@ export type WeekPlanHabitEntry = {
   /** The stored run; null for a run the schedule only forecasts. */
   occurrenceId: number | null;
   status: "pending" | "completed" | "skipped";
+  /** Last day an open stored run may move to; null for a forecast or once resolved. */
+  moveUntil: string | null;
+  /** An open stored run due by today can be measured. */
+  timerEligible: boolean;
+  /** The daily's series: done runs in a row now, and the longest ever. */
+  streak: { current: number; best: number; unit: "runs" | "weeks" };
 } & WeekPlanEntryContext;
 
 export type WeekPlanEntry = WeekPlanTodoEntry | WeekPlanHabitEntry;

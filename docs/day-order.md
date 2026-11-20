@@ -60,6 +60,12 @@ integer, migration `1795800000000-BacklogOrder`, which numbers every todo
 without a day by creation). A todo that enters the backlog, by being created
 without a day or by losing its day, takes the place after the last one
 (`TodosService.nextBacklogPosition`); one that gets a day loses its place.
+`POST /todos` without a day takes `backlogPlace: 'top' | 'bottom'`
+(default `bottom`): `top` puts the new quest before the first one
+(`firstBacklogPosition`, the lowest position minus one, so positions may
+go below zero), in the same transaction as the insert. The quick add of the
+Questlog view and of the Plan's Questlog column sends it from the shared
+↑ / ↓ choice; with a day the field is ignored.
 `backlogTodos` lists by `backlogPosition` (nulls last), then creation, so
 the Questlog view and the Plan's Questlog column show the same order. A todo
 the Google sync puts back into the backlog has no place yet and follows.

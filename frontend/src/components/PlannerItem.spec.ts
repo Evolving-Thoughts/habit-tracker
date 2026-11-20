@@ -50,6 +50,24 @@ function makeHabit(
 }
 
 describe("PlannerItem", () => {
+  it("names a daily's running series calmly, and nothing without one", () => {
+    const running = mount(PlannerItem, {
+      props: {
+        item: makeHabit({ streak: { current: 12, best: 21, unit: "runs" } }),
+        isUpdating: false,
+      },
+    });
+    expect(running.text()).toContain("Daily 12 in Folge");
+    expect(running.text()).not.toContain("Rekord");
+    const broken = mount(PlannerItem, {
+      props: {
+        item: makeHabit({ streak: { current: 0, best: 21, unit: "runs" } }),
+        isUpdating: false,
+      },
+    });
+    expect(broken.text()).not.toContain("in Folge");
+  });
+
   it("shows the given time, duration and the fixed flag once", () => {
     const wrapper = mount(PlannerItem, {
       props: {

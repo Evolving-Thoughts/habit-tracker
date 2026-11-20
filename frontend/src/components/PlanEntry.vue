@@ -8,23 +8,25 @@ import { onCardClick } from "../utils/card-click";
 import { campaignMark as markOf } from "../utils/category-mark";
 import { shortDate } from "../utils/history";
 import type { MenuEntry } from "../utils/row-actions";
-import { isMovable } from "../utils/week-plan";
+import { streakLine } from "../utils/streak";
+import { isMovable, isMovableRun } from "../utils/week-plan";
 
 /**
  * One card of the Plan, compact enough for its narrowest columns. A quest
- * opens its editor from the title or a tap anywhere else on the card, drags
- * from anywhere onto its place or another day, and keeps every other step
- * in its menu "…". With the focus on the card (its title), the arrow keys
- * move it: up and down in the day, left and right a day (`arrows`). A
- * daily is a fixed row the plan only shows.
+ * or a daily's run opens its editor from the title or a tap anywhere else
+ * on the card, drags from anywhere onto its place or another day (a run
+ * only once it is stored, and only within its window), and keeps every
+ * other step in its menu "…". With the focus on the card (its title), the
+ * arrow keys move it: up and down in the day, left and right a day
+ * (`arrows`).
  */
 const props = defineProps<{
   entry: WeekPlanEntry;
   /** A write is running: nothing starts until it is done. */
   busy: boolean;
-  /** "Aktionen für …" of an open quest. */
+  /** "Aktionen für …" of an open entry. */
   menu?: MenuEntry[];
-  /** The focused card moves with the arrow keys (a quest on the board). */
+  /** The focused card moves with the arrow keys (an entry on a day). */
   arrows?: boolean;
 }>();
 
@@ -39,16 +41,21 @@ function onArrow(event: KeyboardEvent, key: "up" | "down" | "left" | "right") {
   emit("arrow", key);
 }
 
-const movable = computed(() => isMovable(props.entry));
-const editable = computed(() => props.entry.type === "todo");
+const movable = computed(
+  () => isMovable(props.entry) || isMovableRun(props.entry),
+);
 function openFromCard(event: MouseEvent): void {
-  if (editable.value && !props.busy) onCardClick(event, () => emit("edit"));
+  if (!props.busy) onCardClick(event, () => emit("edit"));
 }
 const done = computed(() => props.entry.status !== "pending");
 
 const details = computed(() => {
   const parts: string[] = [];
   const { entry } = props;
+  if (entry.type === "habit") {
+    const series = streakLine(entry.streak);
+    if (series) parts.push(series);
+  }
   if (entry.timeOfDay) parts.push(entry.timeOfDay.slice(0, 5));
   if (entry.plannedDurationMinutes != null)
     parts.push(`${entry.plannedDurationMinutes} Min.`);
@@ -75,9 +82,8 @@ const campaign = computed(() => {
     class="plan-entry"
     :class="{
       'plan-entry--done': done,
-      'plan-entry--daily': entry.type === 'habit',
       'plan-entry--campaign': campaignMark,
-      'card-target': editable,
+      'card-target': true,
       'card-drag': movable,
     }"
     :style="campaignMark ? { '--campaign-mark': campaignMark } : undefined"
@@ -86,13 +92,8 @@ const campaign = computed(() => {
     <div class="plan-entry__body">
       <!-- The heading keeps the plain title; the button inside says "bearbeiten". -->
       <!-- Clamped to three lines; the tooltip and the names keep the full title. -->
-      <h3
-        class="plan-entry__title"
-        :aria-label="entry.title"
-        :title="entry.type === 'todo' ? undefined : entry.title"
-      >
+      <h3 class="plan-entry__title" :aria-label="entry.title">
         <button
-          v-if="entry.type === 'todo'"
           class="plan-entry__edit"
           data-edit-button
           type="button"
@@ -110,7 +111,6 @@ const campaign = computed(() => {
         >
           {{ entry.title }}
         </button>
-        <template v-else>{{ entry.title }}</template>
       </h3>
       <p
         v-if="entry.type === 'habit' || details.length"
@@ -142,11 +142,6 @@ const campaign = computed(() => {
 /* The stripe names the campaign the entry works towards. */
 .plan-entry--campaign {
   box-shadow: inset 0.3125rem 0 0 var(--campaign-mark);
-}
-
-/* A daily is planned by its schedule: it lies flatter than a quest. */
-.plan-entry--daily {
-  background: var(--color-surface-flat);
 }
 
 /*

@@ -65,6 +65,34 @@ describe("QuickAddQuest", () => {
     ).toBe("");
   });
 
+  it("puts a quest into the Questlog at the head or the end, as chosen", async () => {
+    const wrapper = mount(QuickAddQuest, {
+      props: { date: null, label: "Quest ins Questlog hinzufügen" },
+    });
+    const field = wrapper.get('input[name="quickTitle"]');
+    expect(field.attributes("aria-label")).toBe("Quest ins Questlog hinzufügen");
+    await field.setValue("Steuern");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(createTodo).toHaveBeenLastCalledWith({
+      title: "Steuern",
+      scheduledDate: null,
+      timeOfDay: null,
+      plannedDurationMinutes: null,
+      backlogPlace: "bottom",
+    });
+    await wrapper.get('[aria-label="Oben einfügen"]').trigger("click");
+    await field.setValue("Fenster putzen");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(createTodo).toHaveBeenLastCalledWith(
+      expect.objectContaining({ backlogPlace: "top" }),
+    );
+    // The server places it; no day is sorted.
+    expect(reorderDay).not.toHaveBeenCalled();
+    expect(wrapper.emitted("created")).toHaveLength(2);
+  });
+
   it("names its two small toggles and which one holds", () => {
     const { wrapper } = mountField();
     const group = wrapper.get('[role="group"]');

@@ -101,6 +101,22 @@ describe("QuestlogView", () => {
     expect(wrapper.findAll("[data-todo-id]")).toHaveLength(1);
   });
 
+  it("adds a quest from its quick add and shows the Questlog again", async () => {
+    vi.mocked(createTodo).mockResolvedValue(makeTodo({ id: 5, title: "Neu" }));
+    const wrapper = mountView();
+    await flushPromises();
+    backlogMock.mockResolvedValue([makeTodo({ id: 5, title: "Neu" })]);
+    await wrapper
+      .get('input[aria-label="Quest ins Questlog hinzufügen"]')
+      .setValue("Neu");
+    await wrapper.get("form.quick-add").trigger("submit");
+    await flushPromises();
+    expect(createTodo).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Neu", scheduledDate: null }),
+    );
+    expect(wrapper.text()).toContain("Neu");
+  });
+
   it("removes a newly completed todo after reloading the backlog", async () => {
     backlogMock.mockResolvedValueOnce([makeTodo()]).mockResolvedValueOnce([]);
     const wrapper = mountView();

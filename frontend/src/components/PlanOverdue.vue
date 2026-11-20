@@ -2,37 +2,40 @@
 import { ref } from "vue";
 import PlanEntry from "./PlanEntry.vue";
 import { useSortable } from "../composables/useSortable";
-import type { WeekPlanEntry, WeekPlanTodoEntry } from "../types/week-plan";
+import type { WeekPlanEntry } from "../types/week-plan";
 import type { MenuEntry } from "../utils/row-actions";
 import {
   boardDrop,
+  DRAGGABLE,
   entryKey,
   isMovable,
+  isMovableRun,
   type BoardDrop,
 } from "../utils/week-plan";
 
 /**
  * What was left behind (Liegen geblieben): open quests and daily runs from
  * an earlier day, the same ones Heute offers under Nachholen. A quest drags
- * onto a day of the board or into the Questlog column, or moves through its
- * menu; the column itself takes nothing back and keeps the earliest first.
+ * onto a day of the board or into the Questlog column, a run onto a day of
+ * its window, or either moves through its menu; the column itself takes
+ * nothing back and keeps the earliest first.
  */
 const props = defineProps<{
   entries: WeekPlanEntry[];
   busy: boolean;
-  /** "Aktionen für …" of an open quest. */
-  menu: (entry: WeekPlanTodoEntry) => MenuEntry[];
+  /** "Aktionen für …" of an open entry. */
+  menu: (entry: WeekPlanEntry) => MenuEntry[];
 }>();
 
 const emit = defineEmits<{
-  edit: [entry: WeekPlanTodoEntry];
-  /** A quest was dropped on a day or into the Questlog column. */
+  edit: [entry: WeekPlanEntry];
+  /** An entry was dropped on a day (a quest also into the Questlog column). */
   move: [drop: BoardDrop];
 }>();
 
 const list = ref<HTMLElement | null>(null);
 useSortable(list, {
-  item: "[data-todo-id]",
+  item: DRAGGABLE,
   group: "week-plan",
   accepts: () => false,
   sort: false,
@@ -60,12 +63,13 @@ useSortable(list, {
         :key="entryKey(entry, 'overdue')"
         :data-focus-key="entryKey(entry, 'overdue')"
         :data-todo-id="isMovable(entry) ? entry.todoId : undefined"
+        :data-run-id="isMovableRun(entry) ? entry.occurrenceId : undefined"
       >
         <PlanEntry
           :entry="entry"
           :busy="busy"
-          :menu="isMovable(entry) ? menu(entry) : undefined"
-          @edit="isMovable(entry) && emit('edit', entry)"
+          :menu="menu(entry)"
+          @edit="emit('edit', entry)"
         />
       </li>
     </ol>

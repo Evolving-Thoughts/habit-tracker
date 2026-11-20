@@ -95,6 +95,7 @@ const questHours = (
   weeklyTargetMinutes: null,
   questMinutes: 0,
   otherMinutes: 0,
+  totalQuestMinutes: 0,
   days: [],
   weeks: WEEKS.map((startDate) => ({ startDate, questMinutes: 0 })),
   campaigns,
@@ -116,6 +117,12 @@ const view = () =>
       },
     },
   });
+/** A campaign: a top-level quest with quests below it. */
+const campaignNode = (
+  id: number,
+  changes: Partial<HierarchyTodo> = {},
+): HierarchyTodo => ({ ...node(id, null), title: `Kampagne ${id}`, ...changes });
+
 describe("CampaignsView", () => {
   beforeEach(async () => {
     vi.resetAllMocks();
@@ -123,306 +130,227 @@ describe("CampaignsView", () => {
       history: createMemoryHistory(),
       routes: [{ path: "/kampagnen", component: { template: "<div />" } }],
     });
-    await router.push("/kampagnen");
     vi.mocked(getQuestHours).mockResolvedValue(questHours());
-    vi.mocked(getTodoHierarchy).mockResolvedValue([
-      node(1, null, below(1)),
-      node(2, 1),
-    ]);
     vi.mocked(getCategories).mockResolvedValue([]);
     vi.mocked(updateTodo).mockResolvedValue(node(1, null));
     vi.mocked(updateTodoCompletion).mockResolvedValue();
     vi.mocked(deleteTodo).mockResolvedValue();
     vi.mocked(getDeletionPreview).mockResolvedValue({
       confirmationToken: "a".repeat(64),
-      todos: [node(1, null), node(2, 1)],
+      todos: [node(1, 9), node(2, 1)],
       timers: [{ id: "timer", todoId: 2, title: "Quest 2", state: "paused" }],
     });
   });
-  it("renders independent checkboxes, progress and hierarchy depth", async () => {
-    const w = view();
-    await flushPromises();
-    expect(w.findAll("[data-todo-id]")).toHaveLength(2);
-    expect(w.get('[data-todo-id="2"]').attributes("data-depth")).toBe("1");
-    expect(w.get('[data-todo-id="2"]').text()).toContain("Gehört zu");
-    expect(w.findAll("[role=checkbox]")).toHaveLength(2);
-    // Only todos with sub-tasks show a progress bar; leaves stay calm.
-    expect(w.findAll("[role=progressbar]")).toHaveLength(1);
-    expect(w.get('[data-todo-id="1"]').text()).toContain("0/30 Min.");
-    expect(w.get("[role=progressbar]").attributes("aria-valuetext")).toBe(
-      "0 von 30 Minuten darunter erledigt",
-    );
-    expect(w.get('[data-todo-id="2"]').find(".row__progress").exists()).toBe(
-      false,
-    );
-  });
-  it("gives leaves no expander and names the category", async () => {
-    vi.mocked(getCategories).mockResolvedValue([
-      { id: 7, name: "Lernen" } as never,
-    ]);
-    // A campaign by its colour alone still stands in the tree.
-    vi.mocked(getTodoHierarchy).mockResolvedValue([
-      { ...node(1, null), categoryId: 7, why: "Für den Job", color: "berry" },
-    ]);
-    const w = view();
-    await flushPromises();
-    expect(w.find('[aria-label="Quest 1 einklappen"]').exists()).toBe(false);
-    expect(w.text()).toContain("Lernen");
-    expect(w.text()).toContain("Für den Job");
-  });
-  it("keeps row actions behind one menu that Escape closes", async () => {
-    const w = view();
-    await flushPromises();
-    expect(
-      w.find('[aria-label="Quest 1 in eine Kampagne verschieben"]').exists(),
-    ).toBe(false);
-    await openMenu(w, "Quest 1");
-    const trigger = w.get('[data-menu-trigger="1"]');
-    expect(trigger.attributes("aria-expanded")).toBe("true");
-    const menuId = trigger.attributes("aria-controls")!;
-    const menu = w.get(`#${menuId}`);
-    const heading = w.get(`#${menu.attributes("aria-labelledby")}`);
-    expect(heading.text()).toBe("Quest 1");
-    expect(
-      w.get('[aria-label="Quest 1 mit allen Unter-Quests löschen"]').classes(),
-    ).not.toContain("btn--danger");
-    expect(
-      w.findAll(`#${menuId} [role=menuitem]`).map((b) => b.text()),
-    ).toEqual([
-      "Bearbeiten",
-      "Unter-Quest hinzufügen",
-      "Fortschritt anzeigen",
-      "In Kampagne verschieben …",
-      "Löschen",
-    ]);
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-    await flushPromises();
-    expect(w.find(`#${menuId}`).exists()).toBe(false);
-  });
-  it("gives each open row ▶ and opens its editor from a tap on the card", async () => {
-    const w = view();
-    await flushPromises();
-    const row = w.get('[data-todo-id="2"]');
-    expect(
-      row.find('[aria-label="Stoppuhr für Quest 2 starten"]').exists(),
-    ).toBe(true);
-    expect(row.classes()).toContain("card-target");
-    await row.get(".row__content").trigger("click");
-    await flushPromises();
-    expect(w.findComponent({ name: "PlannerItemEditor" }).exists()).toBe(true);
-  });
-  it("collapses and expands without changing data", async () => {
-    const w = view();
-    await flushPromises();
-    await w.get('[aria-label="Quest 1 einklappen"]').trigger("click");
-    expect(w.findAll("[data-todo-id]")).toHaveLength(1);
-    await w.get('[aria-label="Quest 1 ausklappen"]').trigger("click");
-    expect(w.findAll("[data-todo-id]")).toHaveLength(2);
-  });
-  it("toggles only the selected Quest and reloads computed progress", async () => {
-    const w = view();
-    await flushPromises();
-    await w.findAll("[role=checkbox]")[1]!.trigger("click");
-    await flushPromises();
-    expect(updateTodoCompletion).toHaveBeenCalledWith(2, true);
-    expect(getTodoHierarchy).toHaveBeenCalledTimes(2);
-  });
-  it("offers to take a completion back, as Heute does", async () => {
-    const w = view();
-    await flushPromises();
-    await w.findAll("[role=checkbox]")[1]!.trigger("click");
-    await flushPromises();
-    expect(w.get(".undo-toast").text()).toContain("„Quest 2“ erledigt");
-    await button(w, "Rückgängig").trigger("click");
-    await flushPromises();
-    expect(updateTodoCompletion).toHaveBeenLastCalledWith(2, false);
-    expect(w.get(".undo-toast").text()).toBe("");
-  });
-  it("asks before completing a campaign with open quests", async () => {
-    vi.mocked(getTodoHierarchy).mockResolvedValue([
-      node(1, null, below(3, 1)),
-      node(2, 1),
-      node(3, 1),
-      { ...node(4, 1), completed: true },
-    ]);
-    const w = view();
-    await flushPromises();
-    await w.get('[data-todo-id="1"] [role=checkbox]').trigger("click");
-    await flushPromises();
-    expect(w.get("[role=dialog]").text()).toContain(
-      "2 Quests in „Quest 1“ sind noch offen. Sie bleiben offen",
-    );
-    expect(updateTodoCompletion).not.toHaveBeenCalled();
-    await button(w, "Abbrechen").trigger("click");
-    await flushPromises();
-    expect(w.find("[role=dialog]").exists()).toBe(false);
-    expect(updateTodoCompletion).not.toHaveBeenCalled();
 
-    await w.get('[data-todo-id="1"] [role=checkbox]').trigger("click");
-    await flushPromises();
-    await button(w, "Kampagne abschließen").trigger("click");
-    await flushPromises();
-    expect(updateTodoCompletion).toHaveBeenCalledWith(1, true);
-    expect(w.get(".undo-toast").text()).toContain("„Quest 1“ abgeschlossen");
-  });
-  it("completes a campaign whose quests are all done without asking", async () => {
-    vi.mocked(getTodoHierarchy).mockResolvedValue([
-      node(1, null, below(1, 1)),
-      { ...node(2, 1), completed: true },
-    ]);
-    const w = view();
-    await flushPromises();
-    await w.get('[data-todo-id="1"] [role=checkbox]').trigger("click");
-    await flushPromises();
-    expect(w.find("[role=dialog]").exists()).toBe(false);
-    expect(updateTodoCompletion).toHaveBeenCalledWith(1, true);
-  });
-  it("never asks when a campaign is reopened", async () => {
-    vi.mocked(getTodoHierarchy).mockResolvedValue([
-      { ...node(1, null, below(1)), completed: true },
-      node(2, 1),
-    ]);
-    const w = view();
-    await flushPromises();
-    await w.get('[data-todo-id="1"] [role=checkbox]').trigger("click");
-    await flushPromises();
-    expect(w.find("[role=dialog]").exists()).toBe(false);
-    expect(updateTodoCompletion).toHaveBeenCalledWith(1, false);
-    expect(w.get(".undo-toast").text()).toBe("");
-  });
-  it("excludes self and descendants from move choices and allows root", async () => {
-    const w = view();
-    await flushPromises();
-    vi.mocked(getTodo).mockResolvedValue({
-      ...node(1, null, below(1)),
-      campaign: { id: 1, title: "Quest 1", color: null, icon: null },
+  /*
+   * Inside a campaign: its detail card and the tree of its quests. Quest 1
+   * is a quest series below campaign 9, Quest 2 a step below it.
+   */
+  describe("an opened campaign's quests", () => {
+    beforeEach(async () => {
+      await router.push("/kampagnen?kampagne=9");
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        campaignNode(9, { color: "berry", progress: below(2) }),
+        node(1, 9, below(1)),
+        node(2, 1),
+      ]);
     });
-    await openMenu(w, "Quest 1");
-    await w
-      .get('[aria-label="Quest 1 in eine Kampagne verschieben"]')
-      .trigger("click");
-    await flushPromises();
-    expect(
-      w.findAll("#campaign-move-parent ~ ul [role=option]").map((o) => o.text()),
-    ).toEqual(["Keine (eigene Kampagne)"]);
-    await button(w, "Abbrechen").trigger("click");
-    await flushPromises();
 
-    vi.mocked(getTodo).mockResolvedValue(node(2, 1));
-    await openMenu(w, "Quest 2");
-    await w
-      .get('[aria-label="Quest 2 in eine Kampagne verschieben"]')
-      .trigger("click");
-    await flushPromises();
-    await choose(w, "#campaign-move-parent", "Keine");
-    await w.get("[role=dialog] form").trigger("submit");
-    await flushPromises();
-    expect(updateTodo).toHaveBeenCalledWith(2, { parentId: null });
-  });
-  it("does not delete when preview is cancelled and shows active/paused timers", async () => {
-    const w = view();
-    await flushPromises();
-    await openMenu(w, "Quest 1");
-    await w
-      .get('[aria-label="Quest 1 mit allen Unter-Quests löschen"]')
-      .trigger("click");
-    await flushPromises();
-    expect(w.text()).toContain("pausiert");
-    await w.get("[data-cancel-delete]").trigger("click");
-    expect(deleteTodo).not.toHaveBeenCalled();
-  });
-  it("confirms exactly the reviewed snapshot", async () => {
-    const w = view();
-    await flushPromises();
-    await openMenu(w, "Quest 1");
-    await w
-      .get('[aria-label="Quest 1 mit allen Unter-Quests löschen"]')
-      .trigger("click");
-    await flushPromises();
-    await button(w, "Ja, löschen").trigger("click");
-    await flushPromises();
-    expect(deleteTodo).toHaveBeenCalledWith(1, "a".repeat(64));
-  });
-  it("requires a fresh preview after a stale snapshot error", async () => {
-    vi.mocked(deleteTodo).mockRejectedValueOnce(new Error("Preview changed"));
-    const w = view();
-    await flushPromises();
-    await openMenu(w, "Quest 1");
-    await w
-      .get('[aria-label="Quest 1 mit allen Unter-Quests löschen"]')
-      .trigger("click");
-    await flushPromises();
-    await button(w, "Ja, löschen").trigger("click");
-    await flushPromises();
-    // The dialog stays and shows the server's fresh preview to review.
-    expect(w.get("[role=dialog] [role=alert]").text()).toContain(
-      "Preview changed",
-    );
-    expect(getDeletionPreview).toHaveBeenCalledTimes(2);
-  });
-  it("offers retry for load errors", async () => {
-    vi.mocked(getTodoHierarchy).mockRejectedValueOnce(new Error("Offline"));
-    const w = view();
-    await flushPromises();
-    expect(w.get("[role=alert]").text()).toContain("Offline");
-    await button(w, "Erneut versuchen").trigger("click");
-    await flushPromises();
-    expect(w.findAll("[data-todo-id]")).toHaveLength(2);
-  });
-  it("shows the empty state", async () => {
-    vi.mocked(getTodoHierarchy).mockResolvedValue([]);
-    const w = view();
-    await flushPromises();
-    expect(w.get(".empty-state").text()).toContain("Noch keine Kampagnen.");
-    expect(w.get(".empty-state").text()).toContain("Plus-Button");
-  });
-  it("shows the empty state when there are only loose quests", async () => {
-    vi.mocked(getTodoHierarchy).mockResolvedValue([
-      { ...node(1, null), title: "Zahnarzt" },
-      { ...node(2, null), title: "Einkaufen" },
-    ]);
-    const w = view();
-    await flushPromises();
-    expect(w.get(".empty-state").text()).toContain(
-      "Quests ohne Kampagne stehen im Questlog.",
-    );
-    expect(w.find("[data-todo-id]").exists()).toBe(false);
-  });
-  it("says where a new top-level quest stands until it is a campaign", async () => {
-    const w = view();
-    await flushPromises();
-    await w.get(".create-button").trigger("click");
-    vi.mocked(getTodoHierarchy).mockResolvedValue([
-      node(1, null, below(1)),
-      node(2, 1),
-      { ...node(5, null), title: "Neu" },
-    ]);
-    w.findComponent({ name: "CreateTodoForm" }).vm.$emit("created", {
-      ...node(5, null),
-      title: "Neu",
+    it("renders independent checkboxes, progress and hierarchy depth", async () => {
+      const w = view();
+      await flushPromises();
+      expect(w.findAll("[data-todo-id]")).toHaveLength(2);
+      expect(w.get('[data-todo-id="1"]').attributes("data-depth")).toBe("0");
+      expect(w.get('[data-todo-id="2"]').attributes("data-depth")).toBe("1");
+      expect(w.get('[data-todo-id="2"]').text()).toContain("Gehört zu");
+      expect(w.findAll(".tree [role=checkbox]")).toHaveLength(2);
+      // Only todos with sub-tasks show a progress bar; leaves stay calm.
+      expect(w.findAll(".tree [role=progressbar]")).toHaveLength(1);
+      expect(w.get('[data-todo-id="1"]').text()).toContain("0/30 Min.");
+      expect(
+        w.get(".tree [role=progressbar]").attributes("aria-valuetext"),
+      ).toBe("0 von 30 Minuten darunter erledigt");
+      expect(w.get('[data-todo-id="2"]').find(".row__progress").exists()).toBe(
+        false,
+      );
     });
-    await flushPromises();
-    expect(w.get(".status-line").text()).toContain(
-      "Sie wird zur Kampagne, sobald sie Unter-Quests",
-    );
-    expect(w.find('[data-todo-id="5"]').exists()).toBe(false);
-  });
-  it("creates through the shared plus button", async () => {
-    const w = view();
-    await flushPromises();
-    const plus = w.get(".create-button");
-    expect(plus.attributes("aria-label")).toBe("Neue Kampagne");
-    expect(w.find(".page-header button").exists()).toBe(false);
-    await plus.trigger("click");
-    expect(w.find("[role=dialog]").exists()).toBe(true);
-  });
-  describe("tiles", () => {
-    const campaignNode = (
-      id: number,
-      changes: Partial<HierarchyTodo> = {},
-    ): HierarchyTodo => ({ ...node(id, null), title: `Kampagne ${id}`, ...changes });
 
-    beforeEach(() => {
+    it("gives leaves no expander and names the category", async () => {
+      vi.mocked(getCategories).mockResolvedValue([
+        { id: 7, name: "Lernen" } as never,
+      ]);
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        campaignNode(9, { color: "berry" }),
+        { ...node(1, 9), categoryId: 7, why: "Für den Job" },
+      ]);
+      const w = view();
+      await flushPromises();
+      expect(w.find('[aria-label="Quest 1 einklappen"]').exists()).toBe(false);
+      expect(w.get('[data-todo-id="1"]').text()).toContain("Lernen");
+      expect(w.get('[data-todo-id="1"]').text()).toContain("Für den Job");
+    });
+
+    it("keeps row actions behind one menu that Escape closes", async () => {
+      const w = view();
+      await flushPromises();
+      expect(
+        w.find('[aria-label="Quest 1 in eine Kampagne verschieben"]').exists(),
+      ).toBe(false);
+      await openMenu(w, "Quest 1");
+      const trigger = w.get('[data-menu-trigger="1"]');
+      expect(trigger.attributes("aria-expanded")).toBe("true");
+      const menuId = trigger.attributes("aria-controls")!;
+      const menu = w.get(`#${menuId}`);
+      const heading = w.get(`#${menu.attributes("aria-labelledby")}`);
+      expect(heading.text()).toBe("Quest 1");
+      expect(
+        w.get('[aria-label="Quest 1 mit allen Unter-Quests löschen"]').classes(),
+      ).not.toContain("btn--danger");
+      expect(
+        w.findAll(`#${menuId} [role=menuitem]`).map((b) => b.text()),
+      ).toEqual([
+        "Bearbeiten",
+        "Unter-Quest hinzufügen",
+        "In Kampagne verschieben …",
+        "Löschen",
+      ]);
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      await flushPromises();
+      expect(w.find(`#${menuId}`).exists()).toBe(false);
+    });
+
+    it("gives each open row ▶ and opens its editor from a tap on the card", async () => {
+      const w = view();
+      await flushPromises();
+      const row = w.get('[data-todo-id="2"]');
+      expect(
+        row.find('[aria-label="Stoppuhr für Quest 2 starten"]').exists(),
+      ).toBe(true);
+      expect(row.classes()).toContain("card-target");
+      await row.get(".row__content").trigger("click");
+      await flushPromises();
+      expect(w.findComponent({ name: "PlannerItemEditor" }).exists()).toBe(
+        true,
+      );
+    });
+
+    it("collapses and expands without changing data", async () => {
+      const w = view();
+      await flushPromises();
+      await w.get('[aria-label="Quest 1 einklappen"]').trigger("click");
+      expect(w.findAll("[data-todo-id]")).toHaveLength(1);
+      await w.get('[aria-label="Quest 1 ausklappen"]').trigger("click");
+      expect(w.findAll("[data-todo-id]")).toHaveLength(2);
+    });
+
+    it("toggles only the selected Quest and reloads computed progress", async () => {
+      const w = view();
+      await flushPromises();
+      await w.findAll(".tree [role=checkbox]")[1]!.trigger("click");
+      await flushPromises();
+      expect(updateTodoCompletion).toHaveBeenCalledWith(2, true);
+      expect(getTodoHierarchy).toHaveBeenCalledTimes(2);
+    });
+
+    it("offers to take a completion back, as Heute does", async () => {
+      const w = view();
+      await flushPromises();
+      await w.findAll(".tree [role=checkbox]")[1]!.trigger("click");
+      await flushPromises();
+      expect(w.get(".undo-toast").text()).toContain("„Quest 2“ erledigt");
+      await button(w, "Rückgängig").trigger("click");
+      await flushPromises();
+      expect(updateTodoCompletion).toHaveBeenLastCalledWith(2, false);
+      expect(w.get(".undo-toast").text()).toBe("");
+    });
+
+    it("excludes self and descendants from move choices", async () => {
+      const w = view();
+      await flushPromises();
+      vi.mocked(getTodo).mockResolvedValue(node(2, 1));
+      await openMenu(w, "Quest 2");
+      await w
+        .get('[aria-label="Quest 2 in eine Kampagne verschieben"]')
+        .trigger("click");
+      await flushPromises();
+      await choose(w, "#campaign-move-parent", "Keine");
+      await w.get("[role=dialog] form").trigger("submit");
+      await flushPromises();
+      expect(updateTodo).toHaveBeenCalledWith(2, { parentId: null });
+    });
+
+    it("does not delete when preview is cancelled and shows active/paused timers", async () => {
+      const w = view();
+      await flushPromises();
+      await openMenu(w, "Quest 1");
+      await w
+        .get('[aria-label="Quest 1 mit allen Unter-Quests löschen"]')
+        .trigger("click");
+      await flushPromises();
+      expect(w.text()).toContain("pausiert");
+      await w.get("[data-cancel-delete]").trigger("click");
+      expect(deleteTodo).not.toHaveBeenCalled();
+    });
+
+    it("confirms exactly the reviewed snapshot", async () => {
+      const w = view();
+      await flushPromises();
+      await openMenu(w, "Quest 1");
+      await w
+        .get('[aria-label="Quest 1 mit allen Unter-Quests löschen"]')
+        .trigger("click");
+      await flushPromises();
+      await button(w, "Ja, löschen").trigger("click");
+      await flushPromises();
+      expect(deleteTodo).toHaveBeenCalledWith(1, "a".repeat(64));
+    });
+
+    it("requires a fresh preview after a stale snapshot error", async () => {
+      vi.mocked(deleteTodo).mockRejectedValueOnce(new Error("Preview changed"));
+      const w = view();
+      await flushPromises();
+      await openMenu(w, "Quest 1");
+      await w
+        .get('[aria-label="Quest 1 mit allen Unter-Quests löschen"]')
+        .trigger("click");
+      await flushPromises();
+      await button(w, "Ja, löschen").trigger("click");
+      await flushPromises();
+      // The dialog stays and shows the server's fresh preview to review.
+      expect(w.get("[role=dialog] [role=alert]").text()).toContain(
+        "Preview changed",
+      );
+      expect(getDeletionPreview).toHaveBeenCalledTimes(2);
+    });
+
+    it("offers retry for load errors", async () => {
+      vi.mocked(getTodoHierarchy).mockRejectedValueOnce(new Error("Offline"));
+      const w = view();
+      await flushPromises();
+      expect(w.get("[role=alert]").text()).toContain("Offline");
+      await button(w, "Erneut versuchen").trigger("click");
+      await flushPromises();
+      expect(w.findAll("[data-todo-id]")).toHaveLength(2);
+    });
+
+    it("creates a quest of this campaign from the plus button", async () => {
+      const w = view();
+      await flushPromises();
+      const plus = w.get(".create-button");
+      expect(plus.attributes("aria-label")).toBe("Neue Quest in „Kampagne 9“");
+      await plus.trigger("click");
+      await flushPromises();
+      const form = w.findComponent({ name: "CreateTodoForm" });
+      // Below the campaign, so its Warum and category are taken over.
+      expect(form.props("parent")).toMatchObject({ id: 9 });
+      expect(form.props("campaign")).toBe(false);
+      expect(w.get("[role=dialog]").text()).toContain("Unter „Kampagne 9“");
+    });
+  });
+
+  describe("the overview", () => {
+    beforeEach(async () => {
+      await router.push("/kampagnen");
       vi.mocked(getTodoHierarchy).mockResolvedValue([
         campaignNode(1, {
           color: "berry",
@@ -430,7 +358,6 @@ describe("CampaignsView", () => {
           weeklyTargetMinutes: 360,
           progress: below(1),
         }),
-
         node(2, 1),
         campaignNode(3, { completed: true, color: "moss" }),
         // A loose quest is no campaign and gets no tile.
@@ -449,7 +376,7 @@ describe("CampaignsView", () => {
       );
     });
 
-    it("shows a tile per active campaign with its week, trend and total", async () => {
+    it("shows a tile per active campaign with its week, trend and total, and no tree", async () => {
       const w = view();
       await flushPromises();
       const tiles = w.findAll("[data-campaign-tile]");
@@ -459,17 +386,44 @@ describe("CampaignsView", () => {
       const tile = tiles[0]!;
       expect(tile.text()).toContain("Kampagne 1");
       expect(tile.text()).toContain("3 Std. 30 Min. von 6 Std. diese Woche");
+      expect(tile.text()).toContain("8 Wochen");
       expect(tile.text()).toContain("Insgesamt 12 Std. 30 Min.");
       expect(tile.attributes("style")).toContain("var(--color-mark-berry)");
-      expect(tile.get("svg[role=img]").attributes("aria-label")).toContain(
-        "Woche ab 16.11.: 3 Std. 30 Min.",
+      expect(tile.get("svg[role=img]").attributes("aria-label")).toMatch(
+        /^Letzte 8 Wochen: ab 28\.09\. 0 Min\., .*3 Std\. 30 Min\.$/,
       );
-      // The tree below holds the campaigns only; the loose quest is not in it.
-      expect(
-        w.findAll("[data-todo-id]").map((row) => row.attributes("data-todo-id")),
-      ).toEqual(["1", "2", "3"]);
-      expect(w.text()).toContain("Kampagnen und ihre Quests");
+      // The quests live inside their campaign, not on the overview.
+      expect(w.find("[data-todo-id]").exists()).toBe(false);
+      expect(w.find(".tree").exists()).toBe(false);
       expect(w.text()).not.toContain("Einkaufen");
+    });
+
+    it("sums the campaigns up in a strip above the tiles", async () => {
+      vi.mocked(getQuestHours).mockResolvedValue({
+        ...questHours(),
+        questMinutes: 250,
+        totalQuestMinutes: 3000,
+      });
+      const w = view();
+      await flushPromises();
+      const value = (key: string) =>
+        w.get(`[data-stat="${key}"] dd`).text().replace(/\s+/g, " ");
+      expect(w.get('[data-stat="week"] dt').text()).toBe(
+        "Kampagnen-Stunden diese Woche",
+      );
+      expect(value("week")).toBe("4 Std. 10 Min.");
+      expect(value("total")).toBe("50 Std.");
+      expect(value("active")).toBe("1");
+      expect(value("done")).toBe("1");
+    });
+
+    it("says – for hours it could not read", async () => {
+      vi.mocked(getQuestHours).mockRejectedValue(new Error("Offline"));
+      const w = view();
+      await flushPromises();
+      expect(w.get('[data-stat="week"] dd').text()).toBe("–");
+      expect(w.get('[data-stat="total"] dd').text()).toBe("–");
+      expect(w.get('[data-stat="active"] dd').text()).toBe("1");
     });
 
     it("lists completed campaigns under their own tab", async () => {
@@ -482,6 +436,108 @@ describe("CampaignsView", () => {
       ]);
       // Without measured time the tile says so honestly.
       expect(tiles[0]!.text()).toContain("0 Min. diese Woche");
+      expect(w.find(".campaign-tile__create").exists()).toBe(false);
+    });
+
+    it("asks before completing a campaign with open quests from its tile", async () => {
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        campaignNode(1, { color: "berry", progress: below(3, 1) }),
+        node(2, 1),
+        node(3, 1),
+        { ...node(4, 1), completed: true },
+      ]);
+      const w = view();
+      await flushPromises();
+      await w.get('[aria-label="Kampagne 1 abschließen"]').trigger("click");
+      await flushPromises();
+      expect(w.get("[role=dialog]").text()).toContain(
+        "2 Quests in „Kampagne 1“ sind noch offen. Sie bleiben offen",
+      );
+      expect(updateTodoCompletion).not.toHaveBeenCalled();
+      await button(w, "Abbrechen").trigger("click");
+      await flushPromises();
+      expect(w.find("[role=dialog]").exists()).toBe(false);
+      expect(updateTodoCompletion).not.toHaveBeenCalled();
+
+      await w.get('[aria-label="Kampagne 1 abschließen"]').trigger("click");
+      await flushPromises();
+      await w.get("[data-campaign-confirm]").trigger("click");
+      await flushPromises();
+      expect(updateTodoCompletion).toHaveBeenCalledWith(1, true);
+      expect(w.get(".undo-toast").text()).toContain("„Kampagne 1“ abgeschlossen");
+      await button(w, "Rückgängig").trigger("click");
+      await flushPromises();
+      expect(updateTodoCompletion).toHaveBeenLastCalledWith(1, false);
+    });
+
+    it("completes a campaign whose quests are all done without asking", async () => {
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        campaignNode(1, { color: "berry", progress: below(1, 1) }),
+        { ...node(2, 1), completed: true },
+      ]);
+      const w = view();
+      await flushPromises();
+      await w.get('[aria-label="Kampagne 1 abschließen"]').trigger("click");
+      await flushPromises();
+      expect(w.find("[role=dialog]").exists()).toBe(false);
+      expect(updateTodoCompletion).toHaveBeenCalledWith(1, true);
+    });
+
+    it("never asks when a campaign is reopened", async () => {
+      const w = view();
+      await flushPromises();
+      await button(w, "Abgeschlossen").trigger("click");
+      await w.get('[aria-label="Kampagne 3 wieder öffnen"]').trigger("click");
+      await flushPromises();
+      expect(w.find("[role=dialog]").exists()).toBe(false);
+      expect(updateTodoCompletion).toHaveBeenCalledWith(3, false);
+      expect(w.get(".undo-toast").text()).toBe("");
+    });
+
+    it("creates a campaign from the plus button and the dashed tile", async () => {
+      const w = view();
+      await flushPromises();
+      const plus = w.get(".create-button");
+      expect(plus.attributes("aria-label")).toBe("Neue Kampagne");
+      expect(w.find(".page-header button").exists()).toBe(false);
+      await plus.trigger("click");
+      expect(
+        w.findComponent({ name: "CreateTodoForm" }).props("campaign"),
+      ).toBe(true);
+      await button(w, "Abbrechen")?.trigger("click");
+      w.findComponent({ name: "CreateTodoForm" }).vm.$emit("cancel");
+      await flushPromises();
+      await w.get(".campaign-tile__create").trigger("click");
+      expect(w.findComponent({ name: "CreateTodoForm" }).props("parent")).toBe(
+        null,
+      );
+    });
+
+    it("says where a new top-level quest stands until it is a campaign", async () => {
+      const w = view();
+      await flushPromises();
+      await w.get(".create-button").trigger("click");
+      w.findComponent({ name: "CreateTodoForm" }).vm.$emit("created", {
+        ...node(5, null),
+        title: "Neu",
+      });
+      await flushPromises();
+      expect(w.get(".status-line").text()).toContain(
+        "Sie wird zur Kampagne, sobald sie Unter-Quests",
+      );
+    });
+
+    it("offers the dashed tile when there is no campaign yet", async () => {
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        { ...node(5, null), title: "Zahnarzt" },
+      ]);
+      const w = view();
+      await flushPromises();
+      expect(w.text()).toContain(
+        "Keine aktive Kampagne. Quests ohne Kampagne stehen im Questlog.",
+      );
+      expect(w.find("[data-campaign-tile]").exists()).toBe(false);
+      expect(w.get(".campaign-tile__create").text()).toBe("Neue Kampagne");
     });
 
     it("opens a campaign with its quests, progress and burnup, and goes back", async () => {
@@ -491,6 +547,7 @@ describe("CampaignsView", () => {
       await flushPromises();
       expect(router.currentRoute.value.query).toEqual({ kampagne: "1" });
       expect(w.find("[data-campaign-tile]").exists()).toBe(false);
+      expect(w.find(".campaign-stats").exists()).toBe(false);
       expect(w.get("#campaign-detail-title").text()).toBe("Kampagne 1");
       expect(w.text()).toContain("Burnup 1");
       // The detail card is the campaign; the tree starts below it.
@@ -506,7 +563,7 @@ describe("CampaignsView", () => {
       await flushPromises();
       expect(router.currentRoute.value.query).toEqual({});
       expect(w.findAll("[data-campaign-tile]")).toHaveLength(1);
-      expect(w.findAll("[data-todo-id]")).toHaveLength(3);
+      expect(w.find("[data-todo-id]").exists()).toBe(false);
     });
 
     it("groups the opened campaign: its Warum, this week, then its progress", async () => {
@@ -526,7 +583,7 @@ describe("CampaignsView", () => {
       await button(w, "Kampagne 1").trigger("click");
       await flushPromises();
       const card = w.get(".campaign-detail");
-      // Top to bottom: name, Warum, "Diese Woche", "Fortschritt", Bearbeiten.
+      // Top to bottom: name, Warum, "Diese Woche", "Fortschritt", actions.
       expect(
         card.element.querySelector(".campaign-detail__head + *")?.textContent?.trim(),
       ).toBe("Damit die Geschichte endlich fertig wird");
@@ -545,7 +602,7 @@ describe("CampaignsView", () => {
         /^letzte 8 Wochen\s*insgesamt 12 Std\. 30 Min\.$/,
       );
       expect(week!.get("svg[role=img]").attributes("aria-label")).toContain(
-        "Kampagnen-Stunden der letzten 8 Wochen.",
+        "Letzte 8 Wochen:",
       );
       expect(progress!.get(".campaign-detail__count").text()).toBe(
         "1 von 3 Quests · 30 von 90 Min.",
@@ -556,7 +613,9 @@ describe("CampaignsView", () => {
       );
       // Each number once: no second "Verlauf" line or loose total.
       expect(card.text().match(/insgesamt/g)).toHaveLength(1);
-      expect(card.findAll("button").at(-1)!.text()).toBe("Bearbeiten");
+      expect(
+        card.findAll(".campaign-detail__actions button").map((b) => b.text()),
+      ).toEqual(["Bearbeiten", "Abschließen"]);
     });
 
     it("leaves out what a campaign does not have: no Warum, no goal bar, no progress", async () => {
@@ -586,7 +645,7 @@ describe("CampaignsView", () => {
       expect(card.find(".burnup-stub").exists()).toBe(false);
     });
 
-    it("keeps the campaign's actions on its detail card", async () => {
+    it("keeps the campaign's actions on its detail card, completing as its tile does", async () => {
       vi.mocked(getTodoHierarchy).mockResolvedValue([
         campaignNode(1, { color: "berry", progress: below(2, 1) }),
         node(2, 1),
@@ -607,8 +666,10 @@ describe("CampaignsView", () => {
         "In Kampagne verschieben …",
         "Löschen",
       ]);
-      // Closing it from here asks like its ring did.
-      await w.get('[aria-label="Kampagne 1 abschließen"]').trigger("click");
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      await flushPromises();
+      // The visible button asks like the ring did.
+      await w.get(".campaign-detail [data-complete-button]").trigger("click");
       await flushPromises();
       expect(w.get("[role=dialog]").text()).toContain(
         "1 Quest in „Kampagne 1“ ist noch offen",
@@ -618,7 +679,7 @@ describe("CampaignsView", () => {
       expect(updateTodoCompletion).toHaveBeenCalledWith(1, true);
       expect(w.get(".undo-toast").text()).toContain("„Kampagne 1“ abgeschlossen");
       expect(
-        w.get('.campaign-detail [data-edit-button]').attributes("aria-label"),
+        w.get(".campaign-detail [data-edit-button]").attributes("aria-label"),
       ).toBe("Kampagne Kampagne 1 bearbeiten");
     });
 
@@ -631,7 +692,9 @@ describe("CampaignsView", () => {
       await button(w, "Kampagne 1").trigger("click");
       await flushPromises();
       expect(w.find("[data-todo-id]").exists()).toBe(false);
-      expect(w.text()).toContain("Noch keine Quests.");
+      expect(w.text()).toContain(
+        "Noch keine Quests. Der Plus-Button legt die erste an.",
+      );
     });
 
     it("still opens campaigns when the quest hours cannot be read", async () => {

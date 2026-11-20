@@ -6,14 +6,20 @@ import {
   getPlan,
   reorderBacklog,
   reorderDay,
+  rescheduleOccurrence,
   rescheduleTodo,
+  updateOccurrenceStatus,
   updateTodo,
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import PlanDay from "../components/PlanDay.vue";
 import PlanOverdue from "../components/PlanOverdue.vue";
 import PlanQuestlog from "../components/PlanQuestlog.vue";
-import { TODO_FIELDS, WEEK_ENTRY_FIELDS } from "../types/fixtures";
+import {
+  TODO_FIELDS,
+  WEEK_ENTRY_FIELDS,
+  WEEK_HABIT_FIELDS,
+} from "../types/fixtures";
 import type { TodoResponse } from "../types/todo";
 import type {
   WeekPlanEntry,
@@ -31,6 +37,8 @@ vi.mock("../api/day-planner.api", () => ({
   reorderBacklog: vi.fn(),
   reorderDay: vi.fn(),
   rescheduleTodo: vi.fn(),
+  rescheduleOccurrence: vi.fn(),
+  updateOccurrenceStatus: vi.fn(),
   updateTodo: vi.fn(),
   updateTodoCompletion: vi.fn(),
   createTodo: vi.fn(),
@@ -60,6 +68,7 @@ const quest = (
 });
 const daily = (overrides: Partial<WeekPlanHabitEntry> = {}): WeekPlanHabitEntry => ({
   ...WEEK_ENTRY_FIELDS,
+  ...WEEK_HABIT_FIELDS,
   type: "habit",
   habitId: 4,
   occurrenceId: null,
@@ -197,6 +206,8 @@ beforeEach(() => {
   vi.mocked(rescheduleTodo).mockResolvedValue({} as never);
   vi.mocked(updateTodo).mockResolvedValue({} as never);
   vi.mocked(updateTodoCompletion).mockResolvedValue(undefined);
+  vi.mocked(rescheduleOccurrence).mockResolvedValue({} as never);
+  vi.mocked(updateOccurrenceStatus).mockResolvedValue({} as never);
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -234,10 +245,11 @@ describe("PlanView", () => {
     expect(today.text()).toContain("09:30");
     expect(today.get(".plan-day__list--done").text()).toContain("Quest 2");
 
-    // A daily is a fixed row: no menu, no move, no editor.
-    const dailyRow = today.findAll(".plan-entry--daily")[0]!;
-    expect(dailyRow.text()).toContain("Daily");
-    expect(dailyRow.find("button").exists()).toBe(false);
+    // A run the schedule only forecasts opens its daily and can delete it.
+    await menuButton(wrapper, "Laufen").trigger("click");
+    expect(menuLabels(wrapper)).toEqual(["Bearbeiten", "Löschen"]);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await flushPromises();
     // Every day has its quick add on top, with where new quests go.
     const field = today.get(
       'input[aria-label="Quest für Dienstag, 17. Nov. hinzufügen"]',
@@ -663,20 +675,23 @@ describe("PlanView keyboard shortcuts", () => {
     expect(updateTodoCompletion).toHaveBeenLastCalledWith(1, false);
   });
 
-  it("leaves dailies, done quests and appointments to their own ways", async () => {
+  it("leaves runs to their window, done quests and appointments to their own ways", async () => {
     vi.mocked(getPlan).mockResolvedValue(
       board(TODAY, {
         [TODAY]: [
           quest(1, { timeOfDay: "09:30" }),
-          daily({ occurrenceId: 9 }),
+          daily({ occurrenceId: 9, moveUntil: TODAY }),
+          daily({ habitId: 5, title: "Lesen" }),
           quest(2, { status: "completed" }),
         ],
       }),
     );
     const { wrapper } = await mountPlan();
+    // A run that may not wait beyond today stays; a forecast takes no keys.
     hover("habit-9");
-    expect(press("x").defaultPrevented).toBe(false);
     expect(press("d").defaultPrevented).toBe(false);
+    hover(`forecast-5-${TODAY}`);
+    expect(press("x").defaultPrevented).toBe(false);
     hover("todo-2");
     expect(press("x").defaultPrevented).toBe(false);
     // An appointment opens "Verschieben", where its move is confirmed.
@@ -948,5 +963,136 @@ describe("PlanView Questlog column", () => {
     ).toBe("false");
     expect(getBacklogTodos).toHaveBeenCalled();
     expect(shownDates(wrapper)).toEqual([TODAY]);
+  });
+});
+
+describe("PlanView dailies", () => {
+  beforeEach(() => reloadShortcutSettings());
+  const TOMORROW = "2026-11-18";
+  /** A stored run of today that may wait until tomorrow. */
+  const run = (overrides: Partial<WeekPlanHabitEntry> = {}) =>
+    daily({
+      occurrenceId: 9,
+      moveUntil: TOMORROW,
+      timerEligible: true,
+      streak: { current: 4, best: 6, unit: "runs" },
+      ...overrides,
+    });
+
+  it("gives a stored run Heute's menu and opens its editor with the run's notes", async () => {
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, { [TODAY]: [quest(1), run()] }),
+    );
+    const { wrapper } = await mountPlan();
+    const card = wrapper.get('[data-focus-key="habit-9"]');
+    expect(card.attributes("data-run-id")).toBe("9");
+    expect(card.text()).toContain("4 in Folge");
+    await menuButton(wrapper, "Laufen").trigger("click");
+    expect(menuLabels(wrapper)).toEqual([
+      "Morgen",
+      "Anderer Tag …",
+      "Überspringen",
+      "Bearbeiten",
+      "Stoppuhr starten",
+      "Nach oben",
+      "Löschen",
+    ]);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await flushPromises();
+
+    await card.get('button[aria-label="Laufen bearbeiten"]').trigger("click");
+    const editor = wrapper.findComponent({ name: "EditItemDialog" });
+    expect(editor.props()).toMatchObject({
+      kind: "habit",
+      entityId: 4,
+      occurrenceId: 9,
+    });
+  });
+
+  it("sorts a run within its day and moves it within its window, like Heute", async () => {
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, { [TODAY]: [quest(1), run()], [TOMORROW]: [quest(2)] }),
+    );
+    const { wrapper } = await mountPlan();
+    const [today, tomorrow] = wrapper.findAllComponents(PlanDay);
+
+    today!.vm.$emit("move", {
+      kind: "run",
+      drop: { occurrenceId: 9, toDate: TODAY, index: 0 },
+    });
+    await flushPromises();
+    expect(reorderDay).toHaveBeenLastCalledWith([
+      { type: "habit", id: 9 },
+      { type: "todo", id: 1 },
+    ]);
+    expect(rescheduleOccurrence).not.toHaveBeenCalled();
+
+    tomorrow!.vm.$emit("move", {
+      kind: "run",
+      drop: { occurrenceId: 9, toDate: TOMORROW, index: 0 },
+    });
+    await flushPromises();
+    expect(rescheduleOccurrence).toHaveBeenCalledWith(9, TOMORROW);
+    expect(reorderDay).toHaveBeenLastCalledWith([
+      { type: "habit", id: 9 },
+      { type: "todo", id: 2 },
+    ]);
+  });
+
+  it("keeps a run in its window and says how far it may wait", async () => {
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, { [TODAY]: [run({ moveUntil: TODAY })] }),
+    );
+    const { wrapper } = await mountPlan();
+    wrapper.findAllComponents(PlanDay)[2]!.vm.$emit("move", {
+      kind: "run",
+      drop: { occurrenceId: 9, toDate: "2026-11-19", index: 0 },
+    });
+    await flushPromises();
+    expect(rescheduleOccurrence).not.toHaveBeenCalled();
+    expect(wrapper.get(".plan-view__notice").text()).toBe(
+      "„Laufen“ kann höchstens bis Dienstag, 17. Nov. warten.",
+    );
+  });
+
+  it("moves a run a day with the arrow keys, and ticks it with X with undo", async () => {
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, { [TODAY]: [run()] }),
+    );
+    const { wrapper } = await mountPlan();
+    await wrapper
+      .get('button[aria-label="Laufen bearbeiten"]')
+      .trigger("keydown", { key: "ArrowRight" });
+    await flushPromises();
+    expect(rescheduleOccurrence).toHaveBeenCalledWith(9, TOMORROW);
+
+    vi.mocked(getPlan).mockResolvedValue(board(TODAY, { [TODAY]: [run()] }));
+    await wrapper.vm.$nextTick();
+    document
+      .querySelector('[data-focus-key="habit-9"]')!
+      .dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    document.body.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "x", bubbles: true, cancelable: true }),
+    );
+    await flushPromises();
+    expect(updateOccurrenceStatus).toHaveBeenCalledWith(9, "completed");
+    expect(wrapper.get(".undo-toast").text()).toContain("„Laufen“ erledigt");
+    await wrapper.get(".undo-toast button").trigger("click");
+    await flushPromises();
+    expect(updateOccurrenceStatus).toHaveBeenLastCalledWith(9, "pending");
+  });
+
+  it("skips a run from its menu and deletes the whole daily after asking", async () => {
+    vi.mocked(getPlan).mockResolvedValue(board(TODAY, { [TODAY]: [run()] }));
+    const { wrapper } = await mountPlan();
+    await choose(wrapper, "Laufen", "Laufen überspringen");
+    await flushPromises();
+    expect(updateOccurrenceStatus).toHaveBeenCalledWith(9, "skipped");
+
+    await choose(wrapper, "Laufen", "Daily Laufen ganz löschen");
+    await flushPromises();
+    expect(
+      wrapper.findComponent({ name: "DeleteItemDialog" }).props("target"),
+    ).toEqual({ kind: "habit", id: 4, title: "Laufen" });
   });
 });

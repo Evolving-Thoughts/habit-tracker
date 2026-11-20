@@ -21,7 +21,6 @@ export type MenuIcon =
   | "skip"
   | "edit"
   | "child"
-  | "chart"
   | "timer"
   | "trash"
   | "check"
@@ -158,7 +157,6 @@ export type RowMenuSteps = {
   focusMode?: () => void;
   timer?: TimerStep;
   child?: () => void;
-  progress?: () => void;
   /** "In Kampagne verschieben …": below a campaign or one of its quests. */
   reparent?: () => void;
   up?: () => void;
@@ -168,7 +166,7 @@ export type RowMenuSteps = {
 
 /**
  * Every card's menu in the one order: quick moves, "Anderer Tag …",
- * Überspringen, Bearbeiten, Fokus-Modus, Stoppuhr, Unter-Quest, Fortschritt,
+ * Überspringen, Bearbeiten, Fokus-Modus, Stoppuhr, Unter-Quest,
  * "In Kampagne verschieben …", Nach oben / Nach unten, and Löschen last,
  * set apart (every view offers it, with the editor's confirmation).
  */
@@ -224,14 +222,6 @@ export function rowMenu(
       icon: "child",
       ariaLabel: `Unter-Quest zu ${title} hinzufügen`,
       run: steps.child,
-    });
-  if (steps.progress)
-    add({
-      id: "progress",
-      label: "Fortschritt anzeigen",
-      icon: "chart",
-      ariaLabel: `Fortschritt von ${title} anzeigen`,
-      run: steps.progress,
     });
   if (steps.reparent)
     add({

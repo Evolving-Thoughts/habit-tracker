@@ -13,7 +13,11 @@ export const TODO_FIELDS = {
   campaign: null,
 };
 
+/** A Daily without a series yet. */
+export const NO_STREAK = { current: 0, best: 0, unit: "runs" as const };
+
 export const HABIT_FIELDS = {
+  streak: NO_STREAK,
   categoryId: null,
   campaignId: null,
   campaign: null,
@@ -37,6 +41,7 @@ export const PLANNER_TODO_FIELDS = {
 };
 
 export const PLANNER_HABIT_FIELDS = {
+  streak: NO_STREAK,
   categoryName: null,
   categoryColor: null,
   timeOfDay: null,
@@ -55,6 +60,13 @@ export const WEEK_ENTRY_FIELDS = {
   plannedDurationMinutes: null,
   campaign: null,
   isOverdue: false,
+};
+
+/** What a daily run of the Plan carries beside the entry fields. */
+export const WEEK_HABIT_FIELDS = {
+  moveUntil: null,
+  timerEligible: false,
+  streak: NO_STREAK,
 };
 
 const HISTORY_CONTEXT = {

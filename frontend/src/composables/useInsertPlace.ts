@@ -19,7 +19,7 @@ let users = 0;
 
 /**
  * The device's choice of where new quests from a quick add go (↑ / ↓ beside
- * the field, on Heute and in every column of the Plan). All fields on the
+ * the field, on Heute, in the Questlog and in every column of the Plan). All fields on the
  * page share it; the first one to appear reads it from storage again, so a
  * choice made in another tab holds the next time a view opens.
  */

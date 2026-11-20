@@ -29,6 +29,7 @@ export function questHours(
     weeklyTargetMinutes: null,
     questMinutes: 0,
     otherMinutes: 0,
+    totalQuestMinutes: 0,
     days: dates.map((date) => ({ date, questMinutes: 0, otherMinutes: 0 })),
     weeks: Array.from({ length: 8 }, (_, index) => {
       const date = new Date(`${start}T12:00:00Z`);

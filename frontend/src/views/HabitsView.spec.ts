@@ -1,5 +1,11 @@
 import { HABIT_FIELDS } from "../types/fixtures";
-import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
+import {
+  config,
+  enableAutoUnmount,
+  flushPromises,
+  mount,
+} from "@vue/test-utils";
+import { createMemoryHistory, createRouter, type Router } from "vue-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   changeHabitSchedule,
@@ -43,6 +49,19 @@ vi.mock("../api/day-planner.api", () => ({
 }));
 enableAutoUnmount(afterEach);
 afterEach(() => vi.useRealTimers());
+/* The filter lives in the address: every mount gets a router at #/dailies. */
+let router: Router;
+beforeEach(async () => {
+  router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: "/dailies", component: { template: "<div />" } }],
+  });
+  await router.push("/dailies");
+  config.global.plugins = [router];
+});
+afterEach(() => {
+  config.global.plugins = [];
+});
 function version(
   schedule: HabitScheduleRule = {
     type: "interval",
@@ -152,17 +171,17 @@ describe("HabitsView", () => {
     ]);
     const wrapper = mount(HabitsView);
     await flushPromises();
-    expect(wrapper.get('[data-group="active"]').text()).toContain("Joggen");
+    expect(wrapper.get('[data-group="none"]').text()).toContain("Joggen");
     expect(wrapper.get('[data-group="paused"]').text()).toContain(
       "Gitarre spielen",
     );
     expect(wrapper.text()).toContain("Mo, Do");
     expect(wrapper.text()).toContain("Alle 2 Tage");
     expect(wrapper.text()).not.toContain("Gültig seit");
-    // The active group's heading is only for screen readers; nothing shows it.
-    const hidden = wrapper.get('[data-group="active"] h2');
-    expect(hidden.text()).toBe("Aktiv");
-    expect(hidden.classes()).toContain("visually-hidden");
+    // Without a category the active ones stand under "Ohne Kategorie".
+    expect(wrapper.get('[data-group="none"] h2').text()).toBe(
+      "Ohne Kategorie 1",
+    );
     expect(wrapper.findAll("[data-habit-id] h3")).toHaveLength(2);
     expect(wrapper.findAll("[data-habit-id]")).toHaveLength(2);
   });
@@ -527,7 +546,7 @@ describe("HabitsView", () => {
     expect(changeHabitSchedule).not.toHaveBeenCalled();
     expect(wrapper.find(".item-editor").exists()).toBe(false);
     expect(wrapper.find('[data-group="paused"]').exists()).toBe(false);
-    expect(wrapper.get('[data-group="active"]').text()).toContain("Joggen");
+    expect(wrapper.get('[data-group="none"]').text()).toContain("Joggen");
   });
   it("edits a planned version before the habit has started", async () => {
     const future = habit({
@@ -691,5 +710,79 @@ describe("HabitsView", () => {
     expect(wrapper.find("dialog").exists()).toBe(false);
     expect(document.activeElement).toBe(wrapper.get(".create-button").element);
     wrapper.unmount();
+  });
+  describe("categories, filter and series", () => {
+    const campaign = { id: 7, title: "Marathon", color: null, icon: null };
+    beforeEach(() => {
+      vi.mocked(getCategories).mockResolvedValue([
+        { id: 2, name: "Sport", color: "pine" },
+        { id: 1, name: "Lernen", color: null },
+      ]);
+      vi.mocked(getHabits).mockResolvedValue([
+        habit({ id: 1, title: "Vokabeln", categoryId: 1 }),
+        habit({ id: 2, title: "Laufen", categoryId: 2, campaign }),
+        habit({ id: 3, title: "Lesen" }),
+      ]);
+    });
+
+    it("groups the Dailies by category with its mark, then those without", async () => {
+      const wrapper = mount(HabitsView);
+      await flushPromises();
+      const groups = wrapper.findAll("[data-group]");
+      expect(groups.map((group) => group.get("h2").text())).toEqual([
+        "Sport 1",
+        "Lernen 1",
+        "Ohne Kategorie 1",
+      ]);
+      expect(
+        groups[0]!.get("h2 .category-mark").attributes("style"),
+      ).toContain("var(--color-mark-pine)");
+      expect(groups[2]!.find("h2 .category-mark").exists()).toBe(false);
+    });
+
+    it("filters by category and campaign through the address", async () => {
+      const wrapper = mount(HabitsView);
+      await flushPromises();
+      await wrapper.get('select[name="filterCategory"]').setValue("2");
+      await flushPromises();
+      expect(router.currentRoute.value.query).toEqual({ kategorie: "2" });
+      expect(wrapper.findAll("[data-habit-id]").map((row) => row.text())).toEqual([
+        expect.stringContaining("Laufen"),
+      ]);
+
+      await router.replace({ query: { kampagne: "ohne" } });
+      await flushPromises();
+      expect(
+        wrapper.get<HTMLSelectElement>('select[name="filterCampaign"]').element
+          .value,
+      ).toBe("ohne");
+      expect(wrapper.findAll("[data-habit-id]")).toHaveLength(2);
+
+      await router.replace({ query: { kampagne: "7", kategorie: "1" } });
+      await flushPromises();
+      expect(wrapper.text()).toContain("Keine Dailies für diesen Filter.");
+      await wrapper
+        .findAll("button")
+        .find((button) => button.text() === "Alle zeigen")!
+        .trigger("click");
+      await flushPromises();
+      expect(router.currentRoute.value.query).toEqual({});
+      expect(wrapper.findAll("[data-habit-id]")).toHaveLength(3);
+    });
+
+    it("says each series with its record, a broken one as a plain number", async () => {
+      vi.mocked(getHabits).mockResolvedValue([
+        habit({ id: 1, streak: { current: 12, best: 21, unit: "runs" } }),
+        habit({ id: 2, streak: { current: 0, best: 4, unit: "weeks" } }),
+        habit({ id: 3 }),
+      ]);
+      const wrapper = mount(HabitsView);
+      await flushPromises();
+      const streak = (id: number) =>
+        wrapper.find(`[data-habit-id="${id}"] .habit-card__streak`);
+      expect(streak(1).text()).toBe("12 in Folge · Rekord 21");
+      expect(streak(2).text()).toBe("0 Wochen in Folge · Rekord 4 Wochen");
+      expect(streak(3).exists()).toBe(false);
+    });
   });
 });

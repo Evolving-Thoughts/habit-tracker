@@ -82,11 +82,15 @@ test("Kampagnen-Stunden: goals, a campaign's colour and icon, its tile and the l
   await expect(tile).toContainText(/Insgesamt \d+ Min\./);
   await expect(tile).toHaveAttribute("style", /--color-mark-berry/);
   await expect(tile.getByRole("img")).toHaveAccessibleName(
-    /^Kampagnen-Stunden der letzten 8 Wochen\./,
+    /^Letzte 8 Wochen: .*diese Woche \d+\sMin\.$/,
   );
+  await expect(tile.getByText("8 Wochen", { exact: true })).toBeVisible();
   expect(
-    (await tile.getByRole("button").boundingBox())!.height,
+    (await tile.getByRole("button", { name: "Buch", exact: true }).boundingBox())!
+      .height,
   ).toBeGreaterThanOrEqual(44);
+  // The figures above the tiles: this week and ever, running and done.
+  await expect(page.locator('[data-stat="week"] dd')).toHaveText(/\d+\sMin\./);
 
   // The tile opens the campaign: its quests, its progress, its burnup.
   await tile.getByRole("button", { name: "Buch", exact: true }).click();

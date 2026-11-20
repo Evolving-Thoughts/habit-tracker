@@ -8,14 +8,15 @@ import AppIcon from "./AppIcon.vue";
 type OrderedItem = { type: "todo" | "habit"; id: number };
 
 /**
- * One line to put a quest on a day: type a title, press Enter. It joins the
- * end of the day's order, or its head while ↑ ("Oben einfügen") is chosen;
- * the choice beside the field holds for every quick add on the device.
+ * One line to put a quest on a day, or into the Questlog: type a title,
+ * press Enter. It joins the end of the day's order (or of the Questlog's),
+ * or its head while ↑ ("Oben einfügen") is chosen; the choice beside the
+ * field holds for every quick add on the device.
  */
 const props = withDefaults(
   defineProps<{
-    /** The day the quest is planned for, YYYY-MM-DD. */
-    date: string;
+    /** The day the quest is planned for, YYYY-MM-DD; null for the Questlog. */
+    date: string | null;
     /** The day's current order; a quest added on top goes in front of it. */
     order?: OrderedItem[];
     /** Names the field when a view shows one per day. */
@@ -76,15 +77,17 @@ async function add(): Promise<void> {
   busy.value = true;
   errorMessage.value = null;
   try {
+    // Into the Questlog the server places it at the head or the end itself.
     const created = await createTodo({
       title: text,
       scheduledDate: props.date,
       timeOfDay: null,
       plannedDurationMinutes: null,
+      ...(props.date === null ? { backlogPlace: place.value } : {}),
     });
     title.value = "";
     // The quest exists either way; a failed sort only leaves it at the end.
-    if (place.value === "top" && props.order.length)
+    if (props.date !== null && place.value === "top" && props.order.length)
       await reorderDay([{ type: "todo", id: created.id }, ...props.order]);
     emit("created");
   } catch (error: unknown) {

@@ -12,10 +12,22 @@ const props = defineProps<{
   starts: string[];
   /** False while the quest hours are not loaded: no numbers then. */
   counted: boolean;
+  /** A write is running: the buttons wait. */
+  busy?: boolean;
+  /** Done as shown, while a tap on "Abschließen" is still being saved. */
+  completed?: (tile: CampaignTile) => boolean;
 }>();
-defineEmits<{ open: [id: number] }>();
+defineEmits<{
+  open: [id: number];
+  /** "Abschließen" or "Wieder öffnen" on a tile. */
+  complete: [tile: CampaignTile];
+  /** The dashed tile after the active ones. */
+  create: [];
+}>();
 
 const tab = ref<"active" | "done">("active");
+const done = (tile: CampaignTile): boolean =>
+  props.completed?.(tile) ?? tile.todo.completed;
 const shown = computed(() =>
   props.tiles.filter((tile) => tile.todo.completed === (tab.value === "done")),
 );
@@ -51,11 +63,11 @@ const share = (tile: CampaignTile): number =>
     <p v-if="!shown.length" class="campaign-tiles__empty">
       {{
         tab === "active"
-          ? "Keine aktive Kampagne."
+          ? "Keine aktive Kampagne. Quests ohne Kampagne stehen im Questlog."
           : "Noch keine Kampagne abgeschlossen."
       }}
     </p>
-    <ul v-else class="campaign-tiles__list">
+    <ul v-if="shown.length || tab === 'active'" class="campaign-tiles__list">
       <li
         v-for="tile in shown"
         :key="tile.todo.id"
@@ -100,15 +112,47 @@ const share = (tile: CampaignTile): number =>
           >
             <span :style="{ width: `${share(tile)}%` }" />
           </span>
-          <QuestTrend
-            :weeks="tile.weeks"
-            :starts="starts"
-            :mark="markOf(tile)"
-          />
+          <!-- A short label names the line; its full text is the svg's name. -->
+          <div class="campaign-tile__trend">
+            <p class="campaign-tile__trend-label" aria-hidden="true">
+              {{ tile.weeks.length }} Wochen
+            </p>
+            <QuestTrend
+              :weeks="tile.weeks"
+              :starts="starts"
+              :mark="markOf(tile)"
+            />
+          </div>
           <p class="campaign-tile__total">
             Insgesamt {{ formatDuration(tile.totalMinutes) }}
           </p>
         </template>
+        <button
+          type="button"
+          class="btn campaign-tile__complete"
+          :disabled="busy"
+          :aria-label="
+            done(tile)
+              ? `${tile.todo.title} wieder öffnen`
+              : `${tile.todo.title} abschließen`
+          "
+          @click="$emit('complete', tile)"
+        >
+          <AppIcon name="check" />{{
+            done(tile) ? "Wieder öffnen" : "Abschließen"
+          }}
+        </button>
+      </li>
+      <!-- Not there yet: dashed, like everything that is still to come. -->
+      <li v-if="tab === 'active'" class="campaign-tile campaign-tile--new">
+        <button
+          type="button"
+          class="campaign-tile__create"
+          :disabled="busy"
+          @click="$emit('create')"
+        >
+          <AppIcon name="plus" />Neue Kampagne
+        </button>
       </li>
     </ul>
   </section>
@@ -149,7 +193,7 @@ const share = (tile: CampaignTile): number =>
   transition: transform 420ms var(--spring);
 }
 
-.campaign-tile:active {
+.campaign-tile:not(.campaign-tile--new):active:not(:has(.campaign-tile__complete:active)) {
   transform: var(--press);
   transition-duration: 90ms;
 }
@@ -243,6 +287,77 @@ const share = (tile: CampaignTile): number =>
   border-radius: inherit;
   background: var(--color-ink);
   transition: width 240ms var(--ease-out);
+}
+
+.campaign-tile__trend {
+  display: grid;
+  gap: 0.125rem;
+}
+
+.campaign-tile__trend-label {
+  color: var(--color-ink-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+/* Above the title button's cover, so it is its own target. */
+.campaign-tile__complete {
+  position: relative;
+  z-index: 1;
+  justify-self: start;
+  margin-top: var(--space-1);
+}
+
+/* The dashed tile: a campaign that is not there yet. */
+.campaign-tile--new {
+  padding: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.campaign-tile__create {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 7rem;
+  padding: var(--space-4);
+  border: 1.5px dashed var(--color-line-strong);
+  border-radius: var(--radius-card);
+  background: none;
+  color: var(--color-action-strong);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background-color 160ms var(--ease-out),
+    transform 420ms var(--spring);
+}
+
+.campaign-tile__create:hover:not(:disabled) {
+  background: var(--color-action-tint);
+}
+
+.campaign-tile__create:active:not(:disabled) {
+  transform: var(--press);
+  transition-duration: 90ms;
+}
+
+.campaign-tile__create:focus-visible {
+  outline: 3px solid var(--color-action-strong);
+  outline-offset: 2px;
+}
+
+.campaign-tile__create:disabled {
+  color: var(--color-ink-soft);
+  cursor: progress;
+}
+
+.campaign-tile__create :deep(svg) {
+  width: 1.125rem;
+  height: 1.125rem;
 }
 
 .campaign-tile__total {

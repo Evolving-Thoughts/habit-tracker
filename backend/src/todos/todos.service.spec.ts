@@ -73,7 +73,8 @@ describe('TodosService', () => {
           return chain;
         },
         execute: () => Promise.resolve(),
-        getRawOne: () => Promise.resolve({ last: lastBacklog }),
+        // MIN or MAX, whichever is asked: the edge of the Questlog's order.
+        getRawOne: () => Promise.resolve({ edge: lastBacklog }),
       };
       return chain;
     },
@@ -127,6 +128,23 @@ describe('TodosService', () => {
         await service.create(USER, {
           title: 'Geplant',
           scheduledDate: '2026-10-02',
+        }),
+      ).toMatchObject({ backlogPosition: null });
+    });
+    it('puts a quest without a day at the head of the Questlog when asked', async () => {
+      lastBacklog = 4;
+      expect(
+        await service.create(USER, { title: 'Oben', backlogPlace: 'top' }),
+      ).toMatchObject({ scheduledDate: null, backlogPosition: 3 });
+      lastBacklog = null;
+      expect(
+        await service.create(USER, { title: 'Erste', backlogPlace: 'top' }),
+      ).toMatchObject({ backlogPosition: 0 });
+      expect(
+        await service.create(USER, {
+          title: 'Geplant',
+          scheduledDate: '2026-10-02',
+          backlogPlace: 'top',
         }),
       ).toMatchObject({ backlogPosition: null });
     });

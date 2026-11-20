@@ -140,15 +140,22 @@ export function campaignTiles(
     });
 }
 
-/** The trend in words, for those who cannot see the line. */
+/**
+ * The trend in words, for those who cannot see the line: "Letzte 8 Wochen:
+ * ab 28.09. 2 Std., …, diese Woche 4 Std.". The week starting on
+ * `currentStart` is "diese Woche".
+ */
 export function trendText(
   weeks: number[],
   starts: string[],
   formatStart: (date: string) => string,
+  currentStart?: string,
 ): string {
-  const parts = weeks.map(
-    (minutes, index) =>
-      `Woche ab ${formatStart(starts[index] ?? "")}: ${formatDuration(minutes)}`,
-  );
-  return `Kampagnen-Stunden der letzten ${weeks.length} Wochen. ${parts.join(", ")}`;
+  const parts = weeks.map((minutes, index) => {
+    const start = starts[index] ?? "";
+    const week =
+      start === currentStart ? "diese Woche" : `ab ${formatStart(start)}`;
+    return `${week} ${formatDuration(minutes)}`;
+  });
+  return `Letzte ${weeks.length} Wochen: ${parts.join(", ")}`;
 }

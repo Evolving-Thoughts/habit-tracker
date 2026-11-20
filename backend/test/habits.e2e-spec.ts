@@ -283,6 +283,36 @@ describe('Habit domain and day planner (e2e)', () => {
   });
 
   describe('habit API', () => {
+    it('counts the series on the habit and on its run of today', async () => {
+      const habit = await create({
+        schedule: interval(1),
+        startDate: relativeDate(-4),
+      });
+      const done = HabitOccurrenceStatus.COMPLETED;
+      await seed(habit.id, relativeDate(-4), done, relativeDate(-4));
+      await seed(habit.id, relativeDate(-3), done, relativeDate(-3));
+      // Skipped by the scheduler once its window had closed: missed.
+      await seed(
+        habit.id,
+        relativeDate(-2),
+        HabitOccurrenceStatus.SKIPPED,
+        relativeDate(-1),
+      );
+      await seed(habit.id, relativeDate(-1), done, relativeDate(-1));
+
+      const streak = { current: 1, best: 2, unit: 'runs' };
+      const read = await request(server).get(`/habits/${habit.id}`).expect(200);
+      expect((read.body as HabitResponseDto).streak).toEqual(streak);
+      // Today's open run breaks nothing; the list and Heute say the same.
+      const list = await request(server).get('/habits').expect(200);
+      expect((list.body as HabitResponseDto[])[0]?.streak).toEqual(streak);
+      expect((await planner()).items[0]).toMatchObject({
+        type: 'habit',
+        status: HabitOccurrenceStatus.PENDING,
+        streak,
+      });
+    });
+
     it('creates identity and initial schedule', async () => {
       const habit = await create();
 

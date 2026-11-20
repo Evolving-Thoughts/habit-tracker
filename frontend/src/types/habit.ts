@@ -65,6 +65,8 @@ export type HabitResponse = {
   timerDurationMinutes: number | null;
   currentSchedule: ScheduleVersionResponse | null;
   upcomingSchedule: ScheduleVersionResponse | null;
+  /** Done runs in a row now and the longest series ever (Serie). */
+  streak: { current: number; best: number; unit: "runs" | "weeks" };
 };
 
 export type UpdateHabitInput = {

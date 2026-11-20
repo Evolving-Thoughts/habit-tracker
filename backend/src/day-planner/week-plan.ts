@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { addDays, dayOf } from '../common/date/local-day';
+import { NO_STREAK, Streak } from '../habits/streaks';
 import { HistoryPlannedItem } from '../history/history.dto';
 import { historyRange } from '../history/history-range';
 import { placeOpenTodo } from '../todos/todo-agenda';
@@ -84,13 +85,15 @@ export function todoCandidate(
 /**
  * A run the habit forecast plans (see history-planning.ts). An open run from
  * an earlier day shows on today, like an overdue todo. A forecast run has no
- * position yet, so it follows everything sorted.
+ * position yet, so it follows everything sorted. A stored run due by today
+ * can be measured.
  */
 export function plannedHabitCandidate(
   item: HistoryPlannedItem,
   dayPosition: number | null,
   today: string,
   campaign: Campaign | null,
+  streak: Streak = NO_STREAK,
 ): WeekCandidate {
   if (item.habitId === null) throw new Error('Expected a planned habit run');
   const date = item.date < today ? today : item.date;
@@ -99,6 +102,9 @@ export function plannedHabitCandidate(
     habitId: item.habitId,
     occurrenceId: item.id,
     status: 'pending',
+    moveUntil: item.moveUntil,
+    timerEligible: item.id !== null && date <= today,
+    streak,
     isOverdue: item.isOverdue,
     title: item.title,
     timeOfDay: item.timeOfDay,
@@ -130,6 +136,7 @@ export function resolvedHabitCandidate(
   habit: { title: string; timeOfDay: string | null },
   plannedDurationMinutes: number | null,
   campaign: Campaign | null,
+  streak: Streak = NO_STREAK,
 ): WeekCandidate {
   const date =
     occurrence.status === 'completed'
@@ -140,6 +147,9 @@ export function resolvedHabitCandidate(
     habitId: occurrence.habitId,
     occurrenceId: occurrence.id,
     status: occurrence.status,
+    moveUntil: null,
+    timerEligible: false,
+    streak,
     isOverdue: false,
     title: habit.title,
     timeOfDay: habit.timeOfDay ?? null,

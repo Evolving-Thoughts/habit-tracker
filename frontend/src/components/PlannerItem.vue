@@ -7,6 +7,7 @@ import { campaignMark as markOf, categoryMark } from "../utils/category-mark";
 import { formatDateForGermanDisplay } from "../utils/date";
 import type { MenuEntry } from "../utils/row-actions";
 import type { DayPlannerItem } from "../types/day-planner";
+import { streakLine } from "../utils/streak";
 
 /**
  * A row of Heute on the shared row (ItemRow): ring, title with its meta
@@ -57,6 +58,10 @@ const state = computed(() =>
 const details = computed(() => {
   const parts: string[] = [];
   if (state.value === "skipped") parts.push("Übersprungen");
+  // A daily's running series, calm and only while there is one.
+  const series =
+    props.item.type === "habit" ? streakLine(props.item.streak) : null;
+  if (series) parts.push(series);
   if (props.item.plannedDurationMinutes != null) {
     parts.push(
       props.item.workedMinutes > 0

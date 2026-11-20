@@ -19,6 +19,7 @@ import { useShortcutHandlers } from "../composables/useShortcuts";
 import { toggleTimer, useTimer } from "../composables/useTimer";
 import { addDays, getCurrentDateInTimeZone, weekStart } from "../utils/date";
 import CreateButton from "../components/CreateButton.vue";
+import QuickAddQuest from "../components/QuickAddQuest.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
 import DeleteItemDialog from "../components/DeleteItemDialog.vue";
@@ -375,6 +376,13 @@ useShortcutHandlers({
       {{ successMessage }}
     </p>
 
+    <!-- A new quest without a day: at the head or the end of the order (↑ / ↓). -->
+    <QuickAddQuest
+      :date="null"
+      label="Quest ins Questlog hinzufügen"
+      @created="applied()"
+    />
+
     <div
       v-if="isLoading"
       class="skeleton"
@@ -392,7 +400,7 @@ useShortcutHandlers({
         class="empty-state questlog__empty"
       >
         <strong>Dein Questlog ist leer.</strong>
-        <span>Tippe auf Plus, um etwas abzulegen.</span>
+        <span>Schreib oben hinein, was ansteht, oder tippe auf Plus.</span>
       </div>
 
       <!-- Each list opens with an h2, so the rows' h3 never skip a level. -->

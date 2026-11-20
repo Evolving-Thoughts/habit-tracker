@@ -26,6 +26,7 @@ import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
 import DeleteItemDialog from "../components/DeleteItemDialog.vue";
 import GoalBurnup from "../components/GoalBurnup.vue";
 import CampaignTiles from "../components/CampaignTiles.vue";
+import CampaignStats from "../components/CampaignStats.vue";
 import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
 import UndoToast from "../components/UndoToast.vue";
 import QuestTrend from "../components/QuestTrend.vue";
@@ -61,7 +62,6 @@ const error = ref<string | null>(""),
 const action = ref<"create" | "move" | "edit" | "delete" | null>(null),
   selected = ref<HierarchyTodo | null>(null);
 const formBusy = ref(false);
-const burnupTodo = ref<HierarchyTodo | null>(null);
 const timer = useTimer();
 const dragged = ref<number | null>(null),
   dropTarget = ref<number | null | undefined>(undefined);
@@ -70,7 +70,6 @@ const campaignCompletion = useCampaignCompletion();
 const quiet = () =>
   !busy.value &&
   action.value === null &&
-  burnupTodo.value === null &&
   campaignCompletion.question.value === null;
 // Refreshes after timer and other views' changes, unless a dialog is open.
 const {
@@ -101,6 +100,9 @@ const { write, applied, busy: writing } = useWrites(
 );
 const shownError = computed(() => error.value || loadError.value || "");
 const tiles = computed(() => campaignTiles(todos.value, questHours.value));
+const doneCount = computed(
+  () => tiles.value.filter((tile) => tile.todo.completed).length,
+);
 const trendStarts = computed(
   () => questHours.value?.weeks.map((week) => week.startDate) ?? [],
 );
@@ -147,9 +149,8 @@ async function closeCampaign() {
     ?.focus();
 }
 /*
- * The tree holds campaigns only: loose quests live in the Questlog, Heute and
- * the Plan. An opened campaign is its detail card, so its tree starts with
- * the quests below it instead of repeating it as a row.
+ * The overview holds the tiles only. An opened campaign is its detail card
+ * with the tree of the quests below it (it does not repeat itself as a row).
  */
 const campaignIds = computed(
   () => new Set(tiles.value.map((tile) => tile.todo.id)),
@@ -159,9 +160,7 @@ const rows = computed(() =>
     ? visibleHierarchy(todos.value, collapsed.value, {
         under: openTile.value.todo.id,
       })
-    : visibleHierarchy(todos.value, collapsed.value, {
-        keepTop: (todo) => campaignIds.value.has(todo.id),
-      }),
+    : [],
 );
 const children = computed(() => hierarchyChildren(todos.value));
 const titles = computed(
@@ -198,8 +197,6 @@ function rowMenu(todo: HierarchyTodo): MenuEntry[] {
     {
       edit: () => open("edit", todo),
       child: () => open("create", todo),
-      progress:
-        todo.parentId === null ? () => showProgress(todo) : undefined,
       reparent: () => open("move", todo),
       remove: {
         run: () => open("delete", todo),
@@ -339,10 +336,6 @@ function open(
   error.value = "";
   formBusy.value = false;
 }
-function showProgress(todo: HierarchyTodo) {
-  listFocus.remember(`todo-${todo.id}`);
-  burnupTodo.value = todo;
-}
 async function created(todo: TodoResponse) {
   formBusy.value = false;
   if (selected.value) {
@@ -394,10 +387,16 @@ function startDrag(event: DragEvent, id: number) {
   event.dataTransfer?.setData("text/plain", String(id));
   if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
 }
-// N opens the plus button's dialog: a new quest at the top, a campaign to be.
+/*
+ * The plus button and N: a new campaign on the overview; inside a campaign a
+ * new quest below it, with its Warum and category taken over.
+ */
+function create(): void {
+  open("create", openTile.value?.todo ?? null);
+}
 useShortcutHandlers({
   "quest.new": () => {
-    if (!busy.value && !action.value) open("create");
+    if (!busy.value && !action.value) create();
   },
 });
 </script>
@@ -405,7 +404,7 @@ useShortcutHandlers({
   <main ref="page" class="page hierarchy">
     <header class="page-header">
       <h1 class="page-title">Kampagnen</h1>
-      <p class="page-lead">Kampagnen, Questreihen und ihre Quests.</p>
+      <p class="page-lead">Deine längerfristigen Ziele und wie weit sie sind.</p>
     </header>
     <div v-if="shownError" class="alert" role="alert">
       <p>{{ shownError }}</p>
@@ -420,16 +419,6 @@ useShortcutHandlers({
       </button>
     </div>
     <p v-if="success" class="status-line" role="status">{{ success }}</p>
-    <ModalDialog
-      v-if="burnupTodo"
-      title="Fortschritt der Kampagne"
-      focus-selector="button"
-      :return-focus="listFocus.returnFocus"
-      @close="burnupTodo = null"
-    >
-      <p class="burnup-goal">{{ burnupTodo.title }}</p>
-      <GoalBurnup :todo-id="burnupTodo.id" />
-    </ModalDialog>
     <div
       v-if="loading"
       class="skeleton"
@@ -438,15 +427,7 @@ useShortcutHandlers({
     >
       <span /><span /><span />
     </div>
-    <div v-else-if="!tiles.length && !shownError" class="empty-state">
-      <strong>Noch keine Kampagnen.</strong>
-      <span
-        >Leg mit dem Plus-Button die erste an. Quests ohne Kampagne stehen im
-        Questlog.</span
-      >
-    </div>
-    <template v-else-if="tiles.length">
-      <template v-if="openTile">
+    <template v-else-if="openTile">
         <button
           class="btn btn--quiet campaign-back"
           type="button"
@@ -558,33 +539,40 @@ useShortcutHandlers({
             </div>
             <GoalBurnup :todo-id="openTile.todo.id" beside-bar />
           </section>
-          <button
-            class="btn campaign-detail__edit"
-            type="button"
-            data-edit-button
-            :disabled="busy"
-            :aria-label="`Kampagne ${openTile.todo.title} bearbeiten`"
-            @click="open('edit', openTile.todo)"
-          >
-            <AppIcon name="edit" />Bearbeiten
-          </button>
+          <div class="campaign-detail__actions">
+            <button
+              class="btn"
+              type="button"
+              data-edit-button
+              :disabled="busy"
+              :aria-label="`Kampagne ${openTile.todo.title} bearbeiten`"
+              @click="open('edit', openTile.todo)"
+            >
+              <AppIcon name="edit" />Bearbeiten
+            </button>
+            <button
+              class="btn"
+              type="button"
+              data-complete-button
+              :disabled="busy"
+              :aria-label="
+                checked(openTile.todo)
+                  ? `Kampagne ${openTile.todo.title} wieder öffnen`
+                  : `Kampagne ${openTile.todo.title} abschließen`
+              "
+              @click="toggleCompletion(openTile.todo)"
+            >
+              <AppIcon name="check" />{{
+                checked(openTile.todo) ? "Wieder öffnen" : "Abschließen"
+              }}
+            </button>
+          </div>
         </section>
         <h2 class="section-title">Quests der Kampagne</h2>
         <p v-if="!rows.length" class="status-line">
-          Noch keine Quests. „Unter-Quest hinzufügen“ steht im Menü der
-          Kampagne.
+          Noch keine Quests. Der Plus-Button legt die erste an.
         </p>
-      </template>
-      <template v-else>
-        <CampaignTiles
-          :tiles="tiles"
-          :starts="trendStarts"
-          :counted="questHours !== null"
-          @open="openCampaign"
-        />
-        <h2 class="section-title">Kampagnen und ihre Quests</h2>
-      </template>
-      <ul class="tree" aria-label="Kampagnen">
+      <ul class="tree" aria-label="Quests der Kampagne">
         <li
           v-for="{ todo, depth } in rows"
           :key="todo.id"
@@ -712,12 +700,34 @@ useShortcutHandlers({
         }}
       </div>
     </template>
+    <!-- The overview: the figures, then a tile per campaign; quests live inside a campaign. -->
+    <template v-else-if="!loadError">
+      <CampaignStats
+        class="campaigns-stats"
+        :week-minutes="questHours?.questMinutes ?? null"
+        :total-minutes="questHours?.totalQuestMinutes ?? null"
+        :active="tiles.length - doneCount"
+        :done="doneCount"
+      />
+      <CampaignTiles
+        :tiles="tiles"
+        :starts="trendStarts"
+        :counted="questHours !== null"
+        :busy="busy"
+        :completed="(tile) => checked(tile.todo)"
+        @open="openCampaign"
+        @complete="(tile) => toggleCompletion(tile.todo)"
+        @create="create"
+      />
+    </template>
     <ModalDialog
       v-if="action === 'create' || action === 'edit'"
       :title="
         action === 'create'
           ? selected
-            ? 'Unter-Quest hinzufügen'
+            ? selected.id === openTile?.todo.id
+              ? 'Neue Quest'
+              : 'Unter-Quest hinzufügen'
             : 'Neue Kampagne'
           : selected && campaignIds.has(selected.id)
             ? 'Kampagne bearbeiten'
@@ -776,9 +786,11 @@ useShortcutHandlers({
     <UndoToast :label="undo?.label ?? null" @undo="undoLast" />
     <!-- After the content in reading order; fixed in place, it looks the same. -->
     <CreateButton
-      label="Neue Kampagne"
+      :label="
+        openTile ? `Neue Quest in „${openTile.todo.title}“` : 'Neue Kampagne'
+      "
       :disabled="busy"
-      @click="open('create')"
+      @click="create"
     />
   </main>
 </template>
@@ -1097,14 +1109,14 @@ useShortcutHandlers({
   height: 0.5rem;
 }
 
-.campaign-detail__edit {
-  justify-self: start;
+.campaign-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
-.burnup-goal {
-  margin: 0 0 var(--space-3);
-  font-weight: 800;
-  overflow-wrap: anywhere;
+.campaigns-stats {
+  margin-bottom: var(--space-4);
 }
 
 .dialog-lead {

@@ -80,8 +80,8 @@ X): "Kampagne abschließen?", "3 Quests in „Buch“ sind noch offen. Sie bleib
 offen; die Kampagne steht danach unter „Abgeschlossen“." The count is the
 server's (`todoCount - doneCount` of its progress); without open todos below
 nothing asks. `useCampaignCompletion` and `CampaignCompletionDialog` do this in
-the Kampagnen view (the tree is at hand: the ring of a campaign's row, and
-"Kampagne abschließen" in the "…" of an opened campaign's detail card), Heute
+the Kampagnen view (the tree is at hand: "Abschließen" on a campaign's tile
+and on its detail card, and "Kampagne abschließen" in the card's "…"), Heute
 and the Plan's X (they read `GET /todos/hierarchy` once, only for a row that
 is itself a campaign; a failed read asks nothing). The Questlog lists no
 campaigns (see below) and never asks. The calendar's rows do not name their
@@ -111,14 +111,15 @@ the open undated ones, so it costs one more light query, not one per todo.
 
 ### The Kampagnen view
 
-The tiles and the tree below them show campaigns only (`campaignTiles`, using
+The overview shows campaigns only, as tiles (`campaignTiles`, using
 `isCampaign` from `utils/todo-hierarchy.ts`, the frontend twin of
-`TodoAncestry.campaignOf`, plus roots the quest hours count). The tree
-("Kampagnen und ihre Quests") is `visibleHierarchy` with `keepTop` set to the
-campaigns. An opened campaign is its detail card; its tree starts with the
-quests below it (`visibleHierarchy` with `under`), so the campaign is not
-repeated as a root row with the same progress bar. The card takes the
-campaign's actions ("Bearbeiten" and "…") and accepts drops. Moving a quest to
+`TodoAncestry.campaignOf`, plus roots the quest hours count), without a tree.
+An opened campaign is its detail card and, below it, the tree of its quests
+(`visibleHierarchy` with `under`), so the campaign is not repeated as a
+root row with the same progress bar. The card takes the campaign's actions
+("Bearbeiten", "Abschließen" and "…") and accepts drops; a row dropped on
+another row goes below it. Every row there has a parent, so the row menu
+has no "Fortschritt anzeigen"; the campaign's burnup stands on its card. Moving a quest to
 the top says what it becomes: "Eigene Kampagne" when it has quests below it
 (or already is one), otherwise "Keine Kampagne (Questlog oder ihr Tag)", and
 it then leaves the tree. A new top-level quest that is no campaign yet is

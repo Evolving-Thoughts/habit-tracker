@@ -1,6 +1,6 @@
 import { enableAutoUnmount, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
-import { WEEK_ENTRY_FIELDS } from "../types/fixtures";
+import { WEEK_ENTRY_FIELDS, WEEK_HABIT_FIELDS } from "../types/fixtures";
 import type { WeekPlanEntry } from "../types/week-plan";
 import type { MenuEntry } from "../utils/row-actions";
 import PlanEntry from "./PlanEntry.vue";
@@ -132,21 +132,37 @@ describe("PlanEntry", () => {
     expect(wrapper.classes()).not.toContain("card-drag");
   });
 
-  it("shows a daily as a fixed row without any control", () => {
-    const wrapper = mountEntry({
+  it("makes a daily's run a full card: it opens its editor, a stored one drags", async () => {
+    const run: WeekPlanEntry = {
       ...WEEK_ENTRY_FIELDS,
+      ...WEEK_HABIT_FIELDS,
       type: "habit",
       habitId: 4,
-      occurrenceId: null,
+      occurrenceId: 12,
       title: "Laufen",
       status: "pending",
       plannedDurationMinutes: 30,
+      streak: { current: 5, best: 9, unit: "runs" },
+    };
+    const wrapper = mount(PlanEntry, {
+      props: { entry: run, busy: false, menu: MENU, arrows: true },
     });
-    expect(wrapper.classes()).toContain("plan-entry--daily");
-    expect(parts(wrapper)).toEqual(["Daily", "30 Min."]);
-    expect(wrapper.find("button").exists()).toBe(false);
-    expect(wrapper.get("h3").text()).toBe("Laufen");
-    expect(wrapper.get("h3").attributes("title")).toBe("Laufen");
-    expect(wrapper.classes()).not.toContain("card-target");
+    expect(parts(wrapper)).toEqual(["Daily", "5 in Folge", "30 Min."]);
+    expect(wrapper.classes()).toContain("card-target");
+    expect(wrapper.classes()).toContain("card-drag");
+    const title = wrapper.get('button[aria-label="Laufen bearbeiten"]');
+    await title.trigger("click");
+    expect(wrapper.emitted("edit")).toHaveLength(1);
+    await title.trigger("keydown", { key: "ArrowRight" });
+    expect(wrapper.emitted("arrow")).toEqual([["right"]]);
+    expect(wrapper.find('button[aria-label="Aktionen für Laufen"]').exists()).toBe(
+      true,
+    );
+
+    // A run the schedule only forecasts opens its daily but does not drag.
+    const forecast = mountEntry({ ...run, occurrenceId: null, streak: WEEK_HABIT_FIELDS.streak });
+    expect(parts(forecast)).toEqual(["Daily", "30 Min."]);
+    expect(forecast.classes()).toContain("card-target");
+    expect(forecast.classes()).not.toContain("card-drag");
   });
 });

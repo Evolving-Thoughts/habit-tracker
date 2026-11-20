@@ -41,6 +41,8 @@ export type QuestHoursResponse = {
   weeklyTargetMinutes: number | null;
   questMinutes: number;
   otherMinutes: number;
+  /** Every quest minute ever measured, on any campaign (overlap once). */
+  totalQuestMinutes: number;
   /** Monday to Sunday. */
   days: QuestHoursDay[];
   /** The eight weeks up to and including this one, oldest first. */

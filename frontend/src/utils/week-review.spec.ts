@@ -40,6 +40,7 @@ const hours = (
   weeklyTargetMinutes: null,
   questMinutes: 0,
   otherMinutes: 0,
+  totalQuestMinutes: 0,
   days: DATES.map((date) => ({ date, questMinutes: 0, otherMinutes: 0 })),
   weeks: [],
   campaigns: [],

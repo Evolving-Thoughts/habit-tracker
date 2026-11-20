@@ -31,6 +31,8 @@ export type QuestHoursResponse = {
   weeklyTargetMinutes: number | null;
   questMinutes: number;
   otherMinutes: number;
+  /** Every quest minute ever measured, on any campaign. */
+  totalQuestMinutes: number;
   days: QuestHoursDay[];
   /** The eight weeks up to and including this one, oldest first. */
   weeks: { startDate: string; questMinutes: number }[];

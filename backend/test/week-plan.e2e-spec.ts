@@ -193,6 +193,9 @@ describe('Plan board (e2e)', () => {
           habitId: expect.any(Number) as number,
           occurrenceId: null,
           status: 'pending',
+          moveUntil: null,
+          timerEligible: false,
+          streak: { current: 0, best: 0, unit: 'runs' },
           title: 'Laufen',
           timeOfDay: null,
           plannedDurationMinutes: 20,
@@ -200,6 +203,26 @@ describe('Plan board (e2e)', () => {
           isOverdue: false,
         },
       ]);
+  });
+
+  it("stores today's runs first, so the board sorts, moves and measures them like Heute", async () => {
+    await request(server)
+      .post('/habits')
+      .send({
+        title: 'Lesen',
+        schedule: { type: 'interval', intervalDays: 1 },
+      })
+      .expect(201);
+
+    const [run] = await entriesOn(today, today);
+    expect(run).toMatchObject({
+      type: 'habit',
+      occurrenceId: expect.any(Number) as number,
+      status: 'pending',
+      moveUntil: today,
+      timerEligible: true,
+      streak: { current: 0, best: 0, unit: 'runs' },
+    });
   });
 
   it('orders any day and keeps the order after a move from another day', async () => {

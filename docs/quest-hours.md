@@ -85,6 +85,7 @@ what the tiles, Heute and the weekly review (`week-review.md`) need:
   startDate, endDate, today,
   weeklyTargetMinutes: number | null,   // the overall goal
   questMinutes, otherMinutes,           // the week
+  totalQuestMinutes,                    // every quest minute ever measured
   days: { date, questMinutes, otherMinutes }[],          // Monday to Sunday
   weeks: { startDate, questMinutes }[], // eight weeks up to this one, oldest first
   campaigns: {
@@ -143,20 +144,29 @@ resolves both from one read of the user's categories.
   a todo without parent, behind the disclosure "Kampagne", which starts open
   once one of the three is set; `CreateTodoForm.vue` shows it open when the
   Kampagnen view creates a new campaign. Hours become minutes in `utils/quest-hours.ts`.
-- `CampaignsView.vue` shows a tile per campaign (`CampaignTiles.vue`, tabs
-  "Aktiv" and "Abgeschlossen") above the tree of the campaigns and their
-  quests (loose quests are not in it): icon, colour stripe, title, this week
-  against its goal, an eight-week trend (`QuestTrend.vue`, a small SVG with
-  the weeks in words as its label) and the total. A tile opens the campaign in
+- `CampaignsView.vue` starts with a strip of four figures
+  (`CampaignStats.vue`: Kampagnen-Stunden this week, `questMinutes`, and
+  ever, `totalQuestMinutes`, "–" while not loaded; campaigns running and
+  done), then a tile per campaign (`CampaignTiles.vue`, tabs "Aktiv" and
+  "Abgeschlossen"; loose quests get none): icon, colour stripe, title, this
+  week against its goal, an eight-week trend with the short label "8 Wochen"
+  (`QuestTrend.vue`, a small SVG named "Letzte 8 Wochen: ab 28.09. 2 Std., …,
+  diese Woche 4 Std."), the total and "Abschließen" (on a completed one
+  "Wieder öffnen"; it asks like the ring, see `todo-hierarchy.md`, with undo
+  in the toast). After the active tiles a dashed tile "Neue Kampagne" opens
+  the campaign form, as the plus button does there. The overview has no tree:
+  a campaign's quests show on its own page. A tile opens the campaign in
   the same view (`#/kampagnen?kampagne=<id>`, so Back closes it): its own
   `why` under the title, a group "Diese Woche" (this week against its goal as
   a bar, the eight-week trend labelled "letzte 8 Wochen" and the total), a
   group "Fortschritt" (the quests below it, never itself, see
   `todo-hierarchy.md`, as "x von y Quests" with a bar, and `GoalBurnup.vue`,
   which offers its switches only once it has two days to draw), "Bearbeiten"
-  and "…" with the campaign's own actions, and the quests below it as the
-  tree, with every row action the full list has. The campaign is the card,
-  not a row of the tree.
+  and "Abschließen" side by side, "…" with the campaign's own actions, and
+  the quests below it as the tree (dragging a row onto another re-parents
+  it). The campaign is the card, not a row of the tree. Inside a campaign the
+  plus button (and N) creates a quest below it, so its Warum and category are
+  taken over.
 - Einstellungen: `QuestTargetSetting.vue` reads and saves the overall goal.
 - Heute: one quiet line in the head that relates the day's quest time to
   what was worked (both from the same stretches, so the part is never more

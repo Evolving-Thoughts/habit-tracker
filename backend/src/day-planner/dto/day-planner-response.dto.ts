@@ -3,6 +3,7 @@ import { HabitScheduleType } from '../../habits/enums/habit-schedule-type.enum';
 import type { QuestHoursToday } from '../../quest-hours/quest-hours.dto';
 import type { CampaignColor } from '../../todos/campaign-style';
 import type { Campaign } from '../../todos/todo-ancestry';
+import type { Streak } from '../../habits/streaks';
 
 export type DayPlannerTodoStatus = 'pending' | 'completed';
 
@@ -60,6 +61,8 @@ export type DayPlannerHabitItemDto = {
   scheduleType: HabitScheduleType;
   isOverdue: boolean;
   timerEligible: boolean;
+  /** The daily's series (see habits/streaks.ts). */
+  streak: Streak;
 } & DayPlannerItemContext;
 
 export type DayPlannerItemDto = DayPlannerTodoItemDto | DayPlannerHabitItemDto;

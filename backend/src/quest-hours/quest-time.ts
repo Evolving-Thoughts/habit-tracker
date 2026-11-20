@@ -139,6 +139,7 @@ export function questWeek(
     endDate: dates[6],
     questMinutes: week.questMinutes,
     otherMinutes: week.otherMinutes,
+    totalQuestMinutes: ever.questMinutes,
     days: dates.map((date) => {
       const { questMinutes, otherMinutes } = byDay.get(date) ?? NOTHING;
       return { date, questMinutes, otherMinutes };

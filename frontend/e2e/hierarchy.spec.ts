@@ -17,7 +17,7 @@ const create = async (
 };
 /**
  * A campaign before it has quests: its colour makes it one. A plain
- * top-level quest is no campaign and does not stand in the tree.
+ * top-level quest is no campaign and gets no tile.
  */
 const campaign = (request: APIRequestContext, title: string) =>
   create(request, title, null, 30, { color: "berry" });
@@ -27,6 +27,11 @@ const open = async (page: Page) => {
   await expect(
     page.getByRole("heading", { name: "Kampagnen", exact: true }),
   ).toBeVisible();
+};
+/** A campaign's own page: its detail card and the tree of its quests. */
+const openCampaign = async (page: Page, id: number) => {
+  await page.goto(`/#/kampagnen?kampagne=${id}`);
+  await expect(page.locator("#campaign-detail-title")).toBeVisible();
 };
 const row = (page: Page, id: number) => page.locator(`[data-todo-id="${id}"]`);
 // Row actions live behind one "Aktionen für <Titel>" menu, shown at the end
@@ -45,19 +50,31 @@ const menuAction = async (
     .getByRole("menuitem", { name, exact: true })
     .click();
 };
+/** The same menu on an opened campaign's detail card. */
+const cardMenuAction = async (page: Page, title: string, name: string) => {
+  await page
+    .locator(".campaign-detail")
+    .getByRole("button", { name: `Aktionen für ${title}`, exact: true })
+    .click();
+  await page
+    .getByRole("menu", { name: title, exact: true })
+    .getByRole("menuitem", { name, exact: true })
+    .click();
+};
 
-test("Tree: add child, collapse, independent completion and reopen, persist", async ({
+test("Kampagne: a new quest from its page, collapse, the visible Abschließen and reopening persist", async ({
   page,
   request,
 }) => {
   const root = await campaign(request, "Lernprojekt abschließen");
-  await open(page);
-  await menuAction(
-    page,
-    root.id,
-    "Lernprojekt abschließen",
-    "Unter-Quest zu Lernprojekt abschließen hinzufügen",
-  );
+  await openCampaign(page, root.id);
+  // The plus button inside a campaign adds a quest to it.
+  await page
+    .getByRole("button", {
+      name: "Neue Quest in „Lernprojekt abschließen“",
+      exact: true,
+    })
+    .click();
   const dialog = page.getByRole("dialog");
   await dialog.locator("[name=title]").fill("Oberfläche entwickeln");
   await dialog.locator("[name=duration]").fill("90");
@@ -74,12 +91,17 @@ test("Tree: add child, collapse, independent completion and reopen, persist", as
       parentId: number | null;
     }[]
   ).find((t) => t.parentId === root.id)!;
+  const card = page.locator(".campaign-detail");
   // Progress counts the quest below, not the campaign's own 30 minutes.
-  await expect(row(page, root.id).locator(".row__count")).toHaveText(
-    "0/90 Min.",
+  await expect(card.locator(".campaign-detail__count")).toHaveText(
+    "0 von 1 Quest · 0 von 90 Min.",
   );
   // The campaign still has an open quest: it asks first, the quest stays open.
-  await row(page, root.id).getByRole("checkbox").click();
+  const complete = card.getByRole("button", {
+    name: "Kampagne Lernprojekt abschließen abschließen",
+    exact: true,
+  });
+  await complete.click();
   const question = page.getByRole("dialog", { name: "Kampagne abschließen?" });
   await expect(question).toContainText(
     "1 Quest in „Lernprojekt abschließen“ ist noch offen. Sie bleibt offen",
@@ -88,46 +110,55 @@ test("Tree: add child, collapse, independent completion and reopen, persist", as
     .getByRole("button", { name: "Abbrechen", exact: true })
     .click();
   await expect(question).toHaveCount(0);
-  await expect(row(page, root.id).getByRole("checkbox")).not.toBeChecked();
-  await row(page, root.id).getByRole("checkbox").click();
+  await expect(card.locator(".campaign-detail__state")).toHaveCount(0);
+  await complete.click();
   await question
     .getByRole("button", { name: "Kampagne abschließen", exact: true })
     .click();
-  await expect(row(page, root.id).getByRole("checkbox")).toBeChecked();
+  await expect(card.locator(".campaign-detail__state")).toHaveText(
+    "Abgeschlossen",
+  );
   await expect(row(page, child.id).getByRole("checkbox")).not.toBeChecked();
   const toast = page.locator(".undo-toast");
   await expect(toast).toContainText("„Lernprojekt abschließen“ abgeschlossen");
   await row(page, child.id).getByRole("checkbox").check();
-  await expect(row(page, root.id).getByRole("checkbox")).toBeChecked();
-  await expect(row(page, root.id).locator(".row__count")).toHaveText(
-    "90/90 Min.",
+  await expect(card.locator(".campaign-detail__count")).toHaveText(
+    "1 von 1 Quest · 90 von 90 Min.",
   );
   // The toast takes the tick back, as on Heute.
   await expect(toast).toContainText("„Oberfläche entwickeln“ erledigt");
   await toast.getByRole("button", { name: "Rückgängig", exact: true }).click();
-  // Reopening a child leaves the parent's own completion (and history) intact.
+  // Reopening a child leaves the campaign's own completion intact.
   await expect(row(page, child.id).getByRole("checkbox")).not.toBeChecked();
-  await expect(row(page, root.id).getByRole("checkbox")).toBeChecked();
-  await expect(row(page, root.id).locator(".row__count")).toHaveText(
-    "0/90 Min.",
+  await expect(card.locator(".campaign-detail__state")).toHaveText(
+    "Abgeschlossen",
   );
-  await row(page, root.id)
+  await card
     .getByRole("button", {
-      name: "Lernprojekt abschließen einklappen",
+      name: "Kampagne Lernprojekt abschließen wieder öffnen",
       exact: true,
     })
     .click();
-  await expect(row(page, child.id)).toHaveCount(0);
-  await row(page, root.id)
-    .getByRole("button", {
-      name: "Lernprojekt abschließen ausklappen",
-      exact: true,
-    })
-    .click();
-  await expect(row(page, child.id)).toBeVisible();
+  await expect(card.locator(".campaign-detail__state")).toHaveCount(0);
+
+  // A quest series collapses and expands in the campaign's tree.
+  const step = await create(request, "Formulare bauen", child.id);
   await page.reload();
-  await openView(page, "Kampagnen");
-  await expect(row(page, child.id)).toBeVisible();
+  await expect(row(page, step.id)).toBeVisible();
+  await row(page, child.id)
+    .getByRole("button", {
+      name: "Oberfläche entwickeln einklappen",
+      exact: true,
+    })
+    .click();
+  await expect(row(page, step.id)).toHaveCount(0);
+  await row(page, child.id)
+    .getByRole("button", {
+      name: "Oberfläche entwickeln ausklappen",
+      exact: true,
+    })
+    .click();
+  await expect(row(page, step.id)).toBeVisible();
 });
 test("Why: an Unter-Quest takes over the campaign's reason until it gets its own", async ({
   page,
@@ -137,10 +168,9 @@ test("Why: an Unter-Quest takes over the campaign's reason until it gets its own
   await request.patch(`${API_URL}/todos/${root.id}`, {
     data: { why: "Im März ins Ziel kommen" },
   });
-  await open(page);
-  await menuAction(
+  await openCampaign(page, root.id);
+  await cardMenuAction(
     page,
-    root.id,
     "Halbmarathon",
     "Unter-Quest zu Halbmarathon hinzufügen",
   );
@@ -186,7 +216,7 @@ test("Why: an Unter-Quest takes over the campaign's reason until it gets its own
   ).toHaveCount(0);
 
   // Writing an own reason, on purpose, gives the Unter-Quest its own.
-  await openView(page, "Kampagnen");
+  await openCampaign(page, root.id);
   await row(page, child.id)
     .getByRole("button", { name: "Laufschuhe kaufen bearbeiten", exact: true })
     .click();
@@ -218,7 +248,7 @@ test("Why: typing in the editor never detaches the inherited reason, and “Wied
       why: string | null;
       inheritedWhy: { text: string } | null;
     };
-  await open(page);
+  await openCampaign(page, root.id);
   const edit = async () => {
     await row(page, child.id)
       .getByRole("button", {
@@ -296,10 +326,10 @@ test("Tree: accessible move to parent and root, edit duration, preserve own sche
   const a = await campaign(request, "Backend verstehen"),
     b = await create(request, "Frontend verstehen"),
     leaf = await create(request, "Router lernen", b.id);
-  await open(page);
-  await menuAction(
+  // Frontend verstehen is a campaign by its quest: its card moves it.
+  await openCampaign(page, b.id);
+  await cardMenuAction(
     page,
-    b.id,
     "Frontend verstehen",
     "Frontend verstehen in eine Kampagne verschieben",
   );
@@ -313,8 +343,10 @@ test("Tree: accessible move to parent and root, edit duration, preserve own sche
     .getByRole("button", { name: "Verschieben", exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
-  await expect(row(page, b.id)).toHaveAttribute("data-depth", "1");
-  await expect(row(page, leaf.id)).toHaveAttribute("data-depth", "2");
+  // Below another campaign it is one no more; it stands in that one's tree.
+  await openCampaign(page, a.id);
+  await expect(row(page, b.id)).toHaveAttribute("data-depth", "0");
+  await expect(row(page, leaf.id)).toHaveAttribute("data-depth", "1");
   await row(page, b.id)
     .getByRole("button", { name: "Frontend verstehen bearbeiten", exact: true })
     .click();
@@ -339,8 +371,9 @@ test("Tree: accessible move to parent and root, edit duration, preserve own sche
     .getByRole("button", { name: "Verschieben", exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
-  await expect(row(page, b.id)).toHaveAttribute("data-depth", "0");
+  await expect(row(page, b.id)).toHaveCount(0);
   // A single quest moved to the top is no campaign: it leaves the tree.
+  await openCampaign(page, b.id);
   await menuAction(
     page,
     leaf.id,
@@ -374,10 +407,9 @@ test("Tree: review paused timer, cancel deletion, reject stale preview then conf
   expect(started.status()).toBe(201);
   const timer = ((await started.json()) as { timer: { id: string } }).timer;
   await request.post(`${API_URL}/timers/${timer.id}/pause`, { data: {} });
-  await open(page);
-  await menuAction(
+  await openCampaign(page, root.id);
+  await cardMenuAction(
     page,
-    root.id,
     "Lernprojekt",
     "Lernprojekt mit allen Unter-Quests löschen",
   );
@@ -388,9 +420,8 @@ test("Tree: review paused timer, cancel deletion, reject stale preview then conf
     .getByRole("button", { name: "Nicht löschen", exact: true })
     .click();
   await expect(row(page, child.id)).toBeVisible();
-  await menuAction(
+  await cardMenuAction(
     page,
-    root.id,
     "Lernprojekt",
     "Lernprojekt mit allen Unter-Quests löschen",
   );
@@ -406,12 +437,11 @@ test("Tree: review paused timer, cancel deletion, reject stale preview then conf
     .getByRole("button", { name: "Ja, löschen", exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
+  // The campaign is gone: the overview offers a new one.
   await expect(
-    page.getByText("Noch keine Kampagnen.", { exact: false }),
+    page.getByText("Keine aktive Kampagne.", { exact: false }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Neue Kampagne", exact: true }),
-  ).toBeFocused();
+  await expect(page.locator(".campaign-tile__create")).toBeVisible();
 });
 test("Tree: drag subtree between parents; invalid cycle is rejected", async ({
   page,
@@ -421,23 +451,21 @@ test("Tree: drag subtree between parents; invalid cycle is rejected", async ({
     testInfo.project.name.includes("mobile"),
     "Touch uses the tested move dialog",
   );
-  const a = await create(request, "A"),
-    b = await campaign(request, "B"),
+  const home = await campaign(request, "Umzug"),
+    a = await create(request, "A", home.id),
+    b = await create(request, "B", home.id),
     child = await create(request, "Kind", a.id);
-  // Room for the tiles above the tree, so both rows are on screen for the drag.
+  // Room for the card above the tree, so the rows are on screen for the drag.
   await page.setViewportSize({ width: 1280, height: 1000 });
-  await open(page);
-  // The tiles grow once their quest hours load; drag only after the tree settled.
-  await expect(
-    page.locator(`[data-campaign-tile="${b.id}"]`),
-  ).toContainText("diese Woche");
+  await openCampaign(page, home.id);
+  await expect(row(page, child.id)).toBeVisible();
   await row(page, a.id).dragTo(row(page, b.id));
   await expect(row(page, a.id)).toHaveAttribute("data-depth", "1");
   await expect(row(page, child.id)).toHaveAttribute("data-depth", "2");
   await row(page, b.id).dragTo(row(page, child.id));
   await expect(page.getByRole("alert")).toContainText("descendant");
 });
-test("Kampagnen: the tree holds campaigns only, an opened one starts below its card", async ({
+test("Kampagnen: the overview shows figures and tiles; a campaign's quests show on its page", async ({
   page,
   request,
 }) => {
@@ -447,15 +475,24 @@ test("Kampagnen: the tree holds campaigns only, an opened one starts below its c
   const marathon = await campaign(request, "Marathon im Frühjahr");
   const loose = await create(request, "Zahnarzt");
   await open(page);
+  await expect(page.locator(`[data-campaign-tile="${book.id}"]`)).toBeVisible();
   await expect(
-    page.getByRole("heading", {
-      name: "Kampagnen und ihre Quests",
-      exact: true,
-    }),
+    page.locator(`[data-campaign-tile="${marathon.id}"]`),
   ).toBeVisible();
-  await expect(row(page, book.id)).toBeVisible();
-  await expect(row(page, marathon.id)).toBeVisible();
-  await expect(row(page, loose.id)).toHaveCount(0);
+  await expect(page.locator(`[data-campaign-tile="${loose.id}"]`)).toHaveCount(
+    0,
+  );
+  // No tree on the overview: the quests live inside their campaign.
+  await expect(page.locator("[data-todo-id]")).toHaveCount(0);
+  await expect(page.locator('[data-stat="active"] dd')).toHaveText("2");
+  await expect(page.locator('[data-stat="done"] dd')).toHaveText("0");
+
+  // The dashed tile after the tiles makes a new campaign.
+  await page.locator(".campaign-tile__create").click();
+  const dialog = page.getByRole("dialog", { name: "Neue Kampagne" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Abbrechen", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
 
   await page
     .locator(`[data-campaign-tile="${book.id}"]`)
@@ -469,6 +506,12 @@ test("Kampagnen: the tree holds campaigns only, an opened one starts below its c
   await expect(row(page, series.id)).toHaveAttribute("data-depth", "0");
   await expect(row(page, chapter.id)).toHaveAttribute("data-depth", "1");
   const card = page.locator(".campaign-detail");
+  await expect(
+    card.getByRole("button", {
+      name: "Kampagne Buch schreiben abschließen",
+      exact: true,
+    }),
+  ).toBeVisible();
   await card
     .getByRole("button", { name: "Aktionen für Buch schreiben", exact: true })
     .click();
@@ -481,20 +524,17 @@ test("Kampagnen: the tree holds campaigns only, an opened one starts below its c
     "In Kampagne verschieben …",
     "Löschen",
   ]);
-  await menu
-    .getByRole("menuitem", {
-      name: "Unter-Quest zu Buch schreiben hinzufügen",
-      exact: true,
-    })
+  await page.keyboard.press("Escape");
+  await page
+    .getByRole("button", { name: "Neue Quest in „Buch schreiben“", exact: true })
     .click();
-  const dialog = page.getByRole("dialog");
-  await dialog.locator("[name=title]").fill("Lektorat suchen");
-  await dialog
+  const create_ = page.getByRole("dialog", { name: "Neue Quest" });
+  await create_.locator("[name=title]").fill("Lektorat suchen");
+  await create_
     .getByRole("button", { name: "Quest erstellen", exact: true })
     .click();
-  await expect(dialog).not.toBeVisible();
+  await expect(create_).not.toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Lektorat suchen", exact: true }),
   ).toBeVisible();
-  await expect(card.getByRole("button", { name: /bearbeiten$/ })).toBeFocused();
 });

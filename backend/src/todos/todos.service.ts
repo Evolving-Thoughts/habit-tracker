@@ -190,7 +190,9 @@ export class TodosService {
           timeOfDay,
           backlogPosition:
             scheduledDate === null
-              ? await this.nextBacklogPosition(manager, userId)
+              ? dto.backlogPlace === 'top'
+                ? await this.firstBacklogPosition(manager, userId)
+                : await this.nextBacklogPosition(manager, userId)
               : null,
           plannedDurationMinutes: dto.plannedDurationMinutes ?? null,
           ...campaign,
@@ -448,14 +450,35 @@ export class TodosService {
     manager: EntityManager,
     userId: string,
   ): Promise<number> {
+    const last = await this.backlogEdge(manager, userId, 'MAX');
+    return last === null ? 0 : last + 1;
+  }
+
+  /**
+   * The place before every quest of the user that has no day, in the same
+   * transaction as the insert; positions may go below zero.
+   */
+  private async firstBacklogPosition(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<number> {
+    const first = await this.backlogEdge(manager, userId, 'MIN');
+    return first === null ? 0 : first - 1;
+  }
+
+  private async backlogEdge(
+    manager: EntityManager,
+    userId: string,
+    edge: 'MIN' | 'MAX',
+  ): Promise<number | null> {
     const result = await manager
       .getRepository(TodoEntity)
       .createQueryBuilder('todo')
-      .select('MAX("todo"."backlogPosition")', 'last')
+      .select(`${edge}("todo"."backlogPosition")`, 'edge')
       .where('"todo"."userId" = :userId', { userId })
       .andWhere('"todo"."scheduledDate" IS NULL')
-      .getRawOne<{ last: number | null }>();
-    return result?.last == null ? 0 : Number(result.last) + 1;
+      .getRawOne<{ edge: number | null }>();
+    return result?.edge == null ? null : Number(result.edge);
   }
 
   private validatePlan(

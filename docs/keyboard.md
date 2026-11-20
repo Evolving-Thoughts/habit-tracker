@@ -102,8 +102,9 @@ Per row kind:
 | Heute: done or skipped | nothing | nothing (reopening stays a click) | nothing |
 | Plan: open quest (also one left behind) | stopwatch | tick, new undo toast in Plan | onto a day shown on the board like dragging (optimistic, at the end of the day's order); a day beyond the board via `reschedule`; never into the past |
 | Plan: appointment | stopwatch | tick | opens "Verschieben" |
-| Plan: Daily, done quest | nothing | nothing | nothing |
-| Plan: open quest of a day, focus on its card | as above | as above | as above; in addition ArrowUp / ArrowDown move it one place in the day's order and ArrowLeft / ArrowRight to the end of the day before or after among the days shown (as "Nach oben" / "Nach unten" in its menu and dragging; never into the past) |
+| Plan: stored open Daily run (also one left behind) | stopwatch if eligible | tick once it is due (its day is today or earlier), undo toast in Plan | within its window only (from today to `moveUntil`), like dragging; otherwise nothing |
+| Plan: forecast Daily run, done quest or run | nothing | nothing | nothing |
+| Plan: open quest or stored run of a day, focus on its card | as above | as above | as above; in addition ArrowUp / ArrowDown move it one place in the day's order and ArrowLeft / ArrowRight to the end of the day before or after among the days shown (as "Nach oben" / "Nach unten" in its menu and dragging; never into the past, a run never beyond its window) |
 | Questlog: open quest | stopwatch | tick, undo toast | plans it for that day with the editor's own save (`PATCH /todos/:id`), message in the status line |
 | Questlog: ticked here | nothing | nothing | nothing |
 | Plan: row of the Questlog column | stopwatch | tick, undo toast in Plan | onto that day of the board like dropping it (end of the day's order); a day beyond the board with the editor's save |
@@ -121,8 +122,9 @@ Home, End, Escape and Tab belong to the menu.
 
 N: Heute focuses its quick add; Plan focuses the quick add of its first
 column (today's, or the first day shown when the board starts later);
-Questlog opens its "Quest erstellen" dialog; Kampagnen opens its plus dialog
-(a new top quest). Everywhere else N goes to Heute and focuses the quick add
+Questlog opens its "Quest erstellen" dialog (its quick add takes Tab);
+Kampagnen opens its plus dialog: on the overview a new campaign, inside a
+campaign a new quest below it. Everywhere else N goes to Heute and focuses the quick add
 once it has loaded (`focusWhenReady`).
 
 ## Off switch (WCAG 2.1.4)

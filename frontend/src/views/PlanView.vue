@@ -13,15 +13,21 @@ import {
   getPlan,
   reorderBacklog,
   reorderDay,
+  rescheduleOccurrence,
   rescheduleTodo,
+  updateOccurrenceStatus,
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { planQuest, unplanQuest } from "../api/questlog.api";
 import AppIcon from "../components/AppIcon.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
-import MoveItemDialog from "../components/MoveItemDialog.vue";
+import MoveItemDialog, {
+  type MoveTarget,
+} from "../components/MoveItemDialog.vue";
 import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
-import DeleteItemDialog from "../components/DeleteItemDialog.vue";
+import DeleteItemDialog, {
+  type DeleteTarget,
+} from "../components/DeleteItemDialog.vue";
 import PlanDay from "../components/PlanDay.vue";
 import PlanOverdue from "../components/PlanOverdue.vue";
 import PlanQuestlog from "../components/PlanQuestlog.vue";
@@ -38,7 +44,11 @@ import {
 import { toggleTimer, useTimer } from "../composables/useTimer";
 import { useUndo } from "../composables/useUndo";
 import { useWrites } from "../composables/useWrites";
-import type { WeekPlanResponse, WeekPlanTodoEntry } from "../types/week-plan";
+import type {
+  WeekPlanEntry,
+  WeekPlanResponse,
+  WeekPlanTodoEntry,
+} from "../types/week-plan";
 import {
   quickMoveEntries,
   quickMoves,
@@ -57,23 +67,29 @@ import {
 import {
   boardColumns,
   dropOnDay,
+  dropRunOnDay,
   entryKey,
   firstDayFromQuery,
   fittingDays,
   isMovable,
+  isMovableRun,
   MAX_PLAN_DAYS,
   openEntries,
   planQuery,
   questlogEntry,
   questlogStartsOpen,
   shelveQuest,
+  runMayMoveTo,
   shiftedStart,
   stepDrop,
+  stepRunDrop,
   todayScroll,
   type BoardDrop,
   type Drop,
+  type OpenRun,
   type QuestlogChoice,
   type QuestlogQuest,
+  type RunDrop,
   type ShelfDrop,
 } from "../utils/week-plan";
 
@@ -86,15 +102,23 @@ const board = ref<HTMLElement | null>(null);
 const heading = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
 
-/** The quest whose editor is open, from the board or from the Questlog column. */
-const editing = ref<{ todoId: number } | null>(null);
-const moving = ref<WeekPlanTodoEntry | null>(null);
-/** "In Kampagne verschieben …" or "Löschen" for a quest of the board or column. */
-const menuDialog = ref<{
-  kind: "move" | "delete";
-  todoId: number;
-  title: string;
-} | null>(null);
+/**
+ * The editor that is open: a quest's (from the board or the Questlog
+ * column) or a daily's, with the notes of the run it was opened from.
+ */
+const editing = ref<
+  | { kind: "todo"; id: number }
+  | { kind: "habit"; id: number; occurrenceId: number | null }
+  | null
+>(null);
+/** "Anderer Tag …" for a quest or a run, and the day it is on now. */
+const moving = ref<{ target: MoveTarget; date: string } | null>(null);
+/** "In Kampagne verschieben …" (quests) or "Löschen" for a card. */
+const menuDialog = ref<
+  | { kind: "move"; todoId: number; title: string }
+  | { kind: "delete"; target: DeleteTarget }
+  | null
+>(null);
 const dialogBusy = ref(false);
 const dialogOpen = () =>
   !!editing.value || !!moving.value || !!menuDialog.value || dialogBusy.value;
@@ -255,6 +279,25 @@ const nothingPlanned = computed(
 
 /* The order of a day and moves between days, shown at once. */
 const status = ref("");
+/** Said in sight when a drop could not land, such as a run beyond its window. */
+const notice = ref("");
+
+/** Where an open entry now stands, for the live region. */
+function placeLine(
+  plan: WeekPlanResponse,
+  toDate: string,
+  matches: (entry: WeekPlanEntry) => boolean,
+  moved: boolean,
+): string {
+  const day = plan.days.find(({ date }) => date === toDate)!;
+  const open = openEntries(day);
+  const entry = open.find(matches)!;
+  return moved
+    ? fullStop(`„${entry.title}“ steht jetzt am ${dayLabel(toDate)}`)
+    : `„${entry.title}“ steht jetzt an Stelle ${open.indexOf(entry) + 1} von ${
+        open.length
+      }.`;
+}
 
 async function applyDrop(drop: Drop): Promise<void> {
   const before = plan.value;
@@ -262,16 +305,14 @@ async function applyDrop(drop: Drop): Promise<void> {
   const result = dropOnDay(before, drop);
   if (!result) return;
   const { write } = result;
-  const day = result.plan.days.find(({ date }) => date === drop.toDate)!;
-  const entry = openEntries(day).find(
-    (item) => item.type === "todo" && item.todoId === write.todoId,
-  )!;
   plan.value = result.plan;
-  status.value = write.moveTo
-    ? fullStop(`„${entry.title}“ steht jetzt am ${dayLabel(drop.toDate)}`)
-    : `„${entry.title}“ steht jetzt an Stelle ${
-        openEntries(day).indexOf(entry) + 1
-      } von ${openEntries(day).length}.`;
+  notice.value = "";
+  status.value = placeLine(
+    result.plan,
+    drop.toDate,
+    (item) => item.type === "todo" && item.todoId === write.todoId,
+    !!write.moveTo,
+  );
   const done = await writes.write(
     async () => {
       if (write.moveTo)
@@ -290,38 +331,125 @@ async function applyDrop(drop: Drop): Promise<void> {
   void reload(false);
 }
 
+/** An open stored run on the board or left behind, with the day it is on. */
+function findRun(occurrenceId: number): { run: OpenRun; date: string | null } | null {
+  const current = plan.value;
+  if (!current) return null;
+  for (const entry of current.overdue)
+    if (isMovableRun(entry) && entry.occurrenceId === occurrenceId)
+      return { run: entry, date: null };
+  for (const day of current.days)
+    for (const entry of day.entries)
+      if (isMovableRun(entry) && entry.occurrenceId === occurrenceId)
+        return { run: entry, date: day.date };
+  return null;
+}
+
+/** "bis Freitag, 21. Nov." or, when it may stay only where it is, nothing. */
+function windowLine(run: OpenRun): string {
+  return run.moveUntil
+    ? fullStop(`„${run.title}“ kann höchstens bis ${dayLabel(run.moveUntil)} warten`)
+    : `„${run.title}“ bleibt an seinem Tag.`;
+}
+
+/**
+ * A daily's run dropped or stepped onto a day: shown at once, then moved
+ * through the same path as Heute's "Morgen" and sorted into its new day.
+ * Beyond its window it stays and the board says how far it may go.
+ */
+async function applyRunDrop(drop: RunDrop): Promise<boolean> {
+  const before = plan.value;
+  if (!before || writes.busy.value) return false;
+  const result = dropRunOnDay(before, drop);
+  if (!result) {
+    const found = findRun(drop.occurrenceId);
+    if (found && found.date !== drop.toDate)
+      notice.value = windowLine(found.run);
+    return false;
+  }
+  const { write } = result;
+  plan.value = result.plan;
+  notice.value = "";
+  status.value = placeLine(
+    result.plan,
+    drop.toDate,
+    (item) => isMovableRun(item) && item.occurrenceId === write.occurrenceId,
+    !!write.moveTo,
+  );
+  const done = await writes.write(
+    async () => {
+      if (write.moveTo)
+        await rescheduleOccurrence(write.occurrenceId, write.moveTo);
+      if (write.order) await reorderDay(write.order);
+    },
+    {
+      key: "plan",
+      fallbackError: "Das Daily konnte nicht verschoben werden.",
+    },
+  );
+  if (done) return true;
+  plan.value = before;
+  status.value = "";
+  void reload(false);
+  return false;
+}
+
 /**
  * A step without dragging: "Nach oben" and "Nach unten" in a card's menu,
  * or an arrow key on the focused card (left and right a day). The focus
  * stays with the moved card: on its menu button, or on the card itself.
  */
 async function stepEntry(
-  entry: WeekPlanTodoEntry,
+  entry: WeekPlanEntry,
   direction: "up" | "down" | "left" | "right",
   focusOn: "menu" | "card" = "menu",
 ): Promise<void> {
   if (!shownPlan.value || writes.busy.value || dialogBusy.value) return;
-  const drop = stepDrop(shownPlan.value, entry.todoId, direction);
-  if (!drop) return;
-  await applyDrop(drop);
+  if (isMovable(entry)) {
+    const drop = stepDrop(shownPlan.value, entry.todoId, direction);
+    if (!drop) return;
+    await applyDrop(drop);
+  } else if (isMovableRun(entry)) {
+    const drop = stepRunDrop(shownPlan.value, entry.occurrenceId, direction);
+    if (!drop) {
+      if (direction === "left" || direction === "right")
+        notice.value = windowLine(entry);
+      return;
+    }
+    await applyRunDrop(drop);
+  } else return;
   await nextTick();
-  focusCard(entry.todoId, focusOn);
+  focusCard(entryKey(entry, ""), focusOn);
 }
 
-function focusCard(todoId: number, on: "menu" | "card"): void {
+function focusCard(key: string, on: "menu" | "card"): void {
   page.value
     ?.querySelector<HTMLElement>(
-      `[data-focus-key="todo-${todoId}"] ${
+      `[data-focus-key="${key}"] ${
         on === "menu" ? '[aria-haspopup="menu"]' : "[data-edit-button]"
       }`,
     )
     ?.focus();
 }
 
-function openEditing(entry: { todoId: number }): void {
+/**
+ * Opens the card's editor: a quest's, or a daily's with the notes of this
+ * run (a run the schedule only forecasts has none yet). `date` is the
+ * column the card stands in, for the focus to come back to.
+ */
+function openEditing(entry: WeekPlanEntry | { todoId: number }, date = ""): void {
   if (dialogBusy.value || writes.busy.value) return;
+  if ("type" in entry && entry.type === "habit") {
+    listFocus.remember(entryKey(entry, date));
+    editing.value = {
+      kind: "habit",
+      id: entry.habitId,
+      occurrenceId: entry.occurrenceId,
+    };
+    return;
+  }
   listFocus.remember(`todo-${entry.todoId}`);
-  editing.value = { todoId: entry.todoId };
+  editing.value = { kind: "todo", id: entry.todoId };
 }
 
 /**
@@ -403,8 +531,13 @@ function onMove(move: BoardDrop): void {
     void applyShelve(move.drop);
     return;
   }
-  const queued = backlog.value.some((todo) => todo.id === move.drop.todoId);
-  void (queued ? applyQuestlogDrop(move.drop) : applyDrop(move.drop));
+  if (move.kind === "run") {
+    void applyRunDrop(move.drop);
+    return;
+  }
+  const drop = move.drop;
+  const queued = backlog.value.some((todo) => todo.id === drop.todoId);
+  void (queued ? applyQuestlogDrop(drop) : applyDrop(drop));
 }
 
 /** "Nach oben" / "Nach unten" in the column; the focus stays on the menu. */
@@ -412,7 +545,7 @@ async function stepQuestlog(drop: ShelfDrop): Promise<void> {
   if (dialogBusy.value) return;
   await applyShelve(drop);
   await nextTick();
-  focusCard(drop.todoId, "menu");
+  focusCard(`todo-${drop.todoId}`, "menu");
 }
 
 /** The keyboard's way from the column: "Einplanen auf …" puts it at the end of that day. */
@@ -431,7 +564,30 @@ function planFromQuestlog(todo: QuestlogQuest, date: string): void {
 function openMoving(entry: WeekPlanTodoEntry): void {
   if (dialogBusy.value || writes.busy.value) return;
   listFocus.remember(entryKey(entry, ""));
-  moving.value = entry;
+  moving.value = {
+    target: {
+      type: "todo",
+      todoId: entry.todoId,
+      title: entry.title,
+      timeOfDay: entry.timeOfDay,
+    },
+    date: entry.scheduledDate,
+  };
+}
+
+/** "Anderer Tag …" of a run: any day of its window, as on Heute. */
+function openMovingRun(run: OpenRun, date: string | null): void {
+  if (dialogBusy.value || writes.busy.value) return;
+  listFocus.remember(entryKey(run, ""));
+  moving.value = {
+    target: {
+      type: "habit",
+      occurrenceId: run.occurrenceId,
+      title: run.title,
+      moveUntil: run.moveUntil,
+    },
+    date: date ?? "",
+  };
 }
 
 function openMenuDialog(
@@ -440,7 +596,20 @@ function openMenuDialog(
 ): void {
   if (dialogBusy.value || writes.busy.value) return;
   listFocus.remember(`todo-${todo.todoId}`);
-  menuDialog.value = { kind, todoId: todo.todoId, title: todo.title };
+  menuDialog.value =
+    kind === "move"
+      ? { kind, todoId: todo.todoId, title: todo.title }
+      : { kind, target: { kind: "todo", id: todo.todoId, title: todo.title } };
+}
+
+/** "Löschen" of a daily, from any of its runs: the whole daily goes. */
+function openDeleteDaily(entry: WeekPlanEntry, date: string): void {
+  if (entry.type !== "habit" || dialogBusy.value || writes.busy.value) return;
+  listFocus.remember(entryKey(entry, date));
+  menuDialog.value = {
+    kind: "delete",
+    target: { kind: "habit", id: entry.habitId, title: entry.title },
+  };
 }
 
 function closeDialogs(): void {
@@ -482,12 +651,14 @@ watch(
   { flush: "post" },
 );
 
-/* What the toast takes back after a quest was ticked with X. */
-type Ticked = { todoId: number; title: string };
+/* What the toast takes back after a quest or a run was ticked with X. */
+type Ticked =
+  | { kind: "todo"; todoId: number; title: string }
+  | { kind: "run"; occurrenceId: number; title: string };
 const { undo, offer: offerUndo, take: takeUndo } = useUndo<Ticked>();
 const campaignCompletion = useCampaignCompletion();
 async function complete(
-  entry: Ticked,
+  entry: { todoId: number; title: string },
   campaign: { id: number } | null,
 ): Promise<void> {
   // A campaign with open quests asks first, as everywhere.
@@ -502,16 +673,52 @@ async function complete(
   );
   if (done)
     offerUndo(
-      entry,
+      { kind: "todo", ...entry },
       open > 0 ? `„${entry.title}“ abgeschlossen` : `„${entry.title}“ erledigt`,
+    );
+}
+/** X on a run due by today: done through the same path as Heute's ring. */
+async function completeRun(run: OpenRun): Promise<void> {
+  const done = await writes.write(
+    () => updateOccurrenceStatus(run.occurrenceId, "completed"),
+    { key: "plan", fallbackError: "Das Daily konnte nicht erledigt werden." },
+  );
+  if (done)
+    offerUndo(
+      { kind: "run", occurrenceId: run.occurrenceId, title: run.title },
+      `„${run.title}“ erledigt`,
     );
 }
 async function undoLast(): Promise<void> {
   const entry = takeUndo();
   if (!entry) return;
-  await writes.write(() => updateTodoCompletion(entry.todoId, false), {
-    key: "plan",
-    fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
+  await writes.write(
+    () =>
+      entry.kind === "todo"
+        ? updateTodoCompletion(entry.todoId, false)
+        : updateOccurrenceStatus(entry.occurrenceId, "pending"),
+    {
+      key: "plan",
+      fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
+    },
+  );
+}
+
+/** "Überspringen": this run is left out, the daily goes on. */
+async function skipRun(run: OpenRun): Promise<void> {
+  if (writes.busy.value || dialogBusy.value) return;
+  const key = entryKey(run, "");
+  await listFocus.around(key, async () => {
+    if (
+      await writes.write(
+        () => updateOccurrenceStatus(run.occurrenceId, "skipped"),
+        {
+          key: "plan",
+          fallbackError: "Das Daily konnte nicht übersprungen werden.",
+        },
+      )
+    )
+      status.value = `„${run.title}“ übersprungen.`;
   });
 }
 
@@ -550,6 +757,41 @@ function moveByShortcut(entry: WeekPlanTodoEntry, date: string): boolean {
       status.value = fullStop(
         `„${entry.title}“ steht jetzt am ${dayLabel(date)}`,
       );
+  });
+  return true;
+}
+
+/**
+ * Moves a run by shortcut or menu like Heute: within its window only, onto
+ * the end of that day of the board, or beyond the board straight away.
+ */
+function moveRunByShortcut(
+  run: OpenRun,
+  from: string | null,
+  date: string,
+): boolean {
+  const current = plan.value;
+  if (!current || writes.busy.value || dialogBusy.value) return false;
+  if (date === from || !runMayMoveTo(run, date, current.today)) return false;
+  const day = shownDays.value.find((item) => item.date === date);
+  void listFocus.around(entryKey(run, ""), async () => {
+    if (day) {
+      await applyRunDrop({
+        occurrenceId: run.occurrenceId,
+        toDate: date,
+        index: openEntries(day).length,
+      });
+      return;
+    }
+    const moved = await writes.write(
+      () => rescheduleOccurrence(run.occurrenceId, date),
+      {
+        key: "plan",
+        fallbackError: "Das Daily konnte nicht verschoben werden.",
+      },
+    );
+    if (moved)
+      status.value = fullStop(`„${run.title}“ steht jetzt am ${dayLabel(date)}`);
   });
   return true;
 }
@@ -596,6 +838,20 @@ function openQuest(key: string | null): WeekPlanTodoEntry | null {
   return null;
 }
 
+/** An open stored run of the board by its row key, with its day (null: left behind). */
+function openRun(key: string | null): { run: OpenRun; date: string | null } | null {
+  const current = plan.value;
+  if (!current) return null;
+  for (const entry of current.overdue)
+    if (isMovableRun(entry) && entryKey(entry, "") === key)
+      return { run: entry, date: null };
+  for (const day of shownDays.value)
+    for (const entry of day.entries)
+      if (isMovableRun(entry) && entryKey(entry, day.date) === key)
+        return { run: entry, date: day.date };
+  return null;
+}
+
 /** The first column's quick add: today's, unless the board starts later. */
 function quickAddField(): HTMLElement | null {
   const day = shownDays.value[0];
@@ -606,7 +862,7 @@ function quickAddField(): HTMLElement | null {
     : null;
 }
 
-/** T, D and W: a quest of the board moves, one of the column is planned. */
+/** T, D and W: a quest or run of the board moves, one of the column is planned. */
 function moveRowByKey(
   key: string | null,
   dateFrom: (today: string) => string,
@@ -615,6 +871,8 @@ function moveRowByKey(
   const date = dateFrom(plan.value.today);
   const queued = questlogQuest(key);
   if (queued) return planQuestlogByKey(queued, date);
+  const found = openRun(key);
+  if (found) return moveRunByShortcut(found.run, found.date, date);
   const entry = openQuest(key);
   return !!entry && moveByShortcut(entry, date);
 }
@@ -622,11 +880,34 @@ function moveRowByKey(
 const timer = useTimer();
 
 /**
- * A card's menu: the quick moves T, D and W run, "Anderer Tag …",
+ * A card's menu, by what it is. `date` is the column it stands in; null
+ * for what was left behind (it has no place in a day yet, so no up or down).
+ */
+function entryMenu(entry: WeekPlanEntry, date: string | null): MenuEntry[] {
+  if (isMovable(entry)) return questMenu(entry);
+  if (isMovableRun(entry)) return runMenu(entry, date);
+  // A forecast run: only its daily can be edited or deleted yet.
+  if (entry.type === "habit" && entry.status === "pending")
+    return rowMenu(
+      entry.title,
+      {
+        edit: () => openEditing(entry, date ?? ""),
+        remove: {
+          run: () => openDeleteDaily(entry, date ?? ""),
+          ariaLabel: `Daily ${entry.title} ganz löschen`,
+        },
+      },
+      writes.busy.value || dialogBusy.value,
+    );
+  return [];
+}
+
+/**
+ * A quest's menu: the quick moves T, D and W run, "Anderer Tag …",
  * Bearbeiten, the stopwatch a compact card has no ▶ for, and up or down in
  * the day (not for what was left behind: it has no place in a day yet).
  */
-function entryMenu(entry: WeekPlanTodoEntry): MenuEntry[] {
+function questMenu(entry: WeekPlanTodoEntry): MenuEntry[] {
   const current = shownPlan.value;
   if (!current) return [];
   const busy = writes.busy.value || dialogBusy.value;
@@ -665,6 +946,52 @@ function entryMenu(entry: WeekPlanTodoEntry): MenuEntry[] {
   );
 }
 
+/**
+ * A run's menu, the same entries as on Heute: the quick moves its window
+ * allows, "Anderer Tag …", Überspringen (once it is due), Bearbeiten with
+ * this run's notes, the stopwatch, up or down in the day, and Löschen of
+ * the whole daily.
+ */
+function runMenu(run: OpenRun, date: string | null): MenuEntry[] {
+  const current = shownPlan.value;
+  if (!current) return [];
+  const busy = writes.busy.value || dialogBusy.value;
+  const due = date === null || date <= current.today;
+  const step = (direction: "up" | "down") =>
+    date !== null && stepRunDrop(current, run.occurrenceId, direction)
+      ? () => void stepEntry(run, direction)
+      : undefined;
+  return rowMenu(
+    run.title,
+    {
+      quickMoves: quickMoveEntries(
+        run.title,
+        quickMoves(current.today, { date, moveUntil: run.moveUntil }),
+        (move) => void moveRunByShortcut(run, date, move.date),
+        { disabled: busy },
+      ),
+      otherDay:
+        run.moveUntil !== null && run.moveUntil > (date ?? "")
+          ? { run: () => openMovingRun(run, date) }
+          : undefined,
+      skip: due ? () => void skipRun(run) : undefined,
+      edit: () => openEditing(run, date ?? ""),
+      timer: timerStep(
+        timer,
+        { kind: "occurrence", targetId: run.occurrenceId, title: run.title },
+        run.timerEligible,
+      ),
+      up: step("up"),
+      down: step("down"),
+      remove: {
+        run: () => openDeleteDaily(run, date ?? ""),
+        ariaLabel: `Daily ${run.title} ganz löschen`,
+      },
+    },
+    busy,
+  );
+}
+
 useShortcutHandlers({
   "quest.new": () => {
     if (isLoading.value) {
@@ -683,6 +1010,17 @@ useShortcutHandlers({
         { kind: "todo", targetId: queued.id, title: queued.title },
         queued.timerEligible,
       );
+    const found = openRun(key);
+    if (found)
+      return toggleTimer(
+        timer,
+        {
+          kind: "occurrence",
+          targetId: found.run.occurrenceId,
+          title: found.run.title,
+        },
+        found.run.timerEligible,
+      );
     const entry = openQuest(key);
     if (!entry) return false;
     return toggleTimer(
@@ -692,8 +1030,16 @@ useShortcutHandlers({
     );
   },
   "row.done": ({ key }) => {
+    if (writes.busy.value || dialogBusy.value) return false;
+    const found = openRun(key);
+    if (found) {
+      // A run can only be done once it is due, as on Heute.
+      if (found.date !== null && found.date > plan.value!.today) return false;
+      void listFocus.around(key!, () => completeRun(found.run));
+      return;
+    }
     const entry = openQuest(key) ?? questlogQuest(key);
-    if (!entry || writes.busy.value || dialogBusy.value) return false;
+    if (!entry) return false;
     const todoId = "todoId" in entry ? entry.todoId : entry.id;
     void listFocus.around(key!, () =>
       complete({ todoId, title: entry.title }, entry.campaign),
@@ -748,9 +1094,10 @@ useShortcutHandlers({
 
     <EditItemDialog
       v-if="editing"
-      :key="editing.todoId"
-      kind="todo"
-      :entity-id="editing.todoId"
+      :key="`${editing.kind}-${editing.id}`"
+      :kind="editing.kind"
+      :entity-id="editing.id"
+      :occurrence-id="editing.kind === 'habit' ? editing.occurrenceId : null"
       :return-focus="listFocus.returnFocus"
       @busy="dialogBusy = $event"
       @changed="onDialogDone"
@@ -758,9 +1105,9 @@ useShortcutHandlers({
     />
     <MoveItemDialog
       v-if="moving && plan"
-      :item="moving"
+      :item="moving.target"
       :today="plan.today"
-      :offer-today="moving.scheduledDate !== plan.today"
+      :offer-today="moving.date !== plan.today"
       :return-focus="listFocus.returnFocus"
       @busy="dialogBusy = $event"
       @moved="onDialogDone"
@@ -778,7 +1125,7 @@ useShortcutHandlers({
     />
     <DeleteItemDialog
       v-if="menuDialog?.kind === 'delete'"
-      :target="{ kind: 'todo', id: menuDialog.todoId, title: menuDialog.title }"
+      :target="menuDialog.target"
       :return-focus="listFocus.returnFocus"
       @busy="dialogBusy = $event"
       @deleted="onDialogDone"
@@ -789,6 +1136,7 @@ useShortcutHandlers({
       <p>{{ writeError }}</p>
     </div>
     <p class="visually-hidden" role="status">{{ status }}</p>
+    <p v-if="notice" class="plan-view__notice" role="status">{{ notice }}</p>
 
     <!-- Measured for the columns that fit; always there, whatever it holds. -->
     <div ref="frame" class="plan-view__frame">
@@ -839,13 +1187,14 @@ useShortcutHandlers({
             (todo) =>
               openMenuDialog('delete', { todoId: todo.id, title: todo.title })
           "
+          @created="writes.applied()"
         />
         <PlanOverdue
           v-if="hasOverdue"
           :entries="plan.overdue"
           :busy="writes.busy.value || dialogBusy"
-          :menu="entryMenu"
-          @edit="openEditing"
+          :menu="(entry) => entryMenu(entry, null)"
+          @edit="(entry) => openEditing(entry, 'overdue')"
           @move="onMove"
         />
         <PlanDay
@@ -854,8 +1203,8 @@ useShortcutHandlers({
           :day="day"
           :today="plan.today"
           :busy="writes.busy.value || dialogBusy"
-          :menu="entryMenu"
-          @edit="openEditing"
+          :menu="(entry) => entryMenu(entry, day.date)"
+          @edit="(entry) => openEditing(entry, day.date)"
           @arrow="(entry, key) => void stepEntry(entry, key, 'card')"
           @move="onMove"
           @created="writes.applied()"
@@ -932,6 +1281,13 @@ useShortcutHandlers({
   to {
     opacity: 0.5;
   }
+}
+
+.plan-view__notice {
+  margin: 0 0 var(--space-3);
+  color: var(--color-ink-muted);
+  font-size: 0.9375rem;
+  font-weight: 600;
 }
 
 .plan-view__quiet {

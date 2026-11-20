@@ -1,5 +1,6 @@
 import type { Campaign } from '../../todos/todo-ancestry';
 import type { InheritedWhy } from '../../todos/todo-hierarchy';
+import type { Streak } from '../streaks';
 import { HabitScheduleType } from '../enums/habit-schedule-type.enum';
 import { MissedOccurrencePolicy } from '../enums/missed-occurrence-policy.enum';
 import { Weekday } from '../enums/weekday.enum';
@@ -52,4 +53,6 @@ export type HabitResponseDto = {
   isActive: boolean;
   currentSchedule: ScheduleVersionResponse | null;
   upcomingSchedule: ScheduleVersionResponse | null;
+  /** Done runs in a row and the longest such series (see streaks.ts). */
+  streak: Streak;
 };

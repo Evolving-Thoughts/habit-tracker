@@ -59,6 +59,8 @@ export type DayPlannerHabitItem = {
   scheduleType: HabitScheduleType;
   isOverdue: boolean;
   timerEligible: boolean;
+  /** The daily's series: done runs in a row now, and the longest ever. */
+  streak: { current: number; best: number; unit: "runs" | "weeks" };
 } & DayPlannerItemContext;
 
 export type DayPlannerItem = DayPlannerTodoItem | DayPlannerHabitItem;

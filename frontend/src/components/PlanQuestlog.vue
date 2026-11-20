@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import AppIcon from "./AppIcon.vue";
 import PlanEntry from "./PlanEntry.vue";
+import QuickAddQuest from "./QuickAddQuest.vue";
 import { useSortable } from "../composables/useSortable";
 import { useTimer } from "../composables/useTimer";
 import { rowMenu, timerStep, type MenuEntry } from "../utils/row-actions";
@@ -18,6 +19,7 @@ import {
  * the Questlog's own order. Each card drags onto any day, or to another
  * place in the column; a quest from the board dropped here loses its day.
  * The keyboard plans and sorts through each card's menu (its days first).
+ * On top a quick add puts a new quest at the head or the end of its order.
  * Collapsed it is a slim rail.
  */
 const props = defineProps<{
@@ -39,6 +41,8 @@ const emit = defineEmits<{
   /** "In Kampagne verschieben …" */
   reparent: [todo: QuestlogQuest];
   remove: [todo: QuestlogQuest];
+  /** The quick add made a quest. */
+  created: [];
 }>();
 
 const list = ref<HTMLElement | null>(null);
@@ -119,6 +123,12 @@ function menu(todo: QuestlogQuest): MenuEntry[] {
       </button>
     </header>
     <div v-show="open" id="plan-questlog-list" class="plan-questlog__body">
+      <QuickAddQuest
+        class="plan-questlog__add"
+        :date="null"
+        label="Quest ins Questlog hinzufügen"
+        @created="emit('created')"
+      />
       <p class="plan-questlog__lead">
         Auf einen Tag ziehen oder über „…“ einplanen.
       </p>
@@ -213,6 +223,23 @@ function menu(todo: QuestlogQuest): MenuEntry[] {
 .plan-questlog__body {
   display: grid;
   gap: var(--space-2);
+}
+
+/* Like the quick add of a day: a translucent field without a frame. */
+.plan-questlog__add {
+  margin: 0;
+}
+
+.plan-questlog__add :deep(.input) {
+  min-height: var(--tap);
+  border-color: transparent;
+  background: var(--color-surface-quiet);
+  font-size: 0.9375rem;
+}
+
+.plan-questlog__add :deep(.input:focus) {
+  border-color: var(--color-line);
+  background: var(--color-surface);
 }
 
 /* The list is also where drops land, so it never collapses. */

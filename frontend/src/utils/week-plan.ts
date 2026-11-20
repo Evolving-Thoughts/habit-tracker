@@ -2,6 +2,7 @@ import type { TodoResponse } from "../types/todo";
 import type {
   WeekPlanDay,
   WeekPlanEntry,
+  WeekPlanHabitEntry,
   WeekPlanResponse,
   WeekPlanTodoEntry,
 } from "../types/week-plan";
@@ -14,12 +15,16 @@ export type OrderRef = { type: "todo" | "habit"; id: number };
 /** A quest dropped on a day: `index` is its place among the day's open rows. */
 export type Drop = { todoId: number; toDate: string; index: number };
 
+/** A daily's stored run dropped on a day, at `index` among its open rows. */
+export type RunDrop = { occurrenceId: number; toDate: string; index: number };
+
 /** A quest dropped into the Questlog column, at `index` of its list. */
 export type ShelfDrop = { todoId: number; index: number };
 
 /** Where a drag on the board ended: on a day or in the Questlog column. */
 export type BoardDrop =
   | { kind: "day"; drop: Drop }
+  | { kind: "run"; drop: RunDrop }
   | { kind: "questlog"; drop: ShelfDrop };
 
 /** What a drop asks of the server: move the quest, then sort its day. */
@@ -82,6 +87,9 @@ export function shiftedStart(
   return next < today ? today : next;
 }
 
+/** What drags on the board: open quests and open stored runs. */
+export const DRAGGABLE = "[data-todo-id], [data-run-id]";
+
 /** A key unique on the board; quests keep the key Heute uses. */
 export function entryKey(entry: WeekPlanEntry, date: string): string {
   if (entry.type === "todo") return `todo-${entry.todoId}`;
@@ -90,9 +98,34 @@ export function entryKey(entry: WeekPlanEntry, date: string): string {
     : `habit-${entry.occurrenceId}`;
 }
 
-/** Only open quests can be dragged or moved; dailies are fixed rows. */
+/** An open quest: it drags, moves and sorts. */
 export function isMovable(entry: WeekPlanEntry): entry is WeekPlanTodoEntry {
   return entry.type === "todo" && entry.status === "pending";
+}
+
+/** A daily's run that is stored and open, so it is sorted and moved like Heute's. */
+export type OpenRun = WeekPlanHabitEntry & { occurrenceId: number };
+
+/**
+ * An open stored run: it drags within its day, onto another day of its
+ * window and takes the arrow keys. A run the schedule only forecasts has
+ * nothing stored to sort or move yet.
+ */
+export function isMovableRun(entry: WeekPlanEntry): entry is OpenRun {
+  return (
+    entry.type === "habit" &&
+    entry.status === "pending" &&
+    entry.occurrenceId !== null
+  );
+}
+
+/** Whether a run may lie on `date`: from today to the end of its window. */
+export function runMayMoveTo(
+  entry: OpenRun,
+  date: string,
+  today: string,
+): boolean {
+  return date >= today && entry.moveUntil !== null && date <= entry.moveUntil;
 }
 
 export function openEntries(day: WeekPlanDay): WeekPlanEntry[] {
@@ -153,6 +186,67 @@ function questIn(
   );
 }
 
+/** The open stored run `occurrenceId` among `entries`, if it is there. */
+function runIn(
+  entries: readonly WeekPlanEntry[],
+  occurrenceId: number,
+): OpenRun | undefined {
+  return entries.find(
+    (item): item is OpenRun =>
+      isMovableRun(item) && item.occurrenceId === occurrenceId,
+  );
+}
+
+/** An open entry put on a day: the plan as shown, and the day's new order. */
+type Placed = { plan: WeekPlanResponse; order: OrderRef[] | null };
+
+/**
+ * Puts the open `entry` at `index` of the day `toDate`, as `placed` (the
+ * entry as it will stand there). It comes from the day `from.source`, from
+ * what was left behind (`from.overdue`), or from nowhere (a quest of the
+ * Questlog). Returns null when nothing changes.
+ */
+function place(
+  plan: WeekPlanResponse,
+  entry: WeekPlanEntry,
+  placed: WeekPlanEntry,
+  from: { source?: WeekPlanDay; overdue: boolean; moves: boolean },
+  toDate: string,
+  index: number,
+): Placed | null {
+  const target = plan.days.find((day) => day.date === toDate);
+  if (!target || toDate < plan.today) return null;
+  const rows = openEntries(target).filter((item) => item !== entry);
+  rows.splice(Math.max(0, Math.min(index, rows.length)), 0, placed);
+  const arranged = arrangeOpen(rows);
+
+  const before = dayOrder(openEntries(target));
+  const after = dayOrder(arranged);
+  const sorted =
+    placed.timeOfDay === null &&
+    (from.moves || JSON.stringify(before) !== JSON.stringify(after));
+  if (!from.moves && !sorted) return null;
+
+  return {
+    plan: {
+      ...plan,
+      overdue: from.overdue
+        ? plan.overdue.filter((item) => item !== entry)
+        : plan.overdue,
+      days: plan.days.map((day) => {
+        if (day === target) return withOpen(day, arranged);
+        if (day === from.source)
+          return withOpen(
+            day,
+            openEntries(day).filter((item) => item !== entry),
+          );
+        return day;
+      }),
+    },
+    order: sorted ? after : null,
+  };
+}
+
 /**
  * Applies a drop to the plan at once and says what to write. Dropped on a
  * day it is not planned for (another day, or any day for a quest left
@@ -172,51 +266,109 @@ export function dropOnDay(
     incoming || overdue
       ? undefined
       : plan.days.find((day) => questIn(day.entries, drop.todoId));
-  const target = plan.days.find((day) => day.date === drop.toDate);
   const entry =
     incoming ?? overdue ?? (source && questIn(source.entries, drop.todoId));
-  if (!target || !entry) return null;
-  if (drop.toDate < plan.today) return null;
-
+  if (!entry) return null;
   const moves = !!incoming || entry.scheduledDate !== drop.toDate;
   const placed: WeekPlanTodoEntry = moves
     ? { ...entry, scheduledDate: drop.toDate, isOverdue: false }
     : entry;
-  const rows = openEntries(target).filter((item) => item !== entry);
-  const index = Math.max(0, Math.min(drop.index, rows.length));
-  rows.splice(index, 0, placed);
-  const arranged = arrangeOpen(rows);
-
-  const before = dayOrder(openEntries(target));
-  const after = dayOrder(arranged);
-  const sorted =
-    placed.timeOfDay === null &&
-    (moves || JSON.stringify(before) !== JSON.stringify(after));
-  if (!moves && !sorted) return null;
-
+  const result = place(
+    plan,
+    entry,
+    placed,
+    { source, overdue: !!overdue, moves },
+    drop.toDate,
+    drop.index,
+  );
+  if (!result) return null;
   return {
-    plan: {
-      ...plan,
-      overdue: overdue
-        ? plan.overdue.filter((item) => item !== overdue)
-        : plan.overdue,
-      days: plan.days.map((day) => {
-        if (day === target) return withOpen(day, arranged);
-        if (day === source)
-          return withOpen(
-            day,
-            openEntries(day).filter((item) => item !== entry),
-          );
-        return day;
-      }),
-    },
+    plan: result.plan,
     write: {
       todoId: entry.todoId,
       moveTo: moves ? drop.toDate : null,
       confirmFixed: entry.timeOfDay !== null,
-      order: sorted ? after : null,
+      order: result.order,
     },
   };
+}
+
+/** What a run's drop asks of the server: move it in its window, then sort its day. */
+export type RunDropWrite = {
+  occurrenceId: number;
+  /** The day to move the run to; null when it stays on its day. */
+  moveTo: string | null;
+  /** The new order of the target day; null when nothing to sort changed. */
+  order: OrderRef[] | null;
+};
+
+/**
+ * A daily's stored run dropped on a day, applied at once like a quest's
+ * drop: on its own day it takes its place in the order; on another day it
+ * moves there, but only within its window (from today to `moveUntil`, the
+ * rule of Heute's "Morgen" and "Anderer Tag …"). Returns null when the drop
+ * changes nothing or leaves the window.
+ */
+export function dropRunOnDay(
+  plan: WeekPlanResponse,
+  drop: RunDrop,
+): { plan: WeekPlanResponse; write: RunDropWrite } | null {
+  const overdue = runIn(plan.overdue, drop.occurrenceId);
+  const source = overdue
+    ? undefined
+    : plan.days.find((day) => runIn(day.entries, drop.occurrenceId));
+  const entry = overdue ?? (source && runIn(source.entries, drop.occurrenceId));
+  if (!entry) return null;
+  const moves = !source || source.date !== drop.toDate;
+  if (moves && !runMayMoveTo(entry, drop.toDate, plan.today)) return null;
+  const placed: OpenRun = moves ? { ...entry, isOverdue: false } : entry;
+  const result = place(
+    plan,
+    entry,
+    placed,
+    { source, overdue: !!overdue, moves },
+    drop.toDate,
+    drop.index,
+  );
+  if (!result) return null;
+  return {
+    plan: result.plan,
+    write: {
+      occurrenceId: entry.occurrenceId,
+      moveTo: moves ? drop.toDate : null,
+      order: result.order,
+    },
+  };
+}
+
+/**
+ * Where a step takes the open entry that `matches`: up and down to the next
+ * place in its day's order, left and right to the end of the shown day
+ * before or after (never into the past). Null where there is no such place.
+ */
+function stepPlace(
+  plan: WeekPlanResponse,
+  matches: (entry: WeekPlanEntry) => boolean,
+  direction: "up" | "down" | "left" | "right",
+): { toDate: string; index: number } | null {
+  const dayIndex = plan.days.findIndex((day) =>
+    openEntries(day).some(matches),
+  );
+  const day = plan.days[dayIndex];
+  if (!day) return null;
+  const open = openEntries(day);
+  const entry = open.find(matches)!;
+  if (direction === "left" || direction === "right") {
+    const next = plan.days[dayIndex + (direction === "left" ? -1 : 1)];
+    if (!next || next.date < plan.today) return null;
+    return { toDate: next.date, index: openEntries(next).length };
+  }
+  if (!isSequenced(entry)) return null;
+  const sequence = open.filter(isSequenced);
+  const neighbour =
+    sequence[sequence.indexOf(entry) + (direction === "up" ? -1 : 1)];
+  if (!neighbour) return null;
+  return { toDate: day.date, index: open.indexOf(neighbour) };
 }
 
 /**
@@ -230,24 +382,36 @@ export function stepDrop(
   todoId: number,
   direction: "up" | "down" | "left" | "right",
 ): Drop | null {
-  const dayIndex = plan.days.findIndex((day) =>
-    questIn(openEntries(day), todoId),
+  const step = stepPlace(
+    plan,
+    (entry) => isMovable(entry) && entry.todoId === todoId,
+    direction,
   );
-  const day = plan.days[dayIndex];
-  if (!day) return null;
-  const open = openEntries(day);
-  const entry = questIn(open, todoId)!;
+  return step && { todoId, ...step };
+}
+
+/**
+ * The same steps for a daily's stored run; left and right stay within its
+ * window, so a run never goes where Heute could not move it.
+ */
+export function stepRunDrop(
+  plan: WeekPlanResponse,
+  occurrenceId: number,
+  direction: "up" | "down" | "left" | "right",
+): RunDrop | null {
+  const step = stepPlace(
+    plan,
+    (entry) => isMovableRun(entry) && entry.occurrenceId === occurrenceId,
+    direction,
+  );
+  if (!step) return null;
   if (direction === "left" || direction === "right") {
-    const next = plan.days[dayIndex + (direction === "left" ? -1 : 1)];
-    if (!next || next.date < plan.today) return null;
-    return { todoId, toDate: next.date, index: openEntries(next).length };
+    const entry = plan.days
+      .map((day) => runIn(day.entries, occurrenceId))
+      .find(Boolean)!;
+    if (!runMayMoveTo(entry, step.toDate, plan.today)) return null;
   }
-  if (!isSequenced(entry)) return null;
-  const sequence = open.filter(isSequenced);
-  const neighbour =
-    sequence[sequence.indexOf(entry) + (direction === "up" ? -1 : 1)];
-  if (!neighbour) return null;
-  return { todoId, toDate: day.date, index: open.indexOf(neighbour) };
+  return { occurrenceId, ...step };
 }
 
 /**
@@ -333,15 +497,24 @@ export function shelveQuest(
 }
 
 /**
- * What a drag means, read from the list it landed in: a day's list names
- * its date (`data-date`), the Questlog column's list says so
- * (`data-questlog`). The column of what was left behind takes no drops.
+ * What a drag means, read from the card (a quest names `data-todo-id`, a
+ * daily's stored run `data-run-id`) and the list it landed in: a day's list
+ * names its date (`data-date`), the Questlog column's list says so
+ * (`data-questlog`). The column of what was left behind takes no drops, and
+ * a run never goes into the Questlog.
  */
 export function boardDrop(
   item: HTMLElement,
   list: HTMLElement,
   index: number,
 ): BoardDrop | null {
+  const occurrenceId = Number(item.dataset.runId);
+  if (occurrenceId) {
+    const toDate = list.dataset.date;
+    return toDate
+      ? { kind: "run", drop: { occurrenceId, toDate, index } }
+      : null;
+  }
   const todoId = Number(item.dataset.todoId);
   if (!todoId) return null;
   if (list.dataset.questlog !== undefined)

@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import { IsInt, IsString, Matches, Max, Min } from 'class-validator';
+import type { Streak } from '../../habits/streaks';
 import type { Campaign } from '../../todos/todo-ancestry';
 import { MAX_PLAN_DAYS } from '../week-plan';
 
@@ -42,6 +43,12 @@ export type WeekPlanHabitEntryDto = {
   /** The stored run; null for a run the schedule only forecasts. */
   occurrenceId: number | null;
   status: 'pending' | 'completed' | 'skipped';
+  /** Last day an open stored run may move to; null for a forecast or once resolved. */
+  moveUntil: string | null;
+  /** An open stored run due by today can be measured. */
+  timerEligible: boolean;
+  /** The daily's series (see habits/streaks.ts). */
+  streak: Streak;
 } & WeekPlanEntryContext;
 
 export type WeekPlanEntryDto = WeekPlanTodoEntryDto | WeekPlanHabitEntryDto;

@@ -17,6 +17,7 @@ import { hrefOf } from "../routes";
 import type { DayPlannerItem, DayPlannerResponse } from "../types/day-planner";
 import CampaignChip from "../components/CampaignChip.vue";
 import { formatStopwatch } from "../utils/stopwatch";
+import { streakLine } from "../utils/streak";
 import {
   APPOINTMENT_LEAD_MINUTES,
   appointmentWindow,
@@ -99,6 +100,9 @@ const facts = computed(() => {
   const item = current.value;
   if (!item) return [];
   const parts: string[] = [];
+  // A daily's running series, calm and only while there is one.
+  const series = item.type === "habit" ? streakLine(item.streak) : null;
+  if (series) parts.push(series);
   if (item.plannedDurationMinutes != null)
     parts.push(`Soll ${formatDuration(item.plannedDurationMinutes)}`);
   if (item.workedMinutes > 0)

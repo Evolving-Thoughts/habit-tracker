@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { WEEK_ENTRY_FIELDS } from "../types/fixtures";
+import { WEEK_ENTRY_FIELDS, WEEK_HABIT_FIELDS } from "../types/fixtures";
 import type {
   WeekPlanDay,
   WeekPlanHabitEntry,
@@ -12,6 +12,7 @@ import {
   boardDrop,
   dayOrder,
   dropOnDay,
+  dropRunOnDay,
   entryKey,
   firstDayFromQuery,
   fittingDays,
@@ -23,6 +24,7 @@ import {
   shelveQuest,
   shiftedStart,
   stepDrop,
+  stepRunDrop,
   todayScroll,
   type QuestlogQuest,
 } from "./week-plan";
@@ -49,6 +51,7 @@ const daily = (
   overrides: Partial<WeekPlanHabitEntry> = {},
 ): WeekPlanHabitEntry => ({
   ...WEEK_ENTRY_FIELDS,
+  ...WEEK_HABIT_FIELDS,
   type: "habit",
   habitId: 5,
   occurrenceId,
@@ -316,6 +319,76 @@ describe("stepDrop", () => {
   });
 });
 
+describe("dropRunOnDay and stepRunDrop", () => {
+  const run = (overrides: Partial<WeekPlanHabitEntry> = {}) =>
+    daily(9, { moveUntil: WEDNESDAY, ...overrides });
+
+  it("sorts a run within its day", () => {
+    const result = dropRunOnDay(week({ [TODAY]: [quest(1), run()] }), {
+      occurrenceId: 9,
+      toDate: TODAY,
+      index: 0,
+    })!;
+    expect(titles(result.plan, TODAY)).toEqual(["Laufen", "Quest 1"]);
+    expect(result.write).toEqual({
+      occurrenceId: 9,
+      moveTo: null,
+      order: [
+        { type: "habit", id: 9 },
+        { type: "todo", id: 1 },
+      ],
+    });
+  });
+
+  it("moves a run within its window only, a run left behind too", () => {
+    const plan = week({ [TODAY]: [run()] });
+    expect(
+      dropRunOnDay(plan, { occurrenceId: 9, toDate: WEDNESDAY, index: 0 })!
+        .write,
+    ).toEqual({
+      occurrenceId: 9,
+      moveTo: WEDNESDAY,
+      order: [{ type: "habit", id: 9 }],
+    });
+    expect(
+      dropRunOnDay(plan, { occurrenceId: 9, toDate: "2026-11-19", index: 0 }),
+    ).toBeNull();
+    expect(
+      dropRunOnDay(week({ [TODAY]: [run({ moveUntil: null })] }), {
+        occurrenceId: 9,
+        toDate: WEDNESDAY,
+        index: 0,
+      }),
+    ).toBeNull();
+    const left = dropRunOnDay(week({}, [run({ isOverdue: true })]), {
+      occurrenceId: 9,
+      toDate: TODAY,
+      index: 0,
+    })!;
+    expect(left.plan.overdue).toEqual([]);
+    expect(left.write.moveTo).toBe(TODAY);
+  });
+
+  it("steps a run up and down, and left or right within its window", () => {
+    const plan = week({ [TODAY]: [quest(1), run()] });
+    expect(stepRunDrop(plan, 9, "up")).toEqual({
+      occurrenceId: 9,
+      toDate: TODAY,
+      index: 0,
+    });
+    expect(stepRunDrop(plan, 9, "down")).toBeNull();
+    expect(stepRunDrop(plan, 9, "right")).toEqual({
+      occurrenceId: 9,
+      toDate: WEDNESDAY,
+      index: 0,
+    });
+    expect(stepRunDrop(plan, 9, "left")).toBeNull();
+    expect(
+      stepRunDrop(week({ [WEDNESDAY]: [run()] }), 9, "right"),
+    ).toBeNull();
+  });
+});
+
 describe("shelveQuest", () => {
   it("sorts the Questlog column and says its whole new order", () => {
     const plan = week({});
@@ -372,7 +445,16 @@ describe("boardDrop", () => {
     });
   });
 
-  it("ignores a daily and the column of what was left behind", () => {
+  it("reads a run's drop on a day, never into the Questlog", () => {
+    const card = element({ runId: "9" });
+    expect(boardDrop(card, element({ date: WEDNESDAY }), 1)).toEqual({
+      kind: "run",
+      drop: { occurrenceId: 9, toDate: WEDNESDAY, index: 1 },
+    });
+    expect(boardDrop(card, element({ questlog: "" }), 0)).toBeNull();
+  });
+
+  it("ignores a forecast and the column of what was left behind", () => {
     expect(boardDrop(element({}), element({ date: TODAY }), 0)).toBeNull();
     expect(boardDrop(element({ todoId: "4" }), element({}), 0)).toBeNull();
   });

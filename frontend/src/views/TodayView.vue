@@ -60,6 +60,7 @@ import { tallyLine } from "../utils/day-tally";
 import { useDayClock } from "../composables/useDayClock";
 import { categoryMark } from "../utils/category-mark";
 import { workLine } from "../utils/quest-hours";
+import { streakLine } from "../utils/streak";
 import { useRouter } from "vue-router";
 import { hrefOf } from "../routes";
 import { onCardClick } from "../utils/card-click";
@@ -206,6 +207,8 @@ const focusMeta = computed(() => {
   const focus = agenda.value?.focus;
   if (!focus) return [];
   const parts: string[] = [];
+  const series = focus.type === "habit" ? streakLine(focus.streak) : null;
+  if (series) parts.push(series);
   if (focus.plannedDurationMinutes != null)
     parts.push(
       focus.workedMinutes > 0
