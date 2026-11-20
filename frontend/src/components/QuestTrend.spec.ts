@@ -27,7 +27,7 @@ describe("QuestTrend", () => {
     const svg = wrapper.get("svg");
     expect(svg.attributes("role")).toBe("img");
     expect(svg.attributes("aria-label")).toBe(
-      "Quest-Stunden der letzten 3 Wochen. Woche ab 02.11.: 0 Min., Woche ab 09.11.: 2 Std., Woche ab 16.11.: 1 Std.",
+      "Kampagnen-Stunden der letzten 3 Wochen. Woche ab 02.11.: 0 Min., Woche ab 09.11.: 2 Std., Woche ab 16.11.: 1 Std.",
     );
   });
 

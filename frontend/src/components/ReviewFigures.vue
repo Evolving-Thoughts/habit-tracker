@@ -44,7 +44,7 @@ const share = computed(() =>
     <h2 id="review-figures-title" class="visually-hidden">Kennzahlen</h2>
     <dl class="figures__list">
       <div class="figures__item figures__item--hours">
-        <dt class="card-title">Quest-Stunden</dt>
+        <dt class="card-title">Kampagnen-Stunden</dt>
         <dd class="figures__value">
           <template
             v-for="(part, index) in durationParts(figures.questMinutes)"
@@ -60,7 +60,7 @@ const share = computed(() =>
             <span
               class="figures__bar"
               role="progressbar"
-              aria-label="Quest-Stunden gegen das Wochenziel"
+              aria-label="Kampagnen-Stunden gegen das Wochenziel"
               :aria-valuenow="figures.questMinutes"
               aria-valuemin="0"
               :aria-valuemax="figures.targetMinutes"
@@ -82,7 +82,7 @@ const share = computed(() =>
         <dd class="figures__note">{{ averageNote }}</dd>
       </div>
       <div class="figures__item">
-        <dt class="card-title">Quest-Arbeit</dt>
+        <dt class="card-title">Kampagnen-Arbeit</dt>
         <dd class="figures__value">
           <template v-for="(part, index) in share" :key="index"
             >{{ part.value }} <span class="figures__unit">{{ part.unit }}</span></template

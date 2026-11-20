@@ -14,7 +14,7 @@ const label = computed(() => weekTrendText(trend.value));
   <section class="week-trend card" aria-labelledby="review-trend-title">
     <div class="card-head">
       <h2 id="review-trend-title" class="card-title">
-        Quest-Stunden · letzte Wochen
+        Kampagnen-Stunden · letzte Wochen
       </h2>
       <p
         v-if="trend.average !== null"

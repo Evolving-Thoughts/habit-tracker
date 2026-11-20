@@ -16,7 +16,7 @@ describe("ReviewWeekTrend", () => {
 
   it("draws eight weeks, the shown one in ink, with the average as a line", () => {
     const wrapper = mount(ReviewWeekTrend, { props: { hours } });
-    expect(wrapper.get("h2").text()).toBe("Quest-Stunden · letzte Wochen");
+    expect(wrapper.get("h2").text()).toBe("Kampagnen-Stunden · letzte Wochen");
     const bars = wrapper.findAll(".week-trend__bar");
     expect(bars).toHaveLength(8);
     expect(bars[7]!.classes()).toContain("week-trend__bar--shown");
@@ -38,7 +38,7 @@ describe("ReviewWeekTrend", () => {
   it("says the weeks and the average in words", () => {
     const wrapper = mount(ReviewWeekTrend, { props: { hours } });
     expect(wrapper.get('[role="img"]').attributes("aria-label")).toMatch(
-      /^Quest-Stunden der letzten 8 Wochen\. .*Woche ab 16\. Nov\.: 5 Std\. bisher; Schnitt der Wochen davor: 1 Std\. 34 Min\.$/,
+      /^Kampagnen-Stunden der letzten 8 Wochen\. .*Woche ab 16\. Nov\.: 5 Std\. bisher; Schnitt der Wochen davor: 1 Std\. 34 Min\.$/,
     );
   });
 

@@ -150,5 +150,5 @@ export function trendText(
     (minutes, index) =>
       `Woche ab ${formatStart(starts[index] ?? "")}: ${formatDuration(minutes)}`,
   );
-  return `Quest-Stunden der letzten ${weeks.length} Wochen. ${parts.join(", ")}`;
+  return `Kampagnen-Stunden der letzten ${weeks.length} Wochen. ${parts.join(", ")}`;
 }

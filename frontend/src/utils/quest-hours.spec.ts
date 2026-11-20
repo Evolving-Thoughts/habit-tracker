@@ -184,7 +184,7 @@ describe("trendText", () => {
     expect(
       trendText([0, 90], ["2026-11-09", "2026-11-16"], (date) => date.slice(5)),
     ).toBe(
-      "Quest-Stunden der letzten 2 Wochen. Woche ab 11-09: 0 Min., Woche ab 11-16: 1 Std. 30 Min.",
+      "Kampagnen-Stunden der letzten 2 Wochen. Woche ab 11-09: 0 Min., Woche ab 11-16: 1 Std. 30 Min.",
     );
   });
 });

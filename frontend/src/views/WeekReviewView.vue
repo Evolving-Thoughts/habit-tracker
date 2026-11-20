@@ -63,7 +63,7 @@ const {
   (signal) => getQuestHours(week.value, signal),
   {
     initial: null,
-    fallbackError: "Die Quest-Stunden konnten nicht geladen werden.",
+    fallbackError: "Die Kampagnen-Stunden konnten nicht geladen werden.",
     params: [week],
     resetOnLoad: true,
     refreshOnChange: () => true,

@@ -129,7 +129,7 @@ export function dayBarsText(bars: DayBar[]): string {
     (bar) =>
       `${dayLabel(bar.date)}: ${bar.isAhead ? "noch offen" : formatDuration(bar.minutes)}`,
   );
-  return `Quest-Stunden je Tag. ${parts.join(", ")}`;
+  return `Kampagnen-Stunden je Tag. ${parts.join(", ")}`;
 }
 
 export type CampaignHoursRow = {
@@ -269,7 +269,7 @@ export function weekTrendText(trend: WeekTrend): string {
     trend.average === null
       ? ""
       : `; Schnitt der Wochen davor: ${formatDuration(trend.average)}`;
-  return `Quest-Stunden der letzten ${trend.bars.length} Wochen. ${parts.join(", ")}${average}`;
+  return `Kampagnen-Stunden der letzten ${trend.bars.length} Wochen. ${parts.join(", ")}${average}`;
 }
 
 /** What the answer fields show for stored answers. */

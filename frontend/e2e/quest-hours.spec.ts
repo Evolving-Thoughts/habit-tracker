@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { openView, today } from "./helpers";
 import { API_URL } from "./environment";
 
-test("Quest-Stunden: goals, a campaign's colour and icon, its tile and the line in Heute", async ({
+test("Kampagnen-Stunden: goals, a campaign's colour and icon, its tile and the line in Heute", async ({
   page,
   request,
 }) => {
@@ -82,7 +82,7 @@ test("Quest-Stunden: goals, a campaign's colour and icon, its tile and the line 
   await expect(tile).toContainText(/Insgesamt \d+ Min\./);
   await expect(tile).toHaveAttribute("style", /--color-mark-berry/);
   await expect(tile.getByRole("img")).toHaveAccessibleName(
-    /^Quest-Stunden der letzten 8 Wochen\./,
+    /^Kampagnen-Stunden der letzten 8 Wochen\./,
   );
   expect(
     (await tile.getByRole("button").boundingBox())!.height,

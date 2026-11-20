@@ -170,7 +170,7 @@ describe("dayBars", () => {
     ]);
     expect(bars.filter((bar) => bar.isAhead)).toHaveLength(4);
     expect(dayBarsText(bars)).toMatch(
-      /^Quest-Stunden je Tag\. Montag, 16\. Nov\.: 2 Std\., .*Donnerstag, 19\. Nov\.: noch offen/,
+      /^Kampagnen-Stunden je Tag\. Montag, 16\. Nov\.: 2 Std\., .*Donnerstag, 19\. Nov\.: noch offen/,
     );
   });
 });
@@ -300,7 +300,7 @@ describe("weekTrend", () => {
     expect(trend.bars.some((bar) => bar.isRunning)).toBe(false);
     expect(trend.bars[0]!.label).toBe("10.09.");
     expect(weekTrendText(trend)).toMatch(
-      /^Quest-Stunden der letzten 8 Wochen\. Woche ab 10\. Sept\.: 1 Std\., .*5 Std\.; Schnitt der Wochen davor: 1 Std\. 34 Min\.$/,
+      /^Kampagnen-Stunden der letzten 8 Wochen\. Woche ab 10\. Sept\.: 1 Std\., .*5 Std\.; Schnitt der Wochen davor: 1 Std\. 34 Min\.$/,
     );
   });
 

@@ -14,11 +14,13 @@ export type ShortcutGroup = (typeof SHORTCUT_GROUPS)[number];
 
 export type ShortcutId =
   | "view.today"
+  | "view.calendar"
   | "view.plan"
   | "view.questlog"
   | "view.campaigns"
-  | "view.calendar"
+  | "view.dailies"
   | "view.review"
+  | "view.settings"
   | "quest.new"
   | "row.timer"
   | "row.done"
@@ -47,16 +49,26 @@ export type Shortcut = {
 };
 
 export const SHORTCUTS: readonly Shortcut[] = [
+  // The views in the order of the navigation.
   { id: "view.today", key: "h", group: "Ansichten", label: "Heute" },
+  { id: "focus.open", key: "f", group: "Ansichten", label: "Fokus" },
+  { id: "view.calendar", key: "k", group: "Ansichten", label: "Kalender" },
   { id: "view.plan", key: "p", group: "Ansichten", label: "Plan" },
   { id: "view.questlog", key: "q", group: "Ansichten", label: "Questlog" },
   { id: "view.campaigns", key: "c", group: "Ansichten", label: "Kampagnen" },
-  { id: "view.calendar", key: "k", group: "Ansichten", label: "Kalender" },
+  // D moves a row to tomorrow; A is the free letter in "Dailies".
+  { id: "view.dailies", key: "a", group: "Ansichten", label: "Dailies" },
   {
     id: "view.review",
     key: "r",
     group: "Ansichten",
     label: "Wochenrückblick",
+  },
+  {
+    id: "view.settings",
+    key: ",",
+    group: "Ansichten",
+    label: "Einstellungen",
   },
   { id: "quest.new", key: "n", group: "Quests", label: "Neue Quest" },
   {
@@ -93,12 +105,6 @@ export const SHORTCUTS: readonly Shortcut[] = [
     group: "Quests",
     label: "Auf nächste Woche verschieben (Montag)",
     writes: true,
-  },
-  {
-    id: "focus.open",
-    key: "f",
-    group: "Fokus-Modus",
-    label: "Fokus-Modus öffnen",
   },
   {
     id: "focus.timer",

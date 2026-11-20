@@ -64,46 +64,28 @@ describe("App navigation", () => {
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
-    // Four tabs, Plan and three more tabs for wide screens, Mehr, six views
-    // behind it, and the command button of wide screens.
+    // Eight view tabs (four of them for wide screens only), Mehr with the
+    // five views behind it on a phone, and the command button and the gear
+    // of wide screens.
     expect(wrapper.findAll("nav a, nav button")).toHaveLength(16);
     expect(tab(wrapper, "Befehle").attributes("aria-keyshortcuts")).toBe(
       "Control+K",
     );
   });
-  it("puts Plan after Heute on wide screens and first behind Mehr", async () => {
-    const wrapper = mountApp();
+  it("sends the old address of Kategorien to its section in Einstellungen", async () => {
+    const router = createAppRouter(createMemoryHistory());
+    await router.push("/kategorien");
+    expect(router.currentRoute.value.fullPath).toBe(
+      "/einstellungen?abschnitt=kategorien",
+    );
+    const wrapper = mount(App, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
     await flushPromises();
-    const labels = (selector: string) =>
-      wrapper.findAll(selector).map((link) => link.text());
-    expect(labels(".tab-bar__inner > a")).toEqual([
-      "Heute",
-      "Plan",
-      "Questlog",
-      "Kampagnen",
-      "Kalender",
-      "Wochenrückblick",
-      "Fokus",
-      "Dailies",
-    ]);
-    expect(wrapper.get(".tab-bar__inner > a:nth-child(2)").classes()).toContain(
-      "tab-bar__tab--wide",
-    );
-    // From 70rem the group on the right gets its own tabs.
-    expect(
-      wrapper
-        .findAll(".tab-bar__inner > a.tab-bar__tab--wider")
-        .map((link) => link.text()),
-    ).toEqual(["Wochenrückblick", "Fokus", "Dailies"]);
-    expect(
-      wrapper
-        .findAll(".tab-bar__secondary a.tab-bar__tab--below-wider")
-        .map((link) => link.text()),
-    ).toEqual(["Wochenrückblick", "Fokus", "Dailies"]);
-    expect(labels(".tab-bar__secondary a")[0]).toBe("Plan");
-    expect(wrapper.get(".tab-bar__secondary a").classes()).toContain(
-      "tab-bar__tab--narrow",
-    );
+    const title = wrapper.get("#abschnitt-kategorien h2");
+    expect(title.text()).toBe("Kategorien");
+    expect(document.activeElement).toBe(title.element);
   });
   it("opens the dailies and marks only that navigation link current", async () => {
     const wrapper = mountApp();
@@ -289,6 +271,12 @@ describe("App shortcuts", () => {
     press("k");
     await flushPromises();
     expect(wrapper.find('[data-view="calendar"]').exists()).toBe(true);
+    press("a");
+    await flushPromises();
+    expect(wrapper.find('[data-view="habits"]').exists()).toBe(true);
+    press(",");
+    await flushPromises();
+    expect(wrapper.find('[data-view="settings"]').exists()).toBe(true);
     press("f");
     await flushPromises();
     expect(wrapper.find('[data-view="focus"]').exists()).toBe(true);
@@ -325,6 +313,32 @@ describe("App shortcuts", () => {
     await flushPromises();
     expect(wrapper.find('input[role="combobox"]').exists()).toBe(false);
     expect(wrapper.find('[data-view="review"]').exists()).toBe(true);
+  });
+
+  it("lists the views in the command menu in the order of the navigation", async () => {
+    const wrapper = mountApp();
+    await flushPromises();
+    press("k", { ctrlKey: true });
+    await flushPromises();
+    const views = wrapper.get('[role="group"][aria-label="Ansichten"]');
+    expect(
+      views.findAll(".command-menu__label").map((label) => label.text()),
+    ).toEqual([
+      "Heute",
+      "Fokus",
+      "Kalender",
+      "Plan",
+      "Questlog",
+      "Kampagnen",
+      "Dailies",
+      "Wochenrückblick",
+      "Einstellungen",
+      "Kategorien",
+    ]);
+    // Kategorien opens its section in Einstellungen.
+    await views.findAll('[role="option"]').at(-1)!.trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-view="settings"]').exists()).toBe(true);
   });
 
   it("offers to pause the running stopwatch in the command menu", async () => {

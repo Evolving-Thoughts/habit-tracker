@@ -12,21 +12,27 @@ matching (`matchShortcuts`). The handling at run time, the "?" overview, the
 command menu's key hints and the list in Einstellungen all read it, so they
 cannot drift apart.
 
+The view keys follow the order of the top bar and use the view's initial
+where it is free: D already moves a row to tomorrow, so Dailies takes A
+("dAilies"), and Einstellungen takes the comma, the usual key for settings.
+
 | Key | Group | What it does |
 |---|---|---|
 | H | Ansichten | Heute |
+| F | Ansichten | Fokus-Modus |
+| K | Ansichten | Kalender |
 | P | Ansichten | Plan |
 | Q | Ansichten | Questlog |
 | C | Ansichten | Kampagnen |
-| K | Ansichten | Kalender |
+| A | Ansichten | Dailies |
 | R | Ansichten | Wochenrückblick |
+| , | Ansichten | Einstellungen |
 | N | Quests | Neue Quest (see below) |
 | Space | Quests | Start or pause the row's stopwatch |
 | X | Quests | Tick the row |
 | T | Quests | Move the row to today |
 | D | Quests | Move the row to tomorrow |
 | W | Quests | Move the row to next week's Monday |
-| F | Fokus-Modus | Open the Fokus-Modus |
 | Space | Fokus-Modus | Start, pause or resume its stopwatch |
 | Ctrl+Enter / Cmd+Enter | Fokus-Modus | Tick its quest, exactly like "Erledigt" |
 | Esc | Fokus-Modus | Back to Heute |
@@ -41,7 +47,7 @@ the window while any handler is mounted. Components register handlers with
 
 - `AppShortcuts.vue` (inside the signed-in shell only, so nothing fires on
   the sign-in page) registers the app-wide defaults as a `fallback` layer:
-  view keys, F, Ctrl+K, "?" and N's default. It also renders the command
+  view keys (F included), Ctrl+K, "?" and N's default. It also renders the command
   menu and the overview.
 - Heute, Plan, Questlog, Kampagnen and the Fokus-Modus register their own
   keys on top. A handler returns `false` when it does not apply; the next
@@ -55,7 +61,7 @@ the window while any handler is mounted. Components register handlers with
 Each is covered by `utils/shortcuts.spec.ts` and
 `composables/useShortcuts.spec.ts`.
 
-- Single keys (letters, "?", Space) never fire while the focus is in a text
+- Single keys (letters, ",", "?", Space) never fire while the focus is in a text
   field, a date field, a select or an editor (contenteditable, so also the
   Tiptap notes), never with Ctrl, Alt or Cmd held (AltGr arrives as Ctrl+Alt
   and is left alone too), and not with Shift, except "?" which needs it.
@@ -125,20 +131,22 @@ shows the switched-off keys dimmed.
 
 ## Where hints show
 
-Key hints (in the overview, the menu's entries, beside "Befehle" in the bar)
-and the settings section show where a keyboard is likely:
+Key hints (in the overview and the menu's entries) and the settings section
+show where a keyboard is likely:
 `(hover: hover) and (pointer: fine)`, or once a key has reached a shortcut on
 this page (a phone or tablet with a keyboard attached). A single key that is
 switched off shows no hint in the menu. Nothing breaks on touch-only devices;
-the command button is only in the wide bar.
+the command button is only in the wide bar. Its tooltip names Ctrl+K and
+the gear's names the comma; both carry `aria-keyshortcuts`.
 
 ## Command menu
 
 `CommandMenu.vue` on `ModalDialog` (focus trap, Escape, focus return): a
 combobox field controlling a listbox (`aria-activedescendant`, groups
 "Ansichten" and "Aktionen" while nothing is typed, one ranked list while
-searching). Entries: every view (the Fokus-Modus as the action "Fokus-Modus
-starten"), "Neue Quest", pausing or resuming a running stopwatch, what the
+searching). Entries: every view in the order of the navigation (the Fokus-Modus also
+found as "Fokus-Modus starten"), then "Kategorien", which opens its section
+in Einstellungen (`#/einstellungen?abschnitt=kategorien`), "Neue Quest", pausing or resuming a running stopwatch, what the
 open view adds (Heute: "Offenes auf morgen verschieben", which opens the same
 confirmation as its button), the two other looks ("Darstellung: Dunkel",
 "Darstellung: Hell", "Darstellung: Wie das Gerät"; see `theme.md`) and

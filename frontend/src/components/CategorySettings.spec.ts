@@ -7,7 +7,7 @@ import {
   renameCategory,
   setCategoryTarget,
 } from "../api/categories.api";
-import CategoriesView from "./CategoriesView.vue";
+import CategorySettings from "./CategorySettings.vue";
 
 vi.mock("../api/categories.api", () => ({
   getCategories: vi.fn(),
@@ -19,7 +19,7 @@ vi.mock("../api/categories.api", () => ({
 enableAutoUnmount(afterEach);
 
 async function render() {
-  const wrapper = mount(CategoriesView);
+  const wrapper = mount(CategorySettings);
   await flushPromises();
   return wrapper;
 }
@@ -31,7 +31,7 @@ const button = (wrapper: Awaited<ReturnType<typeof render>>, label: string) =>
         item.text() === label || item.attributes("aria-label") === label,
     )!;
 
-describe("CategoriesView", () => {
+describe("CategorySettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getCategories).mockResolvedValue([{ id: 1, name: "Sport" }]);
@@ -65,6 +65,18 @@ describe("CategoriesView", () => {
     await button(wrapper, "Löschen").trigger("click");
     await flushPromises();
     expect(deleteCategory).toHaveBeenCalledWith(1);
+  });
+
+  it("says the weekly target counts completions, not minutes", async () => {
+    const wrapper = await render();
+    const field = wrapper.get(".category-settings__target-field");
+    expect(field.findAll("span").map((span) => span.text())).toEqual([
+      "Wochensoll",
+      "mal",
+    ]);
+    expect(wrapper.get(".category-settings__lead").text()).toContain(
+      "so oft willst du pro Woche etwas aus der Kategorie erledigen",
+    );
   });
 
   it("saves and clears the weekly target", async () => {

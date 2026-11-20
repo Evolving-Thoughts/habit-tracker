@@ -104,10 +104,10 @@ describe("WeekReviewView", () => {
     // The dashboard first, then what the week changed, then the questions.
     expect(sectionTitles(wrapper)).toEqual([
       "Kennzahlen",
-      "Quest-Stunden je Tag",
+      "Kampagnen-Stunden je Tag",
       "Stunden je Kampagne",
-      "Quest-Arbeit gegen Sonstiges",
-      "Quest-Stunden · letzte Wochen",
+      "Kampagnen-Arbeit gegen Sonstiges",
+      "Kampagnen-Stunden · letzte Wochen",
       "Fortschritt je Kampagne",
       "Erledigt 1",
       "Rückblick",
@@ -120,7 +120,7 @@ describe("WeekReviewView", () => {
         .get(".week-review__side")
         .findAll("h2")
         .map((heading) => heading.text()),
-    ).toEqual(["Stunden je Kampagne", "Quest-Arbeit gegen Sonstiges"]);
+    ).toEqual(["Stunden je Kampagne", "Kampagnen-Arbeit gegen Sonstiges"]);
   });
 
   it("shows the Dailies against what was due and the perfect week side by side", async () => {
@@ -245,7 +245,7 @@ describe("WeekReviewView", () => {
     expect(wrapper.find(".week-review__charts").exists()).toBe(false);
     expect(sectionTitles(wrapper)).toEqual([
       "Kennzahlen",
-      "Quest-Stunden · letzte Wochen",
+      "Kampagnen-Stunden · letzte Wochen",
       "Rückblick",
     ]);
     // The calm card stands where the charts would be.
@@ -305,10 +305,10 @@ describe("WeekReviewView", () => {
     expect(wrapper.get('[role="alert"]').text()).toContain("Weg");
     expect(sectionTitles(wrapper)).toEqual([
       "Kennzahlen",
-      "Quest-Stunden je Tag",
+      "Kampagnen-Stunden je Tag",
       "Stunden je Kampagne",
-      "Quest-Arbeit gegen Sonstiges",
-      "Quest-Stunden · letzte Wochen",
+      "Kampagnen-Arbeit gegen Sonstiges",
+      "Kampagnen-Stunden · letzte Wochen",
     ]);
   });
 

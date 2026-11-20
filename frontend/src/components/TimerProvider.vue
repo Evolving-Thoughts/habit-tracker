@@ -133,6 +133,7 @@ onUnmounted(() => {
     v-if="(timer || error) && !hideBar"
     class="timer-bar"
     aria-label="Aktuelle Stoppuhr"
+    data-sticky-top
   >
     <div v-if="timer" class="timer-bar__row">
       <div class="timer-bar__text">

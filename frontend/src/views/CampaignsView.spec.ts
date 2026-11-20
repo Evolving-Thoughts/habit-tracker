@@ -498,7 +498,7 @@ describe("CampaignsView", () => {
       ]);
       const [week, progress] = groups;
       expect(week!.attributes("aria-labelledby")).toBe("campaign-week-title");
-      expect(week!.text()).toContain("3 Std. 30 Min. von 6 Std. Quest-Stunden");
+      expect(week!.text()).toContain("3 Std. 30 Min. von 6 Std. Kampagnen-Stunden");
       expect(
         week!.get(".campaign-detail__bar > span").attributes("style"),
       ).toContain("width: 58.3");
@@ -506,7 +506,7 @@ describe("CampaignsView", () => {
         /^letzte 8 Wochen\s*insgesamt 12 Std\. 30 Min\.$/,
       );
       expect(week!.get("svg[role=img]").attributes("aria-label")).toContain(
-        "Quest-Stunden der letzten 8 Wochen.",
+        "Kampagnen-Stunden der letzten 8 Wochen.",
       );
       expect(progress!.get(".campaign-detail__count").text()).toBe(
         "1 von 3 Quests · 30 von 90 Min.",
@@ -542,7 +542,7 @@ describe("CampaignsView", () => {
       const card = w.get(".campaign-detail");
       expect(card.find(".campaign-detail__why").exists()).toBe(false);
       expect(card.find(".campaign-detail__bar").exists()).toBe(false);
-      expect(card.text()).toContain("45 Min. Quest-Stunden");
+      expect(card.text()).toContain("45 Min. Kampagnen-Stunden");
       expect(card.findAll(".campaign-detail__group")).toHaveLength(1);
       expect(card.find(".burnup-stub").exists()).toBe(false);
     });

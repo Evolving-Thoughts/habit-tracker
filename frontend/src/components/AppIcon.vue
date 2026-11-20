@@ -10,7 +10,6 @@ defineProps<{
     | "dailies"
     | "calendar"
     | "campaigns"
-    | "categories"
     | "history"
     | "settings"
     | "more"
@@ -107,18 +106,15 @@ defineProps<{
       <rect x="15" y="16" width="6" height="5" rx="1.5" />
       <path d="M12 8v4M6 16v-2h12v2" />
     </template>
-    <template v-else-if="name === 'categories'">
-      <path d="M3.5 12.5V4.5a1 1 0 0 1 1-1h8l8 8-9 9-8-8Z" />
-      <circle cx="8.5" cy="8.5" r="1.5" />
-    </template>
     <template v-else-if="name === 'history'">
       <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" />
       <path d="M3.5 4v4h4M12 8v4l3 2" />
     </template>
     <template v-else-if="name === 'settings'">
-      <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
-      <circle cx="16" cy="7" r="2" />
-      <circle cx="10" cy="17" r="2" />
+      <path
+        d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"
+      />
+      <circle cx="12" cy="12" r="3" />
     </template>
     <template v-else-if="name === 'more'">
       <circle cx="5.5" cy="12" r="1.2" fill="currentColor" />

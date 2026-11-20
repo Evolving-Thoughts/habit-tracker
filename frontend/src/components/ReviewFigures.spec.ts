@@ -18,7 +18,7 @@ describe("ReviewFigures", () => {
       },
     });
     const [hours, average, share] = items(wrapper);
-    expect(hours!.get("dt").text()).toBe("Quest-Stunden");
+    expect(hours!.get("dt").text()).toBe("Kampagnen-Stunden");
     // The number leads, the unit sits beside it in its own span.
     expect(hours!.get(".figures__value").text()).toBe("7 Std. 30 Min.");
     expect(
@@ -30,7 +30,7 @@ describe("ReviewFigures", () => {
     expect(bar.attributes("aria-valuetext")).toBe("7 Std. 30 Min. von 10 Std.");
     expect(bar.get("span").attributes("style")).toContain("width: 75%");
     expect(average!.text()).toBe("Tagesschnitt2 Std. 30 Min.über 3 Tage bisher");
-    expect(share!.text()).toBe("Quest-Arbeit75 %von 10 Std. gemessen");
+    expect(share!.text()).toBe("Kampagnen-Arbeit75 %von 10 Std. gemessen");
   });
 
   it("shows a missed goal as a number, the bar just stopping short", () => {
@@ -54,7 +54,7 @@ describe("ReviewFigures", () => {
       props: { hours: questHours({ today: "2026-11-15" }) },
     });
     const [hours, average, share] = items(wrapper);
-    expect(hours!.text()).toBe("Quest-Stunden0 Min.");
+    expect(hours!.text()).toBe("Kampagnen-Stunden0 Min.");
     expect(wrapper.find('[role="progressbar"]').exists()).toBe(false);
     expect(average!.get(".figures__value").text()).toBe("–");
     expect(share!.get(".figures__value").text()).toBe("–");

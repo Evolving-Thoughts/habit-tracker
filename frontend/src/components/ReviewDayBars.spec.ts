@@ -46,7 +46,7 @@ describe("ReviewDayBars", () => {
     const wrapper = mount(ReviewDayBars, { props: { hours } });
     const chart = wrapper.get('[role="img"]');
     expect(chart.attributes("aria-label")).toMatch(
-      /^Quest-Stunden je Tag\. Montag, 16\. Nov\.: 1 Std\. 30 Min\., Dienstag, 17\. Nov\.: 0 Min\., Mittwoch, 18\. Nov\.: 45 Min\., Donnerstag, 19\. Nov\.: noch offen/,
+      /^Kampagnen-Stunden je Tag\. Montag, 16\. Nov\.: 1 Std\. 30 Min\., Dienstag, 17\. Nov\.: 0 Min\., Mittwoch, 18\. Nov\.: 45 Min\., Donnerstag, 19\. Nov\.: noch offen/,
     );
   });
 });

@@ -10,7 +10,7 @@ const total = computed(() => props.hours.questMinutes + props.hours.otherMinutes
 const parts = computed(() => [
   {
     key: "quest",
-    name: "Quest-Arbeit",
+    name: "Kampagnen-Arbeit",
     minutes: props.hours.questMinutes,
     share: percentOf(props.hours.questMinutes, total.value) ?? 0,
   },
@@ -35,7 +35,7 @@ const label = computed(() =>
     aria-labelledby="review-split-title"
   >
     <h2 id="review-split-title" class="card-title">
-      Quest-Arbeit gegen Sonstiges
+      Kampagnen-Arbeit gegen Sonstiges
     </h2>
     <div class="quest-split__bar" role="img" :aria-label="label">
       <span
@@ -45,7 +45,7 @@ const label = computed(() =>
         :style="{ flexGrow: part.minutes }"
       />
     </div>
-    <!-- The share is the Quest-Arbeit figure above; here the two times. -->
+    <!-- The share is the Kampagnen-Arbeit figure above; here the two times. -->
     <ul class="quest-split__legend" aria-hidden="true">
       <li v-for="part in parts" :key="part.key">
         <i :class="`quest-split__key quest-split__part--${part.key}`" />
