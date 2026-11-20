@@ -34,7 +34,11 @@ export function questHours(
     weeks: Array.from({ length: 8 }, (_, index) => {
       const date = new Date(`${start}T12:00:00Z`);
       date.setUTCDate(date.getUTCDate() - (7 - index) * 7);
-      return { startDate: date.toISOString().slice(0, 10), questMinutes: 0 };
+      return {
+        startDate: date.toISOString().slice(0, 10),
+        questMinutes: 0,
+        otherMinutes: 0,
+      };
     }),
     campaigns: [],
     ...overrides,

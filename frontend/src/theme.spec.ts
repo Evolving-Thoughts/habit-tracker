@@ -63,6 +63,10 @@ const PAIRS: Pair[] = [
   pair("ink-muted", "action-tint", TEXT, "editor code block"),
   pair("surface", "ink-muted", NON_TEXT, "check in a history dot"),
   pair("ink", "ground-deep", NON_TEXT, "progress fill on its track"),
+  // Chart bars and the review's meters: on cards, the lifted card and tracks.
+  pair("bar", "surface", NON_TEXT, "chart bar on a card"),
+  pair("bar", "surface-raised", NON_TEXT, "goal meter on the lifted card"),
+  pair("bar", "ground-deep", NON_TEXT, "meter fill on its track"),
   pair("ink-soft", "surface", NON_TEXT, "switch off, skipped ring"),
   pair("line-strong", "surface", NON_TEXT, "field edge on a card"),
   pair("line-strong", "ground", NON_TEXT, "field edge on the ground"),
@@ -151,6 +155,16 @@ describe("theme tokens", () => {
       "color-surface",
     );
     expect(step).toBeGreaterThan(1.1);
+  });
+
+  it("keeps the chart bars calmer than the text at night", () => {
+    // By day they are ink; at night a step below it, so text leads.
+    expect(tokenColor(themes.light, "color-bar")).toBe(
+      tokenColor(themes.light, "color-ink"),
+    );
+    expect(
+      tokenContrast(themes.dark, "color-bar", "color-surface"),
+    ).toBeLessThan(tokenContrast(themes.dark, "color-ink", "color-surface"));
   });
 
   it("sets color-scheme for each theme", () => {

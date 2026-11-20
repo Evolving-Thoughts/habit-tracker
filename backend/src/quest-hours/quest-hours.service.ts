@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
-import { UserEntity } from '../auth/auth.entities';
+import { DataSource } from 'typeorm';
 import { Clock } from '../common/clock';
+import { weekRange } from '../common/date/local-day';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { weekDates } from '../history/history-range';
 import { loadTodoAncestry } from '../todos/todo-ancestry';
@@ -12,18 +12,7 @@ import type {
   QuestTargetResponse,
 } from './quest-hours.dto';
 import { questWeek } from './quest-time';
-
-/** The user's overall weekly goal in minutes; null without one. */
-export async function weeklyQuestTarget(
-  manager: EntityManager,
-  userId: string,
-): Promise<number | null> {
-  const user = await manager.findOne(UserEntity, {
-    select: { id: true, weeklyQuestTargetMinutes: true },
-    where: { id: userId },
-  });
-  return user?.weeklyQuestTargetMinutes ?? null;
-}
+import { setWeeklyQuestTarget, weeklyQuestTarget } from './weekly-target';
 
 @Injectable()
 export class QuestHoursService {
@@ -47,7 +36,12 @@ export class QuestHoursService {
         where: { userId },
         order: { startedAt: 'ASC', id: 'ASC' },
       });
-      const weeklyTargetMinutes = await weeklyQuestTarget(manager, userId);
+      // The goal that held for this week, not the one set today.
+      const weeklyTargetMinutes = await weeklyQuestTarget(
+        manager,
+        userId,
+        start,
+      );
       return {
         ...questWeek(
           await withCampaigns(manager, userId, logs, ancestry),
@@ -60,23 +54,33 @@ export class QuestHoursService {
     });
   }
 
+  /** The goal of the running week. */
   async target(userId: string): Promise<QuestTargetResponse> {
     return {
-      weeklyTargetMinutes: await weeklyQuestTarget(this.db.manager, userId),
+      weeklyTargetMinutes: await weeklyQuestTarget(
+        this.db.manager,
+        userId,
+        this.currentMonday(),
+      ),
     };
   }
 
+  /**
+   * Sets the goal for the running week and the weeks after it. Weeks that
+   * are over keep the goal they had.
+   */
   setTarget(
     userId: string,
     weeklyTargetMinutes: number | null,
   ): Promise<QuestTargetResponse> {
+    const monday = this.currentMonday();
     return this.unitOfWork.run(userId, async (manager) => {
-      await manager.update(
-        UserEntity,
-        { id: userId },
-        { weeklyQuestTargetMinutes: weeklyTargetMinutes },
-      );
+      await setWeeklyQuestTarget(manager, userId, monday, weeklyTargetMinutes);
       return { weeklyTargetMinutes };
     });
+  }
+
+  private currentMonday(): string {
+    return weekRange(this.clock.today()).startDate;
   }
 }

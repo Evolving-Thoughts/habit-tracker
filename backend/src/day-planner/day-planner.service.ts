@@ -34,7 +34,7 @@ import {
 import { resolvedOccurrences } from '../habit-occurrences/resolved-occurrences';
 import { loadHabitForecast } from '../history/habit-forecast';
 import { openTargetRuns, plannedHabits } from '../history/history-planning';
-import { weeklyQuestTarget } from '../quest-hours/quest-hours.service';
+import { weeklyQuestTarget } from '../quest-hours/weekly-target';
 import { questSoFar } from '../quest-hours/quest-time';
 import { compareInDay } from './day-order';
 import {
@@ -94,7 +94,7 @@ export class DayPlannerService {
         ),
         logsOfDays(this.db.manager, userId, startDate, endDate),
         loadTodoAncestry(this.db.manager, userId, today),
-        weeklyQuestTarget(this.db.manager, userId),
+        weeklyQuestTarget(this.db.manager, userId, startDate),
         loadStreaks(
           this.db.manager,
           occurrences.map((occurrence) => occurrence.habitId),

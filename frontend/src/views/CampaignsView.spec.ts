@@ -97,7 +97,11 @@ const questHours = (
   otherMinutes: 0,
   totalQuestMinutes: 0,
   days: [],
-  weeks: WEEKS.map((startDate) => ({ startDate, questMinutes: 0 })),
+  weeks: WEEKS.map((startDate) => ({
+    startDate,
+    questMinutes: 0,
+    otherMinutes: 0,
+  })),
   campaigns,
 });
 let router: Router;

@@ -22,6 +22,7 @@ import {
   progressChange,
   questCount,
   reviewFigures,
+  weekBarText,
   weekTrend,
   weekDistance,
   weekTrendText,
@@ -287,6 +288,7 @@ describe("weekTrend", () => {
     (questMinutes, index) => ({
       startDate: `2026-${index < 3 ? "09" : "10"}-${String(10 + index).padStart(2, "0")}`,
       questMinutes,
+      otherMinutes: 0,
     }),
   );
 
@@ -296,15 +298,34 @@ describe("weekTrend", () => {
     );
     expect(trend.average).toBe(94);
     expect(trend.averageAt).toBeCloseTo((94 / 300) * 100);
-    expect(trend.bars.map((bar) => bar.height)).toEqual([
+    expect(trend.bars.map((bar) => bar.questHeight)).toEqual([
       20, 40, 0, 60, 40, 20, 40, 100,
     ]);
+    expect(trend.bars.every((bar) => bar.otherHeight === 0)).toBe(true);
     expect(trend.bars.filter((bar) => bar.isShown)).toHaveLength(1);
     // A week that is over is no longer "bisher".
     expect(trend.bars.some((bar) => bar.isRunning)).toBe(false);
     expect(trend.bars[0]!.label).toBe("10.09.");
     expect(weekTrendText(trend)).toMatch(
-      /^Kampagnen-Stunden der letzten 8 Wochen\. Woche ab 10\. Sept\.: 1 Std\., .*5 Std\.; Schnitt der Wochen davor: 1 Std\. 34 Min\.$/,
+      /^Kampagnen-Stunden der letzten 8 Wochen, gestapelt aus Kampagnen-Arbeit und Sonstigem\. Woche ab 10\. Sept\.: 1 Std\. Kampagnen-Arbeit, 0 Min\. Sonstiges, .*5 Std\. Kampagnen-Arbeit, 0 Min\. Sonstiges; Schnitt der Kampagnen-Arbeit in den Wochen davor: 1 Std\. 34 Min\.$/,
+    );
+  });
+
+  it("stacks the other time on the quest time, on one scale with the average", () => {
+    const stacked = weeks.map((week, index) => ({
+      ...week,
+      otherMinutes: index === 7 ? 100 : index === 6 ? 1 : 0,
+    }));
+    const trend = weekTrend(
+      hours({ startDate: weeks[7]!.startDate, endDate: "2026-10-23", weeks: stacked }),
+    );
+    // The tallest stack is 400 minutes: 300 of quest time, 100 other.
+    expect(trend.bars[7]).toMatchObject({ questHeight: 75, otherHeight: 25 });
+    // A minute of other time still shows as a sliver.
+    expect(trend.bars[6]).toMatchObject({ questHeight: 30, otherHeight: 3 });
+    expect(trend.averageAt).toBeCloseTo((94 / 400) * 100);
+    expect(weekBarText(trend.bars[7]!)).toBe(
+      "Woche ab 17. Okt.: 5 Std. Kampagnen-Arbeit, 1 Std. 40 Min. Sonstiges",
     );
   });
 
@@ -317,7 +338,7 @@ describe("weekTrend", () => {
       false, false, false, false, false, false, false, true,
     ]);
     expect(weekTrendText(trend)).toContain(
-      "Woche ab 16. Nov.: 5 Std. bisher; Schnitt",
+      "Woche ab 16. Nov.: 5 Std. Kampagnen-Arbeit, 0 Min. Sonstiges bisher; Schnitt",
     );
   });
 

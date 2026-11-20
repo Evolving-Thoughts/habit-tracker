@@ -12,7 +12,7 @@ import ReviewDoneList from "../components/ReviewDoneList.vue";
 import ReviewFigures from "../components/ReviewFigures.vue";
 import ReviewQuestSplit from "../components/ReviewQuestSplit.vue";
 import ReviewWeekTrend from "../components/ReviewWeekTrend.vue";
-import WeekQuota from "../components/WeekQuota.vue";
+import { notifyDataChanged } from "../composables/data-sync";
 import { useLoader } from "../composables/useLoader";
 import type { QuestHoursResponse } from "../types/quest-hours";
 import type {
@@ -95,17 +95,46 @@ const ahead = computed(() => week.value > thisWeek());
 /* A week still ahead has nothing to compare or count yet. */
 const hasTrend = computed(
   () =>
-    !ahead.value && !!hours.value?.weeks.some((item) => item.questMinutes > 0),
+    !ahead.value &&
+    !!hours.value?.weeks.some(
+      (item) => item.questMinutes + item.otherMinutes > 0,
+    ),
 );
-/* An empty week keeps its figures only where earlier weeks give them weight. */
+/* The fourth figure: the week's Dailies and the perfect week, from the review. */
+const dailies = computed(() =>
+  review.value && !ahead.value
+    ? {
+        quota: review.value.weekQuota,
+        perfectWeek: review.value.perfectWeek,
+      }
+    : null,
+);
+const hasDailies = computed(
+  () =>
+    !!dailies.value &&
+    ((dailies.value.quota?.total ?? 0) > 0 ||
+      !!dailies.value.perfectWeek?.categories.length),
+);
+/*
+ * An empty week keeps its figures only where earlier weeks or its Dailies
+ * give them weight.
+ */
 const showFigures = computed(
-  () => !!hours.value && (!quiet.value || hasTrend.value),
+  () => !!hours.value && (!quiet.value || hasTrend.value || hasDailies.value),
 );
+/* The goal is changed for the running week on; a past week shows its own. */
+const goalEditable = computed(() => week.value === thisWeek());
 /* The charts only for measured time, never a wall of empty ones. */
 const measured = computed(
   () => !!hours.value && hours.value.questMinutes + hours.value.otherMinutes > 0,
 );
 const distance = computed(() => weekDistance(week.value, thisWeek()));
+
+/* The new goal shows at once; Heute and the rest refresh in the background. */
+function onTargetSaved(minutes: number | null): void {
+  if (hours.value) hours.value = { ...hours.value, weeklyTargetMinutes: minutes };
+  notifyDataChanged();
+}
 
 function onSaved(answers: WeekReviewAnswers): void {
   if (review.value) review.value = { ...review.value, answers };
@@ -162,6 +191,7 @@ function onSaved(answers: WeekReviewAnswers): void {
         <span class="week-review__bone week-review__bone--figure" />
         <span class="week-review__bone week-review__bone--figure" />
         <span class="week-review__bone week-review__bone--figure" />
+        <span class="week-review__bone week-review__bone--figure" />
       </div>
       <div class="week-review__charts">
         <span class="week-review__bone week-review__bone--days" />
@@ -187,7 +217,13 @@ function onSaved(answers: WeekReviewAnswers): void {
       </div>
 
       <!-- The dashboard: figures, the week's charts, the weeks before. -->
-      <ReviewFigures v-if="hours && showFigures" :hours="hours" />
+      <ReviewFigures
+        v-if="hours && showFigures"
+        :hours="hours"
+        :editable="goalEditable"
+        :dailies="dailies"
+        @target-saved="onTargetSaved"
+      />
       <div v-if="quiet" class="empty-state">
         <template v-if="ahead">
           <strong>Diese Woche liegt noch vor dir.</strong>
@@ -216,13 +252,11 @@ function onSaved(answers: WeekReviewAnswers): void {
         v-if="review && !quiet"
         :campaigns="review.campaigns"
       />
-      <WeekQuota
-        v-if="review && !ahead"
-        :quota="review.weekQuota"
-        :perfect-week="review.perfectWeek"
-        dashboard
+      <ReviewDoneList
+        v-if="review && !quiet"
+        :days="review.days"
+        :today="review.today"
       />
-      <ReviewDoneList v-if="review && !quiet" :days="review.days" />
       <ReviewAnswers
         v-if="review"
         :week="review.startDate"
@@ -331,7 +365,7 @@ function onSaved(answers: WeekReviewAnswers): void {
 
 /* On the phone the figures are one card: one bone of its size. */
 .week-review__bone--figure {
-  height: 13.5rem;
+  height: 18.5rem;
 }
 
 .week-review__bone--figure + .week-review__bone--figure {
@@ -352,7 +386,7 @@ function onSaved(answers: WeekReviewAnswers): void {
 
 @media (min-width: 40rem) {
   .week-review__figures-bones {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .week-review__bone--figure {
@@ -361,6 +395,12 @@ function onSaved(answers: WeekReviewAnswers): void {
 
   .week-review__bone--figure + .week-review__bone--figure {
     display: block;
+  }
+}
+
+@media (min-width: 64rem) {
+  .week-review__figures-bones {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 

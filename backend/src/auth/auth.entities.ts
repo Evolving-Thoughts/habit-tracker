@@ -1,5 +1,4 @@
 import {
-  Check,
   Column,
   CreateDateColumn,
   Entity,
@@ -11,19 +10,12 @@ import {
 } from 'typeorm';
 
 @Entity('users')
-@Check(
-  'CHK_users_weekly_quest_target',
-  '"weeklyQuestTargetMinutes" IS NULL OR "weeklyQuestTargetMinutes" BETWEEN 1 AND 6000',
-)
 export class UserEntity {
   @PrimaryGeneratedColumn('uuid') id!: string;
   @Column({ length: 254, unique: true }) email!: string;
   @Column({ type: 'text', select: false }) passwordHash!: string;
   @Column({ type: 'timestamptz', nullable: true }) verifiedAt!: Date | null;
   @CreateDateColumn({ type: 'timestamptz' }) createdAt!: Date;
-  /** Minutes of quest time to reach each week, over all campaigns. */
-  @Column({ type: 'integer', nullable: true })
-  weeklyQuestTargetMinutes!: number | null;
 }
 @Entity('auth_sessions')
 export class SessionEntity {

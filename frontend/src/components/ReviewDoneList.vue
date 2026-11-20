@@ -3,22 +3,30 @@ import { computed, ref, useId } from "vue";
 import AppIcon from "./AppIcon.vue";
 import CampaignChip from "./CampaignChip.vue";
 import type { WeekReviewItem, WeekReviewResponse } from "../types/week-review";
-import { dayLabel } from "../utils/history";
+import { shortDate, weekdayName } from "../utils/history";
 
-const props = defineProps<{ days: WeekReviewResponse["days"] }>();
+const props = defineProps<{
+  days: WeekReviewResponse["days"];
+  /** Marks this day in the week, when the week holds it. */
+  today?: string;
+}>();
 
 /** Up to this many entries a wide screen shows the list open. */
 const SHORT_LIST = 8;
 
-/* Only days with something on them; the rest would be empty headings. */
+/*
+ * All seven days, Monday to Sunday: on a wide screen each keeps its column,
+ * an empty one with a quiet dash. Narrower, the days stack and only those
+ * with something on them show (the empty ones are hidden by CSS).
+ */
 const groups = computed(() =>
-  props.days
-    .filter((day) => day.items.length)
-    .map((day) => ({
-      ...day,
-      done: day.items.filter((item) => item.status === "completed").length,
-    })),
+  props.days.map((day) => ({
+    ...day,
+    done: day.items.filter((item) => item.status === "completed").length,
+    isToday: day.date === props.today,
+  })),
 );
+const anyEntries = computed(() => groups.value.some((day) => day.items.length));
 const total = computed(() =>
   groups.value.reduce((sum, day) => sum + day.done, 0),
 );
@@ -64,16 +72,35 @@ function details(item: WeekReviewItem): string[] {
         {{ open ? "Liste ausblenden" : "Liste zeigen" }}
       </button>
     </div>
-    <p v-if="!groups.length" class="done-list__none">
+    <p v-if="!anyEntries" class="done-list__none">
       In dieser Woche ist nichts erledigt.
     </p>
     <div v-else v-show="open" :id="listId" class="done-list__days">
-      <div v-for="day in groups" :key="day.date" class="done-list__day">
+      <div
+        v-for="day in groups"
+        :key="day.date"
+        class="done-list__day"
+        :class="{
+          'done-list__day--empty': !day.items.length,
+          'done-list__day--today': day.isToday,
+        }"
+        :aria-current="day.isToday ? 'date' : undefined"
+        :data-date="day.date"
+      >
         <h3 class="done-list__date">
-          {{ dayLabel(day.date) }}
-          <span class="count">{{ day.done }}</span>
+          <span class="done-list__weekday"
+            >{{ day.isToday ? "Heute" : weekdayName(day.date)
+            }}<span class="done-list__comma">, </span></span
+          >
+          <span class="done-list__day-date">{{ shortDate(day.date) }}</span
+          >{{ day.items.length ? " " : ""
+          }}<span v-if="day.items.length" class="count">{{ day.done }}</span>
         </h3>
-        <ul class="done-list__items">
+        <p v-if="!day.items.length" class="done-list__empty">
+          <span aria-hidden="true">–</span
+          ><span class="visually-hidden">Nichts erledigt</span>
+        </p>
+        <ul v-else class="done-list__items">
           <li
             v-for="item in day.items"
             :key="`${item.type}-${item.id}`"
@@ -116,21 +143,35 @@ function details(item: WeekReviewItem): string[] {
   color: var(--color-ink-muted);
 }
 
-/* Days side by side where there is room, each a short list. */
+/* Narrower than a week of columns: the days with entries, one under another. */
 .done-list__days {
   display: grid;
   margin-top: var(--space-3);
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
-  gap: var(--space-4) var(--space-5);
+  gap: var(--space-4);
+}
+
+.done-list__day--empty {
+  display: none;
 }
 
 .done-list__date {
   display: flex;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
   align-items: baseline;
   margin: 0;
   font-size: 0.9375rem;
   font-weight: 800;
+}
+
+.done-list__day-date {
+  font-weight: 700;
+}
+
+.done-list__empty {
+  margin: var(--space-2) 0 0;
+  color: var(--color-ink-soft);
+  font-weight: 700;
 }
 
 .done-list__items {
@@ -195,5 +236,60 @@ function details(item: WeekReviewItem): string[] {
   align-items: center;
   color: var(--color-ink-muted);
   font-size: 0.875rem;
+}
+
+/*
+ * From 64rem the week as seven fixed columns, Monday to Sunday; empty days
+ * keep their place. Today is marked like in the day bars: "Heute" and a
+ * 2px ink line under its heading, never a frame.
+ */
+@media (min-width: 64rem) {
+  .done-list__days {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: var(--space-4) var(--space-3);
+  }
+
+  .done-list__day--empty {
+    display: block;
+  }
+
+  .done-list__date {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-bottom: var(--space-1);
+    border-bottom: 1px solid var(--color-line);
+  }
+
+  .done-list__comma {
+    display: none;
+  }
+
+  .done-list__day-date {
+    grid-row: 2;
+    color: var(--color-ink-muted);
+    font-size: 0.8125rem;
+  }
+
+  .done-list__day--today .done-list__date {
+    border-bottom: 2px solid var(--color-ink);
+  }
+
+  .done-list__item {
+    grid-template-columns: 1rem minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+
+  .done-list__state {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .done-list__title {
+    font-size: 0.875rem;
+  }
+
+  .done-list__meta {
+    font-size: 0.8125rem;
+  }
 }
 </style>

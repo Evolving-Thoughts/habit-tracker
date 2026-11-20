@@ -88,9 +88,8 @@ describe('Quest hours (e2e)', () => {
   });
   beforeEach(async () => {
     await db.query(
-      'TRUNCATE work_logs, timers, habit_occurrences, habit_schedule_versions, habits, todos CASCADE',
+      'TRUNCATE weekly_quest_targets, work_logs, timers, habit_occurrences, habit_schedule_versions, habits, todos CASCADE',
     );
-    await db.query('UPDATE users SET "weeklyQuestTargetMinutes" = NULL');
   });
   afterAll(() => app.close());
 
@@ -178,8 +177,8 @@ describe('Quest hours (e2e)', () => {
       { date: '2026-11-18', questMinutes: 75, otherMinutes: 0 },
     ]);
     expect(body.weeks.slice(-2)).toEqual([
-      { startDate: '2026-11-09', questMinutes: 90 },
-      { startDate: MONDAY, questMinutes: 195 },
+      { startDate: '2026-11-09', questMinutes: 90, otherMinutes: 0 },
+      { startDate: MONDAY, questMinutes: 195, otherMinutes: 30 },
     ]);
     expect(body.campaigns).toEqual([
       {
@@ -252,7 +251,8 @@ describe('Quest hours (e2e)', () => {
       parentId: foreign.id,
     });
     await db.query(
-      'UPDATE users SET "weeklyQuestTargetMinutes" = 3000 WHERE id = $1',
+      `INSERT INTO weekly_quest_targets ("userId", "validFrom", minutes)
+       VALUES ($1, '2026-11-02', 3000)`,
       [OTHER_USER],
     );
     await log(
@@ -289,15 +289,61 @@ describe('Quest hours (e2e)', () => {
     ).toMatchObject({ color: 'moss', weeklyTargetMinutes: 600 });
     expect(
       await db.query(
-        'SELECT id, "weeklyQuestTargetMinutes" FROM users WHERE id IN ($1, $2) ORDER BY email',
-        [TEST_USER, OTHER_USER],
+        `SELECT "userId", "validFrom"::text AS "validFrom", minutes
+         FROM weekly_quest_targets ORDER BY minutes`,
       ),
-    ).toEqual(
-      expect.arrayContaining([
-        { id: TEST_USER, weeklyQuestTargetMinutes: 90 },
-        { id: OTHER_USER, weeklyQuestTargetMinutes: 3000 },
-      ]),
+    ).toEqual([
+      { userId: TEST_USER, validFrom: MONDAY, minutes: 90 },
+      { userId: OTHER_USER, validFrom: '2026-11-02', minutes: 3000 },
+    ]);
+  });
+
+  it('keeps the goal each week had: a change holds from the running week on', async () => {
+    // A goal set long ago, then changed today (a Wednesday).
+    await db.query(
+      `INSERT INTO weekly_quest_targets ("userId", "validFrom", minutes)
+       VALUES ($1, '2026-10-26', 600)`,
+      [TEST_USER],
     );
+    expect(
+      (
+        await request(server)
+          .put('/quest-hours/target')
+          .send({ weeklyTargetMinutes: 1200 })
+          .expect(200)
+      ).body,
+    ).toEqual({ weeklyTargetMinutes: 1200 });
+
+    expect((await week('2026-10-19')).weeklyTargetMinutes).toBeNull();
+    expect((await week('2026-11-09')).weeklyTargetMinutes).toBe(600);
+    expect((await week(MONDAY)).weeklyTargetMinutes).toBe(1200);
+    expect((await week('2026-11-30')).weeklyTargetMinutes).toBe(1200);
+    expect(
+      (await request(server).get('/quest-hours/target').expect(200)).body,
+    ).toEqual({ weeklyTargetMinutes: 1200 });
+    const today = (await request(server).get('/day-planner/today').expect(200))
+      .body as DayPlannerResponseDto;
+    expect(today.questHours.weeklyTargetMinutes).toBe(1200);
+
+    // Changed twice in a week, the week keeps one row; removing it holds too.
+    await request(server)
+      .put('/quest-hours/target')
+      .send({ weeklyTargetMinutes: null })
+      .expect(200);
+    expect((await week(MONDAY)).weeklyTargetMinutes).toBeNull();
+    expect((await week('2026-11-09')).weeklyTargetMinutes).toBe(600);
+    // Back to what the weeks before had: no row of its own is needed.
+    await request(server)
+      .put('/quest-hours/target')
+      .send({ weeklyTargetMinutes: 600 })
+      .expect(200);
+    expect(
+      await db.query(
+        `SELECT "validFrom"::text AS "validFrom", minutes
+         FROM weekly_quest_targets WHERE "userId" = $1`,
+        [TEST_USER],
+      ),
+    ).toEqual([{ validFrom: '2026-10-26', minutes: 600 }]);
   });
 
   describe('campaign goal, colour and icon', () => {

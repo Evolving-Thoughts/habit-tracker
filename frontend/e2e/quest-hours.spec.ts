@@ -24,9 +24,10 @@ test("Kampagnen-Stunden: goals, a campaign's colour and icon, its tile and the l
   // The overall goal in the settings.
   await page.goto("/");
   await openView(page, "Einstellungen");
-  const goal = page.locator('[name="weeklyQuestTarget"]');
+  const goal = page.locator('[name="weeklyQuestTargetHours"]');
   await expect(goal).toBeEnabled();
   await goal.fill("20");
+  await page.locator('[name="weeklyQuestTargetMinutes"]').fill("");
   await page.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(
     page.getByRole("status").filter({ hasText: "Gespeichert." }),

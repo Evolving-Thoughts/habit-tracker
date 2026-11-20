@@ -102,7 +102,7 @@ const label = computed(() => dayBarsText(bars.value));
   display: block;
   width: 100%;
   border-radius: 0.375rem 0.375rem 0 0;
-  background: var(--color-ink);
+  background: var(--color-bar);
   transition: height 240ms var(--ease-out);
 }
 

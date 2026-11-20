@@ -34,6 +34,37 @@ export function minutesToHours(minutes: number | null): string {
   return String(Math.round((minutes / 60) * 100) / 100);
 }
 
+/** The overall goal as two fields: whole hours and the minutes beyond. */
+export type GoalFields = { hours: string; minutes: string };
+
+const GOAL_MESSAGE = `Das Wochenziel ist eine Zeit bis ${MAX_TARGET_HOURS} Stunden: ganze Stunden und 0 bis 59 Minuten.`;
+
+/** What the two goal fields show for stored minutes; both empty without a goal. */
+export function goalFields(minutes: number | null): GoalFields {
+  if (minutes === null) return { hours: "", minutes: "" };
+  return { hours: String(Math.floor(minutes / 60)), minutes: String(minutes % 60) };
+}
+
+/**
+ * Minutes from the two goal fields. Both empty (or nothing but zeros) is no
+ * goal; an empty field counts as 0. Throws a message for anything else.
+ */
+export function goalMinutes(fields: GoalFields): number | null {
+  const read = (value: string): number | null => {
+    const text = String(value).trim();
+    if (!text) return 0;
+    const number = Number(text);
+    return Number.isInteger(number) && number >= 0 ? number : null;
+  };
+  const hours = read(fields.hours);
+  const minutes = read(fields.minutes);
+  if (hours === null || minutes === null || minutes > 59)
+    throw new Error(GOAL_MESSAGE);
+  const total = hours * 60 + minutes;
+  if (total > MAX_TARGET_HOURS * 60) throw new Error(GOAL_MESSAGE);
+  return total || null;
+}
+
 /**
  * ["3 Std. 30 Min.", "von 6 Std."]: the figures with their words, so a line
  * may wrap between them but never inside one; just the time without a goal.

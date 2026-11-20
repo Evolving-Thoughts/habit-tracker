@@ -22,7 +22,8 @@ todos, the habit runs and `goal_snapshots`.
 The view loads two reads side by side; neither carries what the other has.
 
 - `GET /quest-hours?week=` (`quest-hours.md`): minutes per day, per campaign
-  with its weekly goal, the overall goal and the eight-week trend.
+  with its weekly goal, the overall goal that held for the week and the
+  eight-week trend (quest and other minutes per week).
 - `GET /week-review?week=YYYY-MM-DD` (`week` must be a Monday, validated like
   `GET /quest-hours`, both through `common/week-query.dto.ts`):
 
@@ -115,44 +116,71 @@ Monday that has begun; a week ahead is 400. The answer is the stored
 - The page is a dashboard on top and the week's details below, one grid of
   cards each titled inside (`.card-title`). From 56rem it is up to 72rem
   wide, like the Plan wider than the page column:
-  1. `ReviewFigures`: three figures, from 40rem three cards in a row, on a
-     phone one card (quest hours over the two others). Quest hours against
-     the overall goal ("von 20 Std. Wochenziel", "11 % vom Ziel", a flat bar;
-     just the hours without a goal), the daily average over the days begun,
-     the share of quest work in all measured time. The quest hours are the
-     view's one lifted card. The share is said only here: the split card
-     below shows the two times, not their percentages again.
+  1. `ReviewFigures`: four figures, from 40rem separate cards two by two,
+     from 64rem four in a row (above the fold on a desktop); on a phone one
+     card (quest hours on top, average and share side by side, the Dailies
+     below a hairline). Quest hours against the overall goal of that week
+     ("von 20 Std. Wochenziel", "11 % vom Ziel", a flat bar; just the hours
+     without a goal), the daily average over the days begun, the share of
+     quest work in all measured time, and "Dailies im Wochensoll" ("5 von
+     8", "fälligen Ausführungen erledigt"; "–" when nothing was due) with
+     the perfect week in one line below it ("Perfekte Woche: Sport ✓, Lesen
+     2 von 3"; "Perfekte Woche!" when every category reached its target).
+     The Dailies come from the review read; when it fails or the week lies
+     ahead the row has three cards. The quest hours are the view's one
+     lifted card. The share is said only here: the split card below shows
+     the two times, not their percentages again.
+     On the running week the quest-hours card has a quiet pencil button
+     ("Wochenziel ändern", "Wochenziel setzen" without a goal, then "Kein
+     Wochenziel" as its line). It opens `QuestTargetForm` in place: hours
+     and minutes, "Gilt ab dieser Woche; vergangene Wochen behalten ihr
+     Ziel.", Speichern and Abbrechen (Escape too); the focus goes into the
+     hours and back to the pencil. Saving writes the goal for this and the
+     coming weeks (`quest-hours.md`), shows it at once and refreshes the
+     other views. A past week shows its own goal read-only, without the
+     button.
   2. `ReviewDayBars` (about three fifths) beside a column with
      `ReviewCampaignHours` and `ReviewQuestSplit`; on a phone one below the
      other. Today is marked quietly in the day bars: "Heute" in ink 800 and a
      2px ink baseline under its column, no frame, so the bars lead.
-  3. `ReviewWeekTrend`, full width: eight weeks, the running one marked
-     "bisher"; the line is the average of the seven weeks before the shown
-     one, its value top right, so the shown week is compared with it.
+  3. `ReviewWeekTrend`, full width: eight weeks, each a stacked column of
+     Kampagnen-Arbeit (on the baseline, `--color-bar`) and Sonstiges on top
+     (`--color-mark-none`), 2px apart, the same keys as the split card, with
+     a legend in the head. One scale for the whole stack; the dashed line is
+     the average quest time of the seven weeks before the shown one, its
+     value in the legend, so the shown week's quest part is compared with
+     it. Under each column the quest time, "+0:45" other time, the date and,
+     for the running week, "bisher"; the shown week has a 2px ink baseline
+     and bold labels. Each column's tooltip and the text alternative name
+     both parts.
   4. `ReviewCampaignProgress` (rows link to `#/kampagnen?kampagne=<id>`,
      where the burn-up is; two columns where there is room).
-  5. `WeekQuota` with `dashboard`: "Dailies im Wochensoll" and "Perfekte
-     Woche" as two flat cards side by side (one alone takes the width). The
-     component is shared with `CalendarWeek.vue`, where the quota is lifted.
-  6. `ReviewDoneList`: one card, days side by side where there is room. On a
-     phone it starts closed with its count and "Alle n Einträge zeigen"; on
-     a wide screen (56rem, decided when it appears) it is open up to eight
-     entries and closed beyond.
-  7. `ReviewAnswers`: three text areas (side by side from 56rem), explicit
+  5. `ReviewDoneList`: one card. From 64rem the week as seven fixed
+     columns, Monday to Sunday: each day keeps its place, an empty one shows
+     a quiet "–" ("Nichts erledigt" for screen readers), today says "Heute"
+     with a 2px ink line under its heading (`aria-current="date"`).
+     Narrower, the days with entries stack. On a phone it starts closed with
+     its count and "Liste zeigen"; on a wide screen (56rem, decided when it
+     appears) it is open up to eight entries and closed beyond.
+  6. `ReviewAnswers`: three text areas (side by side from 56rem), explicit
      "Speichern", a quiet "Gespeichert", errors in place, typing never
      overwritten by a refresh.
 - Both reads load with `useLoader`. While either loads, bones in the
-  dashboard's grid (three figures, day bars beside two side cards, the
+  dashboard's grid (four figures, day bars beside two side cards, the
   weeks) hold the place. A failed read shows its error with a retry above
   the sections of the other read; an empty week is only claimed when both
   arrived.
 - The charts appear only for measured time. A week without measured time
   and without anything resolved shows one calm empty card instead; the
-  figures and the weeks before stay around it when earlier weeks have time,
-  and quota and questions stay. A week ahead shows only that card and a
+  figures stay around it when earlier weeks have time or Dailies were due,
+  the weeks before when they have time, and the questions stay. A week ahead shows only that card and a
   line that the questions open once it begins.
+- Bars in the review use `--color-bar`: ink by day, a calmer warm tone
+  (#bfa491) at night, where full ink would be the brightest thing on the
+  page; it keeps at least 3:1 on cards, the lifted card and tracks
+  (`theme.spec.ts`).
 - Pure rules in `utils/week-review.ts` (figures and their units, bar
-  heights, the running week, the change in words "+4 Quests, 62 % → 71 %",
+  heights, the stacked weeks (`weekTrend`, `weekBarText`), the running week, the change in words "+4 Quests, 62 % → 71 %",
   texts for screen readers). Counts let the noun follow the number:
   `questCount` gives "0 von 1 Quest" and "9 von 12 Quests", `dailyGoalText`
   "0 von 1 Ausführung" (`questWord` in `utils/todo-hierarchy.ts` is shared

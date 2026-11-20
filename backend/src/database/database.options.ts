@@ -12,6 +12,7 @@ import { CategoryColor1795600000000 } from './migrations/1795600000000-CategoryC
 import { DailyCampaignAndRunNotes1795700000000 } from './migrations/1795700000000-DailyCampaignAndRunNotes';
 import { BacklogOrder1795800000000 } from './migrations/1795800000000-BacklogOrder';
 import { StopwatchBlocks1795900000000 } from './migrations/1795900000000-StopwatchBlocks';
+import { WeeklyQuestTargets1796000000000 } from './migrations/1796000000000-WeeklyQuestTargets';
 
 type PostgresOptions = Extract<DataSourceOptions, { type: 'postgres' }>;
 
@@ -46,6 +47,7 @@ export function databaseOptions(
       DailyCampaignAndRunNotes1795700000000,
       BacklogOrder1795800000000,
       StopwatchBlocks1795900000000,
+      WeeklyQuestTargets1796000000000,
     ],
   };
 }

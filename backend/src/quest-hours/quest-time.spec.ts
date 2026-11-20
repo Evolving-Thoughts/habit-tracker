@@ -181,8 +181,8 @@ describe('questWeek', () => {
     expect(week.weeks).toHaveLength(8);
     expect(week.weeks[0].startDate).toBe('2026-09-28');
     expect(week.weeks.slice(-2)).toEqual([
-      { startDate: '2026-11-09', questMinutes: 60 },
-      { startDate: MONDAY, questMinutes: 130 },
+      { startDate: '2026-11-09', questMinutes: 60, otherMinutes: 0 },
+      { startDate: MONDAY, questMinutes: 130, otherMinutes: 15 },
     ]);
     expect(week.campaigns).toEqual([
       {

@@ -147,6 +147,7 @@ export function questWeek(
     weeks: starts.map((startDate, index) => ({
       startDate,
       questMinutes: weeks[index].questMinutes,
+      otherMinutes: weeks[index].otherMinutes,
     })),
     campaigns: rows,
   };

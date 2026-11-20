@@ -10,8 +10,28 @@ number, never in a warning colour.
 - Measured work is the Logbuch (`work_logs`, see `logbook.md`). Quest hours
   add no table of their own; they are read from the stretches.
 - **Weekly goals** are minutes (integers, like `plannedDurationMinutes`):
-  `users.weeklyQuestTargetMinutes` is the overall goal, `todos.weeklyTargetMinutes`
-  an optional goal per campaign. Both are 1 to 6000 (100 hours) or null.
+  the overall goal has a history in `weekly_quest_targets` (below),
+  `todos.weeklyTargetMinutes` is an optional goal per campaign (one value,
+  no history). Both are 1 to 6000 (100 hours) or null.
+- **History of the overall goal**: `weekly_quest_targets` (`userId`,
+  `validFrom` date, `minutes` nullable; primary key `userId` + `validFrom`,
+  `ON DELETE CASCADE`, entity `quest-hours/weekly-quest-target.entity.ts`,
+  migration `1796000000000-WeeklyQuestTargets`). `validFrom` is always a
+  Monday (`CHK_weekly_quest_targets_monday`), `minutes` 1 to 6000 or null
+  (`CHK_weekly_quest_targets_minutes`); a null row means "no goal from this
+  week on". The goal of week W is the row with the latest `validFrom` on or
+  before W's Monday; before the first row there is none (`targetOfWeek` in
+  `quest-hours/weekly-target.ts`). Every reader goes through
+  `weeklyQuestTarget(manager, userId, monday)` there: the week's quest hours,
+  `GET /quest-hours/target` and Heute (`questHours` in
+  `GET /day-planner/today`). Push does not read the goal. Writing
+  (`setWeeklyQuestTarget`) always targets the running week's Monday, so
+  weeks that are over keep the goal they had; changing it twice in a week
+  overwrites that week's row, and a value equal to what the weeks before
+  lead to removes the row instead of repeating it (`needsStep`). The
+  migration moved every user's former `users.weeklyQuestTargetMinutes`
+  into one row valid from Monday 3 January 2000 (users without a goal get
+  none) and dropped the column and `CHK_users_weekly_quest_target`.
 - **Colour and icon** of a campaign: `todos.color` and `todos.icon`, each a
   key from a fixed list (`backend/src/todos/campaign-style.ts`,
   `frontend/src/types/campaign.ts`; the contract check holds both lists in
@@ -33,8 +53,7 @@ number, never in a warning colour.
   todo with a parent is a 400, both on create and update; moving a campaign
   below another todo clears them (`TodosService.update`). The database holds
   the rule too: `CHK_todos_campaign_fields`, next to `CHK_todos_weekly_target`
-  and `CHK_users_weekly_quest_target` for the bounds (migration
-  `1795300000000-QuestHours`).
+  for the bounds (migration `1795300000000-QuestHours`).
 
 ## Rules
 
@@ -83,11 +102,11 @@ what the tiles, Heute and the weekly review (`week-review.md`) need:
 ```ts
 {
   startDate, endDate, today,
-  weeklyTargetMinutes: number | null,   // the overall goal
+  weeklyTargetMinutes: number | null,   // the overall goal that held for this week
   questMinutes, otherMinutes,           // the week
   totalQuestMinutes,                    // every quest minute ever measured
   days: { date, questMinutes, otherMinutes }[],          // Monday to Sunday
-  weeks: { startDate, questMinutes }[], // eight weeks up to this one, oldest first
+  weeks: { startDate, questMinutes, otherMinutes }[], // eight weeks up to this one, oldest first
   campaigns: {
     campaign: { id, title, color, icon },
     minutes,                 // this week
@@ -99,16 +118,22 @@ what the tiles, Heute and the weekly review (`week-review.md`) need:
 ```
 
 `campaigns` lists every campaign with measured time or a weekly goal, most
-time this week first. It is one `REPEATABLE READ` snapshot that writes
+time this week first. Each of `weeks` splits like a day: quest minutes and
+the rest of the measured time (`otherMinutes`), so the review can stack
+them. `weeklyTargetMinutes` is the goal of the asked-for week from the
+history, not today's: a week that is over shows the goal it had. It is one `REPEATABLE READ` snapshot that writes
 nothing, scoped to the signed-in user. Totals and the trend need every stretch
 the user logged, so this read loads all of their work logs; that is fine at
 the app's size and the first thing to change if accounts grow large.
 
 ### `GET /quest-hours/target`, `PUT /quest-hours/target`
 
-`{ weeklyTargetMinutes: number | null }`: the overall goal, read and written
-for the signed-in user only. The write runs in the user's unit of work; a
-missing field, a fraction, 0 or more than 6000 is 400.
+`{ weeklyTargetMinutes: number | null }`: the overall goal of the running
+week, read and written for the signed-in user only. The write sets it for
+the running week and the weeks after it (a row valid from this week's
+Monday, see the history above); weeks that are over keep theirs. It runs in
+the user's unit of work; a missing field, a fraction, 0 or more than 6000 is
+400. Changing the goal of a past week is not offered.
 
 ### Heute and every campaign name
 
@@ -167,7 +192,14 @@ resolves both from one read of the user's categories.
   it). The campaign is the card, not a row of the tree. Inside a campaign the
   plus button (and N) creates a quest below it, so its Warum and category are
   taken over.
-- Einstellungen: `QuestTargetSetting.vue` reads and saves the overall goal.
+- The overall goal is edited in `QuestTargetForm.vue`: hours and minutes
+  (`goalFields` / `goalMinutes` in `utils/quest-hours.ts`: whole hours, 0
+  to 59 minutes, both empty or zero is no goal, at most 100 hours), saved
+  with `PUT /quest-hours/target` for this week and the ones after, with a
+  line saying so. Einstellungen (`QuestTargetSetting.vue`) loads the goal of
+  the running week into it; the weekly review opens it in place in its
+  Kampagnen-Stunden card (`week-review.md`). A campaign's own goal stays an
+  hours field in half hours (`hoursToMinutes`).
 - Heute: one quiet line in the head that relates the day's quest time to
   what was worked (both from the same stretches, so the part is never more
   than the whole), then the week: "1 Std. 40 Min. gearbeitet, davon 1 Std.

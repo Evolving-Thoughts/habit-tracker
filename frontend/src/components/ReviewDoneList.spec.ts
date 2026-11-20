@@ -39,7 +39,10 @@ describe("ReviewDoneList", () => {
     const wrapper = mount(ReviewDoneList, { props: { days } });
     // Three done; the skipped run is listed and named apart, not counted.
     expect(wrapper.get("h2").text()).toBe("Erledigt 3 · 1 übersprungen");
-    const headings = wrapper.findAll("h3").map((heading) => heading.text());
+    // The stacked list of a narrow screen shows the days with entries.
+    const headings = wrapper
+      .findAll(".done-list__day:not(.done-list__day--empty) h3")
+      .map((heading) => heading.text());
     expect(headings).toEqual(["Dienstag, 17. Nov. 2", "Freitag, 20. Nov. 1"]);
     const rows = wrapper.findAll(".done-list__item");
     expect(rows[0]!.text()).toBe("Quest 1Kampagne Buch");
@@ -49,6 +52,29 @@ describe("ReviewDoneList", () => {
     expect(rows[1]!.classes()).toContain("done-list__item--skipped");
     expect(rows[1]!.text()).toBe("LaufenDailyÜbersprungen");
     expect(rows[2]!.text()).toBe("Quest 3Gelöscht");
+  });
+
+  it("keeps all seven days in their place, empty ones quiet, today marked", () => {
+    const days = weekReview().days.map((day) =>
+      day.date === "2026-11-17" ? { ...day, items: [item(1)] } : day,
+    );
+    const wrapper = mount(ReviewDoneList, {
+      props: { days, today: "2026-11-18" },
+    });
+    const columns = wrapper.findAll(".done-list__day");
+    expect(columns.map((column) => column.attributes("data-date"))).toEqual(
+      days.map((day) => day.date),
+    );
+    expect(columns[0]!.classes()).toContain("done-list__day--empty");
+    expect(columns[0]!.get(".done-list__empty").text()).toBe("–Nichts erledigt");
+    expect(columns[1]!.classes()).not.toContain("done-list__day--empty");
+    // Today says so instead of its weekday, for screen readers too.
+    expect(columns[2]!.attributes("aria-current")).toBe("date");
+    expect(columns[2]!.classes()).toContain("done-list__day--today");
+    expect(columns[2]!.get("h3").text()).toBe("Heute, 18. Nov.");
+    expect(
+      columns.filter((column) => column.attributes("aria-current")),
+    ).toHaveLength(1);
   });
 
   it("says so calmly when nothing was done", () => {
