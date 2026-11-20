@@ -49,6 +49,28 @@ describe("PlanEntry", () => {
     expect(wrapper.attributes("style")).toContain("--campaign-mark");
   });
 
+  it("moves with the arrow keys while its card has the focus, not while busy", async () => {
+    const moving = mount(PlanEntry, {
+      props: { entry: quest, busy: false, menu: MENU, arrows: true },
+    });
+    const card = moving.get("[data-edit-button]");
+    for (const key of ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"])
+      await card.trigger("keydown", { key });
+    expect(moving.emitted("arrow")).toEqual([
+      ["up"],
+      ["down"],
+      ["left"],
+      ["right"],
+    ]);
+
+    const fixed = mountEntry(quest);
+    await fixed.get("[data-edit-button]").trigger("keydown", { key: "ArrowUp" });
+    expect(fixed.emitted("arrow")).toBeUndefined();
+    expect(
+      fixed.get("[data-edit-button]").attributes("aria-keyshortcuts"),
+    ).toBeUndefined();
+  });
+
   it("draws the stripe in the campaign's stored colour", () => {
     const wrapper = mountEntry({
       ...quest,

@@ -19,8 +19,8 @@ import {
 /**
  * One day of the week plan: its open rows in the order of the day, a quick
  * add, then what is done. Open quests are dragged by the whole card within
- * the day or onto another day of the same board; their menu, which the
- * view builds, is the way for keys and taps.
+ * the day or onto another day of the same board; for keys and taps the
+ * focused card's arrow keys and its menu, which the view builds, do the same.
  */
 const props = defineProps<{
   day: WeekPlanDay;
@@ -32,6 +32,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   edit: [entry: WeekPlanTodoEntry];
+  arrow: [entry: WeekPlanTodoEntry, key: "up" | "down" | "left" | "right"];
   drop: [drop: Drop];
   created: [];
 }>();
@@ -98,7 +99,9 @@ useSortable(list, {
           :entry="entry"
           :busy="busy"
           :menu="isMovable(entry) ? menu(entry) : undefined"
+          :arrows="isMovable(entry)"
           @edit="isMovable(entry) && emit('edit', entry)"
+          @arrow="(key) => isMovable(entry) && emit('arrow', entry, key)"
         />
       </li>
       <li v-if="!open.length" class="plan-day__empty">

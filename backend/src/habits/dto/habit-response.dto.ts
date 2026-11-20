@@ -1,3 +1,4 @@
+import type { Campaign } from '../../todos/todo-ancestry';
 import type { InheritedWhy } from '../../todos/todo-hierarchy';
 import { HabitScheduleType } from '../enums/habit-schedule-type.enum';
 import { MissedOccurrencePolicy } from '../enums/missed-occurrence-policy.enum';
@@ -39,7 +40,14 @@ export type HabitResponseDto = {
   categoryId: number | null;
   /** The habit's own reason. */
   why: string | null;
-  /** What it takes over from the goal counting it today, if it has none. */
+  /** The campaign it names (a top-level todo); null when it names none. */
+  campaignId: number | null;
+  /**
+   * The campaign it works towards, for its chip: the named one, else the one
+   * of the goal counting it today.
+   */
+  campaign: Campaign | null;
+  /** What it takes over (named campaign, else counting goal) if it has none. */
   inheritedWhy: InheritedWhy | null;
   isActive: boolean;
   currentSchedule: ScheduleVersionResponse | null;

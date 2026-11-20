@@ -1,4 +1,4 @@
-import { openView } from "./helpers";
+import { openView, pick } from "./helpers";
 import { test, expect } from "./fixtures";
 import { API_URL } from "./environment";
 import type { APIRequestContext, Page } from "@playwright/test";
@@ -301,12 +301,14 @@ test("Tree: accessible move to parent and root, edit duration, preserve own sche
     page,
     b.id,
     "Frontend verstehen",
-    "Frontend verstehen verschieben",
+    "Frontend verstehen in eine Kampagne verschieben",
   );
   const dialog = page.getByRole("dialog");
-  // Touch screens keep the picker closed until it is tapped.
-  await expect(isMobile ? dialog : dialog.getByRole("combobox")).toBeFocused();
-  await dialog.getByRole("combobox").selectOption(String(a.id));
+  const parent = dialog.getByRole("combobox", { name: "Gehört zu" });
+  // Touch screens keep the keyboard closed until the field is tapped.
+  await expect(isMobile ? dialog : parent).toBeFocused();
+  await pick(parent, "Backend");
+  await expect(parent).toHaveValue("Backend verstehen");
   await dialog
     .getByRole("button", { name: "Verschieben", exact: true })
     .click();
@@ -321,23 +323,35 @@ test("Tree: accessible move to parent and root, edit duration, preserve own sche
   await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await expect(row(page, b.id)).toContainText("45 Min.");
-  await menuAction(page, b.id, "Vue verstehen", "Vue verstehen verschieben");
-  // With a quest below it, it becomes a campaign of its own at the top.
-  await expect(dialog.locator('option[value=""]')).toHaveText(
-    "Eigene Kampagne",
+  await menuAction(
+    page,
+    b.id,
+    "Vue verstehen",
+    "Vue verstehen in eine Kampagne verschieben",
   );
-  await dialog.getByRole("combobox").selectOption("");
+  // With a quest below it, it becomes a campaign of its own at the top.
+  await parent.fill("Keine");
+  await expect(
+    dialog.getByRole("option", { name: "Keine (eigene Kampagne)" }),
+  ).toBeVisible();
+  await parent.press("Enter");
   await dialog
     .getByRole("button", { name: "Verschieben", exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
   await expect(row(page, b.id)).toHaveAttribute("data-depth", "0");
   // A single quest moved to the top is no campaign: it leaves the tree.
-  await menuAction(page, leaf.id, "Router lernen", "Router lernen verschieben");
-  await expect(dialog.locator('option[value=""]')).toHaveText(
-    "Keine Kampagne (Questlog oder ihr Tag)",
+  await menuAction(
+    page,
+    leaf.id,
+    "Router lernen",
+    "Router lernen in eine Kampagne verschieben",
   );
-  await dialog.getByRole("combobox").selectOption("");
+  await parent.fill("Keine");
+  await expect(
+    dialog.getByRole("option", { name: "Keine (lose Quest)" }),
+  ).toBeVisible();
+  await parent.press("Enter");
   await dialog
     .getByRole("button", { name: "Verschieben", exact: true })
     .click();
@@ -385,20 +399,8 @@ test("Tree: review paused timer, cancel deletion, reject stale preview then conf
   await dialog
     .getByRole("button", { name: "Ja, löschen", exact: true })
     .click();
-  await expect(dialog).not.toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("preview");
-  await page
-    .getByRole("button", { name: "Erneut versuchen", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "Neu hinzugefügt", exact: true }),
-  ).toBeVisible();
-  await menuAction(
-    page,
-    root.id,
-    "Lernprojekt",
-    "Lernprojekt mit allen Unter-Quests löschen",
-  );
+  // The dialog stays, says why and shows the fresh preview to review.
+  await expect(dialog.getByRole("alert")).toContainText("preview");
   await expect(dialog).toContainText("Neu hinzugefügt");
   await dialog
     .getByRole("button", { name: "Ja, löschen", exact: true })
@@ -476,7 +478,7 @@ test("Kampagnen: the tree holds campaigns only, an opened one starts below its c
     "Bearbeiten",
     "Stoppuhr starten",
     "Unter-Quest hinzufügen",
-    "Verschieben",
+    "In Kampagne verschieben …",
     "Löschen",
   ]);
   await menu

@@ -114,6 +114,8 @@ export class HabitSchedulingService {
       title: habit.title,
       categoryId: habit.categoryId ?? null,
       why: habit.why ?? null,
+      campaignId: habit.campaignId ?? null,
+      campaign: ancestry.habitCampaign(habit.id),
       inheritedWhy: ancestry.inheritedHabitWhy(habit.id),
       isActive: habit.isActive,
       plannedDurationMinutes: habit.plannedDurationMinutes,

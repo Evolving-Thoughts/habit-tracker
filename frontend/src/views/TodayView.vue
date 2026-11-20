@@ -29,6 +29,10 @@ import PlannerItem from "../components/PlannerItem.vue";
 import QuickAddQuest from "../components/QuickAddQuest.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
 import MoveItemDialog from "../components/MoveItemDialog.vue";
+import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
+import DeleteItemDialog, {
+  type DeleteTarget,
+} from "../components/DeleteItemDialog.vue";
 import ModalDialog from "../components/ModalDialog.vue";
 import UndoToast from "../components/UndoToast.vue";
 import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
@@ -65,6 +69,8 @@ import {
 type EditingTarget = {
   kind: "todo" | "habit";
   entityId: number;
+  /** The run a daily was opened from, for its notes. */
+  occurrenceId?: number;
 };
 
 const page = ref<HTMLElement | null>(null);
@@ -73,6 +79,9 @@ const listFocus = useListFocus(page);
 const editingTarget = ref<EditingTarget | null>(null);
 const editorBusy = ref(false);
 const movingItem = ref<DayPlannerItem | null>(null);
+/** "In Kampagne verschieben …" and "Löschen" from a card's menu. */
+const campaignMoving = ref<{ todoId: number; title: string } | null>(null);
+const deleting = ref<DeleteTarget | null>(null);
 const postponeOpen = ref(false);
 const creationOpen = ref(false);
 const creationMessage = ref<string | null>(null);
@@ -91,6 +100,8 @@ const {
     !editorBusy.value &&
     !editingTarget.value &&
     !movingItem.value &&
+    !campaignMoving.value &&
+    !deleting.value &&
     !postponeOpen.value &&
     !creationOpen.value &&
     !campaignCompletion.question.value &&
@@ -298,7 +309,29 @@ function openEditing(item: DayPlannerItem): void {
       : {
           kind: "habit",
           entityId: item.habitId,
+          occurrenceId: item.occurrenceId,
         };
+}
+
+function openMenuDialog(item: DayPlannerItem, kind: "move" | "delete"): void {
+  if (editorBusy.value || writes.busy.value) return;
+  listFocus.remember(getItemKey(item));
+  if (kind === "move" && item.type === "todo")
+    campaignMoving.value = { todoId: item.todoId, title: item.title };
+  else if (kind === "delete")
+    deleting.value =
+      item.type === "todo"
+        ? { kind: "todo", id: item.todoId, title: item.title }
+        : { kind: "habit", id: item.habitId, title: item.title };
+}
+function closeMenuDialog(): void {
+  campaignMoving.value = null;
+  deleting.value = null;
+  editorBusy.value = false;
+}
+async function onMenuDialogDone(): Promise<void> {
+  await writes.applied();
+  closeMenuDialog();
 }
 
 function closeEditing(): void {
@@ -506,11 +539,22 @@ function rowMenu(item: DayPlannerItem): MenuEntry[] {
         isFocus && !focusSlot.value
           ? () => void router.push({ name: "focus" })
           : undefined,
+      reparent:
+        item.type === "todo"
+          ? () => openMenuDialog(item, "move")
+          : undefined,
       up: place > 0 ? () => void shiftInOrder(item, -1) : undefined,
       down:
         place !== -1 && place < queue.length - 1
           ? () => void shiftInOrder(item, 1)
           : undefined,
+      remove: {
+        run: () => openMenuDialog(item, "delete"),
+        ariaLabel:
+          item.type === "habit"
+            ? `Daily ${item.title} ganz löschen`
+            : undefined,
+      },
     },
     busy,
   );
@@ -621,7 +665,6 @@ useShortcutHandlers(
 
     <CreateItemDialog
       v-if="creationOpen"
-      mode="choose"
       @close="creationOpen = false"
       @created="onCreated"
     />
@@ -634,6 +677,7 @@ useShortcutHandlers(
       :key="`${editingTarget.kind}-${editingTarget.entityId}`"
       :kind="editingTarget.kind"
       :entity-id="editingTarget.entityId"
+      :occurrence-id="editingTarget.occurrenceId"
       :return-focus="listFocus.returnFocus"
       @busy="editorBusy = $event"
       @changed="onEditorChanged"
@@ -670,6 +714,24 @@ useShortcutHandlers(
         </button>
       </div>
     </ModalDialog>
+
+    <CampaignMoveDialog
+      v-if="campaignMoving"
+      :todo-id="campaignMoving.todoId"
+      :title="campaignMoving.title"
+      :return-focus="listFocus.returnFocus"
+      @busy="editorBusy = $event"
+      @moved="onMenuDialogDone"
+      @close="closeMenuDialog"
+    />
+    <DeleteItemDialog
+      v-if="deleting"
+      :target="deleting"
+      :return-focus="listFocus.returnFocus"
+      @busy="editorBusy = $event"
+      @deleted="onMenuDialogDone"
+      @close="closeMenuDialog"
+    />
 
     <MoveItemDialog
       v-if="movingItem && planner"

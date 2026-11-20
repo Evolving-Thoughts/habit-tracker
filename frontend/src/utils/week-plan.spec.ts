@@ -253,6 +253,17 @@ describe("stepDrop", () => {
   it("leaves an appointment where its time puts it", () => {
     expect(stepDrop(plan, 1, "down")).toBeNull();
   });
+
+  it("goes to the end of the next day with an arrow key, but never into the past", () => {
+    expect(stepDrop(plan, 2, "right")).toEqual({
+      todoId: 2,
+      toDate: WEDNESDAY,
+      index: 0,
+    });
+    expect(stepDrop(plan, 2, "left")).toBeNull();
+    // An appointment changes its day too; dropOnDay confirms its time.
+    expect(stepDrop(plan, 1, "right")?.toDate).toBe(WEDNESDAY);
+  });
 });
 
 describe("openSummary", () => {

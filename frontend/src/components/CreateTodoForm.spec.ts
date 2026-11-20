@@ -1,16 +1,23 @@
 import { TODO_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getCategories } from "../api/categories.api";
+import { createCategory, getCategories } from "../api/categories.api";
 import { createTodo } from "../api/day-planner.api";
+import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import type { TodoResponse } from "../types/todo";
+import { choose } from "../test/combobox";
+import { hierarchyTodo } from "../test/hierarchy";
 import CreateTodoForm from "./CreateTodoForm.vue";
 
 vi.mock("../api/day-planner.api", () => ({
   createTodo: vi.fn(),
 }));
 vi.mock("../api/categories.api", () => ({
-  getCategories: vi.fn(),
+  getCategories: vi.fn(async () => []),
+  createCategory: vi.fn(),
+}));
+vi.mock("../api/todo-hierarchy.api", () => ({
+  getTodoHierarchy: vi.fn(async () => []),
 }));
 
 enableAutoUnmount(afterEach);
@@ -49,15 +56,24 @@ describe("CreateTodoForm", () => {
       scheduledDate: null,
       timeOfDay: null,
       plannedDurationMinutes: null,
+      parentId: null,
+      categoryId: null,
       color: "pine",
       icon: "pen",
       weeklyTargetMinutes: 360,
     });
   });
 
-  it("offers campaign fields only for a new campaign", () => {
+  it("offers campaign fields only for a new campaign, without day and duration", () => {
     const wrapper = mount(CreateTodoForm);
     expect(wrapper.find('input[name="weeklyTarget"]').exists()).toBe(false);
+    const campaign = mount(CreateTodoForm, { props: { campaign: true } });
+    expect(campaign.find('input[name="scheduledDate"]').exists()).toBe(false);
+    expect(campaign.find('input[name="duration"]').exists()).toBe(false);
+    expect(campaign.find("#todo-parent").exists()).toBe(false);
+    expect(campaign.text()).toContain(
+      "Eine oberste Quest wird zur Kampagne, sobald sie Unter-Quests hat",
+    );
   });
 
   it("creates an unscheduled todo and resets the form", async () => {
@@ -73,6 +89,8 @@ describe("CreateTodoForm", () => {
       scheduledDate: null,
       timeOfDay: null,
       plannedDurationMinutes: null,
+      parentId: null,
+      categoryId: null,
     });
 
     expect(wrapper.emitted("created")).toHaveLength(1);
@@ -95,12 +113,14 @@ describe("CreateTodoForm", () => {
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
-    expect(createTodoMock).toHaveBeenCalledWith({
-      title: "Arzttermin",
-      scheduledDate: "2026-10-02",
-      timeOfDay: "10:00",
-      plannedDurationMinutes: 30,
-    });
+    expect(createTodoMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Arzttermin",
+        scheduledDate: "2026-10-02",
+        timeOfDay: "10:00",
+        plannedDurationMinutes: 30,
+      }),
+    );
   });
 
   it("plans a quest for a day without a time", async () => {
@@ -126,11 +146,69 @@ describe("CreateTodoForm", () => {
     const wrapper = mount(CreateTodoForm);
     await flushPromises();
     await wrapper.get('input[name="title"]').setValue("Laufen");
-    await wrapper.get('select[name="category"]').setValue(7);
+    await choose(wrapper, "#todo-category", "Spo");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
     expect(createTodoMock).toHaveBeenCalledWith(
       expect.objectContaining({ categoryId: 7 }),
+    );
+  });
+
+  it("creates a category from what was typed and chooses it", async () => {
+    vi.mocked(createCategory).mockResolvedValue({ id: 9, name: "Lesen" });
+    const wrapper = mount(CreateTodoForm);
+    await flushPromises();
+    await wrapper.get('input[name="title"]').setValue("Roman");
+    await choose(wrapper, "#todo-category", "Lesen");
+    expect(createCategory).toHaveBeenCalledWith("Lesen");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(createTodoMock).toHaveBeenCalledWith(
+      expect.objectContaining({ categoryId: 9 }),
+    );
+  });
+
+  it("belongs to a chosen quest: inherits its why and takes the campaign's category", async () => {
+    vi.mocked(getTodoHierarchy).mockResolvedValue([
+      hierarchyTodo({ id: 4, title: "Buch", why: "Erzählen", categoryId: 7 }),
+      hierarchyTodo({
+        id: 5,
+        title: "Kapitel 2",
+        parentId: 4,
+        inheritedWhy: { text: "Erzählen", fromId: 4, fromTitle: "Buch" },
+      }),
+    ]);
+    const wrapper = mount(CreateTodoForm);
+    await flushPromises();
+    await choose(wrapper, "#todo-parent", "Kapitel");
+    expect(wrapper.get<HTMLInputElement>("#todo-parent").element.value).toBe(
+      "Buch › Kapitel 2",
+    );
+    expect(wrapper.get("blockquote").text()).toContain("Erzählen");
+    await wrapper.get('input[name="title"]').setValue("Szene");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(createTodoMock).toHaveBeenCalledWith(
+      expect.objectContaining({ parentId: 5, categoryId: 7 }),
+    );
+    expect(createTodoMock.mock.calls[0]![0]).not.toHaveProperty("why");
+  });
+
+  it("creates a new campaign from a typed name and puts the quest below it", async () => {
+    createTodoMock
+      .mockResolvedValueOnce({ ...response, id: 30, title: "Garten" })
+      .mockResolvedValueOnce(response);
+    const wrapper = mount(CreateTodoForm);
+    await flushPromises();
+    await choose(wrapper, "#todo-parent", "Garten");
+    const campaign = createTodoMock.mock.calls[0]![0];
+    expect(campaign).toMatchObject({ title: "Garten", scheduledDate: null });
+    expect(campaign.color).toBeTruthy();
+    await wrapper.get('input[name="title"]').setValue("Beet umgraben");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(createTodoMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title: "Beet umgraben", parentId: 30 }),
     );
   });
 
@@ -148,10 +226,12 @@ describe("CreateTodoForm", () => {
 
   it("inherits the parent's why unless an own one is written", async () => {
     createTodoMock.mockResolvedValue(response);
-    const parentWhy = { text: "Gesund bleiben", fromId: 4, fromTitle: "Fit" };
-    const wrapper = mount(CreateTodoForm, {
-      props: { parentId: 4, parentWhy },
+    const parent = hierarchyTodo({
+      id: 4,
+      title: "Fit",
+      why: "Gesund bleiben",
     });
+    const wrapper = mount(CreateTodoForm, { props: { parent } });
     // Quoted, not offered as text to edit.
     expect(wrapper.find('textarea[name="why"]').exists()).toBe(false);
     expect(wrapper.get("blockquote").text()).toContain("Gesund bleiben");
@@ -177,6 +257,7 @@ describe("CreateTodoForm", () => {
     vi.mocked(getCategories).mockResolvedValue([{ id: 7, name: "Sport" }]);
     const wrapper = mount(CreateTodoForm, { attachTo: document.body });
     await flushPromises();
+    expect(wrapper.get("#todo-parent").isVisible()).toBe(true);
     for (const field of ["title", "scheduledDate", "duration"])
       expect(wrapper.get(`input[name="${field}"]`).isVisible()).toBe(true);
     expect(wrapper.get('textarea[name="why"]').isVisible()).toBe(true);
@@ -186,12 +267,10 @@ describe("CreateTodoForm", () => {
       "Kategorie",
     ]);
     expect(wrapper.get('input[name="timeOfDay"]').isVisible()).toBe(false);
-    expect(wrapper.get('select[name="category"]').isVisible()).toBe(false);
+    expect(wrapper.get("#todo-category").isVisible()).toBe(false);
     await toggles[1]!.trigger("click");
-    expect(document.activeElement).toBe(
-      wrapper.get('select[name="category"]').element,
-    );
-    await wrapper.get('select[name="category"]').setValue(7);
+    expect(document.activeElement).toBe(wrapper.get("#todo-category").element);
+    await choose(wrapper, "#todo-category", "Sport");
     await toggles[1]!.trigger("click");
     expect(toggles[1]!.text()).toBe("Kategorie Sport");
     wrapper.unmount();

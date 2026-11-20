@@ -159,6 +159,40 @@ test("Plan: sort a day with Nach oben and Nach unten in a card's menu", async ({
   expect(await shownDay(page, nextMonday)).toEqual(["Drittes", "Erstes", "Zweites"]);
 });
 
+test("Plan: sort a day and move a quest to the next day with the arrow keys on its card", async ({
+  page,
+  request,
+}) => {
+  const nextMonday = daysAfter(mondayOf(await today(request)), 7);
+  const tuesday = daysAfter(nextMonday, 1);
+  for (const title of ["Erstes", "Zweites", "Drittes"])
+    await plan(request, { title, scheduledDate: nextMonday });
+  await plan(request, { title: "Am Dienstag", scheduledDate: tuesday });
+  await page.goto(`/#/plan?woche=${nextMonday}`);
+  await loaded(page);
+
+  const drittes = page.getByRole("button", {
+    name: "Drittes bearbeiten",
+    exact: true,
+  });
+  await drittes.focus();
+  await page.keyboard.press("ArrowUp");
+  await expect(page.getByRole("status").filter({ hasText: "Drittes" })).toHaveText(
+    "„Drittes“ steht jetzt an Stelle 2 von 3.",
+  );
+  await expect(drittes).toBeFocused();
+  await expect
+    .poll(() => storedDay(request, nextMonday))
+    .toEqual(["Erstes", "Drittes", "Zweites"]);
+
+  await page.keyboard.press("ArrowRight");
+  await expect
+    .poll(() => storedDay(request, tuesday))
+    .toEqual(["Am Dienstag", "Drittes"]);
+  await expect(drittes).toBeFocused();
+  expect(await shownDay(page, nextMonday)).toEqual(["Erstes", "Zweites"]);
+});
+
 test("Plan: move a quest to today without dragging, and Heute shows it", async ({
   page,
   request,

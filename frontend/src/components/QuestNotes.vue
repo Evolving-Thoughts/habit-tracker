@@ -9,18 +9,21 @@ import {
   watch,
 } from "vue";
 import {
-  getTodoNotes,
-  setTodoNotes,
+  getNotes,
+  setNotes,
   type NotesDocument,
+  type NotesTarget,
 } from "../api/todo-notes.api";
 import { useLoader } from "../composables/useLoader";
 
 /**
- * The notes of one quest. They save themselves a moment after the last
- * keystroke, and at once when the view is left, so nothing has to be confirmed.
- * Give the component a `key` per quest: it belongs to exactly one.
+ * The notes of one quest or of one run of a daily. They save themselves a
+ * moment after the last keystroke, and at once when the view is left, so
+ * nothing has to be confirmed. Give the component a `key` per target: it
+ * belongs to exactly one.
  */
-const props = defineProps<{ todoId: number }>();
+const props = defineProps<{ target: NotesTarget }>();
+const isRun = computed(() => props.target.kind === "occurrence");
 
 // The editor is the heaviest part of the app; it loads when notes are shown.
 const RichTextEditor = defineAsyncComponent(
@@ -42,7 +45,7 @@ const {
   isLoading,
   hasLoaded,
   errorMessage: loadError,
-} = useLoader((signal) => getTodoNotes(props.todoId, signal), {
+} = useLoader((signal) => getNotes(props.target, signal), {
   initial: null as NotesDocument | null,
   // No refresh after changes elsewhere: the notes are edited right here.
   fallbackError: "Die Notizen konnten nicht geladen werden.",
@@ -62,7 +65,7 @@ async function save(): Promise<void> {
   state.value = "saving";
   saveError.value = "";
   try {
-    await setTodoNotes(props.todoId, notes.value);
+    await setNotes(props.target, notes.value);
     if (current === revision) state.value = "saved";
   } catch (cause) {
     if (current !== revision) return;
@@ -101,7 +104,9 @@ onBeforeUnmount(() => {
 <template>
   <section class="quest-notes" aria-labelledby="quest-notes-title">
     <header class="quest-notes__head">
-      <h2 id="quest-notes-title" class="quest-notes__title">Notizen</h2>
+      <h2 id="quest-notes-title" class="quest-notes__title">
+        {{ isRun ? "Notizen zu diesem Lauf" : "Notizen" }}
+      </h2>
       <p class="quest-notes__status" role="status">{{ status }}</p>
     </header>
     <p v-if="loadError" class="form-error" role="alert">{{ loadError }}</p>
@@ -115,7 +120,7 @@ onBeforeUnmount(() => {
     <RichTextEditor
       v-else
       :model-value="notes"
-      label="Notizen zur Quest"
+      :label="isRun ? 'Notizen zum Lauf' : 'Notizen zur Quest'"
       placeholder="Gedanken, Schritte, Links …"
       @update:model-value="onEdit"
     />

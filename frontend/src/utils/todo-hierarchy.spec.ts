@@ -1,7 +1,6 @@
 import { TODO_FIELDS } from "../types/fixtures";
 import { describe, it, expect } from "vitest";
 import {
-  descendantIds,
   hasProgress,
   openBelow,
   progressText,
@@ -50,14 +49,12 @@ describe("Iterative hierarchy navigation", () => {
     expect(visibleHierarchy(rows, new Set([1])).map((r) => r.todo.id)).toEqual([
       1,
     ]);
-    expect(descendantIds(rows, 1)).toEqual(new Set([1, 2, 3]));
   });
   it("handles a 20,000-level chain without recursive calls", () => {
     const rows = Array.from({ length: 20000 }, (_, i) =>
       node(i + 1, i ? i : null),
     );
     expect(visibleHierarchy(rows, new Set()).length).toBe(20000);
-    expect(descendantIds(rows, 1).size).toBe(20000);
   });
 });
 

@@ -166,13 +166,15 @@ export function dropOnDay(
 }
 
 /**
- * Where "Nach oben" and "Nach unten" take a quest: to the next place in the
- * day's order. Returns null where there is no such place (the edge, a time).
+ * Where a step takes a quest: up and down ("Nach oben", "Nach unten", the
+ * arrow keys) to the next place in the day's order, left and right (the
+ * arrow keys) to the end of the day before or after. Returns null where
+ * there is no such place (the edge of the board, the past, a fixed time).
  */
 export function stepDrop(
   plan: WeekPlanResponse,
   todoId: number,
-  direction: "up" | "down",
+  direction: "up" | "down" | "left" | "right",
 ): Drop | null {
   const dayIndex = plan.days.findIndex((day) =>
     openEntries(day).some(
@@ -185,6 +187,11 @@ export function stepDrop(
   const entry = open.find(
     (item) => item.type === "todo" && item.todoId === todoId,
   )!;
+  if (direction === "left" || direction === "right") {
+    const next = plan.days[dayIndex + (direction === "left" ? -1 : 1)];
+    if (!next || next.date < plan.today) return null;
+    return { todoId, toDate: next.date, index: openEntries(next).length };
+  }
   if (!isSequenced(entry)) return null;
   const sequence = open.filter(isSequenced);
   const neighbour =

@@ -28,7 +28,8 @@ export type MenuIcon =
   | "stop"
   | "focus"
   | "arrow-up"
-  | "arrow-down";
+  | "arrow-down"
+  | "campaigns";
 
 /** One entry of an action menu. */
 export type MenuEntry = {
@@ -158,7 +159,7 @@ export type RowMenuSteps = {
   timer?: TimerStep;
   child?: () => void;
   progress?: () => void;
-  /** Kampagnen: under another quest or campaign. */
+  /** "In Kampagne verschieben …": below a campaign or one of its quests. */
   reparent?: () => void;
   up?: () => void;
   down?: () => void;
@@ -168,7 +169,8 @@ export type RowMenuSteps = {
 /**
  * Every card's menu in the one order: quick moves, "Anderer Tag …",
  * Überspringen, Bearbeiten, Fokus-Modus, Stoppuhr, Unter-Quest, Fortschritt,
- * Verschieben, Nach oben / Nach unten, and Löschen last, set apart.
+ * "In Kampagne verschieben …", Nach oben / Nach unten, and Löschen last,
+ * set apart (every view offers it, with the editor's confirmation).
  */
 export function rowMenu(
   title: string,
@@ -234,9 +236,9 @@ export function rowMenu(
   if (steps.reparent)
     add({
       id: "reparent",
-      label: "Verschieben",
-      icon: "move",
-      ariaLabel: `${title} verschieben`,
+      label: "In Kampagne verschieben …",
+      icon: "campaigns",
+      ariaLabel: `${title} in eine Kampagne verschieben`,
       run: steps.reparent,
     });
   if (steps.up)

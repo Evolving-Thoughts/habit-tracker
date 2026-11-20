@@ -15,6 +15,8 @@ export const TODO_FIELDS = {
 
 export const HABIT_FIELDS = {
   categoryId: null,
+  campaignId: null,
+  campaign: null,
   why: null,
   inheritedWhy: null,
   timeOfDay: null,

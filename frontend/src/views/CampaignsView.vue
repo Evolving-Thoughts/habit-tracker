@@ -6,7 +6,6 @@ import { getQuestHours } from "../api/quest-hours.api";
 import { updateTodo, updateTodoCompletion } from "../api/day-planner.api";
 import type { HierarchyTodo, TodoProgress } from "../types/todo-hierarchy";
 import type { TodoResponse } from "../types/todo";
-import { whyBelow } from "../utils/why";
 import {
   hasProgress,
   hierarchyChildren,
@@ -15,7 +14,6 @@ import {
   progressWords,
   questWord,
   visibleHierarchy,
-  descendantIds,
 } from "../utils/todo-hierarchy";
 import ActionMenu from "../components/ActionMenu.vue";
 import AppIcon from "../components/AppIcon.vue";
@@ -24,8 +22,9 @@ import CreateButton from "../components/CreateButton.vue";
 import ModalDialog from "../components/ModalDialog.vue";
 import CreateTodoForm from "../components/CreateTodoForm.vue";
 import PlannerItemEditor from "../components/PlannerItemEditor.vue";
+import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
+import DeleteItemDialog from "../components/DeleteItemDialog.vue";
 import GoalBurnup from "../components/GoalBurnup.vue";
-import TodoDeletionSummary from "../components/TodoDeletionSummary.vue";
 import CampaignTiles from "../components/CampaignTiles.vue";
 import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
 import UndoToast from "../components/UndoToast.vue";
@@ -33,7 +32,6 @@ import QuestTrend from "../components/QuestTrend.vue";
 import { useListFocus } from "../composables/useListFocus";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
-import { useTodoDeletion } from "../composables/useTodoDeletion";
 import { useUndo } from "../composables/useUndo";
 import { useCampaignCompletion } from "../composables/useCampaignCompletion";
 import { useTimer } from "../composables/useTimer";
@@ -58,24 +56,16 @@ import {
 const page = ref<HTMLElement | null>(null),
   listFocus = useListFocus(page);
 const collapsed = ref(new Set<number>());
-const saving = ref(false),
-  error = ref<string | null>(""),
+const error = ref<string | null>(""),
   success = ref("");
 const action = ref<"create" | "move" | "edit" | "delete" | null>(null),
   selected = ref<HierarchyTodo | null>(null);
-const formBusy = ref(false),
-  parent = ref("");
+const formBusy = ref(false);
 const burnupTodo = ref<HierarchyTodo | null>(null);
 const timer = useTimer();
-const {
-  preview,
-  prepare: prepareDeletion,
-  confirm: confirmPreviewedDeletion,
-  cancel: cancelDeletion,
-} = useTodoDeletion();
 const dragged = ref<number | null>(null),
   dropTarget = ref<number | null | undefined>(undefined);
-const busy = computed(() => saving.value || formBusy.value || writing.value);
+const busy = computed(() => formBusy.value || writing.value);
 const campaignCompletion = useCampaignCompletion();
 const quiet = () =>
   !busy.value &&
@@ -177,12 +167,6 @@ const children = computed(() => hierarchyChildren(todos.value));
 const titles = computed(
   () => new Map(todos.value.map((todo) => [todo.id, todo.title])),
 );
-const parentOptions = computed(() => {
-  const excluded = selected.value
-    ? descendantIds(todos.value, selected.value.id)
-    : new Set<number>();
-  return todos.value.filter((t) => !excluded.has(t.id));
-});
 // Category names only decorate the meta line, so a failure stays silent.
 const { load: loadCategories, labelOf } = useCategoryLabels();
 onMounted(loadCategories);
@@ -218,7 +202,7 @@ function rowMenu(todo: HierarchyTodo): MenuEntry[] {
         todo.parentId === null ? () => showProgress(todo) : undefined,
       reparent: () => open("move", todo),
       remove: {
-        run: () => void requestDelete(todo),
+        run: () => open("delete", todo),
         ariaLabel: `${todo.title} mit allen Unter-Quests löschen`,
       },
     },
@@ -256,7 +240,7 @@ function campaignMenu(todo: HierarchyTodo): MenuEntry[] {
         child: () => open("create", todo),
         reparent: () => open("move", todo),
         remove: {
-          run: () => void requestDelete(todo),
+          run: () => open("delete", todo),
           ariaLabel: `${todo.title} mit allen Unter-Quests löschen`,
         },
       },
@@ -270,14 +254,11 @@ function openFromCard(event: MouseEvent, todo: HierarchyTodo): void {
   if (!busy.value) onCardClick(event, () => open("edit", todo));
 }
 
-function message(e: unknown) {
-  return e instanceof Error ? e.message : "Änderung fehlgeschlagen.";
-}
 function close() {
   if (!busy.value) {
     action.value = null;
     selected.value = null;
-    cancelDeletion();
+    formBusy.value = false;
   }
 }
 /** Resolves to whether the write went through. */
@@ -348,15 +329,15 @@ function toggleCollapse(id: number) {
   collapsed.value = next;
 }
 function open(
-  kind: "create" | "move" | "edit",
+  kind: "create" | "move" | "edit" | "delete",
   todo: HierarchyTodo | null = null,
 ) {
+  if (busy.value) return;
   if (todo) listFocus.remember(`todo-${todo.id}`);
   selected.value = todo;
   action.value = kind;
   error.value = "";
   formBusy.value = false;
-  parent.value = todo?.parentId == null ? "" : String(todo.parentId);
 }
 function showProgress(todo: HierarchyTodo) {
   listFocus.remember(`todo-${todo.id}`);
@@ -382,13 +363,15 @@ async function created(todo: TodoResponse) {
 const becomesCampaign = (id: number | null) =>
   id !== null &&
   (campaignIds.value.has(id) || Boolean(children.value.get(id)?.length));
-async function changed() {
+/** A dialog wrote on its own: reload, close it and say what happened. */
+async function done(text: string) {
   formBusy.value = false;
   await applied();
   action.value = null;
   selected.value = null;
-  success.value = "Änderungen gespeichert.";
+  success.value = text;
 }
+const changed = () => done("Änderungen gespeichert.");
 function move(todo: HierarchyTodo, target: number | null) {
   return run(
     () => updateTodo(todo.id, { parentId: target }),
@@ -410,33 +393,6 @@ function startDrag(event: DragEvent, id: number) {
   dragged.value = id;
   event.dataTransfer?.setData("text/plain", String(id));
   if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-}
-async function requestDelete(todo: HierarchyTodo) {
-  if (busy.value) return;
-  listFocus.remember(`todo-${todo.id}`);
-  selected.value = todo;
-  saving.value = true;
-  error.value = "";
-  try {
-    await prepareDeletion(todo.id);
-    action.value = "delete";
-  } catch (e) {
-    error.value = message(e);
-  } finally {
-    saving.value = false;
-  }
-}
-async function confirmDelete() {
-  if (!selected.value || !preview.value) return;
-  // confirm() announces the change itself.
-  await run(
-    confirmPreviewedDeletion,
-    "Gelöscht. Das Logbuch bleibt erhalten.",
-    {
-      notify: false,
-    },
-  );
-  if (error.value) action.value = null;
 }
 // N opens the plus button's dialog: a new quest at the top, a campaign to be.
 useShortcutHandlers({
@@ -757,29 +713,19 @@ useShortcutHandlers({
       </div>
     </template>
     <ModalDialog
-      v-if="action"
+      v-if="action === 'create' || action === 'edit'"
       :title="
         action === 'create'
           ? selected
             ? 'Unter-Quest hinzufügen'
             : 'Neue Kampagne'
-          : action === 'move'
-            ? 'Quest verschieben'
-            : action === 'delete'
-              ? 'Quest löschen'
-              : selected && campaignIds.has(selected.id)
-                ? 'Kampagne bearbeiten'
-                : 'Quest bearbeiten'
+          : selected && campaignIds.has(selected.id)
+            ? 'Kampagne bearbeiten'
+            : 'Quest bearbeiten'
       "
       :busy="busy"
       :return-focus="listFocus.returnFocus"
-      :focus-selector="
-        action === 'move'
-          ? 'select'
-          : action === 'delete'
-            ? '[data-cancel-delete]'
-            : 'input[name=title]'
-      "
+      focus-selector="input[name=title]"
       @close="close"
     >
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
@@ -787,48 +733,14 @@ useShortcutHandlers({
         ><p v-if="selected" class="dialog-lead">Unter „{{ selected.title }}“</p>
         <CreateTodoForm
           embedded
-          :parent-id="selected?.id ?? null"
-          :parent-why="selected ? whyBelow(selected) : null"
+          :parent="selected"
           :campaign="!selected"
           @busy="formBusy = $event"
           @created="created"
+          @cancel="close"
       /></template>
-      <form
-        v-else-if="action === 'move'"
-        class="move-form"
-        @submit.prevent="
-          selected && move(selected, parent === '' ? null : Number(parent))
-        "
-      >
-        <label class="field" for="new-parent"
-          >Neuer Platz für „{{ selected?.title }}“
-          <select id="new-parent" v-model="parent" :disabled="busy">
-            <option value="">
-              {{
-                becomesCampaign(selected?.id ?? null)
-                  ? "Eigene Kampagne"
-                  : "Keine Kampagne (Questlog oder ihr Tag)"
-              }}
-            </option>
-            <option
-              v-for="todo in parentOptions"
-              :key="todo.id"
-              :value="String(todo.id)"
-            >
-              Unter „{{ todo.title }}“
-            </option>
-          </select></label
-        >
-        <p class="dialog-lead">
-          Alle Unter-Quests ziehen mit. Termine und eine laufende Stoppuhr
-          bleiben erhalten.
-        </p>
-        <button class="btn btn--primary" type="submit" :disabled="busy">
-          Verschieben
-        </button>
-      </form>
       <PlannerItemEditor
-        v-else-if="action === 'edit' && selected"
+        v-else-if="selected"
         kind="todo"
         :entity-id="selected.id"
         embedded
@@ -836,28 +748,24 @@ useShortcutHandlers({
         @changed="changed"
         @close="close"
       />
-      <template v-else-if="action === 'delete' && preview"
-        ><TodoDeletionSummary :preview="preview" />
-        <div class="delete-actions">
-          <button
-            data-cancel-delete
-            class="btn"
-            type="button"
-            :disabled="busy"
-            @click="close"
-          >
-            Nicht löschen</button
-          ><button
-            class="btn btn--danger"
-            type="button"
-            :disabled="busy"
-            @click="confirmDelete"
-          >
-            Ja, löschen
-          </button>
-        </div></template
-      >
     </ModalDialog>
+    <CampaignMoveDialog
+      v-if="action === 'move' && selected"
+      :todo-id="selected.id"
+      :title="selected.title"
+      :return-focus="listFocus.returnFocus"
+      @busy="formBusy = $event"
+      @moved="done('Quest verschoben.')"
+      @close="close"
+    />
+    <DeleteItemDialog
+      v-if="action === 'delete' && selected"
+      :target="{ kind: 'todo', id: selected.id, title: selected.title }"
+      :return-focus="listFocus.returnFocus"
+      @busy="formBusy = $event"
+      @deleted="done('Gelöscht. Das Logbuch bleibt erhalten.')"
+      @close="close"
+    />
     <CampaignCompletionDialog
       v-if="campaignCompletion.question.value"
       :title="campaignCompletion.question.value.title"
@@ -1200,24 +1108,7 @@ useShortcutHandlers({
 }
 
 .dialog-lead {
-  margin: 0;
+  margin: 0 0 var(--space-4);
   color: var(--color-ink-muted);
-}
-
-.move-form {
-  display: grid;
-  gap: var(--space-3);
-  justify-items: start;
-}
-
-.move-form .field {
-  width: 100%;
-}
-
-.delete-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-4);
 }
 </style>

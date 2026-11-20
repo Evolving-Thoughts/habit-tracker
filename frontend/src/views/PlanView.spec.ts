@@ -205,6 +205,52 @@ describe("PlanView", () => {
     expect(document.activeElement).toBe(menuButton(wrapper, "Quest 2").element);
   });
 
+  it("sorts a day with the arrow keys on a focused card and keeps it focused", async () => {
+    vi.mocked(getWeekPlan).mockResolvedValue(
+      week(MONDAY, { [TODAY]: [quest(1), quest(2)] }),
+    );
+    const { wrapper } = await mountPlan();
+    vi.mocked(getWeekPlan).mockResolvedValue(
+      week(MONDAY, { [TODAY]: [quest(2), quest(1)] }),
+    );
+    const card = () => wrapper.get('button[aria-label="Quest 2 bearbeiten"]');
+    expect(card().attributes("aria-keyshortcuts")).toBe(
+      "ArrowUp ArrowDown ArrowLeft ArrowRight",
+    );
+
+    await card().trigger("keydown", { key: "ArrowUp" });
+    await flushPromises();
+
+    expect(reorderDay).toHaveBeenCalledWith([
+      { type: "todo", id: 2 },
+      { type: "todo", id: 1 },
+    ]);
+    expect(rescheduleTodo).not.toHaveBeenCalled();
+    expect(openTitles(wrapper, TODAY)).toEqual(["Quest 2", "Quest 1"]);
+    expect(document.activeElement).toBe(card().element);
+  });
+
+  it("moves a focused card to the next day with ArrowRight, at the end of that day", async () => {
+    vi.mocked(getWeekPlan).mockResolvedValue(
+      week(MONDAY, {
+        [TODAY]: [quest(1)],
+        "2026-11-18": [quest(2, { scheduledDate: "2026-11-18" })],
+      }),
+    );
+    const { wrapper } = await mountPlan();
+
+    await wrapper
+      .get('button[aria-label="Quest 1 bearbeiten"]')
+      .trigger("keydown", { key: "ArrowRight" });
+    await flushPromises();
+
+    expect(rescheduleTodo).toHaveBeenCalledWith(1, "2026-11-18", false);
+    expect(reorderDay).toHaveBeenCalledWith([
+      { type: "todo", id: 2 },
+      { type: "todo", id: 1 },
+    ]);
+  });
+
   it("gives an open quest's menu its moves in the one order", async () => {
     vi.mocked(getWeekPlan).mockResolvedValue(
       week(MONDAY, { [TODAY]: [quest(1), quest(2)] }),
@@ -221,7 +267,9 @@ describe("PlanView", () => {
       "Anderer Tag …",
       "Bearbeiten",
       "Stoppuhr starten",
+      "In Kampagne verschieben …",
       "Nach unten",
+      "Löschen",
     ]);
   });
 
@@ -569,6 +617,8 @@ describe("PlanView Questlog column", () => {
       "Sonntag, 22. Nov.",
       "Bearbeiten",
       "Stoppuhr starten",
+      "In Kampagne verschieben …",
+      "Löschen",
     ]);
     await wrapper
       .get('[aria-label="Fahrrad putzen einplanen am Mittwoch, 18. Nov."]')

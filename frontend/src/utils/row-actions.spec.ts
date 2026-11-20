@@ -109,7 +109,7 @@ describe("rowMenu", () => {
       "Stoppuhr starten",
       "Unter-Quest hinzufügen",
       "Fortschritt anzeigen",
-      "Verschieben",
+      "In Kampagne verschieben …",
       "Nach oben",
       "Nach unten",
       "Löschen",

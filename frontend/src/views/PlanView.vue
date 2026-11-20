@@ -12,6 +12,8 @@ import { planQuest } from "../api/questlog.api";
 import AppIcon from "../components/AppIcon.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
 import MoveItemDialog from "../components/MoveItemDialog.vue";
+import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
+import DeleteItemDialog from "../components/DeleteItemDialog.vue";
 import PlanDay from "../components/PlanDay.vue";
 import PlanQuestlog from "../components/PlanQuestlog.vue";
 import UndoToast from "../components/UndoToast.vue";
@@ -71,7 +73,15 @@ const listFocus = useListFocus(page);
 /** The quest whose editor is open, from the board or from the Questlog column. */
 const editing = ref<{ todoId: number } | null>(null);
 const moving = ref<WeekPlanTodoEntry | null>(null);
+/** "In Kampagne verschieben …" or "Löschen" for a quest of the board or column. */
+const menuDialog = ref<{
+  kind: "move" | "delete";
+  todoId: number;
+  title: string;
+} | null>(null);
 const dialogBusy = ref(false);
+const dialogOpen = () =>
+  !!editing.value || !!moving.value || !!menuDialog.value || dialogBusy.value;
 
 /* The week lives in the address (#/plan?woche=…), so Back and reload keep it. */
 const week = computed(() =>
@@ -106,8 +116,7 @@ const {
     fallbackError: "Der Plan konnte nicht geladen werden.",
     params: [week],
     resetOnLoad: true,
-    refreshOnChange: () =>
-      !editing.value && !moving.value && !dialogBusy.value && !writes.busy.value,
+    refreshOnChange: () => !dialogOpen() && !writes.busy.value,
   },
 );
 /*
@@ -125,11 +134,7 @@ const {
     initial: [],
     fallbackError: "Der Questlog konnte nicht geladen werden.",
     params: [wide],
-    refreshOnChange: () =>
-      !editing.value &&
-      !moving.value &&
-      !dialogBusy.value &&
-      !writes.busy.value,
+    refreshOnChange: () => !dialogOpen() && !writes.busy.value,
   },
 );
 const QUESTLOG_KEY = "plan:questlog";
@@ -221,21 +226,25 @@ async function applyDrop(drop: Drop): Promise<void> {
 }
 
 /**
- * "Nach oben" and "Nach unten" in a card's menu: the keyboard's way to sort
- * a day. The focus stays on the moved card's menu button.
+ * A step without dragging: "Nach oben" and "Nach unten" in a card's menu,
+ * or an arrow key on the focused card (left and right a day). The focus
+ * stays with the moved card: on its menu button, or on the card itself.
  */
-async function stepInDay(
+async function stepEntry(
   entry: WeekPlanTodoEntry,
-  direction: "up" | "down",
+  direction: "up" | "down" | "left" | "right",
+  focusOn: "menu" | "card" = "menu",
 ): Promise<void> {
-  if (!plan.value) return;
+  if (!plan.value || writes.busy.value || dialogBusy.value) return;
   const drop = stepDrop(plan.value, entry.todoId, direction);
   if (!drop) return;
   await applyDrop(drop);
   await nextTick();
   page.value
     ?.querySelector<HTMLElement>(
-      `[data-focus-key="todo-${entry.todoId}"] [aria-haspopup="menu"]`,
+      `[data-focus-key="todo-${entry.todoId}"] ${
+        focusOn === "menu" ? '[aria-haspopup="menu"]' : "[data-edit-button]"
+      }`,
     )
     ?.focus();
 }
@@ -298,9 +307,19 @@ function openMoving(entry: WeekPlanTodoEntry): void {
   moving.value = entry;
 }
 
+function openMenuDialog(
+  kind: "move" | "delete",
+  todo: { todoId: number; title: string },
+): void {
+  if (dialogBusy.value || writes.busy.value) return;
+  listFocus.remember(`todo-${todo.todoId}`);
+  menuDialog.value = { kind, todoId: todo.todoId, title: todo.title };
+}
+
 function closeDialogs(): void {
   editing.value = null;
   moving.value = null;
+  menuDialog.value = null;
   dialogBusy.value = false;
 }
 
@@ -482,7 +501,7 @@ function entryMenu(entry: WeekPlanTodoEntry): MenuEntry[] {
   const busy = writes.busy.value || dialogBusy.value;
   const step = (direction: "up" | "down") =>
     stepDrop(current, entry.todoId, direction)
-      ? () => void stepInDay(entry, direction)
+      ? () => void stepEntry(entry, direction)
       : undefined;
   return rowMenu(
     entry.title,
@@ -506,8 +525,10 @@ function entryMenu(entry: WeekPlanTodoEntry): MenuEntry[] {
         { kind: "todo", targetId: entry.todoId, title: entry.title },
         true,
       ),
+      reparent: () => openMenuDialog("move", entry),
       up: step("up"),
       down: step("down"),
+      remove: { run: () => openMenuDialog("delete", entry) },
     },
     busy,
   );
@@ -615,6 +636,24 @@ useShortcutHandlers({
       @close="closeDialogs"
     />
 
+    <CampaignMoveDialog
+      v-if="menuDialog?.kind === 'move'"
+      :todo-id="menuDialog.todoId"
+      :title="menuDialog.title"
+      :return-focus="listFocus.returnFocus"
+      @busy="dialogBusy = $event"
+      @moved="onDialogDone"
+      @close="closeDialogs"
+    />
+    <DeleteItemDialog
+      v-if="menuDialog?.kind === 'delete'"
+      :target="{ kind: 'todo', id: menuDialog.todoId, title: menuDialog.title }"
+      :return-focus="listFocus.returnFocus"
+      @busy="dialogBusy = $event"
+      @deleted="onDialogDone"
+      @close="closeDialogs"
+    />
+
     <div v-if="writeError" class="alert plan-view__alert" role="alert">
       <p>{{ writeError }}</p>
     </div>
@@ -661,6 +700,14 @@ useShortcutHandlers({
         @drop="applyQuestlogDrop"
         @plan="planFromQuestlog"
         @edit="(todo) => openEditing({ todoId: todo.id })"
+        @reparent="
+          (todo) =>
+            openMenuDialog('move', { todoId: todo.id, title: todo.title })
+        "
+        @remove="
+          (todo) =>
+            openMenuDialog('delete', { todoId: todo.id, title: todo.title })
+        "
       />
       <div ref="board" class="plan-view__board">
         <PlanDay
@@ -671,6 +718,7 @@ useShortcutHandlers({
           :busy="writes.busy.value || dialogBusy"
           :menu="entryMenu"
           @edit="openEditing"
+          @arrow="(entry, key) => void stepEntry(entry, key, 'card')"
           @drop="applyDrop"
           @created="writes.applied()"
         />

@@ -1,5 +1,6 @@
 import { UserEntity } from '../../auth/auth.entities';
 import { CategoryEntity } from '../../categories/category.entity';
+import { TodoEntity } from '../../todos/entities/todo.entity';
 import {
   Column,
   Index,
@@ -39,6 +40,23 @@ export class HabitEntity {
   @ManyToOne(() => CategoryEntity, { nullable: true, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'categoryId' })
   category?: CategoryEntity | null;
+
+  /**
+   * The campaign the daily works towards: a top-level todo. Its reason is
+   * inherited and the daily's measured time counts as its quest time
+   * (`todo-ancestry.ts`). Todos are soft-deleted, so a deleted campaign stays
+   * referenced here and simply stops counting; the FK only guards hard deletes.
+   */
+  @Index('IDX_habits_campaignId')
+  @Column({ type: 'integer', nullable: true })
+  campaignId!: number | null;
+
+  @ManyToOne(() => TodoEntity, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({
+    name: 'campaignId',
+    foreignKeyConstraintName: 'FK_habits_campaign',
+  })
+  campaign?: TodoEntity | null;
 
   /** The personal reason for this entry. */
   @Column({ type: 'varchar', length: 1000, nullable: true })

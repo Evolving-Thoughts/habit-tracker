@@ -134,15 +134,23 @@ it.
   anywhere else on it, opens `EditItemDialog`; the whole card drags; its
   menu (built by `PlanView` with `rowMenu`) holds Morgen / Nächste Woche,
   "Anderer Tag …" (`MoveItemDialog`), Bearbeiten, Stoppuhr starten (a
-  compact card has no ▶) and Nach oben / Nach unten in the day. Dailies are
-  fixed rows without controls. In the Questlog column the menu holds the
-  board's days, Bearbeiten and Stoppuhr starten.
+  compact card has no ▶), "In Kampagne verschieben …"
+  (`CampaignMoveDialog`), Nach oben / Nach unten in the day and Löschen
+  (`DeleteItemDialog`, the editor's confirmation). With the focus on a
+  quest's card (its title button), the arrow keys move it like dragging:
+  ArrowUp / ArrowDown one place in the day's order, ArrowLeft / ArrowRight
+  to the end of the day before or after (never into the past); the focus
+  stays on the card and the move is announced in the live region. Dailies
+  are fixed rows without controls. In the Questlog column the menu holds the
+  board's days, Bearbeiten, Stoppuhr starten, "In Kampagne verschieben …"
+  and Löschen; its cards take no arrow keys.
 - `components/PlanQuestlog.vue`: the Questlog column (list, drag source,
   menus, collapse toggle); `composables/useMediaQuery.ts` decides whether it
   exists.
 - `utils/week-plan.ts`: the pure rules: `dropOnDay` applies a drop to the plan
   at once and says what to write (also for an `incoming` quest from the
-  Questlog column), `stepDrop` turns "Nach oben" / "Nach unten" into drops, `arrangeOpen`
+  Questlog column), `stepDrop` turns "Nach oben" / "Nach unten" and the arrow keys (also
+  left and right, a day) into drops, `arrangeOpen`
   mirrors the server's sorting for the optimistic view, `questlogEntry` shows
   a Questlog quest as a row of the board.
 - Writes go through `useWrites` (one at a time, then `notifyDataChanged` and a

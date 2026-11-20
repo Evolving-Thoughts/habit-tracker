@@ -4,6 +4,10 @@ import { getHabits, updateOccurrenceStatus } from "../api/day-planner.api";
 import { useCategoryLabels } from "../composables/useCategoryLabels";
 import { useListFocus } from "../composables/useListFocus";
 import ActionMenu from "../components/ActionMenu.vue";
+import CampaignChip from "../components/CampaignChip.vue";
+import DeleteItemDialog, {
+  type DeleteTarget,
+} from "../components/DeleteItemDialog.vue";
 import CheckRing from "../components/CheckRing.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
 import UndoToast from "../components/UndoToast.vue";
@@ -30,6 +34,9 @@ const listFocus = useListFocus(page);
 
 const successMessage = ref<string | null>(null);
 const editingId = ref<number | null>(null);
+/** Today's run of the daily being edited, for its notes. */
+const editingRun = ref<number | null>(null);
+const deleting = ref<DeleteTarget | null>(null);
 const editorBusy = ref(false);
 const creationOpen = ref(false);
 
@@ -68,7 +75,10 @@ const {
   initial: [] as HabitResponse[],
   fallbackError: "Die Dailies konnten nicht geladen werden.",
   refreshOnChange: () =>
-    editingId.value === null && !creationOpen.value && !writes.busy.value,
+    editingId.value === null &&
+    !deleting.value &&
+    !creationOpen.value &&
+    !writes.busy.value,
 });
 const writes = useWrites(loadHabits, errorMessage);
 const { applied } = writes;
@@ -169,12 +179,32 @@ function nextScheduleOf(habit: HabitResponse): string | null {
 const categoryOf = (habit: HabitResponse) => labelOf(habit.categoryId);
 
 /* The card contract: a tap on the card opens the editor, as its title does. */
-const canEdit = () => !isBusy.value && editingId.value === null;
+const canEdit = () =>
+  !isBusy.value && editingId.value === null && !deleting.value;
 function openFromCard(event: MouseEvent, habit: HabitResponse): void {
   if (canEdit()) onCardClick(event, () => openEditing(habit));
 }
 const cardMenu = (habit: HabitResponse): MenuEntry[] =>
-  rowMenu(habit.title, { edit: () => openEditing(habit) }, !canEdit());
+  rowMenu(
+    habit.title,
+    {
+      edit: () => openEditing(habit),
+      remove: { run: () => openDeleting(habit) },
+    },
+    !canEdit(),
+  );
+function openDeleting(habit: HabitResponse): void {
+  if (!canEdit()) return;
+  successMessage.value = null;
+  listFocus.remember(`habit-${habit.id}`);
+  deleting.value = { kind: "habit", id: habit.id, title: habit.title };
+}
+async function onDeleted(): Promise<void> {
+  successMessage.value = "Daily gelöscht. Das Logbuch bleibt erhalten.";
+  await applied();
+  deleting.value = null;
+  editorBusy.value = false;
+}
 
 function statusOf(habit: HabitResponse): string | null {
   return dailyWeekStatus(habit, week.value, today.value);
@@ -197,10 +227,12 @@ function openEditing(habit: HabitResponse): void {
   if (isBusy.value || editingId.value !== null) return;
   successMessage.value = null;
   listFocus.remember(`habit-${habit.id}`);
+  editingRun.value = runToday(habit)?.id ?? null;
   editingId.value = habit.id;
 }
 function closeEditing(): void {
   editingId.value = null;
+  editingRun.value = null;
   editorBusy.value = false;
 }
 async function onEditorChanged(): Promise<void> {
@@ -224,7 +256,7 @@ async function onCreated(): Promise<void> {
 
     <CreateItemDialog
       v-if="creationOpen"
-      mode="habit"
+      kind="habit"
       @close="creationOpen = false"
       @created="onCreated"
     />
@@ -233,10 +265,23 @@ async function onCreated(): Promise<void> {
       :key="editingId"
       kind="habit"
       :entity-id="editingId"
+      :occurrence-id="editingRun"
       :return-focus="listFocus.returnFocus"
       @busy="editorBusy = $event"
       @changed="onEditorChanged"
       @close="closeEditing"
+    />
+
+    <DeleteItemDialog
+      v-if="deleting"
+      :target="deleting"
+      :return-focus="listFocus.returnFocus"
+      @busy="editorBusy = $event"
+      @deleted="onDeleted"
+      @close="
+        deleting = null;
+        editorBusy = false;
+      "
     />
 
     <div v-if="errorMessage" class="alert habits-view__alert">
@@ -349,6 +394,10 @@ async function onCreated(): Promise<void> {
                   <span v-for="part in detailsOf(habit)" :key="part">{{
                     part
                   }}</span>
+                  <CampaignChip
+                    v-if="habit.campaign"
+                    :campaign="habit.campaign"
+                  />
                 </p>
                 <p v-if="nextScheduleOf(habit)" class="habit-card__next">
                   {{ nextScheduleOf(habit) }}

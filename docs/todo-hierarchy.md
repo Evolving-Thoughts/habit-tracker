@@ -44,6 +44,22 @@ Ownership and live-parent checks are enforced on the server. Requests cannot
 point to themselves, descendants, another user's Todos or soft-deleted parents.
 The frontend's filtered move choices are convenience, not authorization.
 
+Re-parenting goes through the ordinary `PATCH /todos/:id` with `parentId`
+(a positive id or null): the server checks the parent's live ancestor chain
+(no cycle, no self, no descendant, owned and live), moves the whole subtree
+and, when a campaign goes below another todo, clears its weekly goal, colour
+and icon (`NO_CAMPAIGN_FIELDS`). The frontend offers it in three places with
+one picker (`ParentPicker.vue` on `utils/parent-choice.ts`): "Gehört zu" in
+the quest editor and in "Neue Quest", "In Kampagne verschieben …" in every
+quest card's menu (`CampaignMoveDialog.vue`) and dragging in the Kampagnen
+tree. The picker lists campaigns and every open quest below them as a path
+("Buch schreiben › Kapitel 2"), never the quest itself or its subtree; typing
+a name that does not exist offers "Neue Kampagne „…“ anlegen", which creates a
+top-level todo in the colour its title picks (so it is a campaign at once) and
+chooses it. Choosing a place shows its reason as the inherited Warum (live,
+never copied) and, while the quest has no category, preselects the place's
+category or else its campaign's.
+
 ### Atomic mutation and concurrency
 
 Every Todo mutation runs in the per-user unit of work (`UserUnitOfWork`), which
@@ -182,14 +198,18 @@ of these fields (`TodoAncestry.campaignOf`). See `quest-hours.md`.
 ## Inherited why
 
 A todo without its own `why` shows the reason of its nearest ancestor that
-states one. A habit without its own shows the reason of the todo whose habit
-goal counts it in a period covering today (or what that todo inherits).
+states one. A habit without its own takes, in this order: the reason of the
+campaign it names (`habits.campaignId`, or what that todo inherits if it has
+moved below another), else the reason of the todo whose habit goal counts it
+in a period covering today (or what that todo inherits). A named campaign
+without any reason falls through to the goal.
 
 Inheritance is live, not a copy: `todos.why` stays null for an inheriting todo,
 so a changed reason reaches everything below it. The rule is one pure function,
-`inheritedWhy` in `todo-hierarchy.ts`; `why-sources.ts` reads the user's live
-todos once per request (id, parent, reason, title, habit goal) and answers every
-lookup from that.
+`inheritedWhy` in `todo-hierarchy.ts`; `TodoAncestry` (`todo-ancestry.ts`)
+reads the user's live todos and the campaigns their habits name once per
+request (id, parent, reason, title, habit goal) and answers every lookup from
+that (`inheritedHabitWhy`, `habitWhy`, `habitCampaign`).
 
 - `TodoResponseDto` and `HabitResponseDto` carry the own `why` and
   `inheritedWhy: { text, fromId, fromTitle } | null`, so an editor can show both.

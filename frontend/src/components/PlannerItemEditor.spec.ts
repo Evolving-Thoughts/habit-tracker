@@ -1,5 +1,10 @@
 import { HABIT_FIELDS, TODO_FIELDS } from "../types/fixtures";
-import { getDeletionPreview } from "../api/todo-hierarchy.api";
+import {
+  getDeletionPreview,
+  getTodoHierarchy,
+} from "../api/todo-hierarchy.api";
+import { choose } from "../test/combobox";
+import { hierarchyTodo } from "../test/hierarchy";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -22,10 +27,16 @@ import { request } from "../api/http";
 import PlannerItemEditor from "./PlannerItemEditor.vue";
 
 vi.mock("../api/categories.api", () => ({
-  getCategories: vi.fn().mockResolvedValue([{ id: 7, name: "Sport" }]),
+  getCategories: vi.fn(async () => [{ id: 7, name: "Sport" }]),
+  createCategory: vi.fn(),
 }));
-vi.mock("../api/todo-hierarchy.api", () => ({ getDeletionPreview: vi.fn() }));
+vi.mock("../api/todo-hierarchy.api", () => ({
+  getDeletionPreview: vi.fn(),
+  getTodoHierarchy: vi.fn(async () => []),
+}));
 vi.mock("../api/day-planner.api", () => ({
+  createHabit: vi.fn(),
+  createTodo: vi.fn(),
   getTodo: vi.fn(),
   getHabit: vi.fn(),
   updateTodo: vi.fn(),
@@ -135,14 +146,222 @@ describe("PlannerItemEditor", () => {
     });
     expect(changeHabitSchedule).not.toHaveBeenCalled();
   });
-  it("offers notes for a quest, not for a daily", async () => {
+  it("offers notes for a quest, and for a daily only when opened from a run", async () => {
     const quest = mount(PlannerItemEditor, {
       props: { kind: "todo", entityId: 1 },
     });
     const daily = mountHabitEditor();
+    const run = mount(PlannerItemEditor, {
+      props: { kind: "habit", entityId: 10, occurrenceId: 20 },
+    });
     await flushPromises();
-    expect(quest.get("[data-notes]").attributes("data-notes")).toBe("1");
+    expect(quest.get("[data-notes]").attributes("data-notes")).toBe("todo-1");
     expect(daily.find("[data-notes]").exists()).toBe(false);
+    expect(run.get("[data-notes]").attributes("data-notes")).toBe(
+      "occurrence-20",
+    );
+  });
+
+  describe("Gehört zu", () => {
+    beforeEach(() => {
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        hierarchyTodo({ id: 4, title: "Buch", why: "Erzählen", categoryId: 7 }),
+        hierarchyTodo({
+          id: 5,
+          title: "Kapitel 2",
+          parentId: 4,
+          inheritedWhy: { text: "Erzählen", fromId: 4, fromTitle: "Buch" },
+        }),
+        hierarchyTodo({ id: 1, title: "NestJS lernen" }),
+      ]);
+    });
+    const mountQuest = () =>
+      mount(PlannerItemEditor, {
+        props: { kind: "todo", entityId: 1, embedded: true },
+      });
+
+    it("moves the quest below a chosen one, inheriting its why and the campaign's category", async () => {
+      const wrapper = mountQuest();
+      await flushPromises();
+      await choose(wrapper, "#planner-edit-parent", "Kapitel");
+      expect(wrapper.get("blockquote").text()).toContain("Erzählen");
+      await save(wrapper);
+      expect(updateTodo).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ parentId: 5, categoryId: 7 }),
+      );
+      expect(vi.mocked(updateTodo).mock.calls[0]![1]).not.toHaveProperty(
+        "why",
+      );
+    });
+
+    it("never offers the quest itself, and offers Keine to detach", async () => {
+      vi.mocked(getTodo).mockResolvedValue({ ...todo, parentId: 4 });
+      const wrapper = mountQuest();
+      await flushPromises();
+      const options = wrapper
+        .findAll("#planner-edit-parent ~ ul [role=option]")
+        .map((option) => option.text());
+      expect(options).toEqual(["Keine (lose Quest)", "Buch", "Buch › Kapitel 2"]);
+      await choose(wrapper, "#planner-edit-parent", "Keine");
+      await save(wrapper);
+      expect(updateTodo).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ parentId: null }),
+      );
+    });
+
+    it("sends no campaign fields once the quest goes below another one", async () => {
+      const wrapper = mountQuest();
+      await flushPromises();
+      await wrapper.get('.item-editor__more button[aria-expanded]').trigger("click");
+      await wrapper
+        .get('.item-editor__more input[type="radio"][value="pine"]')
+        .setValue(true);
+      await choose(wrapper, "#planner-edit-parent", "Buch");
+      expect(wrapper.find('input[name="weeklyTarget"]').exists()).toBe(false);
+      await save(wrapper);
+      const input = vi.mocked(updateTodo).mock.calls[0]![1];
+      expect(input).toMatchObject({ parentId: 4 });
+      expect(input).not.toHaveProperty("color");
+    });
+  });
+
+  describe("campaign form", () => {
+    const campaign = {
+      ...todo,
+      scheduledDate: null,
+      plannedDurationMinutes: null,
+      color: "pine",
+      campaign: { id: 1, title: "NestJS lernen", color: "pine", icon: null },
+    };
+
+    it("leaves out day, duration, appointment and Gehört zu, and says what makes a campaign", async () => {
+      vi.mocked(getTodo).mockResolvedValue(campaign);
+      const wrapper = mount(PlannerItemEditor, {
+        props: { kind: "todo", entityId: 1 },
+      });
+      await flushPromises();
+      for (const field of [
+        'input[name="scheduledDate"]',
+        'input[name="duration"]',
+        'input[name="timeOfDay"]',
+        "#planner-edit-parent",
+        '[role="radiogroup"][aria-label="Art"]',
+      ])
+        expect(wrapper.find(field).exists()).toBe(false);
+      for (const field of [
+        'input[name="title"]',
+        'textarea[name="why"]',
+        "#planner-edit-category",
+        'input[name="weeklyTarget"]',
+        "[data-notes]",
+      ])
+        expect(wrapper.find(field).exists()).toBe(true);
+      expect(wrapper.text()).toContain(
+        "Eine oberste Quest wird zur Kampagne, sobald sie Unter-Quests hat oder eine Farbe, ein Symbol oder ein Wochenziel bekommt.",
+      );
+    });
+
+    it("still shows a day a campaign already has, so it can be cleared", async () => {
+      vi.mocked(getTodo).mockResolvedValue({
+        ...campaign,
+        scheduledDate: "2026-10-02",
+      });
+      const wrapper = mount(PlannerItemEditor, {
+        props: { kind: "todo", entityId: 1 },
+      });
+      await flushPromises();
+      expect(wrapper.find('input[name="scheduledDate"]').exists()).toBe(true);
+    });
+  });
+
+  describe("Quest or Daily", () => {
+    const mountQuest = () =>
+      mount(PlannerItemEditor, {
+        props: { kind: "todo", entityId: 1, embedded: true },
+      });
+
+    it("turns an open quest into a daily: the daily is created, then the quest deleted", async () => {
+      vi.mocked(getTodo).mockResolvedValue({
+        ...todo,
+        why: "Backend verstehen",
+        categoryId: 7,
+      });
+      const wrapper = mountQuest();
+      await flushPromises();
+      await wrapper.get('[data-test="kind-habit"]').setValue(true);
+      expect(wrapper.emitted("mode")).toEqual([["habit"]]);
+      expect(
+        wrapper.get<HTMLInputElement>('input[name="title"]').element.value,
+      ).toBe("NestJS lernen");
+      expect(wrapper.text()).toContain("die Quest „NestJS lernen“ wird gelöscht");
+      expect(updateTodo).not.toHaveBeenCalled();
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+      const { createHabit } = await import("../api/day-planner.api");
+      expect(createHabit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "NestJS lernen",
+          why: "Backend verstehen",
+          categoryId: 7,
+        }),
+      );
+      expect(deleteTodo).toHaveBeenCalledWith(1, "a".repeat(64));
+      expect(wrapper.emitted("changed")).toEqual([[]]);
+    });
+
+    it("is not offered for a quest with quests below it or a done one", async () => {
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        hierarchyTodo({ id: 1, title: "NestJS lernen" }),
+        hierarchyTodo({ id: 2, title: "Module", parentId: 1 }),
+      ]);
+      const parent = mountQuest();
+      await flushPromises();
+      expect(parent.find('[data-test="kind-habit"]').exists()).toBe(false);
+
+      vi.mocked(getTodoHierarchy).mockResolvedValue([]);
+      vi.mocked(getTodo).mockResolvedValue({ ...todo, completed: true });
+      const done = mountQuest();
+      await flushPromises();
+      expect(done.find('[data-test="kind-habit"]').exists()).toBe(false);
+    });
+  });
+
+  describe("daily campaign", () => {
+    it("names a campaign, takes over its why and category", async () => {
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        hierarchyTodo({
+          id: 4,
+          title: "Marathon",
+          why: "Gesund alt werden",
+          categoryId: 7,
+          color: "pine",
+        }),
+      ]);
+      const wrapper = mountHabitEditor();
+      await flushPromises();
+      await choose(wrapper, "#planner-edit-campaign", "Mara");
+      expect(wrapper.get("blockquote").text()).toContain("Gesund alt werden");
+      await save(wrapper);
+      expect(updateHabit).toHaveBeenCalledWith(10, {
+        campaignId: 4,
+        categoryId: 7,
+      });
+    });
+
+    it("puts the rhythm before category, campaign and why", async () => {
+      const wrapper = mountHabitEditor();
+      await flushPromises();
+      const html = wrapper.html();
+      const at = (text: string) => html.indexOf(text);
+      expect(at("schedule-summary")).toBeLessThan(at("planner-edit-category"));
+      expect(at("planner-edit-category")).toBeLessThan(
+        at("planner-edit-campaign"),
+      );
+      expect(at("planner-edit-campaign")).toBeLessThan(at("planner-edit-why"));
+      expect(at("planner-edit-why")).toBeLessThan(at('name="timeOfDay"'));
+    });
   });
 
   it("saves a todo and keeps the day it is planned for", async () => {
@@ -649,7 +868,7 @@ describe("PlannerItemEditor", () => {
       for (const field of [
         'input[name="timeOfDay"]',
         'select[name="goalHabit"]',
-        'select[name="category"]',
+        "#planner-edit-category",
         'input[name="weeklyTarget"]',
       ])
         expect(visible(wrapper, field)).toBe(false);
@@ -695,7 +914,7 @@ describe("PlannerItemEditor", () => {
       ).toBe("10:00");
       expect(visible(wrapper, 'input[name="periodStart"]')).toBe(true);
       expect(visible(wrapper, 'input[name="goalTarget"]')).toBe(true);
-      expect(visible(wrapper, 'select[name="category"]')).toBe(true);
+      expect(visible(wrapper, "#planner-edit-category")).toBe(true);
       expect(visible(wrapper, 'input[name="weeklyTarget"]')).toBe(true);
     });
 
@@ -715,8 +934,8 @@ describe("PlannerItemEditor", () => {
     it.each([
       ["Termin", 'input[name="timeOfDay"]'],
       ["Ziel mit Daily", 'select[name="goalHabit"]'],
-      ["Kategorie", 'select[name="category"]'],
-      ["Kampagne", 'input[type="radio"]'],
+      ["Kategorie", "#planner-edit-category"],
+      ["Kampagne", '.item-editor__more input[type="radio"]'],
     ])(
       "opens “%s” in place with the focus on its first field",
       async (label, field) => {
@@ -766,20 +985,20 @@ describe("PlannerItemEditor", () => {
       );
     });
 
-    it("keeps Speichern and Abbrechen together in the sticky footer, before the quiet delete", async () => {
+    it("ends the form with the sticky actions: Speichern, Abbrechen, then the quiet delete", async () => {
       const wrapper = mountQuest();
       await flushPromises();
       expect(wrapper.classes()).toContain("item-editor--embedded");
       const footer = wrapper.get('[data-test="editor-actions"]');
+      expect(footer.classes()).toContain("sticky-actions");
       expect(footer.findAll("button").map((button) => button.text())).toEqual([
         "Speichern",
         "Abbrechen",
+        "Quest löschen",
       ]);
-      const deletion = wrapper.get('[data-test="request-delete"]').element;
-      expect(
-        footer.element.compareDocumentPosition(deletion) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
+      // Nothing follows the actions, so nothing shows below them.
+      expect(footer.element.nextElementSibling).toBeNull();
+      expect(footer.element.parentElement!.nextElementSibling).toBeNull();
       // A failed save is said right above the buttons, where the eye is.
       await wrapper.get('input[name="title"]').setValue(" ");
       await save(wrapper);

@@ -297,10 +297,19 @@ useShortcutHandlers({
         </button>
       </div>
 
+      <!-- A quest's notes, or those of this one run of a daily. -->
       <QuestNotes
-        v-if="current.type === 'todo'"
+        :key="
+          current.type === 'todo'
+            ? `todo-${current.todoId}`
+            : `run-${current.occurrenceId}`
+        "
         class="focus-view__notes"
-        :todo-id="current.todoId"
+        :target="
+          current.type === 'todo'
+            ? { kind: 'todo', id: current.todoId }
+            : { kind: 'occurrence', id: current.occurrenceId }
+        "
       />
 
       <dl v-if="upcoming.length || nextAppointment" class="focus-view__ahead">

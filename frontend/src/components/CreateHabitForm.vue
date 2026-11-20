@@ -6,9 +6,14 @@ import {
 } from "../utils/timer-duration";
 import { ref } from "vue";
 import { createHabit } from "../api/day-planner.api";
-import CategorySelect, { type CategoryChoice } from "./CategorySelect.vue";
+import { useTodoDeletion } from "../composables/useTodoDeletion";
+import CategoryPicker from "./CategoryPicker.vue";
+import ParentPicker from "./ParentPicker.vue";
 import type { CreateHabitInput } from "../types/habit";
+import type { InheritedWhy } from "../types/todo";
 import WhyField from "./WhyField.vue";
+import { categoryOfChoice, type ParentChoice } from "../utils/parent-choice";
+import { whyBelow } from "../utils/why";
 import {
   emptyScheduleDraft,
   positiveInteger,
@@ -20,18 +25,62 @@ import {
   isValidIsoDate,
 } from "../utils/date";
 
-defineProps<{ embedded?: boolean }>();
-const emit = defineEmits<{ created: []; busy: [value: boolean] }>();
-const title = ref("");
+/** What a daily made from a quest starts with. */
+export type HabitDraft = {
+  title: string;
+  why: string;
+  categoryId: number | null;
+  campaignId: number | null;
+};
+
+/**
+ * "Neues Daily": Titel, then the rhythm with its details right below,
+ * Kategorie and Kampagne, Warum, and the optional start, time and duration.
+ * Given `replaces`, the daily takes the place of that quest: once it is
+ * created, the quest is deleted (with its subtree preview, like any delete).
+ */
+const props = defineProps<{
+  embedded?: boolean;
+  initial?: HabitDraft;
+  replaces?: { id: number; title: string };
+}>();
+const emit = defineEmits<{
+  created: [];
+  busy: [value: boolean];
+  cancel: [];
+}>();
+const title = ref(props.initial?.title ?? "");
 const startDate = ref("");
 const duration = ref<string | number>("");
 const timeOfDay = ref("");
-const category = ref<CategoryChoice>("default");
-const why = ref("");
+const categoryId = ref<number | null>(props.initial?.categoryId ?? null);
+const campaignId = ref<number | null>(props.initial?.campaignId ?? null);
+/** What the daily inherits from its campaign while it has no own reason. */
+const campaignWhy = ref<InheritedWhy | null>(null);
+const why = ref(props.initial?.why ?? "");
 const schedule = ref(emptyScheduleDraft());
 const isSubmitting = ref(false);
 const errorMessage = ref<string | null>(null);
+/** The daily exists; only the quest it replaces still has to go. */
+const habitCreated = ref(false);
 const today = getCurrentDateInTimeZone();
+const { preview, prepare, confirm, cancel } = useTodoDeletion();
+
+function readCampaign(choice: ParentChoice | null): void {
+  campaignWhy.value = choice ? whyBelow(choice.todo) : null;
+}
+function chooseCampaign(choice: ParentChoice | null): void {
+  readCampaign(choice);
+  // The campaign's category, unless one is chosen already.
+  if (choice && categoryId.value === null)
+    categoryId.value = categoryOfChoice(choice);
+}
+function presetCampaign(choices: ParentChoice[]): void {
+  readCampaign(
+    choices.find((choice) => choice.todo.id === campaignId.value) ?? null,
+  );
+}
+
 function buildInput(): CreateHabitInput {
   const trimmedTitle = title.value.trim();
   if (!trimmedTitle) throw new Error("Bitte gib einen Titel ein.");
@@ -52,25 +101,55 @@ function buildInput(): CreateHabitInput {
       : {}),
     ...(timeOfDay.value ? { timeOfDay: timeOfDay.value } : {}),
     ...(startDate.value ? { startDate: startDate.value } : {}),
-    ...(category.value !== "default" ? { categoryId: category.value } : {}),
+    ...(categoryId.value !== null ? { categoryId: categoryId.value } : {}),
+    ...(campaignId.value !== null ? { campaignId: campaignId.value } : {}),
     ...(why.value.trim() ? { why: why.value.trim() } : {}),
     schedule: scheduleRuleOf(schedule.value),
   };
+}
+function reset(): void {
+  title.value = "";
+  startDate.value = "";
+  duration.value = "";
+  timeOfDay.value = "";
+  categoryId.value = null;
+  campaignId.value = null;
+  campaignWhy.value = null;
+  why.value = "";
+}
+async function removeReplaced(): Promise<void> {
+  if (!props.replaces) return;
+  try {
+    await prepare(props.replaces.id);
+    // Only the quest itself: one that got quests below meanwhile stays.
+    if (preview.value?.todos.length !== 1) {
+      cancel();
+      throw new Error("Die Quest hat inzwischen Unter-Quests");
+    }
+    await confirm();
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Unbekannter Fehler";
+    throw new Error(
+      `Das Daily ist angelegt, die Quest „${props.replaces.title}“ aber noch nicht gelöscht: ${detail}. Speichere erneut, um sie zu löschen.`,
+    );
+  }
 }
 async function submit(): Promise<void> {
   if (isSubmitting.value) return;
   errorMessage.value = null;
   try {
-    const input = buildInput();
+    const input = habitCreated.value ? null : buildInput();
     isSubmitting.value = true;
     emit("busy", true);
-    await createHabit(input);
-    title.value = "";
-    startDate.value = "";
-    duration.value = "";
-    timeOfDay.value = "";
-    category.value = "default";
-    why.value = "";
+    if (input) {
+      await createHabit(input);
+      habitCreated.value = true;
+    }
+    await removeReplaced();
+    if (!props.replaces) {
+      reset();
+      habitCreated.value = false;
+    }
     emit("created");
   } catch (error: unknown) {
     errorMessage.value =
@@ -92,7 +171,12 @@ async function submit(): Promise<void> {
   >
     <h2 v-if="!embedded" id="create-habit-heading">Neues Daily</h2>
     <form novalidate @submit.prevent="submit">
-      <fieldset :disabled="isSubmitting">
+      <fieldset :disabled="isSubmitting || habitCreated">
+        <p v-if="replaces" class="create-habit__notice">
+          Beim Speichern entsteht dieses Daily, und die Quest „{{
+            replaces.title
+          }}“ wird gelöscht. Was schon im Logbuch steht, bleibt erhalten.
+        </p>
         <label class="field">
           Titel
           <input
@@ -104,50 +188,10 @@ async function submit(): Promise<void> {
             placeholder="Welches Daily möchtest du aufbauen?"
           />
         </label>
+
+        <!-- The rhythm first, its details right below it. -->
         <label class="field">
-          Kategorie · optional
-          <CategorySelect id="habit-category" v-model="category" />
-        </label>
-        <WhyField id="habit-why" v-model="why" />
-        <div class="create-habit__row">
-          <div class="field">
-            <label for="habit-start-date">Startdatum · optional</label>
-            <input
-              id="habit-start-date"
-              v-model="startDate"
-              name="startDate"
-              type="date"
-              aria-describedby="habit-start-hint"
-            />
-            <small id="habit-start-hint" class="create-habit__hint"
-              >Ohne Datum ab heute,
-              {{ formatDateForGermanDisplay(today) }}.</small
-            >
-          </div>
-          <label class="field">
-            Uhrzeit · optional
-            <input v-model="timeOfDay" name="timeOfDay" type="time" />
-          </label>
-        </div>
-        <div class="field">
-          <label for="habit-duration">Dauer in Minuten · optional</label>
-          <input
-            id="habit-duration"
-            v-model="duration"
-            name="duration"
-            type="number"
-            min="1"
-            :max="TIMER_MAX_MINUTES"
-            step="1"
-            aria-describedby="habit-duration-hint"
-          />
-          <small id="habit-duration-hint" class="create-habit__hint"
-            >Die Dauer ist das Soll der Stoppuhr; sie läuft darüber
-            hinaus.</small
-          >
-        </div>
-        <label class="field">
-          Wie oft?
+          Rhythmus
           <select v-model="schedule.type" name="scheduleType">
             <option value="interval">Alle paar Tage</option>
             <option value="fixed_weekdays">An festen Wochentagen</option>
@@ -211,13 +255,99 @@ async function submit(): Promise<void> {
             <option value="skip">Verfallen lassen</option>
           </select>
         </label>
+
+        <div class="create-habit__row">
+          <div class="field">
+            <label for="habit-category">Kategorie · optional</label>
+            <CategoryPicker id="habit-category" v-model="categoryId" />
+          </div>
+          <div class="field">
+            <label for="habit-campaign">Kampagne · optional</label>
+            <ParentPicker
+              id="habit-campaign"
+              v-model="campaignId"
+              campaigns-only
+              @chosen="chooseCampaign"
+              @ready="presetCampaign"
+            />
+          </div>
+        </div>
+
+        <WhyField id="habit-why" v-model="why" :inherited="campaignWhy" />
+
+        <div class="create-habit__row">
+          <div class="field">
+            <label for="habit-start-date">Startdatum · optional</label>
+            <input
+              id="habit-start-date"
+              v-model="startDate"
+              name="startDate"
+              type="date"
+              aria-describedby="habit-start-hint"
+            />
+            <small id="habit-start-hint" class="create-habit__hint"
+              >Ohne Datum ab heute,
+              {{ formatDateForGermanDisplay(today) }}.</small
+            >
+          </div>
+          <label class="field">
+            Uhrzeit · optional
+            <input v-model="timeOfDay" name="timeOfDay" type="time" />
+          </label>
+        </div>
+        <div class="field">
+          <label for="habit-duration">Dauer in Minuten · optional</label>
+          <input
+            id="habit-duration"
+            v-model="duration"
+            name="duration"
+            type="number"
+            min="1"
+            :max="TIMER_MAX_MINUTES"
+            step="1"
+            aria-describedby="habit-duration-hint"
+          />
+          <small id="habit-duration-hint" class="create-habit__hint"
+            >Die Dauer ist das Soll der Stoppuhr; sie läuft darüber
+            hinaus.</small
+          >
+        </div>
+      </fieldset>
+
+      <!-- In a dialog it sticks to the bottom edge, like the editor's actions. -->
+      <div
+        class="create-habit__footer"
+        :class="{ 'sticky-actions': embedded }"
+        data-test="editor-actions"
+      >
         <p v-if="errorMessage" class="form-error" role="alert">
           {{ errorMessage }}
         </p>
-        <button class="btn btn--primary create-habit__submit" type="submit">
-          {{ isSubmitting ? "Wird erstellt …" : "Daily erstellen" }}
-        </button>
-      </fieldset>
+        <div class="create-habit__actions">
+          <button
+            class="btn btn--primary"
+            type="submit"
+            :disabled="isSubmitting"
+          >
+            {{
+              isSubmitting
+                ? "Wird erstellt …"
+                : replaces
+                  ? "Als Daily speichern"
+                  : "Daily erstellen"
+            }}
+          </button>
+          <button
+            v-if="embedded"
+            class="btn"
+            type="button"
+            :disabled="isSubmitting"
+            @click="emit('cancel')"
+          >
+            Abbrechen
+          </button>
+        </div>
+      </div>
     </form>
   </section>
 </template>
@@ -228,6 +358,7 @@ async function submit(): Promise<void> {
   font-size: 1.125rem;
   font-weight: 800;
 }
+.create-habit form,
 .create-habit fieldset {
   display: grid;
   gap: var(--space-4);
@@ -245,6 +376,14 @@ async function submit(): Promise<void> {
   color: var(--color-ink-muted);
   font-size: 0.875rem;
   font-weight: 400;
+}
+/* Info: a calm panel in deep apricot with ink text. */
+.create-habit__notice {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-ground-deep);
+  color: var(--color-ink);
 }
 .create-habit .create-habit__weekdays {
   display: flex;
@@ -278,8 +417,15 @@ async function submit(): Promise<void> {
   width: 1.125rem;
   height: 1.125rem;
 }
-.create-habit__submit {
-  justify-self: start;
+.create-habit__footer {
+  display: grid;
+  gap: var(--space-3);
+}
+.create-habit__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
 }
 @media (max-width: 32rem) {
   .create-habit__row {

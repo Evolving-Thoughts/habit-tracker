@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import TodoDeletionSummary from "../components/TodoDeletionSummary.vue";
-import { useTodoDeletion } from "../composables/useTodoDeletion";
 import {
   getBacklogTodos,
-  updateTodo,
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { planQuest } from "../api/questlog.api";
@@ -21,15 +18,13 @@ import { toggleTimer, useTimer } from "../composables/useTimer";
 import { addDays, getCurrentDateInTimeZone, weekStart } from "../utils/date";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
-import ModalDialog from "../components/ModalDialog.vue";
+import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
+import DeleteItemDialog from "../components/DeleteItemDialog.vue";
+import EditItemDialog from "../components/EditItemDialog.vue";
 import UndoToast from "../components/UndoToast.vue";
-import type { CreateTodoInput, TodoResponse } from "../types/todo";
+import type { TodoResponse } from "../types/todo";
 import { shownWhy } from "../utils/why";
-import PlanFields from "../components/PlanFields.vue";
-import AppointmentFields from "../components/AppointmentFields.vue";
-import QuestNotes from "../components/QuestNotes.vue";
 import { campaignMark } from "../utils/category-mark";
-import { buildTodoInput } from "../utils/todo-input";
 import { dayLabel, fullStop } from "../utils/history";
 import {
   quickMoveEntries,
@@ -43,33 +38,22 @@ const listFocus = useListFocus(page);
 
 const successMessage = ref<string | null>(null);
 
-const selectedTodo = ref<TodoResponse | null>(null);
-const {
-  preview: deletionPreview,
-  prepare: prepareDeletion,
-  confirm: confirmPreviewedDeletion,
-  cancel: cancelDeletion,
-} = useTodoDeletion();
-const confirmDeletion = computed(() => deletionPreview.value !== null);
-async function requestDeletion(): Promise<void> {
-  if (isBusy.value) return;
-  errorMessage.value = null;
-  try {
-    await prepareDeletion(selectedTodo.value!.id);
-  } catch (error) {
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : "Löschvorschau konnte nicht geladen werden.";
-  }
-}
+/*
+ * One dialog at a time for a quest of the list: the shared editor (at its
+ * day for "Anderer Tag …"), "In Kampagne verschieben …" or "Löschen".
+ */
+type Dialog = {
+  kind: "edit" | "move" | "delete";
+  todo: TodoResponse;
+  atDay?: boolean;
+};
+const dialog = ref<Dialog | null>(null);
+/** Where "Anderer Tag …" puts the focus in the editor. */
+const DAY_FIELD = 'input[name="scheduledDate"]';
+const dialogBusy = ref(false);
+const selectedTodo = computed(() => dialog.value?.todo ?? null);
 
 const creationOpen = ref(false);
-
-const editTitle = ref("");
-const editDate = ref("");
-const editTime = ref("");
-const editDuration = ref<string | number>("");
 
 /** Category names and marks for the meta line. */
 const { load: loadCategories, labelOf } = useCategoryLabels();
@@ -87,7 +71,7 @@ const {
   initial: [] as TodoResponse[],
   fallbackError: "Die Quests konnten nicht geladen werden.",
   refreshOnChange: () =>
-    !(isSaving.value || selectedTodo.value || creationOpen.value),
+    !(isSaving.value || dialog.value || dialogBusy.value || creationOpen.value),
 });
 const { write, applied, busy: isSaving } = useWrites(loadTodos, errorMessage);
 
@@ -157,100 +141,30 @@ async function undoLast(): Promise<void> {
     forgetDone(todo.id);
 }
 
-/** Where the editor puts the focus: the title, or the day for "Tag wählen …". */
-const editorFocus = ref('input[name="editTitle"]');
-function openEditing(todo: TodoResponse, { atDay = false } = {}): void {
-  if (isBusy.value) {
-    return;
-  }
-
+function openDialog(
+  kind: Dialog["kind"],
+  todo: TodoResponse,
+  { atDay = false } = {},
+): void {
+  if (isBusy.value || dialog.value) return;
   listFocus.remember(`todo-${todo.id}`);
-  editorFocus.value = atDay
-    ? 'input[name="scheduledDate"]'
-    : 'input[name="editTitle"]';
-  selectedTodo.value = todo;
-  cancelDeletion();
-
-  editTitle.value = todo.title;
-
-  // The Questlog only holds quests without a day.
-  editDate.value = "";
-  editTime.value = "";
-
-  editDuration.value = todo.plannedDurationMinutes ?? "";
-
   errorMessage.value = null;
   successMessage.value = null;
+  dialog.value = { kind, todo, atDay };
 }
-
-function closeEditing(): void {
-  selectedTodo.value = null;
-  cancelDeletion();
-
-  editTitle.value = "";
-  editDate.value = "";
-  editTime.value = "";
-  editDuration.value = "";
+function openEditing(todo: TodoResponse, options = {}): void {
+  openDialog("edit", todo, options);
 }
-
-function buildUpdateInput(): CreateTodoInput {
-  return buildTodoInput({
-    title: editTitle.value,
-    date: editDate.value,
-    time: editTime.value,
-    duration: editDuration.value,
-  });
+function closeDialog(): void {
+  dialog.value = null;
+  dialogBusy.value = false;
 }
-
-async function saveTodo(): Promise<void> {
-  if (isBusy.value || !selectedTodo.value) {
-    return;
-  }
-
-  errorMessage.value = null;
-  successMessage.value = null;
-
-  let input: CreateTodoInput;
-  try {
-    input = buildUpdateInput();
-  } catch (error: unknown) {
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : "Die Änderungen konnten nicht gespeichert werden.";
-    return;
-  }
-  const todoId = selectedTodo.value.id;
-  if (
-    await write(() => updateTodo(todoId, input), {
-      fallbackError: "Die Änderungen konnten nicht gespeichert werden.",
-    })
-  ) {
-    successMessage.value =
-      input.scheduledDate === null
-        ? "Änderungen gespeichert."
-        : "Eingeplant. Die Quest steht jetzt an ihrem Tag.";
-    closeEditing();
-  }
-}
-
-async function removeSelectedTodo(): Promise<void> {
-  if (isBusy.value || !selectedTodo.value || !confirmDeletion.value) {
-    return;
-  }
-
-  successMessage.value = null;
-  const removedId = selectedTodo.value.id;
-  if (
-    await write(confirmPreviewedDeletion, {
-      fallbackError: "Die Quest konnte nicht gelöscht werden.",
-      notify: null,
-    })
-  ) {
-    forgetDone(removedId);
-    successMessage.value = "Quest gelöscht.";
-    closeEditing();
-  }
+async function onDialogDone(message: string): Promise<void> {
+  const done = dialog.value;
+  await applied();
+  if (done?.kind === "delete") forgetDone(done.todo.id);
+  successMessage.value = message;
+  closeDialog();
 }
 
 function openCreation(): void {
@@ -316,6 +230,8 @@ function rowMenu(todo: TodoResponse): MenuEntry[] {
         plan: true,
       },
       edit: () => openEditing(todo),
+      reparent: () => openDialog("move", todo),
+      remove: { run: () => openDialog("delete", todo) },
     },
     isBusy.value,
   );
@@ -356,115 +272,39 @@ useShortcutHandlers({
 
     <CreateItemDialog
       v-if="creationOpen"
-      mode="todo"
+      kind="todo"
       @close="creationOpen = false"
       @created="onCreated"
     />
 
-    <ModalDialog
-      v-if="selectedTodo"
-      class="dump-edit-dialog"
-      title="Quest bearbeiten"
-      :busy="isSaving"
+    <EditItemDialog
+      v-if="dialog?.kind === 'edit'"
+      :key="dialog.todo.id"
+      kind="todo"
+      :entity-id="dialog.todo.id"
+      :focus="dialog.atDay ? DAY_FIELD : undefined"
       :return-focus="listFocus.returnFocus"
-      :focus-selector="editorFocus"
-      @close="closeEditing"
-    >
-      <section class="todo-editor">
-        <form data-test="editing-form" novalidate @submit.prevent="saveTodo">
-          <fieldset :disabled="isBusy">
-            <label class="field">
-              Titel
-              <input
-                v-model="editTitle"
-                name="editTitle"
-                type="text"
-                maxlength="200"
-                required
-              />
-            </label>
-
-            <PlanFields v-model:date="editDate" id-prefix="questlog-edit" />
-
-            <div class="todo-editor__row">
-              <label class="field">
-                Dauer in Minuten · optional
-                <input
-                  v-model="editDuration"
-                  name="editDuration"
-                  type="number"
-                  min="1"
-                  step="1"
-                />
-              </label>
-            </div>
-
-            <AppointmentFields
-              v-model:time="editTime"
-              :date="editDate"
-              id-prefix="questlog-edit"
-            />
-
-            <QuestNotes :todo-id="selectedTodo.id" />
-
-            <p v-if="errorMessage" class="form-error" role="alert">
-              {{ errorMessage }}
-            </p>
-
-            <div class="todo-editor__actions">
-              <button class="btn btn--primary" type="submit">
-                {{ isSaving ? "Wird gespeichert …" : "Speichern" }}
-              </button>
-
-              <button class="btn" type="button" @click="closeEditing">
-                Abbrechen
-              </button>
-            </div>
-
-            <div class="todo-editor__delete">
-              <button
-                v-if="!confirmDeletion"
-                class="btn btn--quiet"
-                type="button"
-                data-test="dump-request-delete"
-                @click="requestDeletion"
-              >
-                <AppIcon name="trash" />
-                Quest löschen
-              </button>
-
-              <template v-else>
-                <TodoDeletionSummary
-                  v-if="deletionPreview"
-                  :preview="deletionPreview"
-                />
-                <p>„{{ selectedTodo.title }}“ wirklich löschen?</p>
-
-                <div class="todo-editor__actions">
-                  <button
-                    class="btn btn--danger"
-                    type="button"
-                    data-test="dump-confirm-delete"
-                    @click="removeSelectedTodo"
-                  >
-                    Ja, löschen
-                  </button>
-
-                  <button
-                    class="btn"
-                    type="button"
-                    data-test="dump-cancel-delete"
-                    @click="cancelDeletion"
-                  >
-                    Nicht löschen
-                  </button>
-                </div>
-              </template>
-            </div>
-          </fieldset>
-        </form>
-      </section>
-    </ModalDialog>
+      @busy="dialogBusy = $event"
+      @changed="onDialogDone('Änderungen gespeichert.')"
+      @close="closeDialog"
+    />
+    <CampaignMoveDialog
+      v-if="dialog?.kind === 'move'"
+      :todo-id="dialog.todo.id"
+      :title="dialog.todo.title"
+      :return-focus="listFocus.returnFocus"
+      @busy="dialogBusy = $event"
+      @moved="onDialogDone('Quest verschoben.')"
+      @close="closeDialog"
+    />
+    <DeleteItemDialog
+      v-if="dialog?.kind === 'delete'"
+      :target="{ kind: 'todo', id: dialog.todo.id, title: dialog.todo.title }"
+      :return-focus="listFocus.returnFocus"
+      @busy="dialogBusy = $event"
+      @deleted="onDialogDone('Quest gelöscht.')"
+      @close="closeDialog"
+    />
 
     <div v-if="errorMessage && !selectedTodo" class="alert questlog__alert">
       <p role="alert">{{ errorMessage }}</p>
@@ -610,47 +450,6 @@ useShortcutHandlers({
   font-weight: 600;
 }
 
-/* Dialog body. */
-.todo-editor fieldset {
-  display: grid;
-  gap: var(--space-4);
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.todo-editor__row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-4);
-}
-
-.todo-editor__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  align-items: center;
-}
-
-.todo-editor__delete {
-  display: grid;
-  gap: var(--space-3);
-  justify-items: start;
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-line);
-}
-
-.todo-editor__delete p {
-  margin: 0;
-}
-
-/* ModalDialog tints every button; destructive ones keep the danger tint. */
-.todo-editor button.btn--danger:not(:disabled) {
-  background: var(--color-danger-tint);
-  color: var(--color-danger);
-}
-
 /* List: each quest on the shared row (ItemRow). */
 .dump-list {
   display: grid;
@@ -716,9 +515,4 @@ useShortcutHandlers({
   transform: rotate(90deg);
 }
 
-@media (max-width: 32rem) {
-  .todo-editor__row {
-    grid-template-columns: 1fr;
-  }
-}
 </style>

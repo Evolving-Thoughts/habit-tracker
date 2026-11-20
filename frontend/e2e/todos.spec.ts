@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import {
+  cardMenu,
   createTodo,
   today,
   visit,
@@ -27,9 +28,11 @@ test("Questlog: create, persist, rename, complete/reopen and confirmed delete", 
   const dialog = page.getByRole("dialog");
   // Touch screens keep the keyboard closed until a field is tapped.
   await expect(
-    isMobile ? dialog : dialog.locator('[name="editTitle"]'),
+    isMobile ? dialog : dialog.locator('[name="title"]'),
   ).toBeFocused();
-  await dialog.locator('[name="editTitle"]').fill("TypeScript lernen");
+  // The Questlog edits in the shared editor, with Warum and Gehört zu.
+  await expect(dialog.getByLabel("Gehört zu · optional")).toBeVisible();
+  await dialog.locator('[name="title"]').fill("TypeScript lernen");
   await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await expect(
@@ -83,14 +86,12 @@ test("Questlog: create, persist, rename, complete/reopen and confirmed delete", 
   await page
     .getByRole("button", { name: "TypeScript lernen bearbeiten", exact: true })
     .click();
-  await dialog.locator('[data-test="dump-request-delete"]').click();
-  await dialog.locator('[data-test="dump-cancel-delete"]').click();
-  await expect(
-    dialog.locator('[data-test="dump-request-delete"]'),
-  ).toBeVisible();
+  await dialog.locator('[data-test="request-delete"]').click();
+  await dialog.locator('[data-test="cancel-delete"]').click();
+  await expect(dialog.locator('[data-test="request-delete"]')).toBeVisible();
   expect(await list(request, "todos")).toHaveLength(1);
-  await dialog.locator('[data-test="dump-request-delete"]').click();
-  await dialog.locator('[data-test="dump-confirm-delete"]').click();
+  await dialog.locator('[data-test="request-delete"]').click();
+  await dialog.locator('[data-test="confirm-delete"]').click();
   await expect(dialog).not.toBeVisible();
   await expect(page.locator(".create-button")).toBeFocused();
   expect(await list(request, "todos")).toEqual([]);
@@ -249,4 +250,37 @@ test("switching back to Questlog before reopen finishes refreshes it after the w
     release();
     await context.unrouteAll({ behavior: "wait" });
   }
+});
+
+test("Questlog: a quest becomes a Daily in its editor, another goes from its menu", async ({
+  page,
+  request,
+}) => {
+  await visit(page, "Questlog");
+  await createTodo(page, "Morgens lesen");
+  await createTodo(page, "Altpapier");
+
+  await page
+    .getByRole("button", { name: "Morgens lesen bearbeiten", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("radio", { name: "Daily", exact: true }).check();
+  await expect(dialog.locator('[name="title"]')).toHaveValue("Morgens lesen");
+  await expect(dialog).toContainText("die Quest „Morgens lesen“ wird gelöscht");
+  await dialog
+    .getByRole("button", { name: "Als Daily speichern", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  expect((await list(request, "habits")).map((habit: { title: string }) => habit.title)).toEqual([
+    "Morgens lesen",
+  ]);
+  expect((await list(request, "todos")).map((todo: { title: string }) => todo.title)).toEqual([
+    "Altpapier",
+  ]);
+
+  await cardMenu(page, "Altpapier", "Altpapier löschen");
+  await expect(dialog).toContainText("„Altpapier“ wirklich löschen?");
+  await dialog.getByRole("button", { name: "Ja, löschen", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  expect(await list(request, "todos")).toEqual([]);
 });

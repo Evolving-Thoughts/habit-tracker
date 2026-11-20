@@ -22,6 +22,10 @@ import CalendarDay from "../components/CalendarDay.vue";
 import CalendarMonth from "../components/CalendarMonth.vue";
 import CalendarWeek from "../components/CalendarWeek.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
+import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
+import DeleteItemDialog, {
+  type DeleteTarget,
+} from "../components/DeleteItemDialog.vue";
 import type { PlannedActions } from "../components/HistoryPlannedItems.vue";
 import MoveItemDialog, {
   type MoveTarget,
@@ -69,7 +73,15 @@ const mode = ref<Mode>("month");
 const date = ref(getCurrentDateInTimeZone());
 const filter = ref<HistoryFilter>("all");
 const moving = ref<MoveTarget | null>(null);
-const editing = ref<{ kind: "todo" | "habit"; id: number } | null>(null);
+const editing = ref<{
+  kind: "todo" | "habit";
+  id: number;
+  /** The stored run a daily was opened from, for its notes. */
+  occurrenceId?: number;
+} | null>(null);
+/** "In Kampagne verschieben …" and "Löschen" from a row's menu. */
+const campaignMoving = ref<{ todoId: number; title: string } | null>(null);
+const deleting = ref<DeleteTarget | null>(null);
 const editorBusy = ref(false);
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
@@ -100,6 +112,8 @@ const {
     refreshOnChange: () =>
       !moving.value &&
       !editing.value &&
+      !campaignMoving.value &&
+      !deleting.value &&
       !editorBusy.value &&
       !writes.busy.value,
   },
@@ -281,6 +295,8 @@ async function onDialogDone(): Promise<void> {
 function closeDialogs(): void {
   moving.value = null;
   editing.value = null;
+  campaignMoving.value = null;
+  deleting.value = null;
   editorBusy.value = false;
 }
 
@@ -404,7 +420,12 @@ const plannedActions: PlannedActions = {
     const id = item.type === "todo" ? item.id : item.habitId;
     if (id === null || writes.busy.value) return;
     listFocus.remember(item.key);
-    editing.value = { kind: item.type, id };
+    editing.value = {
+      kind: item.type,
+      id,
+      occurrenceId:
+        item.type === "habit" && item.id !== null ? item.id : undefined,
+    };
   },
   menu: (item) => {
     const today = result.value?.today;
@@ -434,6 +455,27 @@ const plannedActions: PlannedActions = {
           : undefined,
         edit: plannedActions.editable(item)
           ? () => plannedActions.edit(item)
+          : undefined,
+        reparent:
+          item.type === "todo" && item.id !== null
+            ? () => {
+                listFocus.remember(item.key);
+                campaignMoving.value = { todoId: item.id!, title: item.title };
+              }
+            : undefined,
+        remove: plannedActions.editable(item)
+          ? {
+              run: () => {
+                const id = item.type === "todo" ? item.id : item.habitId;
+                if (id === null || writes.busy.value) return;
+                listFocus.remember(item.key);
+                deleting.value = { kind: item.type, id, title: item.title };
+              },
+              ariaLabel:
+                item.type === "habit"
+                  ? `Daily ${item.title} ganz löschen`
+                  : undefined,
+            }
           : undefined,
       },
       disabled,
@@ -656,11 +698,29 @@ async function undoLast(): Promise<void> {
         @moved="onDialogDone"
         @close="closeDialogs"
       />
+      <CampaignMoveDialog
+        v-if="campaignMoving"
+        :todo-id="campaignMoving.todoId"
+        :title="campaignMoving.title"
+        :return-focus="listFocus.returnFocus"
+        @busy="editorBusy = $event"
+        @moved="onDialogDone"
+        @close="closeDialogs"
+      />
+      <DeleteItemDialog
+        v-if="deleting"
+        :target="deleting"
+        :return-focus="listFocus.returnFocus"
+        @busy="editorBusy = $event"
+        @deleted="onDialogDone"
+        @close="closeDialogs"
+      />
       <EditItemDialog
         v-if="editing"
         :key="`${editing.kind}-${editing.id}`"
         :kind="editing.kind"
         :entity-id="editing.id"
+        :occurrence-id="editing.occurrenceId"
         :return-focus="listFocus.returnFocus"
         @busy="editorBusy = $event"
         @changed="onDialogDone"

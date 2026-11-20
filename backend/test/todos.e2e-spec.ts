@@ -54,11 +54,10 @@ describe('Todos API (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await app
-      .get(DataSource)
-      .query(
-        'TRUNCATE TABLE push_deliveries, push_subscriptions, timers, todos RESTART IDENTITY',
-      );
+    await app.get(DataSource).query(
+      // Dailies may name a todo as their campaign, so they go along.
+      'TRUNCATE TABLE push_deliveries, push_subscriptions, timers, todos RESTART IDENTITY CASCADE',
+    );
   });
 
   afterAll(async () => {

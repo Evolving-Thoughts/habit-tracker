@@ -14,8 +14,9 @@ import { isMovable } from "../utils/week-plan";
  * One card of the week plan, compact enough for seven columns. A quest
  * opens its editor from the title or a tap anywhere else on the card, drags
  * from anywhere onto its place or another day, and keeps every other step
- * in its menu "…" (the keyboard's way to move it). A daily is a fixed row
- * the plan only shows.
+ * in its menu "…". With the focus on the card (its title), the arrow keys
+ * move it: up and down in the day, left and right a day (`arrows`). A
+ * daily is a fixed row the plan only shows.
  */
 const props = defineProps<{
   entry: WeekPlanEntry;
@@ -23,9 +24,20 @@ const props = defineProps<{
   busy: boolean;
   /** "Aktionen für …" of an open quest. */
   menu?: MenuEntry[];
+  /** The focused card moves with the arrow keys (a quest on the board). */
+  arrows?: boolean;
 }>();
 
-const emit = defineEmits<{ edit: [] }>();
+const emit = defineEmits<{
+  edit: [];
+  /** An arrow key on the focused card: up and down in the day, left and right a day. */
+  arrow: [key: "up" | "down" | "left" | "right"];
+}>();
+function onArrow(event: KeyboardEvent, key: "up" | "down" | "left" | "right") {
+  if (!props.arrows || props.busy) return;
+  event.preventDefault();
+  emit("arrow", key);
+}
 
 const movable = computed(() => isMovable(props.entry));
 const editable = computed(() => props.entry.type === "todo");
@@ -86,8 +98,15 @@ const campaign = computed(() => {
           type="button"
           :disabled="busy"
           :aria-label="`${entry.title} bearbeiten`"
+          :aria-keyshortcuts="
+            arrows ? 'ArrowUp ArrowDown ArrowLeft ArrowRight' : undefined
+          "
           :title="entry.title"
           @click="emit('edit')"
+          @keydown.up="onArrow($event, 'up')"
+          @keydown.down="onArrow($event, 'down')"
+          @keydown.left="onArrow($event, 'left')"
+          @keydown.right="onArrow($event, 'right')"
         >
           {{ entry.title }}
         </button>

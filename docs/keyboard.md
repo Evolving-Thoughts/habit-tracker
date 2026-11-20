@@ -103,6 +103,7 @@ Per row kind:
 | Plan: open quest | stopwatch | tick, new undo toast in Plan | onto a day of the board like dragging (optimistic, at the end of the day's order); next Monday beyond the board via `reschedule`; never into the past |
 | Plan: appointment | stopwatch | tick | opens "Verschieben" |
 | Plan: Daily, done quest | nothing | nothing | nothing |
+| Plan: open quest, focus on its card | as above | as above | as above; in addition ArrowUp / ArrowDown move it one place in the day's order and ArrowLeft / ArrowRight to the end of the day before or after (as "Nach oben" / "Nach unten" in its menu and dragging; never into the past) |
 | Questlog: open quest | stopwatch | tick, undo toast | plans it for that day with the editor's own save (`PATCH /todos/:id`), message in the status line |
 | Questlog: ticked here | nothing | nothing | nothing |
 | Plan: row of the Questlog column | stopwatch | tick, undo toast in Plan | onto that day of the board like dropping it (end of the day's order); next Monday beyond the board with the editor's save |

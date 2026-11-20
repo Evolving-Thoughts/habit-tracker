@@ -478,6 +478,31 @@ textarea.input {
   resize: vertical;
 }
 
+/*
+ * A form's actions inside a dialog (editor, Neue Quest, Neues Daily): they
+ * stick to the dialog's bottom edge, flush across its padding, so saving
+ * never needs a scroll and nothing shows below them. A sticky box keeps
+ * clear of its scroller's padding, so the offsets undo it; the negative
+ * margin lets it end on the edge when scrolled to the end as well.
+ * --dialog-padding comes from ModalDialog.
+ */
+.modal-dialog .sticky-actions {
+  position: sticky;
+  bottom: calc(-1 * var(--dialog-padding, 0px));
+  z-index: 2;
+  margin: 0 calc(-1 * var(--dialog-padding, 0px))
+    calc(-1 * var(--dialog-padding, 0px));
+  padding: var(--space-3) var(--dialog-padding, 0px)
+    var(--dialog-padding, 0px);
+  border-top: 1px solid var(--color-line);
+  background: var(--color-surface);
+}
+
+/* A field reached with Tab never hides behind the sticky actions. */
+.modal-dialog:has(.sticky-actions) {
+  scroll-padding-bottom: 7rem;
+}
+
 /* Segmented choice: the chosen option is ink on white, not a second colour. */
 .segmented {
   display: inline-flex;

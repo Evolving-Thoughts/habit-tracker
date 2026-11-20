@@ -21,9 +21,13 @@ import type { HistoryResponse } from "../types/history";
 import { HISTORY_ITEM_FIELDS, PLANNED_FIELDS } from "../types/fixtures";
 import HabitsView from "./HabitsView.vue";
 vi.mock("../api/categories.api", () => ({
-  getCategories: vi.fn().mockResolvedValue([]),
+  getCategories: vi.fn(async () => []),
 }));
 vi.mock("../api/history.api", () => ({ getHistory: vi.fn() }));
+vi.mock("../api/todo-hierarchy.api", () => ({
+  getTodoHierarchy: vi.fn(async () => []),
+}));
+vi.mock("../components/QuestNotes.vue", () => import("../test/quest-notes-stub"));
 vi.mock("../api/day-planner.api", () => ({
   getHabits: vi.fn(),
   getHabit: vi.fn(),
@@ -492,7 +496,7 @@ describe("HabitsView", () => {
     await again.get('[aria-label="Aktionen für Joggen"]').trigger("click");
     expect(
       again.findAll("[role=menuitem] .action-menu__label").map((l) => l.text()),
-    ).toEqual(["Bearbeiten"]);
+    ).toEqual(["Bearbeiten", "Löschen"]);
     await again.get("[role=menuitem]").trigger("click");
     await flushPromises();
     expect(again.find(".item-editor").exists()).toBe(true);

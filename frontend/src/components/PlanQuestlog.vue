@@ -27,6 +27,9 @@ const emit = defineEmits<{
   drop: [drop: Drop];
   plan: [todo: TodoResponse, date: string];
   edit: [todo: TodoResponse];
+  /** "In Kampagne verschieben …" */
+  reparent: [todo: TodoResponse];
+  remove: [todo: TodoResponse];
 }>();
 
 const list = ref<HTMLElement | null>(null);
@@ -68,6 +71,8 @@ function menu(todo: TodoResponse): MenuEntry[] {
         { kind: "todo", targetId: todo.id, title: todo.title },
         todo.timerEligible,
       ),
+      reparent: () => emit("reparent", todo),
+      remove: { run: () => emit("remove", todo) },
     },
     props.busy,
   );

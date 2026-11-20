@@ -40,8 +40,24 @@ number, never in a warning colour.
 
 - **Campaign of a stretch**: the one the Logbuch already names
   (`withCampaigns` in `work-logs/day-logs.ts`, `todo-ancestry.ts`): a quest's
-  topmost ancestor, a daily's goal that counts it in a period covering today.
-  A deleted quest has none, so its time counts as other time.
+  topmost ancestor; for a daily's run, the campaign the daily names
+  (`habits.campaignId`, see below) and, only without one, the goal that
+  counts the daily in a period covering today. A deleted quest has none, so
+  its time counts as other time; a daily whose named campaign was deleted
+  falls back to its goal. Like the goal, the named campaign is read as it is
+  now: changing a daily's campaign moves all of its measured time along.
+- **Campaign of a daily**: `habits.campaignId` (nullable FK to `todos.id`,
+  `ON DELETE SET NULL`, migration `DailyCampaignAndRunNotes`). Create and
+  update (`campaignId` in `POST /habits`, `PATCH /habits/:id`) accept only a
+  live top-level todo of the same user (`habits/habit-campaign.ts`, 400
+  otherwise); null clears it. Todos are soft-deleted, so the FK only guards
+  hard deletes: a soft-deleted campaign stays referenced and simply stops
+  counting. Should the named todo later move below another quest, the daily
+  counts for that quest's campaign. Habit responses carry `campaignId` and
+  `campaign` (`{ id, title, color, icon }`, the named campaign or else the
+  goal's), so the Dailies view shows the chip; day planner, Plan, Kalender and
+  week review already name a run's campaign through the same
+  `TodoAncestry.habitCampaign`.
 - **What is a campaign**: a top-level todo with todos below it, or one that
   was given a weekly goal, colour or icon. Choosing one of these makes even a
   lone top-level quest a campaign; a lone goal that counts a daily stays one

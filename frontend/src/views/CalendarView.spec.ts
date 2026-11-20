@@ -265,7 +265,7 @@ describe("CalendarView month", () => {
       wrapper
         .findAll("[role=menuitem] .action-menu__label")
         .map((entry) => entry.text()),
-    ).toEqual(["Bearbeiten"]);
+    ).toEqual(["Bearbeiten", "Löschen"]);
   });
 
   it("opens the move dialog for a planned entry from its menu", async () => {
@@ -275,7 +275,14 @@ describe("CalendarView month", () => {
       wrapper
         .findAll("[role=menuitem] .action-menu__label")
         .map((entry) => entry.text()),
-    ).toEqual(["Morgen", "Nächste Woche", "Anderer Tag …", "Bearbeiten"]);
+    ).toEqual([
+      "Morgen",
+      "Nächste Woche",
+      "Anderer Tag …",
+      "Bearbeiten",
+      "In Kampagne verschieben …",
+      "Löschen",
+    ]);
     await wrapper.get('[aria-label="Saugen verschieben"]').trigger("click");
     expect(wrapper.text()).toContain("Nächster Montag");
   });

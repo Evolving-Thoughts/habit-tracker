@@ -1,4 +1,4 @@
-import { CORE_COLORS } from "../types/campaign";
+import { CORE_COLORS, type CampaignColor } from "../types/campaign";
 import { isCampaignColor, markToken } from "./campaign-style";
 
 /**
@@ -7,15 +7,17 @@ import { isCampaignColor, markToken } from "./campaign-style";
  * always gets the same mark; none of them is the action colour, so orange
  * still means "tap here".
  */
-function markOfName(name: string): string {
+export function colorOfName(name: string): CampaignColor {
   // FNV-1a: a multiplier of 31 is 1 modulo 6, which made the mark depend on
   // the plain sum of the characters and let common names collide.
   let hash = 2166136261;
   for (const character of name)
     hash = Math.imul(hash ^ character.charCodeAt(0), 16777619) >>> 0;
   hash = (hash ^ (hash >>> 16)) >>> 0;
-  return markToken(CORE_COLORS[hash % CORE_COLORS.length]!);
+  return CORE_COLORS[hash % CORE_COLORS.length]!;
 }
+
+const markOfName = (name: string): string => markToken(colorOfName(name));
 
 /** The colour of a category: the chosen one, else the one its name picks. */
 export function categoryMark(name: string, color?: string | null): string {

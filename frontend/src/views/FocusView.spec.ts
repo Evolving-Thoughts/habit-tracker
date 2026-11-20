@@ -120,18 +120,20 @@ describe("FocusView", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it("shows the notes of the quest in view, and none for a daily", async () => {
+  it("shows the notes of the quest in view, then those of the daily run", async () => {
     vi.mocked(getToday).mockResolvedValue(
       planner([todo({ todoId: 4 }), habit()]),
     );
     const { wrapper, button } = await mountView();
-    expect(wrapper.get("[data-notes]").attributes("data-notes")).toBe("4");
+    expect(wrapper.get("[data-notes]").attributes("data-notes")).toBe("todo-4");
 
     vi.mocked(getToday).mockResolvedValue(planner([habit()]));
     await button("Erledigt").trigger("click");
     await flushPromises();
     expect(wrapper.get("h1").text()).toBe("Lesen");
-    expect(wrapper.find("[data-notes]").exists()).toBe(false);
+    expect(wrapper.get("[data-notes]").attributes("data-notes")).toBe(
+      "occurrence-20",
+    );
   });
 
   it("shows only what is up now: its campaign, why, and a stopwatch ready to start", async () => {

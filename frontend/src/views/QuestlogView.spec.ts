@@ -8,12 +8,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   deleteTodo,
   createTodo,
+  getTodo,
   getBacklogTodos,
   updateTodo,
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import type { TodoResponse } from "../types/todo";
 import { getCategories } from "../api/categories.api";
+import { choose } from "../test/combobox";
+import { hierarchyTodo } from "../test/hierarchy";
 import QuestlogView from "./QuestlogView.vue";
 import { reloadShortcutSettings } from "../composables/useShortcuts";
 
@@ -21,9 +24,10 @@ vi.mock("../api/categories.api", () => ({ getCategories: vi.fn() }));
 vi.mock("../components/QuestNotes.vue", () => import("../test/quest-notes-stub"));
 vi.mock("../api/todo-hierarchy.api", () => ({
   getDeletionPreview: vi.fn(),
-  getTodoHierarchy: vi.fn(),
+  getTodoHierarchy: vi.fn(async () => []),
 }));
 vi.mock("../api/day-planner.api", () => ({
+  getTodo: vi.fn(),
   getBacklogTodos: vi.fn(),
   createTodo: vi.fn(),
   updateTodo: vi.fn(),
@@ -77,6 +81,7 @@ describe("QuestlogView", () => {
 
     backlogMock.mockResolvedValue([]);
     vi.mocked(getCategories).mockResolvedValue([]);
+    vi.mocked(getTodo).mockResolvedValue(makeTodo());
     completionMock.mockResolvedValue(undefined);
     updateTodoMock.mockResolvedValue(makeTodo());
     deleteTodoMock.mockResolvedValue(undefined);
@@ -285,284 +290,80 @@ describe("QuestlogView", () => {
     },
   );
 
-  it("prefills the editor with title and duration, and shows the quest's notes", async () => {
-    backlogMock.mockResolvedValueOnce([makeTodo()]);
-
-    const wrapper = mountView();
-
-    await flushPromises();
-
-    await wrapper
-      .get('button[aria-label="NestJS lernen bearbeiten"]')
-      .trigger("click");
-
-    expect(wrapper.get("[data-notes]").attributes("data-notes")).toBe(
-      String(makeTodo().id),
-    );
-
-    expect(
-      wrapper.get<HTMLInputElement>('input[name="editTitle"]').element.value,
-    ).toBe("NestJS lernen");
-
-    expect(
-      wrapper.get<HTMLInputElement>('input[name="editDuration"]').element.value,
-    ).toBe("30");
-  });
-
-  it("updates title and duration without scheduling the todo", async () => {
-    backlogMock.mockResolvedValueOnce([makeTodo()]).mockResolvedValueOnce([
-      makeTodo({
-        title: "Vue lernen",
-        plannedDurationMinutes: 45,
-      }),
-    ]);
-
-    const wrapper = mountView();
-
-    await flushPromises();
-
-    await wrapper
-      .get('button[aria-label="NestJS lernen bearbeiten"]')
-      .trigger("click");
-
-    await wrapper.get('input[name="editTitle"]').setValue("Vue lernen");
-
-    await wrapper.get('input[name="editDuration"]').setValue("45");
-
-    await wrapper.get('[data-test="editing-form"]').trigger("submit");
-
-    await flushPromises();
-
-    expect(updateTodoMock).toHaveBeenCalledWith(1, {
-      title: "Vue lernen",
-      scheduledDate: null,
-      timeOfDay: null,
-      plannedDurationMinutes: 45,
-    });
-
-    expect(wrapper.text()).toContain("Vue lernen");
-
-    expect(wrapper.find('[data-test="editing-form"]').exists()).toBe(false);
-  });
-
-  it("allows clearing the duration", async () => {
+  /*
+   * The Questlog edits with the shared editor (PlannerItemEditor has its
+   * own spec); here only that it opens, saves and deletes like elsewhere.
+   */
+  it("edits in the shared editor with Warum, Gehört zu, Kategorie and notes", async () => {
     backlogMock.mockResolvedValue([makeTodo()]);
-
     const wrapper = mountView();
-
     await flushPromises();
-
     await wrapper
       .get('button[aria-label="NestJS lernen bearbeiten"]')
       .trigger("click");
-
-    await wrapper.get('input[name="editDuration"]').setValue("");
-
-    await wrapper.get('[data-test="editing-form"]').trigger("submit");
-
     await flushPromises();
-
-    expect(updateTodoMock).toHaveBeenCalledWith(1, {
-      title: "NestJS lernen",
-      scheduledDate: null,
-      timeOfDay: null,
-      plannedDurationMinutes: null,
-    });
-  });
-
-  it("schedules a todo and removes it from the dump after reload", async () => {
-    // A scheduled todo leaves the server's backlog.
-    backlogMock.mockResolvedValueOnce([makeTodo()]).mockResolvedValueOnce([]);
-
-    const wrapper = mountView();
-
+    const dialog = wrapper.get("dialog");
+    expect(dialog.get("h2").text()).toBe("Quest bearbeiten");
+    for (const field of [
+      "#planner-edit-parent",
+      'textarea[name="why"]',
+      "#planner-edit-category",
+      "[data-notes]",
+    ])
+      expect(dialog.find(field).exists()).toBe(true);
+    await dialog.get('input[name="title"]').setValue("NestJS meistern");
+    await dialog.get("form").trigger("submit");
     await flushPromises();
-
-    await wrapper
-      .get('button[aria-label="NestJS lernen bearbeiten"]')
-      .trigger("click");
-
-    await wrapper.get('input[name="scheduledDate"]').setValue("2026-10-02");
-    await wrapper.get('input[name="timeOfDay"]').setValue("10:00");
-
-    await wrapper.get('[data-test="editing-form"]').trigger("submit");
-
-    await flushPromises();
-
-    expect(updateTodoMock).toHaveBeenCalledWith(1, {
-      title: "NestJS lernen",
-      scheduledDate: "2026-10-02",
-      timeOfDay: "10:00",
-      plannedDurationMinutes: 30,
-    });
-
-    expect(wrapper.find('[data-todo-id="1"]').exists()).toBe(false);
-  });
-
-  it("rejects a blank title", async () => {
-    backlogMock.mockResolvedValueOnce([makeTodo()]);
-
-    const wrapper = mountView();
-
-    await flushPromises();
-
-    await wrapper
-      .get('button[aria-label="NestJS lernen bearbeiten"]')
-      .trigger("click");
-
-    await wrapper.get('input[name="editTitle"]').setValue("   ");
-
-    await wrapper.get('[data-test="editing-form"]').trigger("submit");
-
-    await flushPromises();
-
-    expect(updateTodoMock).not.toHaveBeenCalled();
-
-    expect(wrapper.get('[role="alert"]').text()).toBe(
-      "Bitte gib einen Titel ein.",
+    expect(updateTodoMock).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ title: "NestJS meistern" }),
+    );
+    expect(wrapper.find("dialog").exists()).toBe(false);
+    expect(backlogMock).toHaveBeenCalledTimes(2);
+    expect(wrapper.get(".questlog__status").text()).toBe(
+      "Änderungen gespeichert.",
     );
   });
 
-  it("preserves editing input when saving fails", async () => {
-    backlogMock.mockResolvedValueOnce([makeTodo()]);
-
-    updateTodoMock.mockRejectedValueOnce(new Error("Speichern fehlgeschlagen"));
-
+  it("deletes from the row's menu after the same confirmation as the editor", async () => {
+    backlogMock
+      .mockResolvedValueOnce([makeTodo()])
+      .mockResolvedValueOnce([]);
     const wrapper = mountView();
-
     await flushPromises();
-
     await wrapper
-      .get('button[aria-label="NestJS lernen bearbeiten"]')
+      .get('[aria-label="Aktionen für NestJS lernen"]')
       .trigger("click");
-
-    await wrapper.get('input[name="editTitle"]').setValue("Vue lernen");
-
-    await wrapper.get('[data-test="editing-form"]').trigger("submit");
-
+    await wrapper.get('[aria-label="NestJS lernen löschen"]').trigger("click");
     await flushPromises();
-
-    expect(wrapper.get('[role="alert"]').text()).toBe(
-      "Speichern fehlgeschlagen",
-    );
-
-    expect(
-      wrapper.get<HTMLInputElement>('input[name="editTitle"]').element.value,
-    ).toBe("Vue lernen");
-
-    expect(backlogMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("cancels editing without saving", async () => {
-    backlogMock.mockResolvedValueOnce([makeTodo()]);
-
-    const wrapper = mountView();
-
-    await flushPromises();
-
-    await wrapper
-      .get('button[aria-label="NestJS lernen bearbeiten"]')
-      .trigger("click");
-
-    const cancelButton = wrapper
-      .findAll(".todo-editor button")
-      .find((button) => button.text() === "Abbrechen");
-
-    if (!cancelButton) {
-      throw new Error("Cancel button was not found");
-    }
-
-    await cancelButton.trigger("click");
-
-    expect(updateTodoMock).not.toHaveBeenCalled();
-
-    expect(wrapper.find('[data-test="editing-form"]').exists()).toBe(false);
-  });
-
-  it("deletes a dump todo only after confirmation", async () => {
-    backlogMock.mockResolvedValueOnce([makeTodo()]).mockResolvedValueOnce([]);
-
-    const wrapper = mountView();
-
-    await flushPromises();
-
-    await wrapper
-      .get('button[aria-label="NestJS lernen bearbeiten"]')
-      .trigger("click");
-
-    await wrapper.get('[data-test="dump-request-delete"]').trigger("click");
-
     expect(deleteTodoMock).not.toHaveBeenCalled();
-
-    await wrapper.get('[data-test="dump-confirm-delete"]').trigger("click");
-
+    expect(wrapper.get("dialog").text()).toContain("1 Quest wird gelöscht.");
+    await wrapper.get('[data-test="confirm-delete"]').trigger("click");
     await flushPromises();
-
     expect(deleteTodoMock).toHaveBeenCalledWith(1, "a".repeat(64));
-    expect(deleteTodoMock).toHaveBeenCalledTimes(1);
-
-    expect(wrapper.find('[data-todo-id="1"]').exists()).toBe(false);
-
-    expect(wrapper.find('[data-test="editing-form"]').exists()).toBe(false);
-
-    expect(wrapper.get('[role="status"]').text()).toBe("Quest gelöscht.");
+    expect(wrapper.find("dialog").exists()).toBe(false);
+    expect(wrapper.get(".questlog__status").text()).toBe("Quest gelöscht.");
   });
 
-  it("cancels deletion without removing the todo", async () => {
-    backlogMock.mockResolvedValueOnce([makeTodo()]);
-
+  it("moves a quest into a campaign from the row's menu", async () => {
+    backlogMock.mockResolvedValue([makeTodo()]);
+    vi.mocked(getTodoHierarchy).mockResolvedValue([
+      hierarchyTodo({ id: 9, title: "Buch", color: "berry" }),
+    ]);
     const wrapper = mountView();
-
     await flushPromises();
-
     await wrapper
-      .get('button[aria-label="NestJS lernen bearbeiten"]')
+      .get('[aria-label="Aktionen für NestJS lernen"]')
       .trigger("click");
-
-    await wrapper.get('[data-test="dump-request-delete"]').trigger("click");
-
-    await wrapper.get('[data-test="dump-cancel-delete"]').trigger("click");
-
-    expect(deleteTodoMock).not.toHaveBeenCalled();
-
-    expect(wrapper.find('[data-test="dump-confirm-delete"]').exists()).toBe(
-      false,
-    );
-
-    expect(wrapper.find('[data-todo-id="1"]').exists()).toBe(true);
-  });
-
-  it("keeps the editor open when deletion fails", async () => {
-    backlogMock.mockResolvedValueOnce([makeTodo()]);
-
-    deleteTodoMock.mockRejectedValueOnce(new Error("Löschen fehlgeschlagen"));
-
-    const wrapper = mountView();
-
-    await flushPromises();
-
     await wrapper
-      .get('button[aria-label="NestJS lernen bearbeiten"]')
+      .get('[aria-label="NestJS lernen in eine Kampagne verschieben"]')
       .trigger("click");
-
-    await wrapper.get('[data-test="dump-request-delete"]').trigger("click");
-
-    await wrapper.get('[data-test="dump-confirm-delete"]').trigger("click");
-
     await flushPromises();
-
-    expect(wrapper.get('[role="alert"]').text()).toBe("Löschen fehlgeschlagen");
-
-    expect(wrapper.find('[data-test="editing-form"]').exists()).toBe(true);
-
-    expect(wrapper.find('[data-todo-id="1"]').exists()).toBe(true);
-
-    expect(
-      wrapper.get<HTMLFieldSetElement>('[data-test="editing-form"] > fieldset')
-        .element.disabled,
-    ).toBe(false);
-
-    expect(backlogMock).toHaveBeenCalledTimes(1);
+    await choose(wrapper, "#campaign-move-parent", "Buch");
+    await wrapper.get("dialog form").trigger("submit");
+    await flushPromises();
+    expect(updateTodoMock).toHaveBeenCalledWith(1, { parentId: 9 });
+    expect(wrapper.get(".questlog__status").text()).toBe("Quest verschoben.");
   });
 });
 
@@ -579,14 +380,15 @@ describe("QuestlogView creation flow", () => {
     backlogMock.mockResolvedValue([]);
     vi.mocked(getCategories).mockResolvedValue([]);
     vi.mocked(createTodo).mockResolvedValue(makeTodo());
+    vi.mocked(getTodo).mockResolvedValue(makeTodo());
+    vi.mocked(getTodoHierarchy).mockResolvedValue([]);
   });
-  it("opens the Quest form directly without a Daily choice", async () => {
+  it("opens on the Quest form", async () => {
     const wrapper = mount(QuestlogView);
     await flushPromises();
     expect(wrapper.find(".create-todo").exists()).toBe(false);
     await wrapper.get('button[aria-label="Quest erstellen"]').trigger("click");
     expect(wrapper.find("dialog .create-todo").exists()).toBe(true);
-    expect(wrapper.find('[data-test="choose-habit"]').exists()).toBe(false);
   });
   it("closes on creation, reloads the dump and shows the created Quest", async () => {
     backlogMock.mockResolvedValueOnce([]).mockResolvedValueOnce([makeTodo()]);
@@ -601,6 +403,8 @@ describe("QuestlogView creation flow", () => {
       scheduledDate: null,
       timeOfDay: null,
       plannedDurationMinutes: null,
+      parentId: null,
+      categoryId: null,
     });
     expect(wrapper.find("dialog").exists()).toBe(false);
     expect(backlogMock).toHaveBeenCalledTimes(2);
@@ -626,7 +430,7 @@ describe("QuestlogView creation flow", () => {
     await button.trigger("click");
     await flushPromises();
     expect(document.activeElement).toBe(
-      wrapper.get('dialog input[name="editTitle"]').element,
+      wrapper.get('dialog input[name="title"]').element,
     );
     await wrapper.get(".modal-dialog__close").trigger("click");
     await flushPromises();
@@ -647,8 +451,9 @@ describe("QuestlogView creation flow", () => {
     await flushPromises();
     await wrapper.get('[data-todo-id="1"] [data-edit-button]').trigger("click");
     await flushPromises();
-    await wrapper.get('[data-test="dump-request-delete"]').trigger("click");
-    await wrapper.get('[data-test="dump-confirm-delete"]').trigger("click");
+    await wrapper.get('[data-test="request-delete"]').trigger("click");
+    await flushPromises();
+    await wrapper.get('[data-test="confirm-delete"]').trigger("click");
     await flushPromises();
     expect(wrapper.find("dialog").exists()).toBe(false);
     expect(document.activeElement).toBe(
@@ -770,6 +575,7 @@ describe("QuestlogView Einplanen", () => {
     ]);
     completionMock.mockResolvedValue(undefined);
     updateTodoMock.mockResolvedValue(makeTodo());
+    vi.mocked(getTodo).mockResolvedValue(makeTodo({ id: 1, title: "Steuer" }));
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -798,6 +604,8 @@ describe("QuestlogView Einplanen", () => {
       "Nächste Woche",
       "Anderer Tag …",
       "Bearbeiten",
+      "In Kampagne verschieben …",
+      "Löschen",
     ]);
     await wrapper
       .get('[aria-label="Fahrrad einplanen für morgen"]')
@@ -829,7 +637,7 @@ describe("QuestlogView Einplanen", () => {
     await wrapper.get('[aria-label="Aktionen für Steuer"]').trigger("click");
     await wrapper.get('[aria-label="Tag für Steuer wählen"]').trigger("click");
     await flushPromises();
-    expect(wrapper.find('[data-test="editing-form"]').exists()).toBe(true);
+    expect(wrapper.find("dialog.edit-dialog").exists()).toBe(true);
     expect(document.activeElement?.getAttribute("name")).toBe("scheduledDate");
   });
 

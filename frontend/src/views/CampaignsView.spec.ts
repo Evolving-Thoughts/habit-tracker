@@ -10,10 +10,12 @@ import {
   getDeletionPreview,
 } from "../api/todo-hierarchy.api";
 import {
+  getTodo,
   updateTodo,
   updateTodoCompletion,
   deleteTodo,
 } from "../api/day-planner.api";
+import { choose } from "../test/combobox";
 import { getCategories } from "../api/categories.api";
 import type { HierarchyTodo, TodoProgress } from "../types/todo-hierarchy";
 vi.mock("../api/todo-hierarchy.api", () => ({
@@ -27,6 +29,7 @@ vi.mock("../api/categories.api", () => ({
   getCategories: vi.fn(),
 }));
 vi.mock("../api/day-planner.api", () => ({
+  getTodo: vi.fn(),
   updateTodo: vi.fn(),
   updateTodoCompletion: vi.fn(),
   deleteTodo: vi.fn(),
@@ -170,7 +173,9 @@ describe("CampaignsView", () => {
   it("keeps row actions behind one menu that Escape closes", async () => {
     const w = view();
     await flushPromises();
-    expect(w.find('[aria-label="Quest 1 verschieben"]').exists()).toBe(false);
+    expect(
+      w.find('[aria-label="Quest 1 in eine Kampagne verschieben"]').exists(),
+    ).toBe(false);
     await openMenu(w, "Quest 1");
     const trigger = w.get('[data-menu-trigger="1"]');
     expect(trigger.attributes("aria-expanded")).toBe("true");
@@ -187,7 +192,7 @@ describe("CampaignsView", () => {
       "Bearbeiten",
       "Unter-Quest hinzufügen",
       "Fortschritt anzeigen",
-      "Verschieben",
+      "In Kampagne verschieben …",
       "Löschen",
     ]);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
@@ -288,12 +293,31 @@ describe("CampaignsView", () => {
   it("excludes self and descendants from move choices and allows root", async () => {
     const w = view();
     await flushPromises();
+    vi.mocked(getTodo).mockResolvedValue({
+      ...node(1, null, below(1)),
+      campaign: { id: 1, title: "Quest 1", color: null, icon: null },
+    });
     await openMenu(w, "Quest 1");
-    await w.get('[aria-label="Quest 1 verschieben"]').trigger("click");
-    expect(w.findAll("select option")).toHaveLength(1);
-    await w.get("form").trigger("submit");
+    await w
+      .get('[aria-label="Quest 1 in eine Kampagne verschieben"]')
+      .trigger("click");
     await flushPromises();
-    expect(updateTodo).toHaveBeenCalledWith(1, { parentId: null });
+    expect(
+      w.findAll("#campaign-move-parent ~ ul [role=option]").map((o) => o.text()),
+    ).toEqual(["Keine (eigene Kampagne)"]);
+    await button(w, "Abbrechen").trigger("click");
+    await flushPromises();
+
+    vi.mocked(getTodo).mockResolvedValue(node(2, 1));
+    await openMenu(w, "Quest 2");
+    await w
+      .get('[aria-label="Quest 2 in eine Kampagne verschieben"]')
+      .trigger("click");
+    await flushPromises();
+    await choose(w, "#campaign-move-parent", "Keine");
+    await w.get("[role=dialog] form").trigger("submit");
+    await flushPromises();
+    expect(updateTodo).toHaveBeenCalledWith(2, { parentId: null });
   });
   it("does not delete when preview is cancelled and shows active/paused timers", async () => {
     const w = view();
@@ -330,8 +354,11 @@ describe("CampaignsView", () => {
     await flushPromises();
     await button(w, "Ja, löschen").trigger("click");
     await flushPromises();
-    expect(w.get("[role=alert]").text()).toContain("Preview changed");
-    expect(w.find("[role=dialog]").exists()).toBe(false);
+    // The dialog stays and shows the server's fresh preview to review.
+    expect(w.get("[role=dialog] [role=alert]").text()).toContain(
+      "Preview changed",
+    );
+    expect(getDeletionPreview).toHaveBeenCalledTimes(2);
   });
   it("offers retry for load errors", async () => {
     vi.mocked(getTodoHierarchy).mockRejectedValueOnce(new Error("Offline"));
@@ -577,7 +604,7 @@ describe("CampaignsView", () => {
         "Bearbeiten",
         "Stoppuhr starten",
         "Unter-Quest hinzufügen",
-        "Verschieben",
+        "In Kampagne verschieben …",
         "Löschen",
       ]);
       // Closing it from here asks like its ring did.

@@ -105,6 +105,15 @@ export async function visit(
   await openView(page, view);
   await expect(page.locator(".create-button")).toBeEnabled();
 }
+/**
+ * Picks an option of a combobox ("Gehört zu", "Kategorie", "Kampagne") the
+ * way a keyboard does: type part of its name, Enter on the first match.
+ */
+export async function pick(field: Locator, text: string) {
+  await field.fill(text);
+  await field.press("Enter");
+  await expect(field).toHaveAttribute("aria-expanded", "false");
+}
 export async function createTodo(
   page: Page,
   title: string,
@@ -113,8 +122,8 @@ export async function createTodo(
 ) {
   await page.locator(".create-button").click();
   const dialog = page.getByRole("dialog");
-  if (await dialog.locator('[data-test="choose-todo"]').count())
-    await dialog.locator('[data-test="choose-todo"]').click();
+  // The dialog opens on "Quest" (Questlog, Heute); Dailies opens on "Daily".
+  await dialog.getByRole("radio", { name: "Quest", exact: true }).check();
   await dialog.locator('[name="title"]').fill(title);
   if (date) await dialog.locator('[name="scheduledDate"]').fill(date);
   await dialog.locator('[name="duration"]').fill("30");
@@ -131,8 +140,7 @@ export async function createHabit(
 ) {
   await page.locator(".create-button").click();
   const dialog = page.getByRole("dialog");
-  if (await dialog.locator('[data-test="choose-habit"]').count())
-    await dialog.locator('[data-test="choose-habit"]').click();
+  await dialog.getByRole("radio", { name: "Daily", exact: true }).check();
   await dialog.locator('[name="title"]').fill(title);
   if (startDate) await dialog.locator('[name="startDate"]').fill(startDate);
   await dialog.locator('[name="scheduleType"]').selectOption(type);

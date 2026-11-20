@@ -7,11 +7,15 @@ import type {
   InheritedWhy,
   TodoResponse,
 } from "../types/todo";
+import type { HierarchyTodo } from "../types/todo-hierarchy";
 import { buildTodoInput } from "../utils/todo-input";
 import type { CampaignColor, CampaignIcon } from "../types/campaign";
 import { hoursToMinutes } from "../utils/quest-hours";
+import { categoryOfChoice, type ParentChoice } from "../utils/parent-choice";
+import { whyBelow } from "../utils/why";
 import CampaignFields from "./CampaignFields.vue";
-import CategorySelect, { type CategoryChoice } from "./CategorySelect.vue";
+import CategoryPicker from "./CategoryPicker.vue";
+import ParentPicker from "./ParentPicker.vue";
 import PlanFields from "./PlanFields.vue";
 import AppointmentFields from "./AppointmentFields.vue";
 import FormDisclosure from "./FormDisclosure.vue";
@@ -19,10 +23,9 @@ import WhyField from "./WhyField.vue";
 
 const props = defineProps<{
   embedded?: boolean;
-  parentId?: number | null;
-  /** What the new quest inherits from the quest it is created below. */
-  parentWhy?: InheritedWhy | null;
-  /** A new campaign: offers colour, icon and weekly goal. */
+  /** Created from inside a campaign or quest: it starts below that one. */
+  parent?: HierarchyTodo | null;
+  /** A new campaign: colour, icon and weekly goal instead of day and duration. */
   campaign?: boolean;
 }>();
 
@@ -30,22 +33,25 @@ const emit = defineEmits<{
   /** The new quest, so a view can say where it now stands. */
   created: [todo: TodoResponse];
   busy: [value: boolean];
+  cancel: [];
 }>();
 
 const title = ref("");
+const parentId = ref<number | null>(props.parent?.id ?? null);
+/** What the new quest inherits from the quest it goes below. */
+const inheritedWhy = ref<InheritedWhy | null>(
+  props.parent ? whyBelow(props.parent) : null,
+);
 const date = ref("");
 const time = ref("");
 const durationMinutes = ref<string | number>("");
-const category = ref<CategoryChoice>("default");
+const categoryId = ref<number | null>(props.parent?.categoryId ?? null);
 const categories = ref<CategoryResponse[]>([]);
 /** The chosen category in words, for the closed disclosure. */
-const categoryName = computed(() =>
-  category.value === "default"
-    ? ""
-    : category.value === null
-      ? "Keine"
-      : (categories.value.find((entry) => entry.id === category.value)
-          ?.name ?? ""),
+const categoryName = computed(
+  () =>
+    categories.value.find((entry) => entry.id === categoryId.value)?.name ??
+    "",
 );
 const why = ref("");
 const color = ref<CampaignColor | null>(null);
@@ -56,12 +62,25 @@ const isSubmitting = ref(false);
 const errorMessage = ref<string | null>(null);
 const successMessage = ref<string | null>(null);
 
+/** A chosen place brings its reason (live, never copied) and its category. */
+function choose(choice: ParentChoice | null): void {
+  inheritedWhy.value = choice ? whyBelow(choice.todo) : null;
+  if (choice && categoryId.value === null)
+    categoryId.value = categoryOfChoice(choice);
+}
+/** Created inside a campaign: the campaign's category if the parent has none. */
+function preset(choices: ParentChoice[]): void {
+  const choice = choices.find((entry) => entry.todo.id === parentId.value);
+  if (choice && categoryId.value === null)
+    categoryId.value = categoryOfChoice(choice);
+}
+
 function buildInput(): CreateTodoInput {
   return buildTodoInput({
     title: title.value,
-    date: date.value,
-    time: time.value,
-    duration: durationMinutes.value,
+    date: props.campaign ? "" : date.value,
+    time: props.campaign ? "" : time.value,
+    duration: props.campaign ? "" : durationMinutes.value,
   });
 }
 
@@ -70,7 +89,6 @@ function resetForm(): void {
   date.value = "";
   time.value = "";
   durationMinutes.value = "";
-  category.value = "default";
   why.value = "";
   color.value = null;
   icon.value = null;
@@ -87,8 +105,8 @@ async function submit(): Promise<void> {
 
   try {
     const input = buildInput();
-    if (props.parentId !== undefined) input.parentId = props.parentId;
-    if (category.value !== "default") input.categoryId = category.value;
+    input.parentId = props.campaign ? null : parentId.value;
+    input.categoryId = categoryId.value;
     if (why.value.trim()) input.why = why.value.trim();
     if (props.campaign) {
       const minutes = hoursToMinutes(weeklyTarget.value);
@@ -125,7 +143,7 @@ async function submit(): Promise<void> {
 <template>
   <section
     class="create-todo"
-    :class="{ card: !embedded, 'create-todo--embedded': embedded }"
+    :class="{ card: !embedded }"
     :aria-labelledby="embedded ? undefined : 'create-todo-heading'"
   >
     <h2 v-if="!embedded" id="create-todo-heading">Neue Quest</h2>
@@ -140,68 +158,130 @@ async function submit(): Promise<void> {
             type="text"
             maxlength="200"
             required
-            placeholder="Was möchtest du erledigen?"
+            :placeholder="
+              campaign
+                ? 'Welches längere Ziel nimmst du dir vor?'
+                : 'Was möchtest du erledigen?'
+            "
           />
         </label>
 
-        <PlanFields v-model:date="date" id-prefix="todo" />
+        <p v-if="campaign" class="create-todo__hint">
+          Eine oberste Quest wird zur Kampagne, sobald sie Unter-Quests hat oder
+          eine Farbe, ein Symbol oder ein Wochenziel bekommt.
+        </p>
 
-        <div class="create-todo__row">
-          <label class="field">
-            Dauer in Minuten · optional
-            <input
-              v-model="durationMinutes"
-              name="duration"
-              type="number"
-              min="1"
-              step="1"
-              placeholder="30"
-            />
-          </label>
+        <div v-else class="field">
+          <label for="todo-parent">Gehört zu · optional</label>
+          <ParentPicker
+            id="todo-parent"
+            v-model="parentId"
+            @chosen="choose"
+            @ready="preset"
+          />
         </div>
 
-        <WhyField id="todo-why" v-model="why" :inherited="parentWhy" />
+        <template v-if="!campaign">
+          <PlanFields v-model:date="date" id-prefix="todo" />
 
-        <!-- A new campaign is made for these, so they stand open. -->
-        <CampaignFields
-          v-if="campaign"
-          v-model:color="color"
-          v-model:icon="icon"
-          v-model:target="weeklyTarget"
-          id-prefix="todo-campaign"
-          :title="title"
-        />
-
-        <div class="create-todo__more">
-          <AppointmentFields v-model:time="time" :date="date" id-prefix="todo" />
-
-          <FormDisclosure label="Kategorie" :summary="categoryName">
+          <div class="create-todo__row">
             <label class="field">
-              Kategorie
-              <CategorySelect
-                id="todo-category"
-                v-model="category"
-                :inherits-from-parent="parentId != null"
-                @loaded="categories = $event"
+              Dauer in Minuten · optional
+              <input
+                v-model="durationMinutes"
+                name="duration"
+                type="number"
+                min="1"
+                step="1"
+                placeholder="30"
               />
             </label>
+          </div>
+        </template>
+
+        <WhyField id="todo-why" v-model="why" :inherited="inheritedWhy" />
+
+        <!-- A new campaign is made for these, so they stand open. -->
+        <template v-if="campaign">
+          <div class="field">
+            <label for="todo-category">Kategorie · optional</label>
+            <CategoryPicker
+              id="todo-category"
+              v-model="categoryId"
+              @loaded="categories = $event"
+            />
+          </div>
+          <CampaignFields
+            v-model:color="color"
+            v-model:icon="icon"
+            v-model:target="weeklyTarget"
+            id-prefix="todo-campaign"
+            :title="title"
+          />
+        </template>
+
+        <div v-else class="create-todo__more">
+          <AppointmentFields v-model:time="time" :date="date" id-prefix="todo" />
+
+          <FormDisclosure
+            label="Kategorie"
+            :summary="categoryName"
+            :start-open="categoryId !== null"
+          >
+            <div class="field">
+              <label for="todo-category">Kategorie</label>
+              <CategoryPicker
+                id="todo-category"
+                v-model="categoryId"
+                @loaded="categories = $event"
+              />
+            </div>
           </FormDisclosure>
         </div>
+      </fieldset>
 
-        <!-- In a dialog it sticks to the bottom, like the editor's actions. -->
-        <div class="create-todo__footer">
-          <p v-if="errorMessage" class="form-error" role="alert">
-            {{ errorMessage }}
-          </p>
+      <!-- In a dialog it sticks to the bottom edge, like the editor's actions. -->
+      <div
+        class="create-todo__footer"
+        :class="{ 'sticky-actions': embedded }"
+        data-test="editor-actions"
+      >
+        <p v-if="errorMessage" class="form-error" role="alert">
+          {{ errorMessage }}
+        </p>
 
-          <button class="btn btn--primary create-todo__submit" type="submit">
-            {{ isSubmitting ? "Wird gespeichert …" : "Quest erstellen" }}
+        <div class="create-todo__actions">
+          <button
+            class="btn btn--primary"
+            type="submit"
+            :disabled="isSubmitting"
+          >
+            {{
+              isSubmitting
+                ? "Wird gespeichert …"
+                : campaign
+                  ? "Kampagne erstellen"
+                  : "Quest erstellen"
+            }}
+          </button>
+          <button
+            v-if="embedded"
+            class="btn"
+            type="button"
+            :disabled="isSubmitting"
+            @click="emit('cancel')"
+          >
+            Abbrechen
           </button>
         </div>
-      </fieldset>
+      </div>
     </form>
 
-    <p v-if="successMessage" class="create-todo__success" role="status">
+    <p
+      v-if="successMessage && !embedded"
+      class="create-todo__success"
+      role="status"
+    >
       {{ successMessage }}
     </p>
   </section>
@@ -214,6 +294,7 @@ async function submit(): Promise<void> {
   font-weight: 800;
 }
 
+.create-todo form,
 .create-todo fieldset {
   display: grid;
   gap: var(--space-4);
@@ -229,6 +310,12 @@ async function submit(): Promise<void> {
   gap: var(--space-4);
 }
 
+.create-todo__hint {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+}
+
 /* The optional groups read as one list between hairlines. */
 .create-todo__more {
   display: grid;
@@ -236,13 +323,9 @@ async function submit(): Promise<void> {
 }
 
 .create-todo__success {
-  margin: 0;
+  margin: var(--space-3) 0 0;
   color: var(--color-ink-muted);
   font-size: 0.875rem;
-}
-
-.create-todo__success {
-  margin-top: var(--space-3);
   font-weight: 600;
 }
 
@@ -251,24 +334,11 @@ async function submit(): Promise<void> {
   gap: var(--space-3);
 }
 
-.create-todo__submit {
-  justify-self: start;
-}
-
-/* Across the dialog's padding, so "Quest erstellen" stays in reach. */
-.create-todo--embedded .create-todo__footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
-  margin: 0 calc(-1 * var(--dialog-padding, 0px));
-  padding: var(--space-3) var(--dialog-padding, 0px)
-    var(--dialog-padding, 0px);
-  border-top: 1px solid var(--color-line);
-  background: var(--color-surface);
-}
-
-:global(.modal-dialog:has(.create-todo--embedded)) {
-  scroll-padding-bottom: 7rem;
+.create-todo__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
 }
 
 @media (max-width: 32rem) {

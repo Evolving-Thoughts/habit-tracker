@@ -14,6 +14,7 @@ import {
   createHabit,
   getHabit,
   changeHabitSchedule,
+  deleteHabit,
   rescheduleTodo,
   updateOccurrenceStatus,
   updateTodoCompletion,
@@ -36,9 +37,17 @@ import {
 } from "../composables/useTimer";
 
 vi.mock("../api/categories.api", () => ({
-  getCategories: vi.fn().mockResolvedValue([]),
+  getCategories: vi.fn(async () => []),
 }));
-vi.mock("../api/todo-hierarchy.api", () => ({ getTodoHierarchy: vi.fn() }));
+vi.mock("../components/QuestNotes.vue", () => import("../test/quest-notes-stub"));
+vi.mock("../api/todo-hierarchy.api", () => ({
+  getTodoHierarchy: vi.fn(async () => []),
+  getDeletionPreview: vi.fn(async () => ({
+    confirmationToken: "token",
+    todos: [],
+    timers: [],
+  })),
+}));
 vi.mock("../api/day-planner.api", () => ({
   getToday: vi.fn(),
   reorderDay: vi.fn(),
@@ -725,7 +734,7 @@ describe("TodayView creation flow", () => {
       timerEligible: true,
     });
   });
-  it("hides the forms until plus is clicked and presents both choices", async () => {
+  it("hides the forms until plus is clicked, then offers Quest | Daily", async () => {
     const wrapper = mount(TodayView);
     await flushPromises();
     expect(wrapper.find("dialog").exists()).toBe(false);
@@ -733,8 +742,9 @@ describe("TodayView creation flow", () => {
     await wrapper
       .get('button[aria-label="Eintrag erstellen"]')
       .trigger("click");
-    expect(wrapper.find('[data-test="choose-todo"]').exists()).toBe(true);
-    expect(wrapper.find('[data-test="choose-habit"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="kind-todo"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="kind-habit"]').exists()).toBe(true);
+    expect(wrapper.find("dialog .create-todo").exists()).toBe(true);
   });
   it.each(["todo", "habit"] as const)(
     "creates a %s through plus and refreshes the planner",
@@ -744,7 +754,7 @@ describe("TodayView creation flow", () => {
       await wrapper
         .get('button[aria-label="Eintrag erstellen"]')
         .trigger("click");
-      await wrapper.get(`[data-test="choose-${kind}"]`).trigger("click");
+      await wrapper.get(`[data-test="kind-${kind}"]`).setValue(true);
       await wrapper.get('dialog input[name="title"]').setValue("Test");
       await wrapper.get("dialog form").trigger("submit");
       await flushPromises();
@@ -767,7 +777,7 @@ describe("TodayView creation flow", () => {
     await wrapper
       .get('button[aria-label="Eintrag erstellen"]')
       .trigger("click");
-    await wrapper.get('[data-test="choose-habit"]').trigger("click");
+    await wrapper.get('[data-test="kind-habit"]').setValue(true);
     await wrapper.get('dialog input[name="title"]').setValue("Joggen");
     await wrapper.get("dialog form").trigger("submit");
     await flushPromises();
@@ -777,19 +787,19 @@ describe("TodayView creation flow", () => {
     expect(wrapper.find("dialog").exists()).toBe(true);
     expect(getTodayMock).toHaveBeenCalledTimes(1);
   });
-  it("closes on cancellation and resets the next opening to the choice", async () => {
+  it("closes on cancellation and opens on the quest form again", async () => {
     const wrapper = mount(TodayView);
     await flushPromises();
     await wrapper
       .get('button[aria-label="Eintrag erstellen"]')
       .trigger("click");
-    await wrapper.get('[data-test="choose-todo"]').trigger("click");
+    await wrapper.get('[data-test="kind-habit"]').setValue(true);
     await wrapper.get(".modal-dialog__close").trigger("click");
     expect(wrapper.find("dialog").exists()).toBe(false);
     await wrapper
       .get('button[aria-label="Eintrag erstellen"]')
       .trigger("click");
-    expect(wrapper.find('[data-test="choose-habit"]').exists()).toBe(true);
+    expect(wrapper.find("dialog .create-todo").exists()).toBe(true);
     expect(createTodo).not.toHaveBeenCalled();
   });
 
@@ -818,12 +828,34 @@ describe("TodayView creation flow", () => {
     expect(document.activeElement).toBe(
       wrapper.get('dialog input[name="title"]').element,
     );
+    // Opened from today's run, the editor keeps that run's notes.
+    expect(wrapper.get("dialog [data-notes]").attributes("data-notes")).toBe(
+      "occurrence-20",
+    );
     await wrapper.get(".modal-dialog__close").trigger("click");
     await flushPromises();
     expect(document.activeElement).toBe(
       wrapper.get("[data-edit-button]").element,
     );
     wrapper.unmount();
+  });
+
+  it("deletes the whole daily from a run's menu after the editor's confirmation", async () => {
+    getTodayMock.mockResolvedValue(makePlanner([makeHabit()]));
+    vi.mocked(deleteHabit).mockResolvedValue(undefined);
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    await wrapper.get('[aria-label="Aktionen für Joggen"]').trigger("click");
+    await wrapper
+      .get('[aria-label="Daily Joggen ganz löschen"]')
+      .trigger("click");
+    await flushPromises();
+    expect(wrapper.get("dialog").text()).toContain("„Joggen“ wirklich löschen?");
+    expect(deleteHabit).not.toHaveBeenCalled();
+    await wrapper.get('[data-test="confirm-delete"]').trigger("click");
+    await flushPromises();
+    expect(deleteHabit).toHaveBeenCalledWith(10);
+    expect(wrapper.find("dialog").exists()).toBe(false);
   });
 });
 
@@ -1100,6 +1132,7 @@ describe("TodayView rows and focus card", () => {
       "Bearbeiten",
       "Fokus-Modus",
       "Nach unten",
+      "Löschen",
     ]);
   });
 
@@ -1180,7 +1213,9 @@ describe("TodayView rows and focus card", () => {
       "Nächste Woche",
       "Anderer Tag …",
       "Bearbeiten",
+      "In Kampagne verschieben …",
       "Nach oben",
+      "Löschen",
     ]);
     // The keys that do the same are named for assistive technology.
     expect(entries[0]!.attributes("aria-keyshortcuts")).toBe("D");
@@ -1206,6 +1241,8 @@ describe("TodayView rows and focus card", () => {
     expect(texts(wrapper, "[role=menuitem] .action-menu__label")).toEqual([
       "Termin verschieben …",
       "Bearbeiten",
+      "In Kampagne verschieben …",
+      "Löschen",
     ]);
     await wrapper.get('[aria-label="Zahnarzt verschieben"]').trigger("click");
     expect(wrapper.find('[data-test="move-confirm"]').exists()).toBe(true);
@@ -1324,6 +1361,8 @@ describe("TodayView: an appointment's turn on the focus card", () => {
     expect(texts(wrapper, "[role=menuitem] .action-menu__label")).toEqual([
       "Termin verschieben …",
       "Bearbeiten",
+      "In Kampagne verschieben …",
+      "Löschen",
     ]);
   });
 
