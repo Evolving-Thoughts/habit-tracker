@@ -11,9 +11,21 @@ export const CARD_CONTROLS =
 
 let lastDragEnd = 0;
 
-/** A drag just ended: the click that follows it is no tap on the card. */
+/** A new press is a new gesture: its click is a tap again. */
+function onPress(): void {
+  lastDragEnd = 0;
+}
+
+/**
+ * A drag just ended: the click that follows it is no tap on the card. Only
+ * that one click: the next press, however soon, ends the pause.
+ */
 export function noteDragEnd(): void {
   lastDragEnd = Date.now();
+  document.addEventListener("pointerdown", onPress, {
+    capture: true,
+    once: true,
+  });
 }
 
 /**

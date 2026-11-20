@@ -85,7 +85,12 @@ describe('Search (e2e)', () => {
       ['quest', chapter],
       ['daily', reading],
     ]);
-    const campaign = { id: book, title: 'Buch schreiben', color: 'navy' };
+    const campaign = {
+      id: book,
+      title: 'Buch schreiben',
+      color: 'navy',
+      icon: null,
+    };
     expect(found.titles[0]).toMatchObject({
       title: 'Kapitel 2 überarbeiten',
       highlight: { start: 0, end: 7 },

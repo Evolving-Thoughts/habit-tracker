@@ -381,6 +381,9 @@ test("Plan: today's run of a daily sorts, moves within its window and opens with
   await expect(menu.getByRole("menuitem", { name: "Laufen überspringen", exact: true })).toBeVisible();
   await menu.getByRole("menuitem", { name: "Laufen auf morgen", exact: true }).click();
   await expect.poll(() => storedDay(request, tomorrow)).toContain("Laufen");
+  // A phone shows one day at a time: tomorrow is the next step.
+  if ((await dayColumns(page).count()) < 2)
+    await page.getByRole("button", { name: "Nächste Tage", exact: true }).click();
   await expect(
     column(page, tomorrow).locator("li[data-run-id]").filter({
       has: page.getByRole("heading", { name: "Laufen", exact: true }),

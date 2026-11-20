@@ -224,8 +224,14 @@ test("Befehle: the search finds quests by title and notes by their text", async 
   const titles = menu.getByRole("group", {
     name: "Kampagnen, Quests und Dailies",
   });
+  // The row starts with its title; its side actions name it after their verb.
   await expect(
-    titles.getByRole("option", { name: /Kapitel 2 überarbeiten/ }),
+    titles.getByRole("option", { name: /^Kapitel 2 überarbeiten/ }),
+  ).toBeVisible();
+  await expect(
+    titles.getByRole("option", {
+      name: "Stoppuhr starten für „Kapitel 2 überarbeiten“",
+    }),
   ).toBeVisible();
   await expect(titles.locator("mark")).toHaveText("Kapitel");
   await expect(

@@ -47,4 +47,16 @@ describe("onCardClick", () => {
     expect(open).toHaveBeenCalledOnce();
     vi.useRealTimers();
   });
+
+  it("takes a new press right after a drag as a tap", () => {
+    vi.useFakeTimers();
+    const open = vi.fn();
+    const { root, text } = card();
+    noteDragEnd();
+    vi.advanceTimersByTime(100);
+    text.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    click(root, text, open);
+    expect(open).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
 });

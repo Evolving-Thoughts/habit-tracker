@@ -33,11 +33,15 @@ test("Kampagnen-Stunden: goals, a campaign's colour and icon, its tile and the l
     page.getByRole("status").filter({ hasText: "Gespeichert." }),
   ).toBeVisible();
 
-  // Colour, icon and weekly goal of the campaign, in its editor.
+  // Colour, icon and weekly goal of the campaign, in its editor: the
+  // overview holds only tiles, the campaign's page has "Bearbeiten".
   await openView(page, "Kampagnen");
   await page
-    .locator(`[data-todo-id="${book}"]`)
-    .getByRole("button", { name: "Buch bearbeiten", exact: true })
+    .locator(`[data-campaign-tile="${book}"]`)
+    .getByRole("button", { name: "Buch", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Kampagne Buch bearbeiten", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
   // Nothing chosen yet, so the campaign's group waits closed.
@@ -61,6 +65,8 @@ test("Kampagnen-Stunden: goals, a campaign's colour and icon, its tile and the l
   await dialog.locator('[name="weeklyTarget"]').fill("6");
   await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(dialog).not.toBeVisible();
+  await page.getByRole("button", { name: "Alle Kampagnen", exact: true }).click();
+  await expect(page).not.toHaveURL(/kampagne=/);
 
   // Half an hour on its quest, added by hand and ending a minute ago.
   const end = Date.now() - 60_000;
