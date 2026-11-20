@@ -98,8 +98,6 @@ describe("CreateTodoForm", () => {
     expect(
       wrapper.get<HTMLInputElement>('input[name="title"]').element.value,
     ).toBe("");
-
-    expect(wrapper.get('[role="status"]').text()).toContain("Questlog");
   });
 
   it("plans an appointment for a day and a time", async () => {
@@ -134,9 +132,6 @@ describe("CreateTodoForm", () => {
 
     expect(createTodoMock).toHaveBeenCalledWith(
       expect.objectContaining({ scheduledDate: "2026-10-02", timeOfDay: null }),
-    );
-    expect(wrapper.get('[role="status"]').text()).toContain(
-      "Sie steht am geplanten Tag in Heute.",
     );
   });
 

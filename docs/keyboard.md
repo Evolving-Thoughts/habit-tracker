@@ -151,9 +151,13 @@ the gear's names the comma; both carry `aria-keyshortcuts`.
 `CommandMenu.vue` on `ModalDialog` (focus trap, Escape, focus return): a
 combobox field controlling a listbox (`aria-activedescendant`, groups
 "Ansichten" and "Aktionen" while nothing is typed, one ranked list while
-searching). Entries: every view in the order of the navigation (the Fokus-Modus also
+searching, followed by what the server finds; see below). Under the empty
+field a muted line says what it searches: "Sucht in Ansichten, Befehlen,
+Titeln und Notizen." Entries: every view in the order of the navigation (the Fokus-Modus also
 found as "Fokus-Modus starten"), then "Kategorien", which opens its section
-in Einstellungen (`#/einstellungen?abschnitt=kategorien`), "Neue Quest", pausing or resuming a running stopwatch, what the
+in Einstellungen (`#/einstellungen?abschnitt=kategorien`), "Neue Quest", "Neue Kampagne" and "Neues Daily" (both open their dialog over
+the current view; a created campaign then opens in Kampagnen, a created daily
+leads to Dailies), pausing or resuming a running stopwatch, what the
 open view adds (Heute: "Offenes auf morgen verschieben", which opens the same
 confirmation as its button), the two other looks ("Darstellung: Dunkel",
 "Darstellung: Hell", "Darstellung: Wie das Gerät"; see `theme.md`) and
@@ -162,6 +166,32 @@ confirmation as its button), the two other looks ("Darstellung: Dunkel",
 and lists matches at word starts before matches inside words. The menu
 closes before a command runs, so the command finds the focus where it was.
 
-Quest search would fit as a third group filled from a debounced server
-search, shown only once something is typed, its entries opening the quest's
-editor; it is out of scope for now.
+### Search in titles and texts
+
+From two typed characters on, the menu asks `GET /search?q=` (`search.md`)
+200 ms after the last keystroke; a newer query aborts the older request, and
+an answer that overlaps the new query stays until the next one arrives. Below
+the matching commands (then headed "Ansichten und Aktionen") come two groups:
+
+- "Kampagnen, Quests und Dailies": the title with the match in `<mark>`,
+  below it what it is ("Quest · erledigt · 18. Nov.") and the campaign chip.
+  Enter opens a quest's editor, a daily's editor, a campaign's page
+  (`#/kampagnen?kampagne=…`). An open quest has two further options right
+  after it in the list, shown as quiet pills on its row: "Stoppuhr starten"
+  and "Zur Kampagne". They are ordinary options, reached with the arrow
+  keys like any other, so no key is taken from the text field.
+- "In Notizen und Texten": where the text is ("Notiz zu …", "Reflexion vom
+  18. Nov.", "Wochenrückblick 16.–22. Nov. · Was ändere ich?") and a snippet
+  with the match marked. Quest notes and a run's notes open their editor
+  scrolled to the notes, a reflection opens its day in the Kalender
+  (`#/kalender?tag=…`, which the Kalender reads once and drops), a weekly
+  review its week (`#/rueckblick?woche=…`).
+
+Editors and dialogs opened from the menu live in `AppShortcuts.vue`, over
+whatever view is shown; a write there calls `notifyDataChanged()`, so the
+view refreshes. Highlights come from the server as offsets
+(`utils/search-entries.ts` splits the text, `SearchHighlight.vue` renders the
+parts as text): user text is never rendered as HTML. The status line
+announces the count of options, "Suche läuft …" while nothing is listed yet,
+or "Nichts gefunden für „…“."; when the server cannot be reached, a quiet line
+says so and the commands keep working.

@@ -67,9 +67,17 @@ Danach die Sicherung nach [backup.md](backup.md) und das automatische Deployment
 
 Beide laufen ohne Neubau: Werte in `.env.production` setzen, dann das Backend neu anlegen (siehe Aktualisieren). Die Befehle gehören in den Repo-Ordner und schreiben Geheimnisse direkt in die Datei, ohne sie anzuzeigen.
 
-### Timer-Push
+### Timer-Push (VAPID)
 
-Die VAPID-Schlüssel einmal im laufenden Backend erzeugen:
+Ohne Schlüssel zeigt Einstellungen › Benachrichtigungen den Hinweis „Auf dem Server fehlen die Schlüssel für Push (VAPID)“, und der Schalter fehlt. Das Backend liest drei Werte:
+
+| Variable | Inhalt |
+|---|---|
+| `VAPID_PUBLIC_KEY` | öffentlicher Schlüssel; der Browser bekommt ihn über `GET /push/config` |
+| `VAPID_PRIVATE_KEY` | privater Schlüssel, geheim |
+| `VAPID_SUBJECT` | Kontakt-Adresse (`mailto:…` oder `https://…`); leer gilt `FRONTEND_URL` |
+
+Beide Schlüssel gehören zusammen: nur einer gesetzt oder ein ungültiges Paar, und das Backend startet nicht. Erzeugen lassen sie sich überall, wo Node läuft, mit `npx web-push generate-vapid-keys` (oder `npm run push:keys` in `backend`); die Ausgabe gehört in die Umgebung des Backends, nie in Git oder einen Chat. Auf dem Server einmal im laufenden Backend, ohne sie anzuzeigen:
 
 ```bash
 sed -i '/^VAPID_PUBLIC_KEY=/d;/^VAPID_PRIVATE_KEY=/d' .env.production
@@ -77,7 +85,7 @@ docker compose -f compose.prod.yaml --env-file .env.production exec -T backend n
 grep -c -E '^VAPID_(PUBLIC|PRIVATE)_KEY=.+' .env.production   # muss 2 ergeben
 ```
 
-`VAPID_SUBJECT` darf leer bleiben, dann gilt `FRONTEND_URL`. Neue Schlüssel machen alle bestehenden Push-Anmeldungen ungültig, also nicht bei jedem Umzug neu erzeugen, sondern die Zeilen mitnehmen. Ein ungültiges Paar lässt das Backend gar nicht erst starten. Bedienung und Grenzen: [timer-push.md](timer-push.md).
+Danach das Backend neu anlegen (siehe Aktualisieren). Neue Schlüssel machen alle bestehenden Push-Anmeldungen ungültig, also nicht bei jedem Umzug neu erzeugen, sondern die Zeilen mitnehmen. Bedienung und Grenzen: [timer-push.md](timer-push.md).
 
 ### Google Kalender
 
@@ -96,6 +104,8 @@ Dann einen Client vom Typ Webanwendung mit genau dieser Weiterleitungs-URI anleg
 ```
 https://plan.evolving-thoughts.com/api/calendar/google/callback
 ```
+
+Ohne diese Werte zeigt Einstellungen › Google Kalender den Hinweis „Auf dem Server fehlen die Google-Zugangsdaten“. Das Backend braucht alle vier: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` und `GOOGLE_TOKEN_KEY`.
 
 Die Client ID ist öffentlich, der Client secret nicht. Auf dem Server:
 

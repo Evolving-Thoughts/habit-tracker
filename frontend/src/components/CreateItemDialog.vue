@@ -55,14 +55,12 @@ function created(kind: "todo" | "habit"): void {
       <KeepAlive>
         <CreateTodoForm
           v-if="current === 'todo'"
-          embedded
           @busy="formBusy = $event"
           @created="created('todo')"
           @cancel="close"
         />
         <CreateHabitForm
           v-else
-          embedded
           @busy="formBusy = $event"
           @created="created('habit')"
           @cancel="close"

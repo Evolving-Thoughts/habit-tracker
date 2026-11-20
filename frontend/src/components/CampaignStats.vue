@@ -52,13 +52,17 @@ const cells = computed(() => [
         :data-stat="cell.key"
       >
         <dt class="card-title">{{ cell.label }}</dt>
+        <!-- "43 Std. 20 Min.": a line may break between the parts, never inside one. -->
         <dd class="campaign-stats__value">
           <template v-for="(part, index) in cell.parts" :key="index"
-            >{{ index ? " " : "" }}{{ part.value
-            }}<template v-if="part.unit"
-              >{{ " " }}<span class="campaign-stats__unit">{{
-                part.unit
-              }}</span></template
+            >{{ index ? " " : ""
+            }}<span class="campaign-stats__part"
+              >{{ part.value
+              }}<template v-if="part.unit"
+                >{{ " " }}<span class="campaign-stats__unit">{{
+                  part.unit
+                }}</span></template
+              ></span
             ></template
           >
         </dd>
@@ -105,6 +109,10 @@ const cells = computed(() => [
   line-height: 1.15;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+}
+
+.campaign-stats__part {
+  white-space: nowrap;
 }
 
 /* The unit sits smaller beside its number, so the number leads. */

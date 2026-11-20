@@ -20,6 +20,8 @@ dividers.
   (`ownedOccurrences`); a run of another user, of a deleted daily or one that
   does not exist is 404. A run the calendar only foresees has no row yet and
   so no notes. The daily itself has none.
+- The command menu's search reads the text of both straight from the
+  `jsonb` (`search.md`); no plain-text copy is stored.
 
 ## Rules
 

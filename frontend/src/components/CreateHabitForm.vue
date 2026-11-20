@@ -40,7 +40,6 @@ export type HabitDraft = {
  * created, the quest is deleted (with its subtree preview, like any delete).
  */
 const props = defineProps<{
-  embedded?: boolean;
   initial?: HabitDraft;
   replaces?: { id: number; title: string };
 }>();
@@ -164,12 +163,7 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <section
-    class="create-habit"
-    :class="{ card: !embedded }"
-    :aria-labelledby="embedded ? undefined : 'create-habit-heading'"
-  >
-    <h2 v-if="!embedded" id="create-habit-heading">Neues Daily</h2>
+  <section class="create-habit">
     <form novalidate @submit.prevent="submit">
       <fieldset :disabled="isSubmitting || habitCreated">
         <p v-if="replaces" class="create-habit__notice">
@@ -314,10 +308,9 @@ async function submit(): Promise<void> {
         </div>
       </fieldset>
 
-      <!-- In a dialog it sticks to the bottom edge, like the editor's actions. -->
+      <!-- It sticks to the dialog's bottom edge, like the editor's actions. -->
       <div
-        class="create-habit__footer"
-        :class="{ 'sticky-actions': embedded }"
+        class="create-habit__footer sticky-actions"
         data-test="editor-actions"
       >
         <p v-if="errorMessage" class="form-error" role="alert">
@@ -338,7 +331,6 @@ async function submit(): Promise<void> {
             }}
           </button>
           <button
-            v-if="embedded"
             class="btn"
             type="button"
             :disabled="isSubmitting"
@@ -353,11 +345,6 @@ async function submit(): Promise<void> {
 </template>
 
 <style scoped>
-.create-habit h2 {
-  margin: 0 0 var(--space-4);
-  font-size: 1.125rem;
-  font-weight: 800;
-}
 .create-habit form,
 .create-habit fieldset {
   display: grid;

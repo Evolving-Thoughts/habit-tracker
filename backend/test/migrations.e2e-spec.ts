@@ -2,6 +2,7 @@ import { DataSource, MigrationInterface } from 'typeorm';
 import { ENTITY_FILES } from '../src/database/data-source';
 import { databaseOptions } from '../src/database/database.options';
 import { Baseline1793522450873 } from '../src/database/migrations/1793522450873-Baseline';
+import { WeeklyQuestTargets1796000000000 } from '../src/database/migrations/1796000000000-WeeklyQuestTargets';
 
 const MIGRATION_DB = 'habit_tracker_migration_test';
 
@@ -49,7 +50,10 @@ describe('Migrations (e2e)', () => {
     const before = new DataSource({
       ...options,
       database: MIGRATION_DB,
-      migrations: allMigrations.slice(0, -1),
+      migrations: allMigrations.slice(
+        0,
+        allMigrations.indexOf(WeeklyQuestTargets1796000000000),
+      ),
     });
     await before.initialize();
     await before.runMigrations();
@@ -62,7 +66,9 @@ describe('Migrations (e2e)', () => {
     );
     await before.destroy();
 
-    expect(await db.runMigrations()).toHaveLength(1);
+    expect((await db.runMigrations()).map(({ name }) => name)).toContain(
+      'WeeklyQuestTargets1796000000000',
+    );
     expect(await remainingChanges()).toEqual([]);
     // One row from long ago carries the goal; no goal needs no row.
     expect(

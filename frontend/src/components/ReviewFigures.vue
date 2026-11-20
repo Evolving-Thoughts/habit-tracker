@@ -110,7 +110,7 @@ function onSaved(minutes: number | null): void {
           <template
             v-for="(part, index) in durationParts(figures.questMinutes)"
             :key="index"
-            >{{ index ? " " : "" }}{{ part.value }} <span class="figures__unit">{{ part.unit }}</span></template
+            >{{ index ? " " : "" }}<span class="figures__part">{{ part.value }} <span class="figures__unit">{{ part.unit }}</span></span></template
           >
         </dd>
         <dd v-if="editing" class="figures__editor">
@@ -147,7 +147,7 @@ function onSaved(minutes: number | null): void {
         <dt class="card-title">Tagesschnitt</dt>
         <dd class="figures__value">
           <template v-for="(part, index) in average" :key="index"
-            >{{ index ? " " : "" }}{{ part.value }} <span class="figures__unit">{{ part.unit }}</span></template
+            >{{ index ? " " : "" }}<span class="figures__part">{{ part.value }} <span class="figures__unit">{{ part.unit }}</span></span></template
           >
         </dd>
         <dd class="figures__note">{{ averageNote }}</dd>
@@ -156,7 +156,7 @@ function onSaved(minutes: number | null): void {
         <dt class="card-title">Kampagnen-Arbeit</dt>
         <dd class="figures__value">
           <template v-for="(part, index) in share" :key="index"
-            >{{ part.value }} <span class="figures__unit">{{ part.unit }}</span></template
+            ><span class="figures__part">{{ part.value }} <span class="figures__unit">{{ part.unit }}</span></span></template
           >
         </dd>
         <dd class="figures__note">
@@ -171,7 +171,7 @@ function onSaved(minutes: number | null): void {
         <dt class="card-title">Dailies im Wochensoll</dt>
         <!-- "5 von 8": the done ones lead, what was due sits beside them. -->
         <dd v-if="quota" class="figures__value">
-          {{ quota.completed }} <span class="figures__unit">von {{ quota.total }}</span>
+          <span class="figures__part">{{ quota.completed }} <span class="figures__unit">von {{ quota.total }}</span></span>
         </dd>
         <dd v-else class="figures__value">–</dd>
         <dd class="figures__note">
@@ -272,6 +272,11 @@ function onSaved(minutes: number | null): void {
 .figures__item--hours .figures__value {
   font-size: clamp(2rem, 9vw, 2.5rem);
   line-height: 1.05;
+}
+
+/* A figure breaks between its parts ("3 Std." "20 Min."), never inside one. */
+.figures__part {
+  white-space: nowrap;
 }
 
 /* The unit sits smaller beside its number, so the number leads. */

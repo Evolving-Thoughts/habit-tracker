@@ -742,7 +742,6 @@ useShortcutHandlers({
       <template v-if="action === 'create'"
         ><p v-if="selected" class="dialog-lead">Unter „{{ selected.title }}“</p>
         <CreateTodoForm
-          embedded
           :parent="selected"
           :campaign="!selected"
           @busy="formBusy = $event"

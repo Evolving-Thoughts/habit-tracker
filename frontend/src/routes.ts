@@ -30,3 +30,6 @@ export const SECTION_QUERY = "abschnitt";
 export function sectionId(name: string): string {
   return `abschnitt-${name}`;
 }
+
+/** `#/kalender?tag=YYYY-MM-DD` opens the Kalender on that day. */
+export const DAY_QUERY = "tag";

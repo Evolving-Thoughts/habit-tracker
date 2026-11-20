@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import {
   computed,
+  inject,
   nextTick,
   onBeforeUnmount,
   onMounted,
   ref,
   watch,
 } from "vue";
+import { routeLocationKey, routerKey } from "vue-router";
 import {
   openRunToday,
   rescheduleOccurrence,
@@ -39,6 +41,7 @@ import type {
   HistoryPlannedItem,
   HistoryResponse,
 } from "../types/history";
+import { DAY_QUERY } from "../routes";
 import { getCurrentDateInTimeZone, isValidIsoDate } from "../utils/date";
 import {
   addDays,
@@ -48,11 +51,7 @@ import {
   supportedHistoryDate,
   weekLabel,
 } from "../utils/history";
-import {
-  quickMoveEntries,
-  quickMoves,
-  rowMenu,
-} from "../utils/row-actions";
+import { quickMoveEntries, quickMoves, rowMenu } from "../utils/row-actions";
 
 type Mode = "month" | "week" | "day";
 
@@ -263,6 +262,23 @@ function openDay(value: string): void {
   date.value = value;
   mode.value = "day";
 }
+
+/*
+ * `#/kalender?tag=<day>` opens that day, e.g. for a reflection the search
+ * found; the address then drops it, so paging on leaves no stale day.
+ * Injected rather than used: a spec may mount the view without a router.
+ */
+const route = inject(routeLocationKey, null);
+const router = inject(routerKey, null);
+watch(
+  () => route?.query[DAY_QUERY],
+  (day) => {
+    if (typeof day !== "string" || !isValidIsoDate(day)) return;
+    openDay(day);
+    void router?.replace({ query: {} });
+  },
+  { immediate: true },
+);
 
 /* Moving planned entries */
 function moveTarget(item: HistoryPlannedItem): MoveTarget | null {

@@ -261,7 +261,6 @@ describe("CreateHabitForm", () => {
   it("replaces a quest: creates the daily, then deletes the quest", async () => {
     const wrapper = mount(CreateHabitForm, {
       props: {
-        embedded: true,
         initial: { title: "Lesen", why: "Ruhe", categoryId: null, campaignId: null },
         replaces: { id: 3, title: "Lesen" },
       },
@@ -282,7 +281,6 @@ describe("CreateHabitForm", () => {
     vi.mocked(deleteTodo).mockRejectedValueOnce(new Error("Konflikt"));
     const wrapper = mount(CreateHabitForm, {
       props: {
-        embedded: true,
         initial: { title: "Lesen", why: "", categoryId: null, campaignId: null },
         replaces: { id: 3, title: "Lesen" },
       },

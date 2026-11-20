@@ -591,7 +591,6 @@ onMounted(loadEntity);
     <!-- The quest as a daily: a new daily that replaces it once saved. -->
     <CreateHabitForm
       v-if="hasLoaded && form === 'habit'"
-      embedded
       :initial="habitDraft"
       :replaces="{ id: entityId, title: loadedTodo?.title ?? title }"
       @busy="emit('busy', $event)"

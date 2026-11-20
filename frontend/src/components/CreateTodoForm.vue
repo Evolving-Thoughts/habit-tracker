@@ -22,7 +22,6 @@ import FormDisclosure from "./FormDisclosure.vue";
 import WhyField from "./WhyField.vue";
 
 const props = defineProps<{
-  embedded?: boolean;
   /** Created from inside a campaign or quest: it starts below that one. */
   parent?: HierarchyTodo | null;
   /** A new campaign: colour, icon and weekly goal instead of day and duration. */
@@ -60,7 +59,6 @@ const weeklyTarget = ref<string | number>("");
 
 const isSubmitting = ref(false);
 const errorMessage = ref<string | null>(null);
-const successMessage = ref<string | null>(null);
 
 /** A chosen place brings its reason (live, never copied) and its category. */
 function choose(choice: ParentChoice | null): void {
@@ -101,7 +99,6 @@ async function submit(): Promise<void> {
   }
 
   errorMessage.value = null;
-  successMessage.value = null;
 
   try {
     const input = buildInput();
@@ -121,12 +118,6 @@ async function submit(): Promise<void> {
     const todo = await createTodo(input);
 
     resetForm();
-
-    successMessage.value =
-      input.scheduledDate === null
-        ? "Quest erstellt. Sie liegt im Questlog."
-        : "Quest erstellt. Sie steht am geplanten Tag in Heute.";
-
     emit("created", todo);
   } catch (error: unknown) {
     errorMessage.value =
@@ -141,13 +132,7 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <section
-    class="create-todo"
-    :class="{ card: !embedded }"
-    :aria-labelledby="embedded ? undefined : 'create-todo-heading'"
-  >
-    <h2 v-if="!embedded" id="create-todo-heading">Neue Quest</h2>
-
+  <section class="create-todo">
     <form novalidate @submit.prevent="submit">
       <fieldset :disabled="isSubmitting">
         <label class="field">
@@ -240,12 +225,8 @@ async function submit(): Promise<void> {
         </div>
       </fieldset>
 
-      <!-- In a dialog it sticks to the bottom edge, like the editor's actions. -->
-      <div
-        class="create-todo__footer"
-        :class="{ 'sticky-actions': embedded }"
-        data-test="editor-actions"
-      >
+      <!-- It sticks to the dialog's bottom edge, like the editor's actions. -->
+      <div class="create-todo__footer sticky-actions" data-test="editor-actions">
         <p v-if="errorMessage" class="form-error" role="alert">
           {{ errorMessage }}
         </p>
@@ -265,7 +246,6 @@ async function submit(): Promise<void> {
             }}
           </button>
           <button
-            v-if="embedded"
             class="btn"
             type="button"
             :disabled="isSubmitting"
@@ -276,24 +256,10 @@ async function submit(): Promise<void> {
         </div>
       </div>
     </form>
-
-    <p
-      v-if="successMessage && !embedded"
-      class="create-todo__success"
-      role="status"
-    >
-      {{ successMessage }}
-    </p>
   </section>
 </template>
 
 <style scoped>
-.create-todo h2 {
-  margin: 0 0 var(--space-4);
-  font-size: 1.125rem;
-  font-weight: 800;
-}
-
 .create-todo form,
 .create-todo fieldset {
   display: grid;
@@ -320,13 +286,6 @@ async function submit(): Promise<void> {
 .create-todo__more {
   display: grid;
   border-bottom: 1px solid var(--color-line);
-}
-
-.create-todo__success {
-  margin: var(--space-3) 0 0;
-  color: var(--color-ink-muted);
-  font-size: 0.875rem;
-  font-weight: 600;
 }
 
 .create-todo__footer {

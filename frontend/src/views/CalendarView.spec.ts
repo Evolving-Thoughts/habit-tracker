@@ -18,6 +18,7 @@ import type {
   HistoryResponse,
   HistoryWorkLog,
 } from "../types/history";
+import { createMemoryHistory, createRouter } from "vue-router";
 import CalendarView from "./CalendarView.vue";
 
 vi.mock("../api/history.api", () => ({ getHistory: vi.fn() }));
@@ -190,6 +191,25 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(`${TODAY}T12:00:00Z`));
   mock.mockResolvedValue(month);
+});
+
+describe("CalendarView address", () => {
+  it("opens the day ?tag= names, then drops it from the address", async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: "/kalender", component: CalendarView }],
+    });
+    await router.push("/kalender?tag=2026-10-05");
+    mount(CalendarView, { global: { plugins: [router] } });
+    await flushPromises();
+    expect(mock).toHaveBeenLastCalledWith(
+      "2026-10-05",
+      "day",
+      "all",
+      expect.anything(),
+    );
+    expect(router.currentRoute.value.fullPath).toBe("/kalender");
+  });
 });
 
 describe("CalendarView month", () => {

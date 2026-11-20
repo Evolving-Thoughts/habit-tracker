@@ -19,6 +19,7 @@ import type {
   CAMPAIGN_COLORS as BACKEND_COLORS,
   CAMPAIGN_ICONS as BACKEND_ICONS,
 } from '../src/todos/campaign-style';
+import type { SearchResponse as SearchResponseDto } from '../src/search/search.dto';
 import type { TimerResponse as TimerResponseDto } from '../src/timers/timers.service';
 import type { CreateTodoDto } from '../src/todos/dto/create-todo.dto';
 import type { TodoResponseDto } from '../src/todos/dto/todo-response.dto';
@@ -47,6 +48,7 @@ import type {
   QuestHoursResponse,
   QuestTarget,
 } from '../../frontend/src/types/quest-hours';
+import type { SearchResponse } from '../../frontend/src/types/search';
 import type { TimerResponse } from '../../frontend/src/types/timer';
 import type {
   CreateTodoInput,
@@ -91,6 +93,7 @@ export type Contract = [
   Assert<Reads<WeekPlanResponseDto, WeekPlanResponse>>,
   Assert<Reads<HistoryResponseDto, HistoryResponse>>,
   Assert<Reads<TimerResponseDto, TimerResponse>>,
+  Assert<Reads<SearchResponseDto, SearchResponse>>,
   Assert<Reads<WorkLogResponse, WorkLog>>,
   Assert<Reads<QuestHoursResponseDto, QuestHoursResponse>>,
   Assert<Reads<QuestTargetResponse, QuestTarget>>,

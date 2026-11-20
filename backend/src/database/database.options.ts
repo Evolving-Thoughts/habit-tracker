@@ -13,6 +13,7 @@ import { DailyCampaignAndRunNotes1795700000000 } from './migrations/179570000000
 import { BacklogOrder1795800000000 } from './migrations/1795800000000-BacklogOrder';
 import { StopwatchBlocks1795900000000 } from './migrations/1795900000000-StopwatchBlocks';
 import { WeeklyQuestTargets1796000000000 } from './migrations/1796000000000-WeeklyQuestTargets';
+import { SearchUnaccent1796100000000 } from './migrations/1796100000000-SearchUnaccent';
 
 type PostgresOptions = Extract<DataSourceOptions, { type: 'postgres' }>;
 
@@ -48,6 +49,7 @@ export function databaseOptions(
       BacklogOrder1795800000000,
       StopwatchBlocks1795900000000,
       WeeklyQuestTargets1796000000000,
+      SearchUnaccent1796100000000,
     ],
   };
 }
