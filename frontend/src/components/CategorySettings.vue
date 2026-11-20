@@ -101,17 +101,15 @@ async function remove(id: number): Promise<void> {
 </script>
 
 <template>
-  <main class="page categories-view">
-    <header class="page-header">
-      <h1 class="page-title">Kategorien</h1>
-      <p class="page-lead">
-        Kategorien ordnen deine Quests und Dailies. Ein Wochensoll ist
-        freiwillig.
-      </p>
-    </header>
+  <div class="category-settings">
+    <p class="category-settings__lead">
+      Kategorien ordnen deine Quests und Dailies. Ein Wochensoll ist
+      freiwillig: so oft willst du pro Woche etwas aus der Kategorie
+      erledigen.
+    </p>
 
-    <form class="categories-view__create" @submit.prevent="add">
-      <label class="field categories-view__grow">
+    <form class="category-settings__create" @submit.prevent="add">
+      <label class="field category-settings__grow">
         Neue Kategorie
         <input v-model="newName" name="name" maxlength="60" />
       </label>
@@ -126,7 +124,7 @@ async function remove(id: number): Promise<void> {
     </form>
     <p
       v-if="saveError"
-      class="form-error categories-view__save-error"
+      class="form-error category-settings__save-error"
       role="alert"
     >
       {{ saveError }}
@@ -134,7 +132,7 @@ async function remove(id: number): Promise<void> {
 
     <div
       v-if="isLoading"
-      class="skeleton categories-view__state"
+      class="skeleton category-settings__state"
       role="status"
       aria-label="Kategorien werden geladen"
     >
@@ -145,7 +143,7 @@ async function remove(id: number): Promise<void> {
 
     <div
       v-else-if="errorMessage"
-      class="alert categories-view__state"
+      class="alert category-settings__state"
       role="alert"
     >
       <p>{{ errorMessage }}</p>
@@ -155,31 +153,26 @@ async function remove(id: number): Promise<void> {
       </button>
     </div>
 
-    <div
-      v-else-if="!categories.length"
-      class="empty-state categories-view__state"
-    >
+    <p v-else-if="!categories.length" class="category-settings__state">
       <strong>Noch keine Kategorien.</strong>
-      <span>
-        Lege oben eine an. Zuordnen kannst du sie beim Bearbeiten einer Quest
-        oder eines Dailys.
-      </span>
-    </div>
+      Lege oben eine an. Zuordnen kannst du sie beim Bearbeiten einer Quest
+      oder eines Dailys.
+    </p>
 
-    <ul v-else class="card categories-view__list">
+    <ul v-else class="category-settings__list">
       <li
         v-for="category in categories"
         :key="category.id"
-        class="categories-view__item"
+        class="category-settings__item"
       >
         <form
           v-if="editingId === category.id"
-          class="categories-view__row"
+          class="category-settings__row"
           @submit.prevent="saveName(category.id)"
         >
           <input
             v-model="editedName"
-            class="input categories-view__grow"
+            class="input category-settings__grow"
             :aria-label="`Neuer Name für ${category.name}`"
             maxlength="60"
           />
@@ -197,13 +190,13 @@ async function remove(id: number): Promise<void> {
 
         <div
           v-else-if="deletingId === category.id"
-          class="categories-view__confirm"
+          class="category-settings__confirm"
         >
           <p>
             „{{ category.name }}“ löschen? Zugeordnete Einträge bleiben ohne
             Kategorie erhalten.
           </p>
-          <div class="categories-view__row">
+          <div class="category-settings__row">
             <button
               class="btn btn--danger"
               type="button"
@@ -222,15 +215,15 @@ async function remove(id: number): Promise<void> {
           </div>
         </div>
 
-        <div v-else class="categories-view__entry">
+        <div v-else class="category-settings__entry">
           <span
             class="category-mark"
             :style="{ background: categoryMark(category.name) }"
             aria-hidden="true"
           />
-          <span class="categories-view__name">{{ category.name }}</span>
-          <div class="categories-view__target">
-            <label class="categories-view__target-field">
+          <span class="category-settings__name">{{ category.name }}</span>
+          <div class="category-settings__target">
+            <label class="category-settings__target-field">
               <span aria-hidden="true">Wochensoll</span>
               <input
                 class="input"
@@ -247,8 +240,9 @@ async function remove(id: number): Promise<void> {
                   )
                 "
               />
+              <span aria-hidden="true">mal</span>
             </label>
-            <span class="categories-view__status" aria-live="polite">
+            <span class="category-settings__status" aria-live="polite">
               <template
                 v-if="
                   targetFeedback?.id === category.id && targetFeedback.saved
@@ -257,7 +251,7 @@ async function remove(id: number): Promise<void> {
               >
             </span>
           </div>
-          <div class="categories-view__actions">
+          <div class="category-settings__actions">
             <button
               class="btn btn--quiet btn--icon"
               type="button"
@@ -277,7 +271,7 @@ async function remove(id: number): Promise<void> {
           </div>
           <p
             v-if="targetFeedback?.id === category.id && !targetFeedback.saved"
-            class="form-error categories-view__row-error"
+            class="form-error category-settings__row-error"
             role="alert"
           >
             {{ targetFeedback.message }}
@@ -285,46 +279,59 @@ async function remove(id: number): Promise<void> {
         </div>
       </li>
     </ul>
-  </main>
+  </div>
 </template>
 
 <style scoped>
-.categories-view__create {
+.category-settings__lead {
+  margin: 0 0 var(--space-3);
+  color: var(--color-ink-muted);
+}
+
+.category-settings__create {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-3);
   align-items: end;
 }
 
-.categories-view__grow {
+.category-settings__grow {
   flex: 1 1 12rem;
   min-width: 0;
 }
 
-.categories-view__save-error {
+.category-settings__save-error {
   margin-top: var(--space-2);
 }
 
-.categories-view__state,
-.categories-view__list {
-  margin-top: var(--space-5);
+.category-settings__state,
+.category-settings__list {
+  margin: var(--space-4) 0 0;
 }
 
-.categories-view__list {
-  margin-bottom: 0;
-  padding: var(--space-1) var(--space-4);
+p.category-settings__state {
+  color: var(--color-ink-muted);
+}
+
+p.category-settings__state strong {
+  color: var(--color-ink);
+}
+
+.category-settings__list {
+  padding: 0;
+  border-top: 1px solid var(--color-line);
   list-style: none;
 }
 
-.categories-view__item {
+.category-settings__item {
   padding: var(--space-2) 0;
 }
 
-.categories-view__item + .categories-view__item {
+.category-settings__item + .category-settings__item {
   border-top: 1px solid var(--color-line);
 }
 
-.categories-view__row {
+.category-settings__row {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-3);
@@ -338,7 +345,7 @@ async function remove(id: number): Promise<void> {
   border-radius: 0.2rem;
 }
 
-.categories-view__name {
+.category-settings__name {
   flex: 1 1 8rem;
   min-width: 0;
   font-size: 1.0625rem;
@@ -347,7 +354,7 @@ async function remove(id: number): Promise<void> {
 }
 
 /* Mobile: name and actions on one line, the weekly target below the name. */
-.categories-view__entry {
+.category-settings__entry {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas:
@@ -358,15 +365,15 @@ async function remove(id: number): Promise<void> {
   align-items: center;
 }
 
-.categories-view__entry .category-mark {
+.category-settings__entry .category-mark {
   grid-area: mark;
 }
 
-.categories-view__name {
+.category-settings__name {
   grid-area: name;
 }
 
-.categories-view__target {
+.category-settings__target {
   grid-area: target;
   display: flex;
   flex-wrap: wrap;
@@ -375,7 +382,7 @@ async function remove(id: number): Promise<void> {
   padding-bottom: var(--space-1);
 }
 
-.categories-view__target-field {
+.category-settings__target-field {
   display: flex;
   gap: var(--space-2);
   align-items: center;
@@ -384,50 +391,50 @@ async function remove(id: number): Promise<void> {
   font-weight: 700;
 }
 
-.categories-view__target .input {
+.category-settings__target .input {
   width: 4.5rem;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
-.categories-view__actions {
+.category-settings__actions {
   grid-area: actions;
   display: flex;
   margin-inline-end: calc(var(--space-2) * -1);
 }
 
-.categories-view__status {
+.category-settings__status {
   color: var(--color-ink-muted);
   font-size: 0.875rem;
   font-weight: 700;
 }
 
-.categories-view__row-error {
+.category-settings__row-error {
   grid-area: error;
   padding-bottom: var(--space-1);
 }
 
 @media (min-width: 36rem) {
-  .categories-view__entry {
+  .category-settings__entry {
     grid-template-columns: auto minmax(0, 1fr) auto auto;
     grid-template-areas:
       "mark name target actions"
       ". error error error";
   }
 
-  .categories-view__target {
+  .category-settings__target {
     flex-direction: row-reverse;
     padding-bottom: 0;
   }
 }
 
-.categories-view__confirm {
+.category-settings__confirm {
   display: grid;
   gap: var(--space-2);
   padding: var(--space-2) 0;
 }
 
-.categories-view__confirm p {
+.category-settings__confirm p {
   margin: 0;
 }
 </style>

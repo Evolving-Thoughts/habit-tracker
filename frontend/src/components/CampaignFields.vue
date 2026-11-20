@@ -127,7 +127,7 @@ const iconName = computed(() =>
       <small
         :id="`${idPrefix}-weekly-target-hint`"
         class="campaign-fields__hint"
-        >Zeit auf den Quests dieser Kampagne zählt als Quest-Stunden. Halbe
+        >Zeit auf den Quests dieser Kampagne zählt als Kampagnen-Stunden. Halbe
         Stunden gehen auch.</small
       >
     </div>

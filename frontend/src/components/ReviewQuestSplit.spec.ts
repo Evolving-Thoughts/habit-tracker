@@ -9,13 +9,13 @@ describe("ReviewQuestSplit", () => {
       props: { hours: questHours({ questMinutes: 270, otherMinutes: 90 }) },
     });
     const rows = wrapper.findAll(".quest-split__legend li");
-    // "Quest-Arbeit 75 %" is the key figure; the legend does not say it twice.
+    // "Kampagnen-Arbeit 75 %" is the key figure; the legend does not say it twice.
     expect(rows.map((row) => row.text())).toEqual([
-      "Quest-Arbeit4 Std. 30 Min.",
+      "Kampagnen-Arbeit4 Std. 30 Min.",
       "Sonstiges1 Std. 30 Min.",
     ]);
     expect(wrapper.get('[role="img"]').attributes("aria-label")).toBe(
-      "Quest-Arbeit 4 Std. 30 Min., 75 %; Sonstiges 1 Std. 30 Min., 25 %",
+      "Kampagnen-Arbeit 4 Std. 30 Min., 75 %; Sonstiges 1 Std. 30 Min., 25 %",
     );
     const parts = wrapper.findAll(".quest-split__bar span");
     expect(parts[0]!.attributes("style")).toContain("flex-grow: 270");

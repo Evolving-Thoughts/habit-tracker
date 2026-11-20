@@ -12,7 +12,7 @@ const label = computed(() => dayBarsText(bars.value));
 <template>
   <section class="day-bars card" aria-labelledby="review-days-title">
     <div class="card-head">
-      <h2 id="review-days-title" class="card-title">Quest-Stunden je Tag</h2>
+      <h2 id="review-days-title" class="card-title">Kampagnen-Stunden je Tag</h2>
       <span class="day-bars__unit">Std.:Min.</span>
     </div>
     <!-- The figure is read as one sentence; the bars repeat it for the eye. -->

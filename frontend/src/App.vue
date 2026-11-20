@@ -75,6 +75,8 @@ function readCalendarReturn(): void {
 readCalendarReturn();
 
 // A new view starts at its top, with the keyboard and screen reader in it.
+// (A section asked for by address takes the focus right after; see
+// SettingsView.)
 watch(
   () => route.name,
   async () => {

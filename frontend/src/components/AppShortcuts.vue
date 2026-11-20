@@ -17,6 +17,7 @@ import {
 } from "../composables/useTheme";
 import { useTimer } from "../composables/useTimer";
 import { VIEWS, type ViewName } from "../router";
+import { SECTION_QUERY } from "../routes";
 import type { Command } from "../utils/command-filter";
 import type { ShortcutId } from "../utils/shortcuts";
 
@@ -27,13 +28,16 @@ import type { ShortcutId } from "../utils/shortcuts";
 const router = useRouter();
 const timer = useTimer();
 
-const VIEW_KEYS: Partial<Record<ViewName, ShortcutId>> = {
+const VIEW_KEYS: Record<ViewName, ShortcutId> = {
   today: "view.today",
+  focus: "focus.open",
+  calendar: "view.calendar",
   plan: "view.plan",
   questlog: "view.questlog",
   campaigns: "view.campaigns",
-  calendar: "view.calendar",
+  dailies: "view.dailies",
   review: "view.review",
+  settings: "view.settings",
 };
 
 function show(name: ViewName): void {
@@ -43,12 +47,14 @@ function show(name: ViewName): void {
 useShortcutHandlers(
   {
     "view.today": () => show("today"),
+    "focus.open": () => show("focus"),
+    "view.calendar": () => show("calendar"),
     "view.plan": () => show("plan"),
     "view.questlog": () => show("questlog"),
     "view.campaigns": () => show("campaigns"),
-    "view.calendar": () => show("calendar"),
+    "view.dailies": () => show("dailies"),
     "view.review": () => show("review"),
-    "focus.open": () => show("focus"),
+    "view.settings": () => show("settings"),
     // Views without a quest dialog of their own: write it on Heute.
     "quest.new": () => {
       void router
@@ -71,17 +77,35 @@ useShortcutHandlers(
   { fallback: true },
 );
 
-/** Views, then actions; the Fokus-Modus is offered once, as an action. */
+/** Further words a view is found by. */
+const VIEW_KEYWORDS: Partial<Record<ViewName, string[]>> = {
+  focus: ["Fokus-Modus", "starten"],
+};
+
+/**
+ * Views in the order of the navigation, Kategorien (a section of
+ * Einstellungen) right after it, then actions.
+ */
 const commands = computed<Command[]>(() => {
-  const views: Command[] = VIEWS.filter(({ name }) => name !== "focus").map(
-    ({ name, label }) => ({
-      id: `view.${name}`,
-      label,
-      group: "Ansichten",
-      shortcut: VIEW_KEYS[name],
-      run: () => show(name),
-    }),
-  );
+  const views: Command[] = VIEWS.map(({ name, label }) => ({
+    id: `view.${name}`,
+    label,
+    group: "Ansichten",
+    shortcut: VIEW_KEYS[name],
+    keywords: VIEW_KEYWORDS[name],
+    run: () => show(name),
+  }));
+  views.push({
+    id: "settings.categories",
+    label: "Kategorien",
+    group: "Ansichten",
+    keywords: ["Einstellungen", "Wochensoll"],
+    run: () =>
+      void router.push({
+        name: "settings",
+        query: { [SECTION_QUERY]: "kategorien" },
+      }),
+  });
   const actions: Command[] = [
     {
       id: "quest.new",
@@ -90,13 +114,6 @@ const commands = computed<Command[]>(() => {
       shortcut: "quest.new",
       keywords: ["Quest hinzufügen", "erstellen"],
       run: () => runShortcut("quest.new"),
-    },
-    {
-      id: "focus.open",
-      label: "Fokus-Modus starten",
-      group: "Aktionen",
-      shortcut: "focus.open",
-      run: () => show("focus"),
     },
   ];
   const running = timer?.timer.value;

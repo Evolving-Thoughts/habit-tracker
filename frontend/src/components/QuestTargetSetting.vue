@@ -57,8 +57,8 @@ onMounted(load);
 <template>
   <form class="quest-target" novalidate @submit.prevent="save">
     <p class="quest-target__text">
-      Zeit auf Quests, die zu einer Kampagne gehören, zählt als Quest-Stunden.
-      Heute zeigt, wie weit du in der Woche bist.
+      Zeit auf Quests, die zu einer Kampagne gehören, zählt als
+      Kampagnen-Stunden. Heute zeigt, wie weit du in der Woche bist.
     </p>
     <div class="quest-target__row">
       <div class="field">

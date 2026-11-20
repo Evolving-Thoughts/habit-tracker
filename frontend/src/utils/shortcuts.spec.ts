@@ -55,6 +55,21 @@ describe("the shortcut registry", () => {
     }
   });
 
+  it("lists the view keys in the order of the navigation", () => {
+    const views = SHORTCUTS.filter(({ group }) => group === "Ansichten");
+    expect(views.map(({ label, key }) => `${key} ${label}`)).toEqual([
+      "h Heute",
+      "f Fokus",
+      "k Kalender",
+      "p Plan",
+      "q Questlog",
+      "c Kampagnen",
+      "a Dailies",
+      "r Wochenrückblick",
+      ", Einstellungen",
+    ]);
+  });
+
   it("groups the overview as Ansichten, Quests, Fokus-Modus, Allgemein", () => {
     expect(groupedShortcuts().map(({ group }) => group)).toEqual([
       "Ansichten",
@@ -78,6 +93,8 @@ describe("matchShortcuts", () => {
   it("matches the view letters, also with Caps Lock, but not with Shift", () => {
     expect(ids(press("h"))).toEqual(["view.today"]);
     expect(ids(press("K"))).toEqual(["view.calendar"]);
+    expect(ids(press("a"))).toEqual(["view.dailies"]);
+    expect(ids(press(","))).toEqual(["view.settings"]);
     expect(ids(press("H", { shiftKey: true }))).toEqual([]);
   });
 

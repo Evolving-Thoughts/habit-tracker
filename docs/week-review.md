@@ -110,9 +110,8 @@ Monday that has begun; a week ahead is 400. The answer is the stored
   shows only away from the current week (`utils/week-plan.ts`
   `offersWayBack`, the same rule as the Plan and the Kalender's "Heute");
   after it the focus goes to the range. On the phone it sits
-  behind Mehr after Plan; on wide screens it sits behind Mehr up to 70rem and
-  has its own tab in the right-hand group from there (`tabFrom: "wider"` in
-  `router.ts`, see `DESIGN.md` for the steps of the bar).
+  behind Mehr; from 56rem it is the last labelled tab of the top bar, a group
+  of its own (`groupStart` in `router.ts`, see `DESIGN.md` for the bar).
 - The page is a dashboard on top and the week's details below, one grid of
   cards each titled inside (`.card-title`). From 56rem it is up to 72rem
   wide, like the Plan wider than the page column:

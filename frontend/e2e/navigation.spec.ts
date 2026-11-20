@@ -36,113 +36,62 @@ test.describe("wide navigation", () => {
     "Die obere Leiste gibt es erst ab 56rem; das Handy behält die Tab-Leiste.",
   );
 
-  test("between 56rem and 70rem the rarer views sit behind a labelled Mehr menu", async ({
+  test("from 56rem every view is a labelled tab, in groups, and Einstellungen is the gear at the end", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.setViewportSize({ width: 896, height: 768 });
     await page.goto("/");
     const navigation = page.getByRole("navigation", { name: "Ansichten" });
-    const more = navigation.getByRole("button", { name: "Mehr", exact: true });
-    const review = navigation.getByRole("link", { name: "Wochenrückblick" });
-    await expect(navigation.getByRole("link", { name: "Plan" })).toBeVisible();
-    await expect(more).toHaveAttribute("aria-expanded", "false");
-    await expect(review).toBeHidden();
-
-    // Keyboard: Enter opens, Tab walks the links, Escape closes and returns.
-    await more.focus();
-    await page.keyboard.press("Enter");
-    await expect(more).toHaveAttribute("aria-expanded", "true");
-    for (const name of [
-      "Wochenrückblick",
-      "Fokus",
-      "Dailies",
-      "Kategorien",
-      "Einstellungen",
-    ])
-      await expect(
-        navigation.getByRole("link", { name, exact: true }),
-      ).toBeVisible();
-    await page.keyboard.press("Tab");
-    await expect(review).toBeFocused();
-    await page.keyboard.press("Escape");
-    await expect(more).toHaveAttribute("aria-expanded", "false");
-    await expect(more).toBeFocused();
-
-    // A click outside closes it.
-    await more.click();
-    await page.locator("main").click({ position: { x: 5, y: 5 } });
-    await expect(more).toHaveAttribute("aria-expanded", "false");
-
-    // Picking a view closes it, and Mehr is then the current tab.
-    await more.click();
-    await navigation
-      .getByRole("link", { name: "Dailies", exact: true })
-      .click();
-    await expect(page).toHaveURL(/#\/dailies$/);
-    await expect(more).toHaveAttribute("aria-expanded", "false");
-    await expect(more).toHaveAttribute("data-active-medium");
-    await openView(page, "Plan");
-    await expect(more).not.toHaveAttribute("data-active-medium");
-  });
-
-  test("from 70rem Wochenrückblick, Fokus and Dailies are tabs; Mehr keeps the settings views", async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1148, height: 800 });
-    await page.goto("/");
-    const navigation = page.getByRole("navigation", { name: "Ansichten" });
-    const more = navigation.getByRole("button", { name: "Mehr", exact: true });
-    for (const name of ["Wochenrückblick", "Fokus", "Dailies"])
-      await expect(
-        navigation.getByRole("link", { name, exact: true }),
-      ).toBeVisible();
     await expect(
-      navigation.getByRole("link", { name: "Kategorien", exact: true }),
+      navigation.getByRole("button", { name: "Mehr", exact: true }),
     ).toBeHidden();
-
-    await more.click();
-    await expect(navigation.locator("#more-views a:visible")).toHaveText([
-      "Kategorien",
+    await expect(navigation.locator(".tab-bar__inner > :visible")).toHaveText([
+      "Heute",
+      "Fokus",
+      "Kalender",
+      "Plan",
+      "Questlog",
+      "Kampagnen",
+      "Dailies",
+      "Wochenrückblick",
+      "Befehle",
       "Einstellungen",
     ]);
+    // Kategorien is a section of Einstellungen now, not a view of its own.
+    await expect(
+      navigation.getByRole("link", { name: "Kategorien" }),
+    ).toHaveCount(0);
 
-    // A view with its own tab no longer makes Mehr current; one inside it does.
-    await navigation.getByRole("link", { name: "Einstellungen" }).click();
-    await expect(more).toHaveAttribute("data-active");
-    await navigation
-      .getByRole("link", { name: "Dailies", exact: true })
-      .click();
-    await expect(page).toHaveURL(/#\/dailies$/);
-    await expect(more).toHaveCSS(
-      "color",
-      await navigation
-        .getByRole("link", { name: "Questlog", exact: true })
-        .evaluate((link) => getComputedStyle(link).color),
-    );
+    const gear = navigation.getByRole("link", {
+      name: "Einstellungen",
+      exact: true,
+    });
+    await expect(gear).toHaveAttribute("title", "Einstellungen (,)");
+    await gear.click();
+    await expect(page).toHaveURL(/#\/einstellungen$/);
+    await expect(gear).toHaveAttribute("aria-current", "page");
   });
 
-  test("the bar never overflows, and from 82rem every view has its labelled tab", async ({
+  test("the bar never overflows; the tabs get their icons from 70rem", async ({
     page,
   }) => {
     await page.goto("/");
     const navigation = page.getByRole("navigation", { name: "Ansichten" });
-    for (const width of [
-      896, 1024, 1119, 1120, 1148, 1152, 1280, 1311, 1312, 1440,
-    ]) {
+    for (const width of [896, 1024, 1119, 1120, 1280, 1440]) {
       await page.setViewportSize({ width, height: 800 });
-      const wide = width >= 1312;
       await expect(
         navigation.getByRole("button", { name: "Mehr", exact: true }),
-      ).toBeVisible({ visible: !wide });
-      await expect(
-        navigation.getByRole("link", { name: "Einstellungen" }),
-      ).toBeVisible({ visible: wide });
-      await expect(
-        navigation.getByRole("link", { name: "Wochenrückblick" }),
-      ).toBeVisible({ visible: width >= 1120 });
+      ).toBeHidden();
+      for (const name of ["Wochenrückblick", "Einstellungen"])
+        await expect(
+          navigation.getByRole("link", { name, exact: true }),
+        ).toBeVisible();
       await expect(
         navigation.getByRole("button", { name: /Befehle/ }),
       ).toBeVisible();
+      await expect(
+        navigation.getByRole("link", { name: "Heute" }).locator("svg"),
+      ).toBeVisible({ visible: width >= 1120 });
       const fit = await page.evaluate(() => {
         const inner = document.querySelector<HTMLElement>(".tab-bar__inner")!;
         const box = inner.getBoundingClientRect();
@@ -172,6 +121,62 @@ test.describe("wide navigation", () => {
       });
     }
   });
+});
+
+test("the old address of Kategorien opens its section in Einstellungen, and Back leaves it", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page).toHaveURL(/#\/heute$/);
+  await page.goto("/#/kategorien");
+  await expect(page).toHaveURL(/#\/einstellungen\?abschnitt=kategorien$/);
+  const title = page.getByRole("heading", { name: "Kategorien", level: 2 });
+  await expect(title).toBeFocused();
+  await expect(title).toBeInViewport();
+  // Not under the fixed bar at the top of wide screens.
+  const titleTop = await title.evaluate(
+    (element) => element.getBoundingClientRect().top,
+  );
+  const barBottom = await page
+    .getByRole("navigation", { name: "Ansichten" })
+    .evaluate((bar) => {
+      const box = bar.getBoundingClientRect();
+      return box.top < 1 ? box.bottom : 0;
+    });
+  expect(titleTop).toBeGreaterThanOrEqual(barBottom);
+  await expect(page.getByLabel("Neue Kategorie")).toBeVisible();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/heute$/);
+});
+
+test("a view opens at its top, and Back returns to where the page was", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openView(page, "Einstellungen");
+  await expect(page.getByRole("heading", { name: "Konto" })).toBeVisible();
+  // The page is held at its top while it loads; scroll once that is over.
+  await expect(page.locator("html[data-scroll-hold]")).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(
+    100,
+  );
+  const scrolled = await page.evaluate(() => window.scrollY);
+
+  await openView(page, "Kalender");
+  await expect(page.locator(".calendar-view")).toBeVisible();
+  await expect(
+    page.getByRole("status", { name: "Kalender wird geladen" }),
+  ).toHaveCount(0);
+  // Still at the top once the view has loaded, the title in full view.
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/einstellungen$/);
+  await expect
+    .poll(() => page.evaluate(() => window.scrollY))
+    .toBeGreaterThan(scrolled - 10);
 });
 
 test("phone: four tabs and Mehr, no command button and no shortcut settings", async ({

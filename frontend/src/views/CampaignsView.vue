@@ -94,7 +94,7 @@ const { data: questHours, reload: loadQuestHours } =
     (signal) => getQuestHours(weekStart(getCurrentDateInTimeZone()), signal),
     {
       initial: null,
-      fallbackError: "Quest-Stunden konnten nicht geladen werden.",
+      fallbackError: "Kampagnen-Stunden konnten nicht geladen werden.",
       refreshOnChange: quiet,
     },
   );
@@ -589,7 +589,7 @@ useShortcutHandlers({
                   }}</span></template
                 ></strong
               >
-              Quest-Stunden
+              Kampagnen-Stunden
             </p>
             <span
               v-if="openTile.weeklyTargetMinutes !== null"

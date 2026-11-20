@@ -214,6 +214,11 @@ html {
   min-height: 100%;
 }
 
+/* A view that is still loading keeps its place (utils/scroll-hold.ts). */
+html[data-scroll-hold] {
+  overflow-anchor: none;
+}
+
 body {
   min-width: 20rem;
   min-height: 100vh;

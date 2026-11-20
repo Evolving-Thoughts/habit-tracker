@@ -34,17 +34,16 @@ describe("AppNavigation: Mehr", () => {
     expect(more.attributes("aria-controls")).toBe("more-views");
     expect(more.attributes("aria-expanded")).toBe("false");
     expect(menu.attributes("data-open")).toBeUndefined();
-    // Labelled links with icon and name; Plan is only behind Mehr on a phone.
+    // Labelled links with icon and name, in the order of the navigation;
+    // Kategorien is a section of Einstellungen, not a view of its own.
     expect(menu.findAll("a").map((link) => link.text())).toEqual([
-      "Plan",
-      "Wochenrückblick",
       "Fokus",
+      "Plan",
       "Dailies",
-      "Kategorien",
+      "Wochenrückblick",
       "Einstellungen",
     ]);
-    expect(menu.get("a").classes()).toContain("tab-bar__tab--narrow");
-    expect(menu.findAll("a svg")).toHaveLength(6);
+    expect(menu.findAll("a svg")).toHaveLength(5);
   });
 
   it("opens and closes on click", async () => {
@@ -101,18 +100,16 @@ describe("AppNavigation: Mehr", () => {
   it("closes on navigation and marks itself current for its views", async () => {
     const { wrapper, router, more } = await mountNavigation();
     await more.trigger("click");
-    await wrapper.findAll("#more-views a")[5]!.trigger("click");
+    await wrapper.findAll("#more-views a")[4]!.trigger("click");
     await flushPromises();
     expect(router.currentRoute.value.name).toBe("settings");
     expect(more.attributes("aria-expanded")).toBe("false");
     expect(more.attributes("data-active")).toBeDefined();
-    expect(more.attributes("data-active-narrow")).toBeUndefined();
   });
 
-  it("counts Plan as behind Mehr only on a phone", async () => {
-    const { more } = await mountNavigation("/plan");
+  it("is not current for a view with its own tab on the phone", async () => {
+    const { more } = await mountNavigation("/kalender");
     expect(more.attributes("data-active")).toBeUndefined();
-    expect(more.attributes("data-active-narrow")).toBeDefined();
   });
 });
 
@@ -125,5 +122,50 @@ describe("AppNavigation: command button", () => {
     await button.trigger("click");
     expect(overlay.value).toBe("menu");
     overlay.value = null;
+  });
+});
+
+describe("AppNavigation: top bar", () => {
+  it("lists the views in groups by intent, Einstellungen apart", async () => {
+    const { wrapper } = await mountNavigation();
+    const tabs = wrapper.findAll(".tab-bar__inner > a.tab-bar__view");
+    expect(tabs.map((tab) => tab.text())).toEqual([
+      "Heute",
+      "Fokus",
+      "Kalender",
+      "Plan",
+      "Questlog",
+      "Kampagnen",
+      "Dailies",
+      "Wochenrückblick",
+    ]);
+    // Each group after the first starts with a little more space.
+    expect(
+      tabs
+        .filter((tab) => tab.classes("tab-bar__view--group"))
+        .map((tab) => tab.text()),
+    ).toEqual(["Kalender", "Kampagnen", "Wochenrückblick"]);
+    // The phone keeps four of them as tabs; the rest sit behind Mehr there.
+    expect(
+      tabs
+        .filter((tab) => !tab.classes("tab-bar__view--secondary"))
+        .map((tab) => tab.text()),
+    ).toEqual(["Heute", "Kalender", "Questlog", "Kampagnen"]);
+  });
+
+  it("ends with Einstellungen as a gear after the command button", async () => {
+    const { wrapper, router } = await mountNavigation();
+    const items = wrapper.findAll(".tab-bar__inner > *");
+    const gear = wrapper.get(".tab-bar__settings");
+    expect(items.at(-2)!.classes()).toContain("tab-bar__command");
+    expect(items.at(-1)!.element).toBe(gear.element);
+    expect(gear.text()).toBe("Einstellungen");
+    expect(gear.get("span").classes()).toContain("visually-hidden");
+    expect(gear.attributes("title")).toBe("Einstellungen (,)");
+    expect(gear.attributes("aria-keyshortcuts")).toBe(",");
+    await gear.trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe("settings");
+    expect(gear.attributes("aria-current")).toBe("page");
   });
 });

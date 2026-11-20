@@ -1,7 +1,7 @@
 # Quest hours: measured time towards campaigns
 
 The app counts input, not output: time spent on quests that belong to a
-campaign is **quest time** ("Quest-Stunden"), measured against a weekly goal.
+campaign is **quest time** ("Kampagnen-Stunden"), measured against a weekly goal.
 There are no points, levels or badges, and a missed goal is shown as a plain
 number, never in a warning colour.
 
