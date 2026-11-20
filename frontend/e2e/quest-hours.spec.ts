@@ -44,11 +44,12 @@ test("Kampagnen-Stunden: goals, a campaign's colour and icon, its tile and the l
     .getByRole("button", { name: "Kampagne Buch bearbeiten", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
-  // Nothing chosen yet, so the campaign's group waits closed.
-  const group = dialog.getByRole("button", { name: /^Kampagne \(/ });
-  await expect(group).toHaveAttribute("aria-expanded", "false");
-  await group.click();
-  await expect(group).toHaveAttribute("aria-expanded", "true");
+  // A campaign's own form shows colour, icon and goal directly, without
+  // a group to open, and no day or duration.
+  await expect(
+    dialog.getByRole("button", { name: /^Kampagne \(/ }),
+  ).toHaveCount(0);
+  await expect(dialog.locator('[name="weeklyTarget"]')).toBeVisible();
   const choose = async (name: string) => {
     const radio = page.getByRole("radio", { name, exact: true });
     await dialog.locator("label").filter({ has: radio }).click();
