@@ -15,6 +15,8 @@ import {
   tallyLine,
   tallyOfHistoryDay,
   tallyOfPlanner,
+  untimedLine,
+  untimedOfHistoryDay,
 } from "./day-tally";
 
 const todo = (
@@ -137,5 +139,35 @@ describe("the day's tally, the same in every view", () => {
     expect(dayRelation("2026-10-01", "2026-10-02")).toBe("past");
     expect(dayRelation("2026-10-02", "2026-10-02")).toBe("today");
     expect(dayRelation("2026-10-03", "2026-10-02")).toBe("future");
+  });
+});
+
+describe("what a day holds without a time, for the week's heads", () => {
+  it("counts done and open quests and Daily runs without a time", () => {
+    const day = {
+      items: [
+        resolved("completed"),
+        resolved("skipped"),
+        { ...resolved("completed"), type: "habit" as const, id: 3 },
+        { ...resolved("completed"), id: 4, timeOfDay: "09:00" },
+      ],
+      planned: [
+        planned(),
+        planned(true),
+        { ...planned(), type: "habit" as const },
+        { ...planned(), timeOfDay: "14:00" },
+      ],
+    };
+    const tally = untimedOfHistoryDay(day);
+    // Skipped runs and appointments are not counted; earlier work is apart.
+    expect(tally).toEqual({ quests: 2, dailies: 2, carriedOver: 1 });
+    expect(untimedLine(tally)).toBe("2 Quests · 2 Dailies · 1 von früher");
+  });
+
+  it("names one of each in the singular and an empty day not at all", () => {
+    expect(untimedLine({ quests: 1, dailies: 1, carriedOver: 0 })).toBe(
+      "1 Quest · 1 Daily",
+    );
+    expect(untimedLine({ quests: 0, dailies: 0, carriedOver: 0 })).toBeNull();
   });
 });

@@ -112,9 +112,15 @@ test("Kampagnen-Stunden: goals, a campaign's colour and icon, its tile and the l
   // Heute relates the time worked to its quest hours, then the week against the goal.
   await openView(page, "Heute");
   // Right after midnight the half hour may lie wholly on yesterday.
+  // A figure keeps its unit with a no-break space, which \s matches.
   await expect(page.locator(".today-view__time")).toHaveText(
-    /^(\d+ Min\. gearbeitet, alles auf Kampagnen · Woche|Kampagnen diese Woche) \d+ Min\. von 20 Std\.$/,
+    /^(\d+\sMin\. gearbeitet, alles auf Kampagnen · Woche|Kampagnen diese Woche) \d+\sMin\. von 20\sStd\.$/,
   );
+  await expect(
+    page.getByRole("progressbar", {
+      name: "Kampagnen-Stunden diese Woche gegen das Wochenziel",
+    }),
+  ).toHaveAttribute("aria-valuemax", "1200");
   // The quest's stripe takes the campaign's stored colour.
   await expect(page.locator(".planner-item.item-row--campaign").first()).toHaveAttribute(
     "style",

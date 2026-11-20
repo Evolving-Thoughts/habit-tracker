@@ -32,11 +32,18 @@ const props = defineProps<{
    * stays short there; from 40rem every open row shows it.
    */
   whyWideOnly?: boolean;
+  /**
+   * An appointment that is over but still open: a quiet question takes the
+   * place of the Warum, with "Anderer Tag …" where it can move.
+   */
+  past?: boolean;
+  movable?: boolean;
 }>();
 
 const emit = defineEmits<{
   toggle: [item: DayPlannerItem];
   edit: [item: DayPlannerItem];
+  move: [item: DayPlannerItem];
 }>();
 
 const state = computed(() =>
@@ -139,8 +146,25 @@ const measure = computed(() =>
       <span v-for="part in details" :key="part">{{ part }}</span>
       <CampaignChip v-if="campaignChip" :campaign="campaignChip" />
     </template>
+    <!-- Over but open: asked, never warned; the ring above answers it. -->
+    <template v-if="past && state === 'open'" #below>
+      <p class="planner-item__nudge">
+        <span>Vorbei – erledigt?</span>
+        <button
+          v-if="movable"
+          type="button"
+          class="planner-item__nudge-move"
+          data-move-button
+          :disabled="isUpdating"
+          :aria-label="`${item.title} auf einen anderen Tag`"
+          @click="emit('move', item)"
+        >
+          Anderer Tag …
+        </button>
+      </p>
+    </template>
     <!-- What it is for, quietly and on one line; done rows need it no more. -->
-    <template v-if="item.why && state === 'open'" #below>
+    <template v-else-if="item.why && state === 'open'" #below>
       <p
         class="planner-item__why"
         :class="{ 'planner-item__why--wide': whyWideOnly }"
@@ -184,6 +208,45 @@ const measure = computed(() =>
   .planner-item__why--wide {
     display: none;
   }
+}
+
+/* The question of a past appointment: muted ink, its move a quiet pill. */
+.planner-item__nudge {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  align-items: center;
+  margin: 0.1rem 0 0;
+  color: var(--color-ink-muted);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.planner-item__nudge-move {
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-action-tint);
+  color: var(--color-action-strong);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 420ms var(--spring);
+}
+
+.planner-item__nudge-move:hover:not(:disabled) {
+  background: var(--color-action-tint-hover);
+}
+
+.planner-item__nudge-move:active:not(:disabled) {
+  transform: var(--press);
+  transition-duration: 90ms;
+}
+
+.planner-item__nudge-move:disabled {
+  color: var(--color-ink-soft);
+  cursor: progress;
 }
 
 .planner-item__time {

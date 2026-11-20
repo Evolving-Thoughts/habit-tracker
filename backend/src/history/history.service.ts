@@ -133,10 +133,13 @@ export class HistoryService {
         category,
         ancestry,
       );
-      const external =
-        query.view === 'week'
-          ? null
-          : await eventsOfDays(manager, { userId }, startDate, endDate);
+      // Every view shows the read Google calendars: the week as blocks too.
+      const external = await eventsOfDays(
+        manager,
+        { userId },
+        startDate,
+        endDate,
+      );
       const logs = await withCampaigns(
         manager,
         userId,
@@ -171,18 +174,14 @@ export class HistoryService {
           date,
           items: items.filter((item) => item.date === date),
           planned: planning.items.filter((item) => item.date === date),
-          ...(external
-            ? {
-                external: external
-                  .filter((event) => dayOf(event.start) === date)
-                  .map(({ id, title, start, end }) => ({
-                    id,
-                    title,
-                    start: start.toISOString(),
-                    end: end.toISOString(),
-                  })),
-              }
-            : {}),
+          external: external
+            .filter((event) => dayOf(event.start) === date)
+            .map(({ id, title, start, end }) => ({
+              id,
+              title,
+              start: start.toISOString(),
+              end: end.toISOString(),
+            })),
           work: dayWork(logs, date, query.view !== 'month'),
         })),
       };

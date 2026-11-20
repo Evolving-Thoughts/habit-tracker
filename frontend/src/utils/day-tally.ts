@@ -75,3 +75,44 @@ export function tallyLine(tally: DayTally, relation: DayRelation): string | null
   if (tally.skipped) parts.push(`${tally.skipped} übersprungen`);
   return parts.length ? parts.join(" · ") : null;
 }
+
+/**
+ * What a day holds besides its appointments, for the head of a column in
+ * the Kalender week: quests and Daily runs without a time, done or still
+ * open on that day, counted by the same rule (skipped runs count neither
+ * way, and what waits from an earlier day is named apart).
+ */
+export type UntimedTally = {
+  quests: number;
+  dailies: number;
+  carriedOver: number;
+};
+
+export function untimedOfHistoryDay(day: {
+  items: readonly HistoryItem[];
+  planned?: readonly HistoryPlannedItem[];
+}): UntimedTally {
+  const tally: UntimedTally = { quests: 0, dailies: 0, carriedOver: 0 };
+  const count = (entry: { type: "todo" | "habit"; timeOfDay: string | null }) => {
+    if (entry.timeOfDay !== null) return;
+    if (entry.type === "todo") tally.quests += 1;
+    else tally.dailies += 1;
+  };
+  for (const item of day.items) if (item.status === "completed") count(item);
+  for (const item of day.planned ?? []) {
+    if (item.isOverdue) tally.carriedOver += 1;
+    else count(item);
+  }
+  return tally;
+}
+
+/** "5 Quests · 2 Dailies · 1 von früher", or null for a day without any. */
+export function untimedLine(tally: UntimedTally): string | null {
+  const parts: string[] = [];
+  if (tally.quests)
+    parts.push(`${tally.quests} ${tally.quests === 1 ? "Quest" : "Quests"}`);
+  if (tally.dailies)
+    parts.push(`${tally.dailies} ${tally.dailies === 1 ? "Daily" : "Dailies"}`);
+  if (tally.carriedOver) parts.push(`${tally.carriedOver} von früher`);
+  return parts.length ? parts.join(" · ") : null;
+}

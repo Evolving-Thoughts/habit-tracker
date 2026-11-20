@@ -4,6 +4,8 @@ import type { HistoryWorkLog } from "../types/history";
 import {
   DONE_MARK_MINUTES,
   axisHours,
+  calendarBlocks,
+  clockLabel,
   compactDuration,
   drawnEnd,
   layoutLane,
@@ -11,6 +13,8 @@ import {
   logLabel,
   minuteOfDay,
   planBlocks,
+  resizedEdge,
+  wallTime,
 } from "./logbook";
 
 const DAY = "2026-11-17";
@@ -189,7 +193,7 @@ describe("completions on the axis", () => {
       date: DAY,
       items: [done(1, "2026-11-17T04:37:00.000Z")],
     });
-    expect(axisHours(blocks)).toEqual({ from: 5, to: 18 });
+    expect(axisHours(blocks)).toEqual({ from: 5, to: 24 });
   });
 
   it("draws a mark only as long as it is", () => {
@@ -235,33 +239,67 @@ describe("layoutLane", () => {
 });
 
 describe("axisHours", () => {
-  it("runs from the earliest to the latest entry, rounded to full hours", () => {
+  it("runs from early morning to midnight", () => {
+    expect(axisHours([])).toEqual({ from: 6, to: 24 });
+    expect(axisHours([block("a", 11 * 60, 12 * 60)], 30)).toEqual({
+      from: 6,
+      to: 24,
+    });
+    expect(axisHours([block("a", 23 * 60 + 50, 24 * 60)], 40)).toEqual({
+      from: 6,
+      to: 24,
+    });
+  });
+
+  it("starts earlier at the full hour of an earlier entry", () => {
     // A stretch from 05:37 and an appointment until 21:10.
     expect(
       axisHours(
         [block("log", 5 * 60 + 37, 6 * 60), block("plan", 20 * 60, 21 * 60 + 10)],
         30,
       ),
-    ).toEqual({ from: 5, to: 22 });
+    ).toEqual({ from: 5, to: 24 });
+    expect(axisHours([block("a", 30, 60)], 30)).toEqual({ from: 0, to: 24 });
+  });
+});
+
+describe("calendarBlocks", () => {
+  it("puts the plan and the Logbuch on one column, side by side where they overlap", () => {
+    const placed = calendarBlocks(
+      [{ ...block("plan", 9 * 60, 10 * 60), title: "Teamrunde", time: "09:00", source: "appointment" }],
+      logBlocks({ minutes: 25, logs: [log()] }, DAY),
+    );
+    expect(placed.map((item) => [item.kind, item.column, item.columns])).toEqual([
+      ["plan", 0, 2],
+      ["log", 1, 2],
+    ]);
+  });
+});
+
+describe("resizing a stretch", () => {
+  const stretch = { start: 9 * 60, end: 10 * 60 };
+
+  it("snaps an edge to five minutes", () => {
+    expect(resizedEdge("start", 8 * 60 + 47, stretch, 1440)).toBe(8 * 60 + 45);
+    expect(resizedEdge("end", 10 * 60 + 13, stretch, 1440)).toBe(10 * 60 + 15);
   });
 
-  it("never starts later than 8 or ends earlier than 18", () => {
-    expect(axisHours([block("a", 11 * 60, 12 * 60)], 30)).toEqual({
-      from: 8,
-      to: 18,
-    });
+  it("never lets an edge pass the other one", () => {
+    expect(resizedEdge("start", 10 * 60 + 20, stretch, 1440)).toBe(9 * 60 + 55);
+    expect(resizedEdge("end", 8 * 60, stretch, 1440)).toBe(9 * 60 + 5);
   });
 
-  it("shows 8 to 18 and widens to every block", () => {
-    expect(axisHours([])).toEqual({ from: 8, to: 18 });
-    expect(axisHours([block("a", 6 * 60 + 30, 7 * 60)], 30)).toEqual({
-      from: 6,
-      to: 18,
-    });
-    expect(axisHours([block("a", 23 * 60 + 50, 24 * 60)], 40)).toEqual({
-      from: 8,
-      to: 24,
-    });
+  it("stays within the day and never reaches past now", () => {
+    expect(resizedEdge("start", -40, stretch, 1440)).toBe(0);
+    expect(resizedEdge("end", 26 * 60, stretch, 1440)).toBe(1440);
+    // Now is 10:32: the end stops there, off the grid if it must.
+    expect(resizedEdge("end", 11 * 60, stretch, 10 * 60 + 32)).toBe(10 * 60 + 32);
+  });
+
+  it("turns minutes of a day into instants on the Berlin wall clock", () => {
+    expect(clockLabel(9 * 60 + 5)).toBe("09:05");
+    expect(wallTime(DAY, 9 * 60 + 5)).toBe("2026-11-17T08:05:00.000Z");
+    expect(wallTime(DAY, 1440)).toBe("2026-11-17T23:00:00.000Z");
   });
 });
 

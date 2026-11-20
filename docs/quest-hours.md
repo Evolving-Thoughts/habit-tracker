@@ -165,6 +165,10 @@ resolves both from one read of the user's categories.
   Kampagnen" when all of it was; just "40 Min. gearbeitet · Kampagnen diese
   Woche …" when none was; only the week before anything was worked today;
   without a goal only the numbers; nothing without time and goal
-  (`workLine` in `utils/quest-hours.ts`).
+  (`workLine` in `utils/quest-hours.ts`). A figure keeps its unit (no-break
+  spaces: "4 Std. 20 Min." never breaks inside). With a goal, a slim ink bar
+  on deep apricot below shows the week's campaign hours against it (a
+  `progressbar` with both figures as its text); behind the goal is a shorter
+  bar, never a warning colour.
 - Stripes in Heute, Plan and the calendar's Logbuch take the stored colour
   through `campaignMark`; those rows get no icon.

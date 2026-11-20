@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import {
   getToday,
   reorderDay,
@@ -14,6 +14,8 @@ import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import { useUndo } from "../composables/useUndo";
 import { useCampaignCompletion } from "../composables/useCampaignCompletion";
+import { useLogRemoval } from "../composables/useLogRemoval";
+import { useMediaQuery } from "../composables/useMediaQuery";
 import { timerStateOf, toggleTimer, useTimer } from "../composables/useTimer";
 import {
   focusWhenReady,
@@ -27,6 +29,7 @@ import CreateItemDialog from "../components/CreateItemDialog.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
 import PlannerItem from "../components/PlannerItem.vue";
 import QuickAddQuest from "../components/QuickAddQuest.vue";
+import TodayCalendar from "../components/TodayCalendar.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
 import MoveItemDialog from "../components/MoveItemDialog.vue";
 import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
@@ -46,6 +49,7 @@ import { dayLabel, fullStop } from "../utils/history";
 import {
   arrangeToday,
   formatDayHeading,
+  formatDuration,
   formatWindow,
   itemKey,
   moved,
@@ -135,7 +139,31 @@ const timeLine = computed(() =>
     ? workLine(planner.value.workedMinutes, planner.value.questHours)
     : null,
 );
-const timeParts = computed(() => timeLine.value?.split(" · ") ?? []);
+/* A figure keeps its unit: "4 Std. 20 Min." never breaks inside. */
+const NO_BREAK_SPACE = String.fromCharCode(160);
+const timeParts = computed(
+  () =>
+    timeLine.value
+      ?.split(" · ")
+      .map((part) =>
+        part.replace(/(\d) (Std\.|Min\.)/g, `$1${NO_BREAK_SPACE}$2`),
+      ) ?? [],
+);
+/** The week's campaign hours against the goal, as a slim bar; none without one. */
+const weekGoal = computed(() => {
+  const hours = planner.value?.questHours;
+  if (!hours || hours.weeklyTargetMinutes === null) return null;
+  return {
+    minutes: hours.weekMinutes,
+    target: hours.weeklyTargetMinutes,
+    filled: Math.min(
+      100,
+      Math.round((hours.weekMinutes / hours.weeklyTargetMinutes) * 100),
+    ),
+  };
+});
+/* Wide screens: the day calendar stands beside the list. */
+const wide = useMediaQuery("(min-width: 64rem)");
 const hasItems = computed(
   () =>
     (planner.value?.items.length ?? 0) > 0 ||
@@ -165,12 +193,12 @@ const focusSlot = computed(() =>
 /** With nothing left in the order: when the next appointment comes. */
 const nextAppointment = computed(() => {
   const day = agenda.value;
-  const entry = day?.timeline[day.nowIndex];
+  const entry = day?.nextAppointment;
   if (!entry) return null;
   return `${entry.time} ${entry.kind === "item" ? entry.item.title : entry.event.title}`;
 });
 const openAppointments = computed(() =>
-  (agenda.value?.timeline ?? []).some(
+  (agenda.value?.appointments ?? []).some(
     (entry) => entry.kind === "item" && entry.item.status === "pending",
   ),
 );
@@ -188,8 +216,24 @@ const focusMeta = computed(() => {
   return parts;
 });
 
-const { undo, offer: offerUndo, take: takeUndo } = useUndo<DayPlannerItem>();
+/** A tick to take back, or a Logbuch stretch whose delete is held back. */
+type Undoable =
+  | { kind: "item"; item: DayPlannerItem }
+  | { kind: "log"; id: number };
+const {
+  undo,
+  offer: offerUndo,
+  take: takeUndo,
+  flush: flushUndo,
+} = useUndo<Undoable>();
+/* Closing or reloading the page sends a held delete on its way. */
+onMounted(() => window.addEventListener("pagehide", flushUndo));
+onBeforeUnmount(() => window.removeEventListener("pagehide", flushUndo));
 const campaignCompletion = useCampaignCompletion();
+const { hiddenLogs, removeLog, restoreLog } = useLogRemoval(
+  offerUndo,
+  writes.write,
+);
 
 const getItemKey = itemKey;
 
@@ -224,14 +268,16 @@ async function toggleItem(item: DayPlannerItem): Promise<void> {
   );
   if (done && completing)
     offerUndo(
-      item,
+      { kind: "item", item },
       open > 0 ? `„${item.title}“ abgeschlossen` : `„${item.title}“ erledigt`,
     );
 }
 
 async function undoLast(): Promise<void> {
-  const item = takeUndo();
-  if (!item) return;
+  const target = takeUndo();
+  if (!target) return;
+  if (target.kind === "log") return restoreLog(target.id);
+  const { item } = target;
   await writes.write(
     () =>
       item.type === "todo"
@@ -628,466 +674,480 @@ useShortcutHandlers(
 </script>
 
 <template>
-  <main ref="page" class="today-view">
-    <header class="today-view__header">
-      <div class="today-view__title">
-        <h1>{{ heading }}</h1>
-        <!-- Breaks only between its parts: "1 von 7 erledigt" · "1 von früher". -->
-        <p v-if="progress" class="today-view__progress">
-          <template v-for="(part, index) in progressParts" :key="part"
-            >{{ index ? " " : ""
-            }}<span class="today-view__progress-part">{{
-              index < progressParts.length - 1 ? `${part} ·` : part
-            }}</span></template
-          >
-        </p>
-        <p v-if="timeLine" class="today-view__time">
-          <!-- From 40rem each part breaks as a whole, no figure torn apart. -->
-          <template v-for="(part, index) in timeParts" :key="part"
-            >{{ index ? " " : ""
-            }}<span class="today-view__time-part">{{
-              index < timeParts.length - 1 ? `${part} ·` : part
-            }}</span></template
-          >
-        </p>
-      </div>
-      <button
-        v-if="postponable.length"
-        class="today-view__postpone"
-        type="button"
-        :disabled="isLoading || editorBusy || writes.busy.value"
-        @click="postponeOpen = true"
-      >
-        <AppIcon name="tomorrow" />
-        <span>Auf morgen</span>
-      </button>
-    </header>
-
-    <CreateItemDialog
-      v-if="creationOpen"
-      @close="creationOpen = false"
-      @created="onCreated"
-    />
-    <p v-if="creationMessage" class="today-view__notice" role="status">
-      {{ creationMessage }}
-    </p>
-
-    <EditItemDialog
-      v-if="editingTarget"
-      :key="`${editingTarget.kind}-${editingTarget.entityId}`"
-      :kind="editingTarget.kind"
-      :entity-id="editingTarget.entityId"
-      :occurrence-id="editingTarget.occurrenceId"
-      :return-focus="listFocus.returnFocus"
-      @busy="editorBusy = $event"
-      @changed="onEditorChanged"
-      @close="closeEditing"
-    />
-
-    <ModalDialog
-      v-if="postponeOpen"
-      title="Offenes auf morgen verschieben"
-      focus-selector="[data-postpone-confirm]"
-      :return-focus="() => null"
-      @close="postponeOpen = false"
-    >
-      <p class="postpone__lead">
-        {{
-          postponable.length === 1
-            ? "1 offener Eintrag wandert auf morgen und reiht sich dort hinten ein."
-            : `${postponable.length} offene Einträge wandern auf morgen und reihen sich dort hinten ein.`
-        }}
-        Termine mit Uhrzeit bleiben, wo sie sind.
-      </p>
-      <div class="postpone__actions">
-        <button
-          class="btn btn--primary"
-          type="button"
-          data-postpone-confirm
-          data-primary
-          @click="postponeAll"
-        >
-          Auf morgen verschieben
-        </button>
-        <button class="btn" type="button" @click="postponeOpen = false">
-          Abbrechen
-        </button>
-      </div>
-    </ModalDialog>
-
-    <CampaignMoveDialog
-      v-if="campaignMoving"
-      :todo-id="campaignMoving.todoId"
-      :title="campaignMoving.title"
-      :return-focus="listFocus.returnFocus"
-      @busy="editorBusy = $event"
-      @moved="onMenuDialogDone"
-      @close="closeMenuDialog"
-    />
-    <DeleteItemDialog
-      v-if="deleting"
-      :target="deleting"
-      :return-focus="listFocus.returnFocus"
-      @busy="editorBusy = $event"
-      @deleted="onMenuDialogDone"
-      @close="closeMenuDialog"
-    />
-
-    <MoveItemDialog
-      v-if="movingItem && planner"
-      :item="movingItem"
-      :today="planner.date"
-      :offer-today="movingItem.isOverdue"
-      :return-focus="listFocus.returnFocus"
-      @busy="editorBusy = $event"
-      @moved="onMoved"
-      @close="closeMoving"
-    />
-
-    <div v-if="errorMessage" class="alert today-view__error">
-      <p role="alert">{{ errorMessage }}</p>
-      <button
-        class="btn btn--ground"
-        type="button"
-        :disabled="isLoading || writes.busy.value"
-        @click="loadToday()"
-      >
-        <AppIcon name="refresh" />Erneut versuchen
-      </button>
-    </div>
-
-    <QuickAddQuest
-      v-if="planner"
-      :date="planner.date"
-      :order="orderRefs"
-      @created="writes.applied()"
-    />
-
-    <div
-      v-if="isLoading"
-      class="today-view__loading"
-      role="status"
-      aria-label="Tagesplan wird geladen"
-    >
-      <span class="today-view__bone today-view__bone--focus" />
-      <span class="today-view__bone" />
-      <span class="today-view__bone" />
-    </div>
-
-    <section v-else-if="!hasItems && !errorMessage" class="today-view__empty">
-      <h2>Für heute ist nichts geplant.</h2>
-      <p>Genieße den freien Raum oder schreib oben auf, was heute ansteht.</p>
-    </section>
-
-    <template v-else-if="agenda && hasItems">
-      <div ref="order" class="order">
-        <section
-          v-if="agenda.focus"
-          class="focus card-target"
-          :class="{ 'card-drag': focusInQueue }"
-          :data-focus-key="getItemKey(agenda.focus)"
-          :data-sort-key="focusInQueue ? getItemKey(agenda.focus) : undefined"
-          aria-labelledby="focus-title"
-          @click="openFocusFromCard($event, agenda.focus)"
-        >
-          <div class="focus__head">
-            <!-- The heading keeps the plain title; the button inside says "bearbeiten". -->
-            <h2
-              id="focus-title"
-              class="focus__title"
-              :aria-label="agenda.focus.title"
+  <main ref="page" class="today-view" :class="{ 'today-view--split': wide }">
+    <div class="today-view__list">
+      <header class="today-view__header">
+        <div class="today-view__title">
+          <h1>{{ heading }}</h1>
+          <!-- Breaks only between its parts: "1 von 7 erledigt" · "1 von früher". -->
+          <p v-if="progress" class="today-view__progress">
+            <template v-for="(part, index) in progressParts" :key="part"
+              >{{ index ? " " : ""
+              }}<span class="today-view__progress-part">{{
+                index < progressParts.length - 1 ? `${part} ·` : part
+              }}</span></template
             >
-              <button
-                class="focus__title-button"
-                data-edit-button
-                type="button"
-                :disabled="isUpdating(agenda.focus)"
-                :aria-label="`${agenda.focus.title} bearbeiten`"
-                @click="openEditing(agenda.focus)"
-              >
-                {{ agenda.focus.title }}
-              </button>
-            </h2>
-          </div>
-          <p v-if="focusSlot" class="focus__slot">
-            <AppIcon name="calendar" />
-            <span>{{ focusSlot }}</span>
           </p>
-          <p v-if="agenda.focus.why" class="focus__why">
-            {{ agenda.focus.why }}
+          <p v-if="timeLine" class="today-view__time">
+            <!-- From 40rem each part breaks as a whole, no figure torn apart. -->
+            <template v-for="(part, index) in timeParts" :key="part"
+              >{{ index ? " " : ""
+              }}<span class="today-view__time-part">{{
+                index < timeParts.length - 1 ? `${part} ·` : part
+              }}</span></template
+            >
           </p>
-          <p
-            v-if="
-              focusMeta.length ||
-              focusGoal ||
-              focusTimer ||
-              agenda.focus.type === 'habit' ||
-              focusCampaign
-            "
-            class="focus__meta"
+          <!-- The week against its goal at a glance; behind is a number, not a warning. -->
+          <span
+            v-if="weekGoal"
+            class="today-view__week-bar"
+            role="progressbar"
+            aria-label="Kampagnen-Stunden diese Woche gegen das Wochenziel"
+            :aria-valuenow="weekGoal.minutes"
+            aria-valuemin="0"
+            :aria-valuemax="weekGoal.target"
+            :aria-valuetext="`${formatDuration(weekGoal.minutes)} von ${formatDuration(weekGoal.target)}`"
           >
-            <span v-if="focusTimer" class="focus__running">
-              <i aria-hidden="true" />{{
-                focusTimer === "running" ? "läuft" : "pausiert"
-              }}
-            </span>
-            <span v-if="agenda.focus.type === 'habit'" class="focus__daily">
-              <AppIcon name="dailies" />Daily
-            </span>
-            <span v-if="agenda.focus.categoryName" class="focus__category">
-              <i
-                class="category-mark"
-                :style="{
-                  background: categoryMark(
-                    agenda.focus.categoryName,
-                    agenda.focus.categoryColor,
-                  ),
-                }"
-                aria-hidden="true"
-              />{{ agenda.focus.categoryName }}
-            </span>
-            <span v-for="part in focusMeta" :key="part">{{ part }}</span>
-            <span v-if="focusGoal">{{ focusGoal }}</span>
-            <CampaignChip v-if="focusCampaign" :campaign="focusCampaign" />
-          </p>
-          <div class="focus__actions">
-            <button
-              class="focus__done"
-              type="button"
-              :disabled="isUpdating(agenda.focus)"
-              :aria-label="`${agenda.focus.title} erledigen`"
-              @click="toggleItem(agenda.focus)"
-            >
-              <AppIcon name="check" />
-              <span>Erledigt</span>
-            </button>
-            <ItemPlayButton
-              :kind="agenda.focus.type === 'todo' ? 'todo' : 'occurrence'"
-              :target-id="
-                agenda.focus.type === 'todo'
-                  ? agenda.focus.todoId
-                  : agenda.focus.occurrenceId
-              "
-              :title="agenda.focus.title"
-              :eligible="agenda.focus.timerEligible"
-              :disabled="isUpdating(agenda.focus)"
-            />
-            <!-- The Fokus-Modus has no Später or Überspringen for an appointment. -->
-            <a
-              v-if="!focusSlot"
-              class="focus__mode"
-              :href="hrefOf('focus')"
-              aria-label="Fokus-Modus"
-              title="Fokus-Modus"
-            >
-              <AppIcon name="focus" />
-            </a>
-            <ActionMenu
-              v-if="rowMenu(agenda.focus).length"
-              :title="agenda.focus.title"
-              :entries="rowMenu(agenda.focus)"
-              :disabled="isUpdating(agenda.focus)"
-            />
-          </div>
-        </section>
-        <!-- Appointments wait on the axis; they never stand in for the order. -->
-        <section v-else-if="openAppointments" class="today-view__empty">
-          <h2>In der Reihenfolge ist nichts mehr offen.</h2>
-          <p>
-            {{
-              nextAppointment
-                ? `Nächster Termin: ${nextAppointment}.`
-                : "Was noch offen ist, steht bei den Terminen."
-            }}
-          </p>
-        </section>
-        <section v-else-if="!agenda.carriedOver.length" class="today-view__empty">
-          <h2>Alles für heute erledigt.</h2>
-          <p>Der Rest des Tages gehört dir.</p>
-        </section>
-
-        <!-- On a phone only the next two rows carry their Warum, so the day stays short. -->
-        <PlannerItem
-          v-for="(item, index) in rows"
-          :key="getItemKey(item)"
-          :data-focus-key="getItemKey(item)"
-          :data-sort-key="getItemKey(item)"
-          :item="item"
-          :is-updating="isUpdating(item)"
-          :menu="rowMenu(item)"
-          :why-wide-only="index >= 2"
-          sortable
-          @toggle="toggleItem"
-          @edit="openEditing"
-        />
-      </div>
-
-      <section
-        v-if="agenda.carriedOver.length"
-        class="catch-up"
-        aria-label="Einträge von früher"
-      >
-        <button
-          class="catch-up__toggle"
-          type="button"
-          :aria-expanded="catchUpOpen"
-          aria-controls="catch-up-list"
-          @click="catchUpOpen = !catchUpOpen"
-        >
-          <span>
-            {{
-              agenda.carriedOver.length === 1
-                ? "1 Eintrag von früher"
-                : `${agenda.carriedOver.length} Einträge von früher`
-            }}
+            <span :style="{ width: `${weekGoal.filled}%` }" />
           </span>
-          <span class="catch-up__hint">Nachholen</span>
-          <AppIcon name="chevron" />
-        </button>
-        <div v-if="catchUpOpen" id="catch-up-list" class="catch-up__body">
-          <button
-            v-if="quickToday.length > 1"
-            class="catch-up__all"
-            type="button"
-            :disabled="writes.busy.value"
-            @click="catchUpAll"
-          >
-            Alle {{ quickToday.length }} heute einplanen
-          </button>
-          <PlannerItem
-            v-for="item in agenda.carriedOver"
-            :key="getItemKey(item)"
-            class="catch-up__row"
-            :data-focus-key="getItemKey(item)"
-            :item="item"
-            :is-updating="isUpdating(item)"
-            show-date
-            compact
-            why-wide-only
-            @toggle="toggleItem"
-            @edit="openEditing"
-          >
-            <button
-              v-if="planner && quickMovable(item, planner.date)"
-              class="catch-up__chip"
-              type="button"
-              :disabled="isUpdating(item)"
-              :aria-label="`${item.title} heute einplanen`"
-              @click="moveTo(item, planner.date)"
-            >
-              Heute
-            </button>
-            <button
-              v-if="quickMovable(item, tomorrow)"
-              class="catch-up__chip"
-              type="button"
-              :disabled="isUpdating(item)"
-              :aria-label="`${item.title} auf morgen`"
-              @click="moveTo(item, tomorrow)"
-            >
-              Morgen
-            </button>
-            <button
-              v-if="
-                item.type === 'todo' || !!item.moveUntil
-              "
-              class="catch-up__chip"
-              type="button"
-              data-move-button
-              :disabled="isUpdating(item)"
-              :aria-label="`${item.title} auf einen anderen Tag`"
-              @click="openMoving(item)"
-            >
-              Anderer Tag
-            </button>
-            <button
-              v-if="item.type === 'habit'"
-              class="catch-up__chip"
-              type="button"
-              :disabled="isUpdating(item)"
-              :aria-label="`${item.title} überspringen`"
-              @click="skipHabit(item)"
-            >
-              Überspringen
-            </button>
-          </PlannerItem>
         </div>
+        <button
+          v-if="postponable.length"
+          class="today-view__postpone"
+          type="button"
+          :disabled="isLoading || editorBusy || writes.busy.value"
+          @click="postponeOpen = true"
+        >
+          <AppIcon name="tomorrow" />
+          <span>Auf morgen</span>
+        </button>
+      </header>
+
+      <CreateItemDialog
+        v-if="creationOpen"
+        @close="creationOpen = false"
+        @created="onCreated"
+      />
+      <p v-if="creationMessage" class="today-view__notice" role="status">
+        {{ creationMessage }}
+      </p>
+
+      <EditItemDialog
+        v-if="editingTarget"
+        :key="`${editingTarget.kind}-${editingTarget.entityId}`"
+        :kind="editingTarget.kind"
+        :entity-id="editingTarget.entityId"
+        :occurrence-id="editingTarget.occurrenceId"
+        :return-focus="listFocus.returnFocus"
+        @busy="editorBusy = $event"
+        @changed="onEditorChanged"
+        @close="closeEditing"
+      />
+
+      <ModalDialog
+        v-if="postponeOpen"
+        title="Offenes auf morgen verschieben"
+        focus-selector="[data-postpone-confirm]"
+        :return-focus="() => null"
+        @close="postponeOpen = false"
+      >
+        <p class="postpone__lead">
+          {{
+            postponable.length === 1
+              ? "1 offener Eintrag wandert auf morgen und reiht sich dort hinten ein."
+              : `${postponable.length} offene Einträge wandern auf morgen und reihen sich dort hinten ein.`
+          }}
+          Termine mit Uhrzeit bleiben, wo sie sind.
+        </p>
+        <div class="postpone__actions">
+          <button
+            class="btn btn--primary"
+            type="button"
+            data-postpone-confirm
+            data-primary
+            @click="postponeAll"
+          >
+            Auf morgen verschieben
+          </button>
+          <button class="btn" type="button" @click="postponeOpen = false">
+            Abbrechen
+          </button>
+        </div>
+      </ModalDialog>
+
+      <CampaignMoveDialog
+        v-if="campaignMoving"
+        :todo-id="campaignMoving.todoId"
+        :title="campaignMoving.title"
+        :return-focus="listFocus.returnFocus"
+        @busy="editorBusy = $event"
+        @moved="onMenuDialogDone"
+        @close="closeMenuDialog"
+      />
+      <DeleteItemDialog
+        v-if="deleting"
+        :target="deleting"
+        :return-focus="listFocus.returnFocus"
+        @busy="editorBusy = $event"
+        @deleted="onMenuDialogDone"
+        @close="closeMenuDialog"
+      />
+
+      <MoveItemDialog
+        v-if="movingItem && planner"
+        :item="movingItem"
+        :today="planner.date"
+        :offer-today="movingItem.isOverdue"
+        :return-focus="listFocus.returnFocus"
+        @busy="editorBusy = $event"
+        @moved="onMoved"
+        @close="closeMoving"
+      />
+
+      <div v-if="errorMessage" class="alert today-view__error">
+        <p role="alert">{{ errorMessage }}</p>
+        <button
+          class="btn btn--ground"
+          type="button"
+          :disabled="isLoading || writes.busy.value"
+          @click="loadToday()"
+        >
+          <AppIcon name="refresh" />Erneut versuchen
+        </button>
+      </div>
+
+      <QuickAddQuest
+        v-if="planner"
+        :date="planner.date"
+        :order="orderRefs"
+        @created="writes.applied()"
+      />
+
+      <div
+        v-if="isLoading"
+        class="today-view__loading"
+        role="status"
+        aria-label="Tagesplan wird geladen"
+      >
+        <span class="today-view__bone today-view__bone--focus" />
+        <span class="today-view__bone" />
+        <span class="today-view__bone" />
+      </div>
+
+      <section v-else-if="!hasItems && !errorMessage" class="today-view__empty">
+        <h2>Für heute ist nichts geplant.</h2>
+        <p>Genieße den freien Raum oder schreib oben auf, was heute ansteht.</p>
       </section>
 
-      <section
-        v-if="agenda.timeline.length"
-        class="timeline"
-        aria-labelledby="timeline-title"
-      >
-        <h2 id="timeline-title" class="today-view__section-title">
-          Termine
-        </h2>
-        <ol class="timeline__list">
+      <template v-else-if="agenda && hasItems">
+        <div ref="order" class="order">
+          <section
+            v-if="agenda.focus"
+            class="focus card-target"
+            :class="{ 'card-drag': focusInQueue }"
+            :data-focus-key="getItemKey(agenda.focus)"
+            :data-sort-key="focusInQueue ? getItemKey(agenda.focus) : undefined"
+            aria-labelledby="focus-title"
+            @click="openFocusFromCard($event, agenda.focus)"
+          >
+            <div class="focus__head">
+              <!-- The heading keeps the plain title; the button inside says "bearbeiten". -->
+              <h2
+                id="focus-title"
+                class="focus__title"
+                :aria-label="agenda.focus.title"
+              >
+                <button
+                  class="focus__title-button"
+                  data-edit-button
+                  type="button"
+                  :disabled="isUpdating(agenda.focus)"
+                  :aria-label="`${agenda.focus.title} bearbeiten`"
+                  @click="openEditing(agenda.focus)"
+                >
+                  {{ agenda.focus.title }}
+                </button>
+              </h2>
+            </div>
+            <p v-if="focusSlot" class="focus__slot">
+              <AppIcon name="calendar" />
+              <span>{{ focusSlot }}</span>
+            </p>
+            <p v-if="agenda.focus.why" class="focus__why">
+              {{ agenda.focus.why }}
+            </p>
+            <p
+              v-if="
+                focusMeta.length ||
+                focusGoal ||
+                focusTimer ||
+                agenda.focus.type === 'habit' ||
+                focusCampaign
+              "
+              class="focus__meta"
+            >
+              <span v-if="focusTimer" class="focus__running">
+                <i aria-hidden="true" />{{
+                  focusTimer === "running" ? "läuft" : "pausiert"
+                }}
+              </span>
+              <span v-if="agenda.focus.type === 'habit'" class="focus__daily">
+                <AppIcon name="dailies" />Daily
+              </span>
+              <span v-if="agenda.focus.categoryName" class="focus__category">
+                <i
+                  class="category-mark"
+                  :style="{
+                    background: categoryMark(
+                      agenda.focus.categoryName,
+                      agenda.focus.categoryColor,
+                    ),
+                  }"
+                  aria-hidden="true"
+                />{{ agenda.focus.categoryName }}
+              </span>
+              <span v-for="part in focusMeta" :key="part">{{ part }}</span>
+              <span v-if="focusGoal">{{ focusGoal }}</span>
+              <CampaignChip v-if="focusCampaign" :campaign="focusCampaign" />
+            </p>
+            <div class="focus__actions">
+              <button
+                class="focus__done"
+                type="button"
+                :disabled="isUpdating(agenda.focus)"
+                :aria-label="`${agenda.focus.title} erledigen`"
+                @click="toggleItem(agenda.focus)"
+              >
+                <AppIcon name="check" />
+                <span>Erledigt</span>
+              </button>
+              <ItemPlayButton
+                :kind="agenda.focus.type === 'todo' ? 'todo' : 'occurrence'"
+                :target-id="
+                  agenda.focus.type === 'todo'
+                    ? agenda.focus.todoId
+                    : agenda.focus.occurrenceId
+                "
+                :title="agenda.focus.title"
+                :eligible="agenda.focus.timerEligible"
+                :disabled="isUpdating(agenda.focus)"
+              />
+              <!-- The Fokus-Modus has no Später or Überspringen for an appointment. -->
+              <a
+                v-if="!focusSlot"
+                class="focus__mode"
+                :href="hrefOf('focus')"
+                aria-label="Fokus-Modus"
+                title="Fokus-Modus"
+              >
+                <AppIcon name="focus" />
+              </a>
+              <ActionMenu
+                v-if="rowMenu(agenda.focus).length"
+                :title="agenda.focus.title"
+                :entries="rowMenu(agenda.focus)"
+                :disabled="isUpdating(agenda.focus)"
+              />
+            </div>
+          </section>
+          <!-- Appointments wait in the list below; they never stand in for the order. -->
+          <section v-else-if="openAppointments" class="today-view__empty">
+            <h2>In der Reihenfolge ist nichts mehr offen.</h2>
+            <p>
+              {{
+                nextAppointment
+                  ? `Nächster Termin: ${nextAppointment}.`
+                  : "Was noch offen ist, steht unten bei seiner Uhrzeit."
+              }}
+            </p>
+          </section>
+          <section v-else-if="!agenda.carriedOver.length" class="today-view__empty">
+            <h2>Alles für heute erledigt.</h2>
+            <p>Der Rest des Tages gehört dir.</p>
+          </section>
+
+          <!--
+            Appointments sit in the list, anchored by their time: by clock
+            before the rest of the order. One that is over but still open asks
+            quietly. Google events are read-only and, on wide screens, stand
+            in the day calendar instead.
+          -->
           <template
-            v-for="(entry, index) in agenda.timeline"
+            v-for="entry in agenda.appointments"
             :key="
               entry.kind === 'item'
                 ? getItemKey(entry.item)
                 : `event-${entry.event.id}`
             "
           >
-            <li v-if="index === agenda.nowIndex" class="timeline__now">
-              Jetzt
-            </li>
-            <li :class="{ 'timeline__entry--past': index < agenda.nowIndex }">
-              <PlannerItem
-                v-if="entry.kind === 'item'"
-                :data-focus-key="getItemKey(entry.item)"
-                :item="entry.item"
-                :time="entry.time"
-                :is-updating="isUpdating(entry.item)"
-                :menu="rowMenu(entry.item)"
-                why-wide-only
-                @toggle="toggleItem"
-                @edit="openEditing"
-              />
-              <div v-else class="timeline__event">
-                <span class="timeline__time">{{ entry.time }}</span>
-                <span class="timeline__event-title">
-                  {{ entry.event.title }}
-                </span>
-                <span class="timeline__source">Google Kalender</span>
-              </div>
-            </li>
+            <PlannerItem
+              v-if="entry.kind === 'item'"
+              class="today-view__appointment"
+              :class="{ 'today-view__appointment--past': entry.past }"
+              :data-focus-key="getItemKey(entry.item)"
+              :item="entry.item"
+              :time="entry.time"
+              :is-updating="isUpdating(entry.item)"
+              :menu="rowMenu(entry.item)"
+              :past="entry.past"
+              :movable="canMoveByDialog(entry.item)"
+              why-wide-only
+              @toggle="toggleItem"
+              @edit="openEditing"
+              @move="openMoving"
+            />
+            <div
+              v-else
+              class="today-view__event"
+              :class="{ 'today-view__event--past': entry.past }"
+            >
+              <span class="today-view__event-time">{{ entry.time }}</span>
+              <span class="today-view__event-title">{{ entry.event.title }}</span>
+              <span class="today-view__event-source">Google Kalender</span>
+            </div>
           </template>
-          <li
-            v-if="agenda.nowIndex === agenda.timeline.length"
-            class="timeline__now"
-          >
-            Jetzt
-          </li>
-        </ol>
-      </section>
-
-      <section v-if="agenda.resolved.length" class="resolved">
-        <button
-          class="resolved__toggle"
-          type="button"
-          :aria-expanded="resolvedOpen"
-          aria-controls="resolved-list"
-          @click="resolvedOpen = !resolvedOpen"
-        >
-          {{ agenda.resolved.length }} abgeschlossen
-          <AppIcon name="chevron" />
-        </button>
-        <div v-if="resolvedOpen" id="resolved-list" class="timeline__list">
+          <!-- On a phone only the next two rows carry their Warum, so the day stays short. -->
           <PlannerItem
-            v-for="item in agenda.resolved"
+            v-for="(item, index) in rows"
             :key="getItemKey(item)"
             :data-focus-key="getItemKey(item)"
+            :data-sort-key="getItemKey(item)"
             :item="item"
             :is-updating="isUpdating(item)"
+            :menu="rowMenu(item)"
+            :why-wide-only="index >= 2"
+            sortable
             @toggle="toggleItem"
             @edit="openEditing"
           />
         </div>
-      </section>
-    </template>
+
+        <section
+          v-if="agenda.carriedOver.length"
+          class="catch-up"
+          aria-label="Einträge von früher"
+        >
+          <button
+            class="catch-up__toggle"
+            type="button"
+            :aria-expanded="catchUpOpen"
+            aria-controls="catch-up-list"
+            @click="catchUpOpen = !catchUpOpen"
+          >
+            <span>
+              {{
+                agenda.carriedOver.length === 1
+                  ? "1 Eintrag von früher"
+                  : `${agenda.carriedOver.length} Einträge von früher`
+              }}
+            </span>
+            <span class="catch-up__hint">Nachholen</span>
+            <AppIcon name="chevron" />
+          </button>
+          <div v-if="catchUpOpen" id="catch-up-list" class="catch-up__body">
+            <button
+              v-if="quickToday.length > 1"
+              class="catch-up__all"
+              type="button"
+              :disabled="writes.busy.value"
+              @click="catchUpAll"
+            >
+              Alle {{ quickToday.length }} heute einplanen
+            </button>
+            <PlannerItem
+              v-for="item in agenda.carriedOver"
+              :key="getItemKey(item)"
+              class="catch-up__row"
+              :data-focus-key="getItemKey(item)"
+              :item="item"
+              :is-updating="isUpdating(item)"
+              show-date
+              compact
+              why-wide-only
+              @toggle="toggleItem"
+              @edit="openEditing"
+            >
+              <button
+                v-if="planner && quickMovable(item, planner.date)"
+                class="catch-up__chip"
+                type="button"
+                :disabled="isUpdating(item)"
+                :aria-label="`${item.title} heute einplanen`"
+                @click="moveTo(item, planner.date)"
+              >
+                Heute
+              </button>
+              <button
+                v-if="quickMovable(item, tomorrow)"
+                class="catch-up__chip"
+                type="button"
+                :disabled="isUpdating(item)"
+                :aria-label="`${item.title} auf morgen`"
+                @click="moveTo(item, tomorrow)"
+              >
+                Morgen
+              </button>
+              <button
+                v-if="
+                  item.type === 'todo' || !!item.moveUntil
+                "
+                class="catch-up__chip"
+                type="button"
+                data-move-button
+                :disabled="isUpdating(item)"
+                :aria-label="`${item.title} auf einen anderen Tag`"
+                @click="openMoving(item)"
+              >
+                Anderer Tag
+              </button>
+              <button
+                v-if="item.type === 'habit'"
+                class="catch-up__chip"
+                type="button"
+                :disabled="isUpdating(item)"
+                :aria-label="`${item.title} überspringen`"
+                @click="skipHabit(item)"
+              >
+                Überspringen
+              </button>
+            </PlannerItem>
+          </div>
+        </section>
+
+        <section v-if="agenda.resolved.length" class="resolved">
+          <button
+            class="resolved__toggle"
+            type="button"
+            :aria-expanded="resolvedOpen"
+            aria-controls="resolved-list"
+            @click="resolvedOpen = !resolvedOpen"
+          >
+            {{ agenda.resolved.length }} abgeschlossen
+            <AppIcon name="chevron" />
+          </button>
+          <div v-if="resolvedOpen" id="resolved-list" class="resolved__list">
+            <PlannerItem
+              v-for="item in agenda.resolved"
+              :key="getItemKey(item)"
+              :data-focus-key="getItemKey(item)"
+              :item="item"
+              :is-updating="isUpdating(item)"
+              @toggle="toggleItem"
+              @edit="openEditing"
+            />
+          </div>
+        </section>
+      </template>
+    </div>
+
+    <!-- Wide screens: today on one hour axis beside the list, in view while it scrolls. -->
+    <TodayCalendar
+      v-if="wide && planner"
+      class="today-view__calendar"
+      :date="planner.date"
+      :hidden-logs="hiddenLogs"
+      @remove-log="removeLog"
+    />
 
     <!-- Stays mounted, so a move that empties the day is still announced. -->
     <p class="visually-hidden" role="status">{{ orderMessage }}</p>
@@ -1162,6 +1222,25 @@ useShortcutHandlers(
   .today-view__time-part {
     display: inline-block;
   }
+}
+
+/* The flat ink bar of every progress: track in deep apricot, never coloured. */
+.today-view__week-bar {
+  display: block;
+  width: min(100%, 16rem);
+  height: 0.375rem;
+  margin-top: var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--color-ground-deep);
+}
+
+.today-view__week-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-ink);
+  transition: width 240ms var(--ease-out);
 }
 
 .today-view__postpone {
@@ -1536,49 +1615,22 @@ useShortcutHandlers(
   cursor: progress;
 }
 
-/* The day's time axis. */
-.timeline,
 .resolved {
   margin-top: var(--space-6);
 }
 
-.today-view__section-title {
-  margin: 0 0 var(--space-3) var(--space-3);
-  font-size: 1.125rem;
-  font-weight: 800;
-}
-
-.timeline__list {
+.resolved__list {
   display: grid;
   gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
 }
 
-.timeline__entry--past {
+/* An appointment that is over and still open: a little quieter, never a warning. */
+.today-view__appointment--past {
   opacity: 0.8;
 }
 
-.timeline__now {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-  margin: var(--space-1) 0 var(--space-1) var(--space-3);
-  color: var(--color-ink);
-  font-size: 0.875rem;
-  font-weight: 800;
-}
-
-.timeline__now::after {
-  flex: 1;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--color-ink);
-  content: "";
-}
-
-.timeline__event {
+/* A Google event: read-only, in the flat white of appointments elsewhere. */
+.today-view__event {
   display: grid;
   grid-template-columns: 2.75rem minmax(0, 1fr);
   gap: 0 calc(var(--tap) + var(--space-4));
@@ -1587,7 +1639,11 @@ useShortcutHandlers(
   background: var(--color-surface-flat);
 }
 
-.timeline__time {
+.today-view__event--past {
+  opacity: 0.8;
+}
+
+.today-view__event-time {
   padding-top: 0.1rem;
   color: var(--color-ink-muted);
   font-size: 0.875rem;
@@ -1595,12 +1651,12 @@ useShortcutHandlers(
   font-variant-numeric: tabular-nums;
 }
 
-.timeline__event-title {
+.today-view__event-title {
   font-weight: 700;
   overflow-wrap: anywhere;
 }
 
-.timeline__source {
+.today-view__event-source {
   grid-column: 2;
   color: var(--color-ink-muted);
   font-size: 0.875rem;
@@ -1664,6 +1720,38 @@ useShortcutHandlers(
 @media (min-width: 56rem) {
   .today-view {
     padding-top: var(--space-6);
+  }
+}
+
+/*
+ * Wide screens use the whole window: the list takes what the day calendar
+ * leaves, and the calendar stays in view at the height of the window.
+ */
+@media (min-width: 64rem) {
+  .today-view--split {
+    --calendar-width: clamp(22rem, 30vw, 32rem);
+
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--calendar-width);
+    gap: var(--space-6);
+    align-items: start;
+    width: calc(100% - 2 * var(--space-6));
+  }
+
+  .today-view__calendar {
+    position: sticky;
+    top: calc(3.5rem + var(--space-4));
+    height: calc(100dvh - 3.5rem - var(--space-6));
+  }
+
+  /* The plus button stays beside the list, clear of the calendar. */
+  .today-view--split .create-button {
+    right: calc(var(--calendar-width) + var(--space-6) * 2 + var(--space-4));
+  }
+
+  /* Google events stand in the calendar; the list keeps the own entries. */
+  .today-view--split .today-view__event {
+    display: none;
   }
 }
 

@@ -127,7 +127,7 @@ test("Heute: quick add puts a quest at the end or at the head of today", async (
   ]);
 });
 
-test("Heute: appointments sit on the time axis and stay when the rest moves to tomorrow", async ({
+test("Heute: appointments sit in the list by their time and stay when the rest moves to tomorrow", async ({
   page,
   request,
 }) => {
@@ -143,10 +143,11 @@ test("Heute: appointments sit on the time axis and stay when the rest moves to t
   await plan(request, { title: "Einkaufen", scheduledDate: date });
   await page.goto("/");
 
-  const axis = page.getByRole("region", { name: "Termine" });
-  await expect(axis).toContainText("23:58");
-  await expect(axis).toContainText("Zahnarzt");
-  await expect(card(page, "Zahnarzt")).toHaveCount(0);
+  // In the list with its time, but not part of the order: it does not drag.
+  const appointment = card(page, "Zahnarzt");
+  await expect(appointment).toHaveClass(/today-view__appointment/);
+  await expect(appointment).toContainText("23:58");
+  await expect(appointment).not.toHaveAttribute("data-sort-key", /./);
 
   await page.getByRole("button", { name: "Auf morgen", exact: true }).click();
   const dialog = page.getByRole("dialog");
@@ -156,13 +157,13 @@ test("Heute: appointments sit on the time axis and stay when the rest moves to t
     .click();
   await expect(dialog).not.toBeVisible();
 
-  // An appointment never stands in for an empty order: it waits on the axis.
+  // An appointment never stands in for an empty order: it waits in the list.
   await expect(page.locator("#focus-title")).toHaveCount(0);
-  await expect(page.locator(".order .planner-item")).toHaveCount(0);
+  await expect(page.locator(".order [data-sort-key]")).toHaveCount(0);
   await expect(page.locator(".today-view__empty")).toContainText(
     "Nächster Termin: 23:58 Zahnarzt.",
   );
-  await expect(axis).toContainText("Zahnarzt");
+  await expect(appointment).toBeVisible();
   const todos = (await (await request.get(`${API_URL}/todos`)).json()) as {
     title: string;
     scheduledDate: string;
@@ -193,11 +194,10 @@ test("Heute: an appointment is the focus card from its start to its end", async 
   await plan(request, { title: "Mails", scheduledDate: date });
   await page.goto("/");
   const focus = page.locator(".focus");
-  const axis = page.getByRole("region", { name: "Termine" });
 
-  // Before: the next item of the order; the appointment waits on the axis.
+  // Before: the next item of the order; the appointment waits in the list.
   await expect(page.locator("#focus-title")).toHaveText("Steuer sortieren");
-  await expect(axis).toContainText("Teamrunde");
+  await expect(card(page, "Teamrunde")).toContainText("10:00");
   await expect(
     focus.getByRole("link", { name: "Fokus-Modus", exact: true }),
   ).toBeVisible();
@@ -231,12 +231,17 @@ test("Heute: an appointment is the focus card from its start to its end", async 
     "Mails",
   ]);
 
-  // After: back to the order; the unfinished appointment stays, as past.
+  // After: back to the order; the unfinished appointment stays and asks quietly.
   await page.clock.fastForward(30 * 60_000);
   await expect(page.locator("#focus-title")).toHaveText("Steuer sortieren");
-  await expect(axis.locator(".timeline__entry--past")).toContainText(
-    "Teamrunde",
-  );
+  const past = page.locator(".today-view__appointment--past");
+  await expect(past).toContainText("Teamrunde");
+  await expect(past).toContainText("Vorbei – erledigt?");
+  await past
+    .getByRole("button", { name: "Teamrunde auf einen anderen Tag", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
 });
 
 test("Quest forms plan a day; only an appointment gets a time", async ({
@@ -270,10 +275,6 @@ test("Quest forms plan a day; only an appointment gets a time", async ({
   }[];
   expect(todo).toMatchObject({ scheduledDate: date, timeOfDay: "23:57" });
   await openView(page, "Heute");
-  // An appointment waits on the time axis until its turn.
-  await expect(
-    page
-      .getByRole("region", { name: "Termine" })
-      .getByRole("heading", { name: "Steuerberater", exact: true }),
-  ).toBeVisible();
+  // An appointment waits in the list, with its time, until its turn.
+  await expect(card(page, "Steuerberater")).toContainText("23:57");
 });

@@ -74,9 +74,10 @@ describe("arrangeToday", () => {
     const agenda = arrangeToday(planner([later, first, second]), at(9));
     expect(agenda.focus).toBe(first);
     expect(agenda.queue).toEqual([first, second]);
-    // The appointment waits on the axis, after "now".
-    expect(agenda.timeline.map((entry) => entry.time)).toEqual(["15:00"]);
-    expect(agenda.nowIndex).toBe(0);
+    // The appointment waits in the list by its time; it is still ahead.
+    expect(agenda.appointments.map((entry) => entry.time)).toEqual(["15:00"]);
+    expect(agenda.appointments[0]!.past).toBe(false);
+    expect(agenda.nextAppointment?.time).toBe("15:00");
   });
 
   it("lets a running appointment come before the order", () => {
@@ -90,12 +91,14 @@ describe("arrangeToday", () => {
     const during = arrangeToday(planner([meeting, first]), at(9, 30));
     expect(during.focus).toBe(meeting);
     expect(during.queue).toEqual([first]);
-    expect(during.timeline).toEqual([]);
-    // Once it is over, the order is back in focus and it stays on the axis.
+    expect(during.appointments).toEqual([]);
+    // Once it is over, the order is back in focus and it stays, as past.
     const after = arrangeToday(planner([meeting, first]), at(10));
     expect(after.focus).toBe(first);
-    expect(after.timeline.map((entry) => entry.time)).toEqual(["09:00"]);
-    expect(after.nowIndex).toBe(1);
+    expect(
+      after.appointments.map((entry) => [entry.time, entry.past]),
+    ).toEqual([["09:00", true]]);
+    expect(after.nextAppointment).toBeNull();
   });
 
   it("counts an appointment without a duration as half an hour", () => {
@@ -115,12 +118,14 @@ describe("arrangeToday", () => {
     const agenda = arrangeToday(planner([missed, next]), at(12));
     expect(agenda.focus).toBeNull();
     expect(agenda.focusWindow).toBeNull();
-    // Both wait on the axis: the missed one behind "now", the next one after it.
-    expect(agenda.timeline.map((entry) => entry.time)).toEqual([
-      "08:00",
-      "18:00",
+    // Both wait in the list: the missed one is over, the next one ahead.
+    expect(
+      agenda.appointments.map((entry) => [entry.time, entry.past]),
+    ).toEqual([
+      ["08:00", true],
+      ["18:00", false],
     ]);
-    expect(agenda.nowIndex).toBe(1);
+    expect(agenda.nextAppointment?.time).toBe("18:00");
   });
 
   it("gives the focus the window of a running appointment", () => {
@@ -130,7 +135,7 @@ describe("arrangeToday", () => {
     expect(agenda.focusWindow).toEqual({ start: at(7), end: at(7, 20) });
   });
 
-  it("shows calendar events on the axis with timed items", () => {
+  it("lists calendar events with timed items, over once they end", () => {
     const meeting = todo({ timeOfDay: "14:00" });
     const agenda = arrangeToday(
       planner(
@@ -147,10 +152,25 @@ describe("arrangeToday", () => {
       at(8),
     );
     // Berlin is UTC+2 on 2 October.
-    expect(agenda.timeline.map((entry) => [entry.kind, entry.time])).toEqual([
+    expect(agenda.appointments.map((entry) => [entry.kind, entry.time])).toEqual([
       ["event", "11:00"],
       ["item", "14:00"],
     ]);
+    const later = arrangeToday(
+      planner(
+        [],
+        [
+          {
+            id: 7,
+            title: "Zahnarzt",
+            start: "2026-10-02T09:00:00Z",
+            end: "2026-10-02T10:00:00Z",
+          },
+        ],
+      ),
+      at(12),
+    );
+    expect(later.appointments[0]!.past).toBe(true);
   });
 
   it("separates carried-over and resolved items and counts only today", () => {
@@ -160,7 +180,7 @@ describe("arrangeToday", () => {
     const agenda = arrangeToday(planner([overdue, done, open]), at(8));
     expect(agenda.carriedOver).toEqual([overdue]);
     expect(agenda.resolved).toEqual([done]);
-    // The daily at 18:00 waits for its turn on the axis.
+    // The daily at 18:00 waits for its turn in the list.
     expect(agenda.focus).toBeNull();
     expect(agenda.queue).toEqual([]);
     expect(agenda.tally).toEqual({

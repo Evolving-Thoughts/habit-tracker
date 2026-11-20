@@ -69,13 +69,18 @@ export only, as Logbuch events (see `logbook.md`).
   appointment (a todo or habit with a time) from its start until its end, the
   start plus its planned duration or `DEFAULT_APPOINTMENT_MINUTES` (30) without
   one; when several overlap, the one that began last. Otherwise the head of the
-  order. Before its start and after its end an appointment only sits on the
-  time axis with the calendar events; it never stands in for an empty order
-  (Heute then says "In der Reihenfolge ist nichts mehr offen." and names the
-  next appointment). `nextChangeAt` names the next minute at which this can
-  change (a start, an end, an entry passing the "now" line), and
-  `composables/useDayClock.ts` sets one timeout for exactly that minute
-  instead of polling; it catches up when a hidden tab becomes visible again.
+  order. Before its start and after its end an appointment sits in Heute's
+  list with its time (`appointments`, by clock, before the rest of the order
+  and never part of its sorting), with the calendar's events on a phone; it
+  never stands in for an empty order (Heute then says "In der Reihenfolge ist
+  nichts mehr offen." and names the next appointment). One that is over and
+  still open (`past`) asks quietly "Vorbei – erledigt?" with its ring and
+  "Anderer Tag …". `nextChangeAt` names the next minute at which this can
+  change (a start, an end), and `composables/useDayClock.ts` sets one
+  timeout for exactly that minute instead of polling; it catches up when a
+  hidden tab becomes visible again. From 64rem the day calendar
+  (`DayCalendar.vue`, see `logbook.md`) stands beside the list and shows
+  the events there instead.
 - The Kalender lists a day's open entries in the same order: `GET /history`
   sorts `days[].planned` with `compareInDay` (`sortedLikeToday` in
   `history-planning.ts`): carried-over first, appointments by clock, then the

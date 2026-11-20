@@ -6,7 +6,9 @@ import type {
 } from "../types/history";
 import {
   APP_TIME_ZONE,
+  addDays,
   formatTimeForGermanDisplay,
+  fromLocalInput,
   getCurrentDateInTimeZone,
 } from "./date";
 import { formatDuration } from "./today-agenda";
@@ -14,9 +16,10 @@ import { formatDuration } from "./today-agenda";
 export { formatDuration };
 
 /**
- * The day's time axis in the calendar: what was planned beside what was
- * measured (the Logbuch). Positions are minutes after midnight on the Berlin
- * wall clock, which is what the hour lines are labelled with.
+ * The day calendar (`DayCalendar.vue`): one column per day where what is
+ * planned and what was measured (the Logbuch) share one hour axis. Positions
+ * are minutes after midnight on the Berlin wall clock, which is what the
+ * hour lines are labelled with.
  */
 const DAY_MINUTES = 24 * 60;
 /** How long an appointment without a duration takes on the axis. */
@@ -27,8 +30,13 @@ export const HOUR_REM = 4;
 export const MIN_BLOCK_MINUTES = ((2.75 + 0.125) / HOUR_REM) * 60;
 /** A completion is a moment, not a stretch: a mark of 1.5rem and its margins. */
 export const DONE_MARK_MINUTES = ((1.5 + 0.125) / HOUR_REM) * 60;
-/** The axis of an empty day; a fuller one never starts later or ends earlier. */
-export const DEFAULT_HOURS = { from: 8, to: 18 } as const;
+/**
+ * The axis runs from early morning to midnight; an entry before six pulls
+ * it back to that entry's full hour.
+ */
+export const DEFAULT_HOURS = { from: 6, to: 24 } as const;
+/** A dragged edge of a Logbuch block snaps to this many minutes. */
+export const SNAP_MINUTES = 5;
 
 export type AxisBlock = {
   key: string;
@@ -55,6 +63,10 @@ export function drawnEnd(
   return Math.max(block.end, block.start + (block.minLength ?? minLength));
 }
 export type LogBlock = AxisBlock & { log: HistoryWorkLog };
+/** Everything of a day on its one column: the plan and the Logbuch. */
+export type CalendarBlock =
+  | (PlanBlock & { kind: "plan" })
+  | (LogBlock & { kind: "log" });
 
 type PlannedDay = {
   date: string;
@@ -235,10 +247,9 @@ export function layoutLane<T extends AxisBlock>(
 }
 
 /**
- * The hours the axis shows: from the full hour of the earliest planned item,
- * stretch or completion to the full hour after the latest one as drawn. It
- * never starts later than 8 or ends earlier than 18, so a day with little in
- * it still reads as a day, and an empty one shows 8 to 18.
+ * The hours the axis shows: from early morning (6) to midnight, starting
+ * earlier at the full hour of an earlier planned item, stretch or
+ * completion. The column scrolls, so the whole day fits without squeezing.
  */
 export function axisHours(
   blocks: AxisBlock[],
@@ -256,4 +267,46 @@ export function axisHours(
       Math.max(DEFAULT_HOURS.to, Math.ceil(Math.max(...ends) / 60)),
     ),
   };
+}
+
+/** The day's plan and Logbuch on one column, overlapping blocks side by side. */
+export function calendarBlocks(
+  plan: PlanBlock[],
+  logs: LogBlock[],
+): Placed<CalendarBlock>[] {
+  return layoutLane<CalendarBlock>([
+    ...plan.map((block) => ({ ...block, kind: "plan" as const })),
+    ...logs.map((block) => ({ ...block, kind: "log" as const })),
+  ]);
+}
+
+/** "09:05" for minutes after midnight; 1440 is "24:00". */
+export function clockLabel(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  return `${String(hours).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+/** The instant of a Berlin wall time on `date`; 1440 is the next midnight. */
+export function wallTime(date: string, minutes: number): string | null {
+  const day = minutes >= DAY_MINUTES ? addDays(date, 1) : date;
+  return fromLocalInput(`${day}T${clockLabel(minutes % DAY_MINUTES)}`);
+}
+
+/**
+ * Where a dragged edge of a Logbuch block may go: on the 5-minute grid,
+ * never past the other edge (a block keeps at least one step), never before
+ * midnight and never after `latest` (now, on today: nothing is measured in
+ * the future).
+ */
+export function resizedEdge(
+  edge: "start" | "end",
+  proposed: number,
+  block: { start: number; end: number },
+  latest: number,
+): number {
+  const snapped = Math.round(proposed / SNAP_MINUTES) * SNAP_MINUTES;
+  if (edge === "start")
+    return Math.max(0, Math.min(snapped, block.end - SNAP_MINUTES));
+  const ceiling = Math.min(DAY_MINUTES, latest);
+  return Math.max(block.start + SNAP_MINUTES, Math.min(snapped, ceiling));
 }

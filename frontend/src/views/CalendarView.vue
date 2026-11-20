@@ -15,8 +15,6 @@ import {
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { getHistory } from "../api/history.api";
-import { ApiError } from "../api/http";
-import { deleteWorkLog } from "../api/work-logs.api";
 import AppIcon from "../components/AppIcon.vue";
 import CalendarDay from "../components/CalendarDay.vue";
 import CalendarMonth from "../components/CalendarMonth.vue";
@@ -33,13 +31,13 @@ import MoveItemDialog, {
 import UndoToast from "../components/UndoToast.vue";
 import { useListFocus } from "../composables/useListFocus";
 import { useLoader } from "../composables/useLoader";
+import { useLogRemoval } from "../composables/useLogRemoval";
 import { useUndo } from "../composables/useUndo";
 import { useWrites } from "../composables/useWrites";
 import type {
   HistoryFilter,
   HistoryPlannedItem,
   HistoryResponse,
-  HistoryWorkLog,
 } from "../types/history";
 import { getCurrentDateInTimeZone, isValidIsoDate } from "../utils/date";
 import {
@@ -305,10 +303,8 @@ function closeDialogs(): void {
  * undo, as on Heute), the title opens the editor, and moving sits in the
  * menu "Aktionen für …" with the same quick days as Heute.
  *
- * Deleting a Logbuch stretch shares the toast. The DELETE waits until the
- * offer ends (five seconds, the next offer, leaving the view or the page),
- * so "Rückgängig" only shows the stretch again: nothing was deleted, and its
- * event in Google, its source and its id stay as they were.
+ * Deleting a Logbuch stretch shares the toast; its DELETE waits until the
+ * offer ends (`useLogRemoval`).
  */
 type Undoable = { kind: "todo" | "occurrence" | "log"; id: number };
 const {
@@ -317,39 +313,10 @@ const {
   take: takeUndo,
   flush: flushUndo,
 } = useUndo<Undoable>();
-const hiddenLogs = ref<ReadonlySet<number>>(new Set());
-function showLog(id: number, shown: boolean): void {
-  const next = new Set(hiddenLogs.value);
-  if (shown) next.delete(id);
-  else next.add(id);
-  hiddenLogs.value = next;
-}
-function removeLog(log: HistoryWorkLog): void {
-  showLog(log.id, false);
-  offerUndo(
-    { kind: "log", id: log.id },
-    `Abschnitt „${log.title}“ gelöscht`,
-    () => void deleteLog(log.id),
-  );
-}
-async function deleteLog(id: number): Promise<void> {
-  await writes.write(
-    async () => {
-      try {
-        await deleteWorkLog(id);
-      } catch (cause) {
-        // Already gone, e.g. deleted on another device: what was asked for.
-        if (!(cause instanceof ApiError && cause.status === 404)) throw cause;
-      }
-    },
-    {
-      key: `log-${id}`,
-      fallbackError: "Der Abschnitt konnte nicht gelöscht werden.",
-    },
-  );
-  // Gone after the reload, or back in the list next to the error.
-  showLog(id, true);
-}
+const { hiddenLogs, removeLog, restoreLog } = useLogRemoval(
+  offerUndo,
+  writes.write,
+);
 /* Closing or reloading the page sends a held delete on its way. */
 onMounted(() => window.addEventListener("pagehide", flushUndo));
 onBeforeUnmount(() => window.removeEventListener("pagehide", flushUndo));
@@ -497,7 +464,7 @@ async function undoLast(): Promise<void> {
   const target = takeUndo();
   if (target === null) return;
   // A held delete never went out: the stretch only comes back into view.
-  if (target.kind === "log") return showLog(target.id, true);
+  if (target.kind === "log") return restoreLog(target.id);
   const id = target.id;
   await writes.write(
     () =>
@@ -516,7 +483,10 @@ async function undoLast(): Promise<void> {
   <main
     ref="page"
     class="page calendar-view"
-    :class="{ 'calendar-view--day': mode === 'day' }"
+    :class="{
+      'calendar-view--day': mode === 'day',
+      'calendar-view--week': mode === 'week',
+    }"
   >
     <!--
       Two rows instead of a wall of controls: the range as title (it opens
@@ -672,8 +642,11 @@ async function undoLast(): Promise<void> {
         :result="result"
         :filter="filter"
         :filter-label="filterLabel"
+        :reload="reload"
+        :hidden-logs="hiddenLogs"
         @open-day="openDay"
         @show-all="filter = 'all'"
+        @remove-log="removeLog"
       />
       <CalendarDay
         v-else-if="shownDay"
@@ -885,10 +858,17 @@ async function undoLast(): Promise<void> {
   margin-bottom: var(--space-4);
 }
 
-/* Tag puts the list and the time axis side by side on wide screens. */
+/*
+ * Tag puts the list beside its day calendar on wide screens; the week needs
+ * room for seven columns, like the plan.
+ */
 @media (min-width: 56rem) {
   .calendar-view--day {
-    width: min(100% - 2rem, 64rem);
+    width: min(100% - 2rem, 80rem);
+  }
+
+  .calendar-view--week {
+    width: min(100% - 2rem, 90rem);
   }
 }
 </style>

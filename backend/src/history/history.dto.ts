@@ -108,7 +108,7 @@ export type HistoryResponse = {
     date: string;
     items: HistoryItem[];
     planned?: HistoryPlannedItem[];
-    /** Day and month view: read-only events of the read Google calendars. */
+    /** Read-only events of the read Google calendars, in every view. */
     external?: HistoryExternalEvent[];
     work: HistoryDayWork;
   }[];

@@ -39,6 +39,26 @@ const leadingBlanks = computed(() => {
 const selectedDay = computed(() =>
   props.result.days.find((day) => day.date === props.date),
 );
+/*
+ * The chosen day in two groups: its quests, and its Daily runs (done with
+ * the time they were done, skipped, and still open), on past days too.
+ */
+const groups = computed(() => {
+  const day = selectedDay.value;
+  if (!day) return [];
+  return (
+    [
+      { type: "todo", title: "Quests" },
+      { type: "habit", title: "Dailies" },
+    ] as const
+  )
+    .map((group) => ({
+      ...group,
+      planned: (day.planned ?? []).filter((item) => item.type === group.type),
+      items: day.items.filter((item) => item.type === group.type),
+    }))
+    .filter((group) => group.planned.length || group.items.length);
+});
 
 /* The cell says in words what its dots show, counted like every other view. */
 function cellLabel(day: Day): string {
@@ -154,18 +174,31 @@ function cellLabel(day: Day): string {
           <span class="event__source">Google Kalender</span>
         </li>
       </ul>
-      <HistoryPlannedItems
-        v-if="selectedDay.planned?.length"
-        :items="selectedDay.planned"
-        :actions="actions"
-      />
-      <ul v-if="selectedDay.items.length" class="entries__list">
-        <HistoryItem
-          v-for="item in selectedDay.items"
-          :key="`${item.type}-${item.id}`"
-          :item="item"
+      <section
+        v-for="group in groups"
+        :key="group.type"
+        class="entries"
+        :aria-label="group.title"
+      >
+        <h3 class="selected-day__group">
+          {{ group.title }}
+          <span class="count">{{
+            group.planned.length + group.items.length
+          }}</span>
+        </h3>
+        <HistoryPlannedItems
+          v-if="group.planned.length"
+          :items="group.planned"
+          :actions="actions"
         />
-      </ul>
+        <ul v-if="group.items.length" class="entries__list">
+          <HistoryItem
+            v-for="item in group.items"
+            :key="`${item.type}-${item.id}`"
+            :item="item"
+          />
+        </ul>
+      </section>
     </div>
   </section>
 </template>
@@ -193,7 +226,7 @@ function cellLabel(day: Day): string {
   justify-items: center;
   min-width: 0;
   /* Room for the figure, so weeks with and without work keep one height. */
-  min-height: 4.25rem;
+  min-height: 4.5rem;
   padding: var(--space-2) 0 var(--space-1);
   border: 0;
   border-radius: var(--radius-control);
@@ -239,7 +272,7 @@ function cellLabel(day: Day): string {
   max-width: 100%;
   padding: 0 0.125rem;
   color: var(--color-ink-muted);
-  font-size: 0.6875rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   line-height: 1.15;
   text-align: center;
@@ -292,7 +325,7 @@ function cellLabel(day: Day): string {
 }
 
 .legend__figure {
-  font-size: 0.6875rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -308,6 +341,15 @@ function cellLabel(day: Day): string {
 
 .selected-day__header .section-title {
   margin: 0;
+}
+
+.selected-day__group {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  margin: var(--space-2) 0 0 var(--space-3);
+  font-size: 1rem;
+  font-weight: 800;
 }
 
 .selected-day__work {
@@ -358,7 +400,7 @@ function cellLabel(day: Day): string {
 
 @media (min-width: 40rem) {
   .month-day {
-    min-height: 4.5rem;
+    min-height: 4.75rem;
   }
 
   .month-day__work-long {

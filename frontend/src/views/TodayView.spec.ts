@@ -25,6 +25,9 @@ import type {
   DayPlannerTodoItem,
 } from "../types/day-planner";
 import TodayView from "./TodayView.vue";
+import { getHistory } from "../api/history.api";
+import { deleteWorkLog } from "../api/work-logs.api";
+import type { HistoryWorkLog } from "../types/history";
 import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import {
   reloadShortcutSettings,
@@ -36,6 +39,12 @@ import {
   type TimerController,
 } from "../composables/useTimer";
 
+vi.mock("../api/history.api", () => ({ getHistory: vi.fn() }));
+vi.mock("../api/work-logs.api", () => ({
+  createWorkLog: vi.fn(),
+  updateWorkLog: vi.fn(),
+  deleteWorkLog: vi.fn(),
+}));
 vi.mock("../api/categories.api", () => ({
   getCategories: vi.fn(async () => []),
 }));
@@ -186,7 +195,9 @@ describe("TodayView", () => {
     expect(wrapper.get(".today-view__progress").text()).toBe(
       "0 von 1 erledigt",
     );
-    expect(wrapper.get(".today-view__time").text()).toBe(
+    expect(
+      wrapper.get(".today-view__time").text().replace(/ /g, " "),
+    ).toBe(
       "1 Std. 40 Min. gearbeitet, davon 1 Std. 20 Min. auf Kampagnen · Woche 4 Std. 11 Min. von 20 Std.",
     );
   });
@@ -277,24 +288,79 @@ describe("TodayView", () => {
     );
   });
 
-  it("shows the order of the day under the focus and appointments on the axis", async () => {
-    getTodayMock.mockResolvedValueOnce(
-      makePlanner([
+  it("lists appointments in the order of the day, anchored by their time", async () => {
+    getTodayMock.mockResolvedValueOnce({
+      ...makePlanner([
         makeTodo({ todoId: 3, title: "Zahnarzt", timeOfDay: "14:00" }),
         makeTodo(),
         makeTodo({ todoId: 2, title: "Bewerbung" }),
         makeHabit({ title: "Lesen" }),
       ]),
-    );
+      externalEvents: [
+        {
+          id: 5,
+          title: "Mittagessen",
+          start: "2026-10-02T10:00:00.000Z",
+          end: "2026-10-02T11:00:00.000Z",
+        },
+      ],
+    });
     const wrapper = mount(TodayView);
     await flushPromises();
     expect(wrapper.get("#focus-title").text()).toBe("NestJS lernen");
+    // By clock first, the rest of the order after them.
     expect(
       wrapper.findAll(".order .planner-item h3").map((row) => row.text()),
-    ).toEqual(["Bewerbung", "Lesen"]);
-    expect(wrapper.get(".timeline").text()).toContain("14:00");
-    expect(wrapper.get(".timeline").text()).toContain("Zahnarzt");
-    expect(wrapper.get(".timeline").text()).not.toContain("Bewerbung");
+    ).toEqual(["Zahnarzt", "Bewerbung", "Lesen"]);
+    const appointment = wrapper.get(".today-view__appointment");
+    expect(appointment.text()).toContain("14:00");
+    // Not part of the sortable order: it does not drag.
+    expect(appointment.attributes("data-sort-key")).toBeUndefined();
+    expect(wrapper.get(".today-view__event").text()).toContain(
+      "12:00Mittagessen",
+    );
+    expect(wrapper.find(".timeline").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("Termine");
+  });
+
+  it("asks quietly about an appointment that is over and still open", async () => {
+    getTodayMock.mockResolvedValueOnce(
+      makePlanner([
+        makeTodo({ todoId: 3, title: "Frühsport", timeOfDay: "06:30" }),
+        makeTodo(),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    const row = wrapper.get(".today-view__appointment--past");
+    expect(row.text()).toContain("Vorbei – erledigt?");
+    expect(
+      row.find('[aria-label="Frühsport erledigen"]').exists(),
+    ).toBe(true);
+    await row
+      .get('[aria-label="Frühsport auf einen anderen Tag"]')
+      .trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".modal-dialog").exists()).toBe(true);
+  });
+
+  it("shows the week's campaign hours against the goal as a slim bar, figures kept whole", async () => {
+    getTodayMock.mockResolvedValue({
+      ...makePlanner([makeTodo()]),
+      questHours: {
+        todayMinutes: 0,
+        weekMinutes: 260,
+        weeklyTargetMinutes: 1200,
+      },
+    });
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.get(".today-view__time").text()).toBe(
+      "Kampagnen diese Woche 4 Std. 20 Min. von 20 Std.",
+    );
+    const bar = wrapper.get('[role="progressbar"]');
+    expect(bar.attributes("aria-valuetext")).toBe("4 Std. 20 Min. von 20 Std.");
+    expect(bar.get("span").attributes("style")).toContain("width: 22%");
   });
 
   it("sorts with Nach oben in the menu, shows it at once and stores it", async () => {
@@ -1317,9 +1383,11 @@ describe("TodayView: an appointment's turn on the focus card", () => {
     getTodayMock.mockResolvedValue(day());
     const wrapper = mount(TodayView);
     await flushPromises();
-    // Before: the next thing to work on; the appointment waits on the axis.
+    // Before: the next thing to work on; the appointment waits in the list.
     expect(wrapper.get("#focus-title").text()).toBe("Steuer sortieren");
-    expect(wrapper.get(".timeline").text()).toContain("Teamrunde");
+    expect(wrapper.get(".today-view__appointment").text()).toContain(
+      "Teamrunde",
+    );
     // One timer, set for the start, not one a minute.
     expect(vi.getTimerCount()).toBe(1);
 
@@ -1328,16 +1396,16 @@ describe("TodayView: an appointment's turn on the focus card", () => {
     await flushPromises();
     expect(wrapper.get("#focus-title").text()).toBe("Teamrunde");
     expect(wrapper.get(".focus__slot").text()).toBe("10:00–10:45");
-    expect(wrapper.find(".timeline").exists()).toBe(false);
+    expect(wrapper.find(".today-view__appointment").exists()).toBe(false);
 
     vi.advanceTimersByTime(45 * 60_000);
     await flushPromises();
-    // After: back to the order; the appointment stays on the axis, as past.
+    // After: back to the order; the open appointment stays and asks.
     expect(wrapper.get("#focus-title").text()).toBe("Steuer sortieren");
     expect(wrapper.find(".focus__slot").exists()).toBe(false);
-    expect(wrapper.get(".timeline__entry--past").text()).toContain(
-      "Teamrunde",
-    );
+    const past = wrapper.get(".today-view__appointment--past");
+    expect(past.text()).toContain("Teamrunde");
+    expect(past.text()).toContain("Vorbei – erledigt?");
   });
 
   it("keeps Erledigt, ▶ and Termin verschieben for an appointment, without the Fokus-Modus", async () => {
@@ -1460,5 +1528,92 @@ describe("TodayView: rows say what they are and what they are for", () => {
       wrapper.get(".order").element.compareDocumentPosition(plus.element) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+});
+
+describe("TodayView on wide screens", () => {
+  const original = window.matchMedia;
+  const stretch: HistoryWorkLog = {
+    id: 3,
+    title: "Kapitel",
+    startedAt: "2026-10-02T05:00:00.000Z",
+    endedAt: "2026-10-02T05:30:00.000Z",
+    minutes: 30,
+    source: "timer",
+    todoId: 1,
+    occurrenceId: null,
+    habitId: null,
+    campaign: null,
+  };
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("64rem"),
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
+    getTodayMock.mockResolvedValue(makePlanner([makeTodo()]));
+    vi.mocked(getHistory).mockResolvedValue({
+      today: "2026-10-02",
+      timeZone: "Europe/Berlin",
+      startDate: "2026-10-02",
+      endDate: "2026-10-02",
+      days: [
+        {
+          date: "2026-10-02",
+          items: [],
+          planned: [],
+          external: [],
+          work: { minutes: 30, campaigns: [], logs: [stretch] },
+        },
+      ],
+    });
+  });
+  afterEach(() => {
+    window.matchMedia = original;
+    vi.useRealTimers();
+  });
+
+  it("puts today's day calendar beside the list", async () => {
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.classes()).toContain("today-view--split");
+    expect(getHistory).toHaveBeenCalledWith(
+      "2026-10-02",
+      "day",
+      "all",
+      expect.any(AbortSignal),
+    );
+    const calendar = wrapper.get(".today-view__calendar .day-calendar");
+    expect(calendar.get("h2").text()).toBe("Logbuch 30 Min.");
+    expect(calendar.get("button.log-block").attributes("aria-label")).toBe(
+      "Kapitel, 07:00 bis 07:30, 30 Min., ohne Kampagne, korrigieren",
+    );
+  });
+
+  it("holds a deleted stretch behind Heute's undo toast", async () => {
+    const wrapper = mount(TodayView, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.get("button.log-block").trigger("click");
+    await flushPromises();
+    await wrapper
+      .findAll("button")
+      .find((button) => button.text() === "Löschen")!
+      .trigger("click");
+    await flushPromises();
+    expect(wrapper.find("button.log-block").exists()).toBe(false);
+    expect(wrapper.get(".undo-toast").text()).toContain(
+      "Abschnitt „Kapitel“ gelöscht",
+    );
+    await wrapper
+      .findAll("button")
+      .find((button) => button.text() === "Rückgängig")!
+      .trigger("click");
+    await flushPromises();
+    expect(wrapper.find("button.log-block").exists()).toBe(true);
+    wrapper.unmount();
+    expect(deleteWorkLog).not.toHaveBeenCalled();
   });
 });

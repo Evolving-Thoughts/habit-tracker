@@ -106,13 +106,13 @@ const upcoming = computed(() =>
 const nextAppointment = computed(() => {
   const day = agenda.value;
   if (!day) return null;
-  const entry = day.timeline[day.nowIndex];
+  const entry = day.nextAppointment;
   if (!entry) return null;
   return `${entry.time} ${entry.kind === "item" ? entry.item.title : entry.event.title}`;
 });
 /** Open appointments of today that are not their turn now. */
 const waitingAppointments = computed(() =>
-  (agenda.value?.timeline ?? []).some(
+  (agenda.value?.appointments ?? []).some(
     (entry) => entry.kind === "item" && entry.item.status === "pending",
   ),
 );

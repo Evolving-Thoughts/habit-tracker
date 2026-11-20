@@ -50,22 +50,19 @@ test("Logbuch: a stopwatch stretch and time added by hand show in the day, the w
 
   const view = await openCalendar(page, "Tag");
   const logbook = view.getByRole("region", { name: /^Logbuch/ });
-  // The section is the Logbuch; its lanes say what they hold.
-  await expect(logbook.locator(".day-timeline__head")).toHaveText(
-    "GeplantGemessen",
-  );
-  const lane = logbook.getByRole("list", { name: "Gemessen", exact: true });
+  // One column: the plan and the Logbuch share the hour axis.
+  const lane = logbook.getByRole("list", { name: "Zeitachse", exact: true });
   const stretch = lane.getByRole("button", { name: /^Mails, / });
   await expect(stretch).toBeVisible();
   await expect(stretch).toHaveAccessibleName(/ohne Kampagne, korrigieren$/);
   // A stretch of seconds is still drawn large enough to tap.
   expect((await stretch.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-  await expect(
-    logbook.getByRole("list", { name: "Einträge im Logbuch" }),
-  ).toContainText("Stoppuhr");
   await stretch.click();
-  await expect(logbook.getByLabel("Start", { exact: true })).toBeFocused();
-  await logbook.getByRole("button", { name: "Abbrechen", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Abschnitt korrigieren" });
+  await expect(dialog).toContainText("Stoppuhr");
+  await expect(dialog.getByLabel("Start", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Abbrechen", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
   expect(
     await page.evaluate(
       () =>
@@ -76,7 +73,9 @@ test("Logbuch: a stopwatch stretch and time added by hand show in the day, the w
 
   await view.getByRole("button", { name: "Voriger Zeitraum" }).click();
   await expect(page.locator('[name="historyDate"]')).toHaveValue(yesterday);
-  await expect(logbook).toContainText("1 Std. 30 Min.");
+  await expect(logbook.getByRole("heading", { level: 2 })).toHaveText(
+    "Logbuch 1 Std. 30 Min.",
+  );
   await expect(
     lane.getByRole("button", {
       name: /^Kapitel schreiben, .*, 1 Std\. 30 Min\., Kampagne Buch, korrigieren$/,
@@ -84,16 +83,18 @@ test("Logbuch: a stopwatch stretch and time added by hand show in the day, the w
   ).toBeVisible();
 
   await view.getByRole("button", { name: "Woche", exact: true }).click();
-  const day = page.locator(`.week-day[data-date="${yesterday}"]`);
-  await expect(day.locator(".week-day__worked")).toHaveText("1 Std. 30 Min.");
-  // Nothing was planned, but time was measured: the words say both.
-  await expect(day.locator(".week-day__summary")).toHaveText(
+  const head = page.locator(`.week-head[data-date="${yesterday}"]`);
+  await expect(head.locator(".week-head__worked")).toHaveText("1 Std. 30 Min.");
+  // Nothing was planned, but time was measured: the sentence says both.
+  await expect(head).toHaveAccessibleDescription(
     "Nichts geplant · 1 Std. 30 Min. gemessen",
   );
-  await expect(day.locator(".work-bar i")).toHaveCount(1);
+  // The stretch stands in its day's column, named with its campaign.
   await expect(
-    page.getByRole("region", { name: /^Logbuch/ }).getByRole("listitem"),
-  ).toContainText(["Buch"]);
+    page
+      .locator(`.week-column[data-date="${yesterday}"]`)
+      .getByRole("button", { name: /^Kapitel schreiben, .*Kampagne Buch/ }),
+  ).toBeVisible();
 
   await view.getByRole("button", { name: "Monat", exact: true }).click();
   await expect(page.locator(`.month-day[data-date="${yesterday}"]`)).toHaveAttribute(
@@ -144,37 +145,103 @@ test("Logbuch: a deleted stretch waits behind the undo toast and comes back with
   await view.getByRole("button", { name: "Voriger Zeitraum" }).click();
   await expect(page.locator('[name="historyDate"]')).toHaveValue(yesterday);
   const logbook = view.getByRole("region", { name: /^Logbuch/ });
-  const entries = logbook.getByRole("list", { name: "Einträge im Logbuch" });
-  await expect(entries.getByRole("listitem")).toHaveCount(2);
-  await expect(logbook.locator("#day-axis-title")).toHaveText("Logbuch 50 Min.");
+  const blocks = logbook.getByRole("button", { name: /^Lesen, / });
+  const title = logbook.getByRole("heading", { level: 2 });
+  await expect(blocks).toHaveCount(2);
+  await expect(title).toHaveText("Logbuch 50 Min.");
+  const dialog = page.getByRole("dialog", { name: "Abschnitt korrigieren" });
+  const deleteFirst = async () => {
+    await blocks.first().click();
+    await dialog.getByRole("button", { name: "Löschen", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+  };
 
   // Deleting takes the stretch out at once; the DELETE waits for the toast.
-  await entries
-    .getByRole("button", { name: /^Lesen \d\d:\d\d löschen$/ })
-    .first()
-    .click();
-  await expect(entries.getByRole("listitem")).toHaveCount(1);
+  await deleteFirst();
+  await expect(blocks).toHaveCount(1);
   const toast = page.locator(".undo-toast");
   await expect(toast).toContainText("Abschnitt „Lesen“ gelöscht");
-  await expect(logbook.locator("#day-axis-title")).toHaveText("Logbuch");
+  await expect(title).toHaveText("Logbuch");
   expect(await stored()).toBe(2);
   await toast.getByRole("button", { name: "Rückgängig", exact: true }).click();
-  await expect(entries.getByRole("listitem")).toHaveCount(2);
-  await expect(logbook.locator("#day-axis-title")).toHaveText("Logbuch 50 Min.");
+  await expect(blocks).toHaveCount(2);
+  await expect(title).toHaveText("Logbuch 50 Min.");
 
   // Without Rückgängig the stretch is gone once the toast has run out.
-  await entries
-    .getByRole("button", { name: /^Lesen \d\d:\d\d löschen$/ })
-    .first()
-    .click();
+  await deleteFirst();
   await expect(toast).toContainText("Abschnitt „Lesen“ gelöscht");
   await expect(toast.getByRole("button")).toHaveCount(0, { timeout: 8000 });
   await expect.poll(stored).toBe(1);
-  await expect(logbook.locator("#day-axis-title")).toHaveText("Logbuch 20 Min.");
-  await expect(entries.getByRole("listitem")).toHaveCount(1);
+  await expect(title).toHaveText("Logbuch 20 Min.");
+  await expect(blocks).toHaveCount(1);
 });
 
-test("Logbuch: the axis reaches an early stretch and a completion, and time is added behind one button", async ({
+test("Logbuch: a stretch is resized by dragging its bottom edge, and Escape cancels", async ({
+  page,
+  request,
+  isMobile,
+}) => {
+  test.skip(isMobile, "The drag is a pointer gesture; the dialog covers phones.");
+  const yesterday = daysAfter(await today(request), -1);
+  const todo = (
+    (await (
+      await request.post(`${API_URL}/todos`, {
+        data: { title: "Lesen", scheduledDate: yesterday },
+      })
+    ).json()) as { id: number }
+  ).id;
+  expect(
+    (
+      await request.post(`${API_URL}/work-logs`, {
+        data: {
+          kind: "todo",
+          targetId: todo,
+          startedAt: `${yesterday}T12:00:00.000Z`,
+          endedAt: `${yesterday}T13:00:00.000Z`,
+        },
+      })
+    ).status(),
+  ).toBe(201);
+
+  await page.goto("/");
+  const view = await openCalendar(page, "Tag");
+  await view.getByRole("button", { name: "Voriger Zeitraum" }).click();
+  await expect(page.locator('[name="historyDate"]')).toHaveValue(yesterday);
+  const logbook = view.getByRole("region", { name: /^Logbuch/ });
+  const block = logbook.getByRole("button", { name: /^Lesen, / });
+  await expect(block).toHaveAccessibleName(/, 1 Std\., /);
+  await block.scrollIntoViewIfNeeded();
+  /* An hour of the axis is 4rem: 32px are half an hour. */
+  const pull = async (pixels: number, escape = false) => {
+    const box = (await block.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height - 3;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + pixels, { steps: 5 });
+    if (escape) await page.keyboard.press("Escape");
+    await page.mouse.up();
+  };
+
+  await pull(32, true);
+  await expect(block).toHaveAccessibleName(/, 1 Std\., /);
+
+  await pull(32);
+  await expect(block).toHaveAccessibleName(/, 1 Std\. 30 Min\., /);
+  await expect(logbook.getByRole("heading", { level: 2 })).toHaveText(
+    "Logbuch 1 Std. 30 Min.",
+  );
+  const logs = (
+    (await (
+      await request.get(`${API_URL}/history?date=${yesterday}&view=day`)
+    ).json()) as { days: { work: { logs: { endedAt: string }[] } }[] }
+  ).days[0]!.work.logs;
+  expect(logs.map((log) => log.endedAt)).toEqual([
+    `${yesterday}T13:30:00.000Z`,
+  ]);
+});
+
+test("Logbuch: the axis reaches an early stretch and a completion, and time is added in a dialog", async ({
   page,
   request,
 }) => {
@@ -213,36 +280,33 @@ test("Logbuch: the axis reaches an early stretch and a completion, and time is a
   await page.goto("/");
   const view = await openCalendar(page, "Tag");
   const logbook = view.getByRole("region", { name: /^Logbuch/ });
-  await expect(
-    logbook.getByRole("list", { name: "Geplant", exact: true }),
-  ).toContainText(/Zahnarzt anrufen, erledigt um \d\d:\d\d/);
+  const lane = logbook.getByRole("list", { name: "Zeitachse", exact: true });
+  await expect(lane).toContainText(/Zahnarzt anrufen, erledigt um \d\d:\d\d/);
 
-  // "Zeit nachtragen" waits behind one quiet button and opens in place.
+  // "Zeit nachtragen" in the head of the day opens a dialog.
   const toggle = logbook.getByRole("button", {
     name: "Zeit nachtragen",
     exact: true,
   });
-  const target = logbook.locator('[name="target"]');
-  await expect(toggle).toHaveAttribute("aria-expanded", "false");
-  await expect(target).toHaveCount(0);
   await toggle.click();
-  await expect(target).toBeFocused();
+  const dialog = page.getByRole("dialog", { name: "Zeit nachtragen" });
+  const target = dialog.locator('[name="target"]');
   await target.selectOption({ label: "Notizen ordnen" });
   // A refused stretch (end before start) keeps what was typed.
-  await logbook.locator('[name="from"]').fill("00:01");
-  await logbook.locator('[name="to"]').fill("00:00");
-  await logbook.getByRole("button", { name: "Nachtragen", exact: true }).click();
-  await expect(logbook.getByRole("alert")).toBeVisible();
-  await expect(logbook.locator('[name="from"]')).toHaveValue("00:01");
+  await dialog.locator('[name="from"]').fill("00:01");
+  await dialog.locator('[name="to"]').fill("00:00");
+  await dialog.getByRole("button", { name: "Nachtragen", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await expect(dialog.locator('[name="from"]')).toHaveValue("00:01");
   // Early in the day, so the end is never in the future.
-  await logbook.locator('[name="from"]').fill("00:00");
-  await logbook.locator('[name="to"]').fill("00:01");
-  await logbook.getByRole("button", { name: "Nachtragen", exact: true }).click();
-  await expect(target).toHaveCount(0);
+  await dialog.locator('[name="from"]').fill("00:00");
+  await dialog.locator('[name="to"]').fill("00:01");
+  await dialog.getByRole("button", { name: "Nachtragen", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
   await expect(toggle).toBeFocused();
   await expect(
-    logbook.getByRole("list", { name: "Einträge im Logbuch" }),
-  ).toContainText("Notizen ordnen");
+    lane.getByRole("button", { name: /^Notizen ordnen, 00:00 bis 00:01/ }),
+  ).toBeVisible();
 
   await view.getByRole("button", { name: "Voriger Zeitraum" }).click();
   await expect(page.locator('[name="historyDate"]')).toHaveValue(yesterday);
@@ -254,12 +318,10 @@ test("Logbuch: the axis reaches an early stretch and a completion, and time is a
   })
     .format(new Date(startedAt))
     .slice(0, 2);
-  await expect(logbook.locator(".day-timeline__hours > span").first()).toHaveText(
-    `${hour}:00`,
-  );
   await expect(
     logbook
-      .getByRole("list", { name: "Gemessen", exact: true })
-      .getByRole("button", { name: /^Früh lesen, / }),
-  ).toBeVisible();
+      .locator(".day-calendar__hours > span:not(.day-calendar__now-time)")
+      .first(),
+  ).toHaveText(`${hour}:00`);
+  await expect(lane.getByRole("button", { name: /^Früh lesen, / })).toBeVisible();
 });

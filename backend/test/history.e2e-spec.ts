@@ -265,6 +265,8 @@ describe('History API (e2e)', () => {
     expect(week.startDate).toBe('2026-10-05');
     expect(week.endDate).toBe('2026-10-11');
     expect(week.days).toHaveLength(7);
+    // The week shows the read Google calendars on its columns, too.
+    expect(week.days.every((day) => Array.isArray(day.external))).toBe(true);
     expect(
       (await get('date=2026-10-07&filter=todos')).days[0].items.map(
         (item) => item.type,
