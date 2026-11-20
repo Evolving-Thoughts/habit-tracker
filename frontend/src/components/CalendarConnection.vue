@@ -114,11 +114,21 @@ onMounted(() => run(() => Promise.resolve()));
         festen Termine. In andere Kalender schreibt die App nie.
       </p>
     </div>
+    <p
+      v-if="!status.connected"
+      id="calendar-connection-how"
+      class="calendar-connection__text"
+    >
+      Beim Verbinden meldest du dich bei Google an; die App legt dort ihren
+      eigenen Kalender „Habit Tracker“ an und schreibt nie in deine anderen
+      Kalender.
+    </p>
     <div class="calendar-connection__actions">
       <button
         v-if="!status.connected"
         class="btn"
         type="button"
+        aria-describedby="calendar-connection-how"
         :disabled="busy"
         @click="connect"
       >
@@ -150,9 +160,16 @@ onMounted(() => run(() => Promise.resolve()));
     </div>
   </div>
   <p v-else-if="error" class="form-error" role="alert">{{ error }}</p>
-  <p v-else-if="status" class="calendar-connection__text">
-    Google Kalender ist für diese App nicht eingerichtet.
-  </p>
+  <div v-else-if="status" class="calendar-connection__hint">
+    <p>Google Kalender ist auf dem Server noch nicht eingerichtet.</p>
+    <p class="calendar-connection__operator">
+      Auf dem Server fehlen die Google-Zugangsdaten
+      (<code>GOOGLE_CLIENT_ID</code>,
+      <code>GOOGLE_CLIENT_SECRET</code>, <code>GOOGLE_REDIRECT_URI</code>,
+      <code>GOOGLE_TOKEN_KEY</code>). Wie man sie einrichtet, steht in
+      <code>docs/betrieb.md</code>.
+    </p>
+  </div>
 </template>
 
 <style scoped>
@@ -170,6 +187,28 @@ p.calendar-connection__text {
   max-width: 60ch;
   color: var(--color-ink-muted);
   text-wrap: pretty;
+}
+
+/* Like the push hint: a calm note in apricot, the operator's part quieter. */
+.calendar-connection__hint {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 65ch;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-ground);
+  color: var(--color-ink);
+  text-wrap: pretty;
+}
+
+.calendar-connection__hint p {
+  margin: 0;
+}
+
+.calendar-connection__operator {
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
 }
 
 .calendar-connection__state {

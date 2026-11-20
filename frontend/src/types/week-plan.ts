@@ -11,7 +11,7 @@ type WeekPlanEntryContext = {
     color: string | null;
     icon: string | null;
   } | null;
-  /** Open and carried to today from an earlier day. */
+  /** Open and from an earlier day: it stands in `overdue`, not on a day. */
   isOverdue: boolean;
 };
 
@@ -19,7 +19,7 @@ export type WeekPlanTodoEntry = {
   type: "todo";
   todoId: number;
   status: "pending" | "completed";
-  /** The day it is planned for; earlier than its column when overdue. */
+  /** The day it is planned for; before today when overdue. */
   scheduledDate: string;
 } & WeekPlanEntryContext;
 
@@ -29,6 +29,12 @@ export type WeekPlanHabitEntry = {
   /** The stored run; null for a run the schedule only forecasts. */
   occurrenceId: number | null;
   status: "pending" | "completed" | "skipped";
+  /** Last day an open stored run may move to; null for a forecast or once resolved. */
+  moveUntil: string | null;
+  /** An open stored run due by today can be measured. */
+  timerEligible: boolean;
+  /** The daily's series: done runs in a row now, and the longest ever. */
+  streak: { current: number; best: number; unit: "runs" | "weeks" };
 } & WeekPlanEntryContext;
 
 export type WeekPlanEntry = WeekPlanTodoEntry | WeekPlanHabitEntry;
@@ -39,10 +45,14 @@ export type WeekPlanDay = {
   entries: WeekPlanEntry[];
 };
 
+/** GET /day-planner/plan: the board's days and what was left behind. */
 export type WeekPlanResponse = {
-  /** The Monday the week starts on. */
+  /** The first day asked for. */
   startDate: string;
   endDate: string;
   today: string;
+  /** One column per day from `startDate` to `endDate`. */
   days: WeekPlanDay[];
+  /** Open from an earlier day (Liegen geblieben), earliest first. */
+  overdue: WeekPlanEntry[];
 };

@@ -1,11 +1,21 @@
+import type { CampaignColor } from '../todos/campaign-style';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 
 export type PerfectWeekCategory = {
   id: number;
   name: string;
+  /** The chosen colour; null while the name picks one. */
+  color: CampaignColor | null;
   target: number;
   completed: number;
   reached: boolean;
+};
+
+type Category = {
+  id: number;
+  name: string;
+  color: CampaignColor | null;
+  weeklyTarget: number | null;
 };
 
 export type PerfectWeek = {
@@ -18,16 +28,17 @@ export type PerfectWeek = {
  * categories with a weekly target take part; null when none has one.
  */
 export function perfectWeek(
-  categories: { id: number; name: string; weeklyTarget: number | null }[],
+  categories: Category[],
   completedCategoryIds: (number | null)[],
 ): PerfectWeek | null {
-  const rows = categories.flatMap(({ id, name, weeklyTarget }) => {
+  const rows = categories.flatMap(({ id, name, color, weeklyTarget }) => {
     if (weeklyTarget === null) return [];
     const completed = completedCategoryIds.filter((item) => item === id).length;
     return [
       {
         id,
         name,
+        color,
         target: weeklyTarget,
         completed,
         reached: completed >= weeklyTarget,
@@ -43,7 +54,7 @@ export function perfectWeek(
  * completed runs count for their category, skipped runs do not.
  */
 export function perfectWeekOf(
-  categories: { id: number; name: string; weeklyTarget: number | null }[],
+  categories: Category[],
   todos: { categoryId: number | null }[],
   runs: {
     status: HabitOccurrenceStatus;

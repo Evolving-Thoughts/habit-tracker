@@ -1,11 +1,66 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import CommandMenu from "./CommandMenu.vue";
+import { search } from "../api/search.api";
 import { setSingleKeys } from "../composables/useShortcuts";
+import type { SearchResponse } from "../types/search";
 import type { Command } from "../utils/command-filter";
 
+vi.mock("../api/search.api", () => ({ search: vi.fn() }));
+
 enableAutoUnmount(afterEach);
+
+const NOTHING: SearchResponse = { query: "", titles: [], texts: [] };
+beforeEach(() => {
+  vi.mocked(search).mockReset();
+  vi.mocked(search).mockImplementation(async (query) => ({
+    ...NOTHING,
+    query,
+  }));
+});
+afterEach(() => vi.useRealTimers());
+
+/** Waits out the pause before the menu asks the server, and its answer. */
+async function settle(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(250);
+  await flushPromises();
+}
+
+const FOUND: SearchResponse = {
+  query: "kapitel",
+  titles: [
+    {
+      kind: "quest",
+      id: 7,
+      title: "Kapitel 2 überarbeiten",
+      highlight: { start: 0, end: 7 },
+      done: false,
+      scheduledDate: null,
+      campaign: { id: 3, title: "Buch", color: "navy", icon: "book" },
+    },
+    {
+      kind: "daily",
+      id: 4,
+      title: "Ein Kapitel lesen",
+      highlight: { start: 4, end: 11 },
+      done: false,
+      scheduledDate: null,
+      campaign: null,
+    },
+  ],
+  texts: [
+    {
+      kind: "reflection",
+      id: 1,
+      label: "Reflexion vom 18. Nov.",
+      snippet: "… dann das Kapitel <b>fertig</b> …",
+      highlight: { start: 11, end: 18 },
+      date: "2026-11-18",
+      habitId: null,
+    },
+  ],
+};
 
 // A desktop with mouse and keyboard, where the menu shows the keys.
 window.matchMedia = ((query: string) => ({
@@ -113,13 +168,24 @@ describe("CommandMenu", () => {
     expect(wrapper.emitted("run")).toEqual([[COMMANDS[2]]]);
   });
 
-  it("says in words when nothing matches", async () => {
+  it("says in words when nothing matches, and what it searches", async () => {
+    vi.useFakeTimers();
     const { wrapper, input, options } = await mountMenu();
+    expect(wrapper.get("#command-menu-scope").text()).toBe(
+      "Sucht in Ansichten, Befehlen, Titeln und Notizen.",
+    );
     await input.setValue("xyz");
+    await settle();
     expect(options()).toHaveLength(0);
     expect(input.attributes("aria-expanded")).toBe("false");
     expect(input.attributes("aria-activedescendant")).toBeUndefined();
-    expect(wrapper.get(".command-menu__empty").text()).toBe(
+    expect(wrapper.get(".command-menu__empty p").text()).toBe(
+      "Nichts gefunden für „xyz“.",
+    );
+    expect(wrapper.get(".command-menu__empty").text()).toContain(
+      "Sucht in Ansichten, Befehlen, Titeln und Notizen.",
+    );
+    expect(wrapper.get('[role="status"]').text()).toBe(
       "Nichts gefunden für „xyz“.",
     );
     await input.trigger("keydown", { key: "Enter" });
@@ -154,5 +220,87 @@ describe("CommandMenu", () => {
     expect(wrapper.emitted("close")).toHaveLength(1);
     await wrapper.get("dialog").trigger("cancel");
     expect(wrapper.emitted("close")).toHaveLength(2);
+  });
+
+  describe("search in titles and texts", () => {
+    beforeEach(() => vi.useFakeTimers());
+
+    it("asks the server only from two characters on, after a pause", async () => {
+      const { input } = await mountMenu();
+      await input.setValue("k");
+      await settle();
+      expect(search).not.toHaveBeenCalled();
+      await input.setValue("ka");
+      await input.setValue("kap");
+      expect(search).not.toHaveBeenCalled();
+      await settle();
+      expect(search).toHaveBeenCalledOnce();
+      expect(vi.mocked(search).mock.calls[0]![0]).toBe("kap");
+    });
+
+    it("lists found titles and texts below the commands, the match marked as text", async () => {
+      vi.mocked(search).mockResolvedValue(FOUND);
+      const { wrapper, input } = await mountMenu();
+      await input.setValue("Kapitel");
+      await settle();
+      expect(
+        wrapper
+          .findAll('[role="group"]')
+          .map((group) => group.attributes("aria-label")),
+      ).toEqual(["Kampagnen, Quests und Dailies", "In Notizen und Texten"]);
+      const marks = wrapper.findAll("mark").map((mark) => mark.text());
+      expect(marks).toEqual(["Kapitel", "Kapitel", "Kapitel"]);
+      // A snippet is the user's own text: markup in it stays visible text.
+      const snippet = wrapper.get(".command-menu__snippet");
+      expect(snippet.text()).toBe("… dann das Kapitel <b>fertig</b> …");
+      expect(snippet.find("b").exists()).toBe(false);
+      expect(wrapper.text()).toContain("Quest");
+      expect(wrapper.get(".campaign-chip").text()).toContain("Buch");
+      expect(wrapper.get('[role="status"]').text()).toBe("5 Treffer");
+    });
+
+    it("opens a quest with Enter and offers its stopwatch and campaign as further options", async () => {
+      vi.mocked(search).mockResolvedValue(FOUND);
+      const { wrapper, input, activeLabel } = await mountMenu();
+      await input.setValue("Kapitel");
+      await settle();
+      expect(activeLabel()).toBe("Kapitel 2 überarbeiten");
+      await input.trigger("keydown", { key: "Enter" });
+      expect(wrapper.emitted("open")).toEqual([
+        [{ type: "edit-todo", id: 7 }],
+      ]);
+
+      await input.trigger("keydown", { key: "ArrowDown" });
+      const side = () =>
+        wrapper.get(`#${input.attributes("aria-activedescendant")}`);
+      expect(side().attributes("aria-label")).toBe(
+        "Stoppuhr starten für „Kapitel 2 überarbeiten“",
+      );
+      await input.trigger("keydown", { key: "Enter" });
+      await input.trigger("keydown", { key: "ArrowDown" });
+      expect(side().attributes("aria-label")).toBe("Zur Kampagne „Buch“");
+      await side().trigger("click");
+      await input.trigger("keydown", { key: "ArrowDown" });
+      await input.trigger("keydown", { key: "Enter" });
+      await input.trigger("keydown", { key: "ArrowDown" });
+      await input.trigger("keydown", { key: "Enter" });
+      expect(wrapper.emitted("open")!.slice(1)).toEqual([
+        [{ type: "timer", id: 7, title: "Kapitel 2 überarbeiten" }],
+        [{ type: "campaign", id: 3 }],
+        [{ type: "edit-habit", id: 4 }],
+        [{ type: "day", date: "2026-11-18" }],
+      ]);
+    });
+
+    it("keeps the commands usable when the server cannot be asked", async () => {
+      vi.mocked(search).mockRejectedValue(new TypeError("offline"));
+      const { wrapper, input, options } = await mountMenu();
+      await input.setValue("heute");
+      await settle();
+      expect(options()).toHaveLength(1);
+      expect(wrapper.text()).toContain(
+        "Titel und Notizen lassen sich gerade nicht durchsuchen.",
+      );
+    });
   });
 });

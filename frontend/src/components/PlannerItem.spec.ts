@@ -50,6 +50,24 @@ function makeHabit(
 }
 
 describe("PlannerItem", () => {
+  it("names a daily's running series calmly, and nothing without one", () => {
+    const running = mount(PlannerItem, {
+      props: {
+        item: makeHabit({ streak: { current: 12, best: 21, unit: "runs" } }),
+        isUpdating: false,
+      },
+    });
+    expect(running.text()).toContain("Daily 12 in Folge");
+    expect(running.text()).not.toContain("Rekord");
+    const broken = mount(PlannerItem, {
+      props: {
+        item: makeHabit({ streak: { current: 0, best: 21, unit: "runs" } }),
+        isUpdating: false,
+      },
+    });
+    expect(broken.text()).not.toContain("in Folge");
+  });
+
   it("shows the given time, duration and the fixed flag once", () => {
     const wrapper = mount(PlannerItem, {
       props: {
@@ -87,7 +105,7 @@ describe("PlannerItem", () => {
     expect(wrapper.text()).toContain("45/60 Min.");
   });
 
-  it("draws the stripe in the campaign's stored colour, without its icon", () => {
+  it("draws the stripe and the chip's badge in the campaign's stored colour", () => {
     const wrapper = mount(PlannerItem, {
       props: {
         item: makeTodo({
@@ -99,7 +117,9 @@ describe("PlannerItem", () => {
     expect(wrapper.attributes("style")).toContain(
       "--campaign-mark: var(--color-mark-plum)",
     );
-    expect(wrapper.find(".planner-item__campaign svg").exists()).toBe(false);
+    const chip = wrapper.get(".campaign-chip");
+    expect(chip.attributes("style")).toContain("--mark: var(--color-mark-plum)");
+    expect(chip.find(".campaign-chip__badge svg").exists()).toBe(true);
   });
 
   it("marks the campaign an item works towards", () => {
@@ -111,7 +131,10 @@ describe("PlannerItem", () => {
         isUpdating: false,
       },
     });
-    expect(wrapper.get(".planner-item__campaign").text()).toBe("Halbmarathon");
+    // Named in words beside the stripe, so colour is never the only sign.
+    const chip = wrapper.get(".campaign-chip");
+    expect(chip.get(".campaign-chip__name").text()).toBe("Halbmarathon");
+    expect(chip.attributes("title")).toBe("Halbmarathon");
     expect(wrapper.classes()).toContain("item-row--campaign");
     expect(wrapper.attributes("style")).toContain("--campaign-mark");
 
@@ -121,23 +144,39 @@ describe("PlannerItem", () => {
     expect(loose.classes()).not.toContain("item-row--campaign");
   });
 
-  it("offers a grip that also sorts with the arrow keys", async () => {
+  it("drags as a whole card in the order, without a grip", () => {
     const item = makeTodo({ timeOfDay: null });
     const wrapper = mount(PlannerItem, {
       props: { item, isUpdating: false, sortable: true },
     });
-    const grip = wrapper.get(".sort-handle");
-    expect(grip.attributes("aria-label")).toBe(
-      "NestJS lernen in der Reihenfolge verschieben",
-    );
-    await grip.trigger("keydown", { key: "ArrowUp" });
-    await grip.trigger("keydown", { key: "ArrowDown" });
-    expect(wrapper.emitted("shift")).toEqual([
-      [item, -1],
-      [item, 1],
-    ]);
-    // The grip takes the place of the time column.
-    expect(wrapper.find(".planner-item__time").exists()).toBe(false);
+    expect(wrapper.classes()).toContain("card-drag");
+    expect(wrapper.find(".sort-handle").exists()).toBe(false);
+    expect(wrapper.find(".item-row__leading").exists()).toBe(false);
+  });
+
+  it("opens the editor from a tap anywhere on the card but its controls", async () => {
+    const item = makeTodo({ timeOfDay: null });
+    const wrapper = mount(PlannerItem, {
+      props: { item, isUpdating: false },
+    });
+    await wrapper.get(".item-row__meta").trigger("click");
+    expect(wrapper.emitted("edit")).toEqual([[item]]);
+    await wrapper.get(".check-ring, [role='checkbox'], button").trigger("click");
+    expect(wrapper.emitted("edit")).toHaveLength(1);
+  });
+
+  it("leaves out the chip on a campaign's own quest; its stripe says it", () => {
+    const wrapper = mount(PlannerItem, {
+      props: {
+        item: makeTodo({
+          todoId: 4,
+          campaign: { id: 4, title: "Halbmarathon", color: null, icon: null },
+        }),
+        isUpdating: false,
+      },
+    });
+    expect(wrapper.find(".campaign-chip").exists()).toBe(false);
+    expect(wrapper.classes()).toContain("item-row--campaign");
   });
 
   it("shows the original day for carried-over items and hides actions when compact", () => {

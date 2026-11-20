@@ -27,6 +27,8 @@ import { HabitScheduleVersionEntity } from './entities/habit-schedule-version.en
 import { HabitSchedulingService } from './scheduling/habit-scheduling.service';
 import { loadTodoAncestry } from '../todos/todo-ancestry';
 import { buildVersion, normalizeSchedule } from './scheduling/schedule-rules';
+import { assertCampaignTarget } from './habit-campaign';
+import { loadStreaks } from './streaks';
 
 @Injectable()
 export class HabitsService {
@@ -67,6 +69,11 @@ export class HabitsService {
       userId,
       dayOf(now),
     );
+    const streaks = await loadStreaks(
+      this.dataSource.manager,
+      habits.map((habit) => habit.id),
+      now,
+    );
     const result: HabitResponseDto[] = [];
 
     for (const habit of habits) {
@@ -81,6 +88,7 @@ export class HabitsService {
               item.habitId === habit.id &&
               item.status === HabitOccurrenceStatus.PENDING,
           ),
+          streaks.get(habit.id),
         ),
       );
     }
@@ -108,6 +116,7 @@ export class HabitsService {
         await loadTodoAncestry(manager, userId, dayOf(now)),
         now,
         pending,
+        await this.scheduling.streakOf(manager, id, now),
       );
     });
   }
@@ -146,10 +155,13 @@ export class HabitsService {
       const repository = manager.getRepository(HabitEntity);
       const categoryId = dto.categoryId ?? null;
       await assertOwnedCategory(manager, userId, categoryId);
+      const campaignId = dto.campaignId ?? null;
+      await assertCampaignTarget(manager, userId, campaignId);
 
       const habit = await repository.save(
         repository.create({
           categoryId,
+          campaignId,
           why: normalizeWhy(dto.why),
           plannedDurationMinutes: dto.plannedDurationMinutes ?? null,
           timeOfDay: dto.timeOfDay ?? null,
@@ -183,6 +195,7 @@ export class HabitsService {
       dto.plannedDurationMinutes === undefined &&
       dto.timeOfDay === undefined &&
       dto.categoryId === undefined &&
+      dto.campaignId === undefined &&
       dto.why === undefined
     ) {
       throw new BadRequestException('At least one property must be provided');
@@ -194,6 +207,10 @@ export class HabitsService {
       if (dto.categoryId !== undefined) {
         await assertOwnedCategory(manager, userId, dto.categoryId);
         habit.categoryId = dto.categoryId;
+      }
+      if (dto.campaignId !== undefined) {
+        await assertCampaignTarget(manager, userId, dto.campaignId);
+        habit.campaignId = dto.campaignId;
       }
       if (dto.why !== undefined) habit.why = normalizeWhy(dto.why);
       if (dto.plannedDurationMinutes !== undefined)
@@ -219,6 +236,8 @@ export class HabitsService {
         await this.scheduling.getVersions(manager, id),
         await loadTodoAncestry(manager, userId, dayOf(now)),
         now,
+        undefined,
+        await this.scheduling.streakOf(manager, id, now),
       );
     });
   }

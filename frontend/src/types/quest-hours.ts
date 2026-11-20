@@ -27,13 +27,18 @@ export type QuestHoursResponse = {
   startDate: string;
   endDate: string;
   today: string;
-  /** The overall weekly goal; null without one. */
+  /** The overall goal that held for this week; null without one. */
   weeklyTargetMinutes: number | null;
   questMinutes: number;
   otherMinutes: number;
+  /** Every quest minute ever measured, on any campaign. */
+  totalQuestMinutes: number;
   days: QuestHoursDay[];
-  /** The eight weeks up to and including this one, oldest first. */
-  weeks: { startDate: string; questMinutes: number }[];
+  /**
+   * The eight weeks up to and including this one, oldest first: quest
+   * minutes and the rest of the measured time, like the days.
+   */
+  weeks: { startDate: string; questMinutes: number; otherMinutes: number }[];
   /** Campaigns with measured time or a weekly goal. */
   campaigns: QuestHoursCampaign[];
 };

@@ -39,8 +39,21 @@ export type HabitResponse = {
   categoryId: number | null;
   /** The daily's own reason. */
   why: string | null;
+  /** The campaign it names (a top-level quest); null when it names none. */
+  campaignId: number | null;
   /**
-   * What it takes over from the quest counting it today, if it has none.
+   * The campaign it works towards, for its chip: the named one, else the one
+   * of the quest counting it today. Same shape as TodoResponse["campaign"].
+   */
+  campaign: {
+    id: number;
+    title: string;
+    color: string | null;
+    icon: string | null;
+  } | null;
+  /**
+   * What it takes over from its campaign, else from the quest counting it
+   * today, if it has none.
    * Same shape as InheritedWhy in ./todo; the contract-checked type files
    * stay free of imports.
    */
@@ -52,10 +65,13 @@ export type HabitResponse = {
   timerDurationMinutes: number | null;
   currentSchedule: ScheduleVersionResponse | null;
   upcomingSchedule: ScheduleVersionResponse | null;
+  /** Done runs in a row now and the longest series ever (Serie). */
+  streak: { current: number; best: number; unit: "runs" | "weeks" };
 };
 
 export type UpdateHabitInput = {
   categoryId?: number | null;
+  campaignId?: number | null;
   why?: string | null;
   plannedDurationMinutes?: number | null;
   timeOfDay?: string | null;
@@ -70,6 +86,7 @@ export type ChangeHabitScheduleInput = {
 
 export type CreateHabitInput = {
   categoryId?: number | null;
+  campaignId?: number | null;
   why?: string | null;
   plannedDurationMinutes?: number | null;
   timeOfDay?: string;

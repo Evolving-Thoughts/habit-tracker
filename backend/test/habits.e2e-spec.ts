@@ -283,6 +283,36 @@ describe('Habit domain and day planner (e2e)', () => {
   });
 
   describe('habit API', () => {
+    it('counts the series on the habit and on its run of today', async () => {
+      const habit = await create({
+        schedule: interval(1),
+        startDate: relativeDate(-4),
+      });
+      const done = HabitOccurrenceStatus.COMPLETED;
+      await seed(habit.id, relativeDate(-4), done, relativeDate(-4));
+      await seed(habit.id, relativeDate(-3), done, relativeDate(-3));
+      // Skipped by the scheduler once its window had closed: missed.
+      await seed(
+        habit.id,
+        relativeDate(-2),
+        HabitOccurrenceStatus.SKIPPED,
+        relativeDate(-1),
+      );
+      await seed(habit.id, relativeDate(-1), done, relativeDate(-1));
+
+      const streak = { current: 1, best: 2, unit: 'runs' };
+      const read = await request(server).get(`/habits/${habit.id}`).expect(200);
+      expect((read.body as HabitResponseDto).streak).toEqual(streak);
+      // Today's open run breaks nothing; the list and Heute say the same.
+      const list = await request(server).get('/habits').expect(200);
+      expect((list.body as HabitResponseDto[])[0]?.streak).toEqual(streak);
+      expect((await planner()).items[0]).toMatchObject({
+        type: 'habit',
+        status: HabitOccurrenceStatus.PENDING,
+        streak,
+      });
+    });
+
     it('creates identity and initial schedule', async () => {
       const habit = await create();
 
@@ -572,6 +602,107 @@ describe('Habit domain and day planner (e2e)', () => {
     it('returns validation and not-found errors for IDs', async () => {
       await request(server).get('/habits/invalid').expect(400);
       await request(server).get('/habits/2147483647').expect(404);
+    });
+
+    const todo = async (body: object): Promise<{ id: number }> =>
+      (await request(server).post('/todos').send(body).expect(201)).body as {
+        id: number;
+      };
+
+    it('names a campaign, inherits its reason and shows it as the chip', async () => {
+      const campaign = await todo({
+        title: 'Marathon',
+        why: 'Gesund alt werden',
+        color: 'pine',
+      });
+      const habit = await create({ campaignId: campaign.id });
+
+      expect(habit.campaignId).toBe(campaign.id);
+      expect(habit.campaign).toMatchObject({ id: campaign.id, color: 'pine' });
+      expect(habit.inheritedWhy).toEqual({
+        text: 'Gesund alt werden',
+        fromId: campaign.id,
+        fromTitle: 'Marathon',
+      });
+
+      const cleared = (
+        await request(server)
+          .patch(`/habits/${habit.id}`)
+          .send({ campaignId: null })
+          .expect(200)
+      ).body as HabitResponseDto;
+      expect(cleared.campaignId).toBeNull();
+      expect(cleared.campaign).toBeNull();
+      expect(cleared.inheritedWhy).toBeNull();
+    });
+
+    it('accepts only a top-level todo of the user as campaign', async () => {
+      const campaign = await todo({ title: 'Buch' });
+      const chapter = await todo({ title: 'Kapitel', parentId: campaign.id });
+
+      await request(server)
+        .post('/habits')
+        .send({
+          title: 'Schreiben',
+          schedule: interval(),
+          campaignId: chapter.id,
+        })
+        .expect(400);
+      await request(server)
+        .post('/habits')
+        .send({
+          title: 'Schreiben',
+          schedule: interval(),
+          campaignId: 2147483647,
+        })
+        .expect(400);
+      const habit = await create();
+      await request(server)
+        .patch(`/habits/${habit.id}`)
+        .send({ campaignId: chapter.id })
+        .expect(400);
+    });
+
+    it('keeps notes per run, out of every list', async () => {
+      await create({ schedule: interval(1) });
+      const [run] = await today();
+      const notes = {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: '5 km' }] },
+          { type: 'iframe', attrs: { src: 'https://evil.example' } },
+        ],
+      };
+
+      await request(server)
+        .get(`/habit-occurrences/${run.id}/notes`)
+        .expect(200)
+        .expect({ notes: null });
+      await request(server)
+        .put(`/habit-occurrences/${run.id}/notes`)
+        .send({ notes })
+        .expect(200)
+        .expect({ notes: { type: 'doc', content: [notes.content[0]] } });
+      await request(server)
+        .get(`/habit-occurrences/${run.id}/notes`)
+        .expect(200)
+        .expect({ notes: { type: 'doc', content: [notes.content[0]] } });
+
+      const lists = await Promise.all(
+        ['/habit-occurrences/today', '/habits', '/day-planner/today'].map(
+          (path) => request(server).get(path).expect(200),
+        ),
+      );
+      for (const response of lists)
+        expect(JSON.stringify(response.body)).not.toContain('5 km');
+
+      await request(server)
+        .put(`/habit-occurrences/${run.id}/notes`)
+        .send({ notes: 'Text' })
+        .expect(400);
+      await request(server)
+        .get('/habit-occurrences/2147483647/notes')
+        .expect(404);
     });
   });
 

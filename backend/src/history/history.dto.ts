@@ -1,4 +1,5 @@
 import { IsIn, IsOptional, IsString } from 'class-validator';
+import type { CampaignColor } from '../todos/campaign-style';
 import type { Campaign } from '../todos/todo-ancestry';
 import type { WorkLogSource } from '../work-logs/work-log.entity';
 import type { PerfectWeek } from './perfect-week';
@@ -15,8 +16,12 @@ export type HistoryItem = {
   habitId: number | null;
   title: string;
   categoryName: string | null;
+  /** The category's chosen colour; null while its name picks one. */
+  categoryColor: CampaignColor | null;
   /** The reason to show: its own, else the inherited one. */
   why: string | null;
+  /** The campaign it works towards, as far as the live todos still tell. */
+  campaign: Campaign | null;
   status: 'completed' | 'skipped';
   date: string;
   scheduledDate: string | null;
@@ -33,7 +38,9 @@ export type HistoryPlannedItem = {
   habitId: number | null;
   title: string;
   categoryName: string | null;
+  categoryColor: CampaignColor | null;
   why: string | null;
+  campaign: Campaign | null;
   date: string;
   scheduledDate: string;
   isOverdue: boolean;
@@ -101,7 +108,7 @@ export type HistoryResponse = {
     date: string;
     items: HistoryItem[];
     planned?: HistoryPlannedItem[];
-    /** Day and month view: read-only events of the read Google calendars. */
+    /** Read-only events of the read Google calendars, in every view. */
     external?: HistoryExternalEvent[];
     work: HistoryDayWork;
   }[];

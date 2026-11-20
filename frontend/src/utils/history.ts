@@ -79,7 +79,12 @@ export function monthLabel(date: string): string {
 /** "9.–15. Nov." or "30. Nov. – 6. Dez." for the week containing `date`. */
 export function weekLabel(date: string): string {
   const start = weekStart(date);
-  const end = addDays(start, 6);
+  return rangeLabel(start, addDays(start, 6));
+}
+
+/** "16.–22. Nov.", "28. Nov. – 2. Dez.", or one day alone: "20. Nov.". */
+export function rangeLabel(start: string, end: string): string {
+  if (start === end) return shortDate(start);
   if (start.slice(0, 7) === end.slice(0, 7))
     return `${day(start)}.–${shortDate(end)}`;
   return `${shortDate(start)} – ${shortDate(end)}`;

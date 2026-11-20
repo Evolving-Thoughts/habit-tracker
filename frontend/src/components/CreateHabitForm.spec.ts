@@ -1,12 +1,27 @@
 import { HABIT_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createHabit } from "../api/day-planner.api";
+import { createHabit, deleteTodo } from "../api/day-planner.api";
+import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import type { HabitResponse } from "../types/habit";
+import { hierarchyTodo } from "../test/hierarchy";
 import CreateHabitForm from "./CreateHabitForm.vue";
-vi.mock("../api/day-planner.api", () => ({ createHabit: vi.fn() }));
+vi.mock("../api/day-planner.api", () => ({
+  createHabit: vi.fn(),
+  createTodo: vi.fn(),
+  deleteTodo: vi.fn(async () => undefined),
+}));
 vi.mock("../api/categories.api", () => ({
-  getCategories: vi.fn().mockResolvedValue([{ id: 7, name: "Sport" }]),
+  getCategories: vi.fn(async () => [{ id: 7, name: "Sport" }]),
+  createCategory: vi.fn(),
+}));
+vi.mock("../api/todo-hierarchy.api", () => ({
+  getTodoHierarchy: vi.fn(async () => []),
+  getDeletionPreview: vi.fn(async () => ({
+    confirmationToken: "token",
+    todos: [{ id: 3, title: "Lesen", parentId: null, completed: false }],
+    timers: [],
+  })),
 }));
 enableAutoUnmount(afterEach);
 afterEach(() => vi.useRealTimers());
@@ -197,6 +212,89 @@ describe("CreateHabitForm", () => {
       wrapper.get<HTMLFieldSetElement>("form > fieldset").element.disabled,
     ).toBe(false);
     expect(wrapper.emitted("created")).toBeUndefined();
+  });
+  it("puts the rhythm right below the title, then category and campaign, then why", async () => {
+    const wrapper = mount(CreateHabitForm);
+    await flushPromises();
+    const order = wrapper
+      .findAll("label, legend")
+      .map((element) => element.text().trim().split(/\s/)[0]!)
+      .filter((text) =>
+        ["Titel", "Rhythmus", "Kategorie", "Kampagne", "Warum", "Startdatum"].includes(text),
+      );
+    expect(order).toEqual([
+      "Titel",
+      "Rhythmus",
+      "Kategorie",
+      "Kampagne",
+      "Warum",
+      "Startdatum",
+    ]);
+  });
+  it("names a campaign, inherits its why and takes its category", async () => {
+    vi.mocked(getTodoHierarchy).mockResolvedValue([
+      hierarchyTodo({
+        id: 5,
+        title: "Marathon",
+        why: "Gesund alt werden",
+        categoryId: 7,
+        color: "pine",
+      }),
+    ]);
+    const wrapper = mount(CreateHabitForm);
+    await flushPromises();
+    const campaign = wrapper.get("#habit-campaign");
+    await campaign.trigger("focus");
+    await campaign.setValue("Mara");
+    await campaign.trigger("keydown", { key: "Enter" });
+    await flushPromises();
+    expect(wrapper.text()).toContain("Übernommen von „Marathon“");
+    await wrapper.get('input[name="title"]').setValue("Laufen");
+    await submit(wrapper);
+    expect(createHabit).toHaveBeenCalledWith(
+      expect.objectContaining({ campaignId: 5, categoryId: 7 }),
+    );
+    expect(createHabit).toHaveBeenCalledWith(
+      expect.not.objectContaining({ why: expect.anything() }),
+    );
+  });
+  it("replaces a quest: creates the daily, then deletes the quest", async () => {
+    const wrapper = mount(CreateHabitForm, {
+      props: {
+        initial: { title: "Lesen", why: "Ruhe", categoryId: null, campaignId: null },
+        replaces: { id: 3, title: "Lesen" },
+      },
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain("die Quest „Lesen“ wird gelöscht");
+    expect(
+      wrapper.get<HTMLInputElement>('input[name="title"]').element.value,
+    ).toBe("Lesen");
+    await submit(wrapper);
+    expect(createHabit).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Lesen", why: "Ruhe" }),
+    );
+    expect(deleteTodo).toHaveBeenCalledWith(3, "token");
+    expect(wrapper.emitted("created")).toEqual([[]]);
+  });
+  it("keeps the daily and only retries deleting the quest when that failed", async () => {
+    vi.mocked(deleteTodo).mockRejectedValueOnce(new Error("Konflikt"));
+    const wrapper = mount(CreateHabitForm, {
+      props: {
+        initial: { title: "Lesen", why: "", categoryId: null, campaignId: null },
+        replaces: { id: 3, title: "Lesen" },
+      },
+    });
+    await flushPromises();
+    await submit(wrapper);
+    expect(wrapper.get('[role="alert"]').text()).toContain(
+      "Das Daily ist angelegt",
+    );
+    expect(wrapper.emitted("created")).toBeUndefined();
+    await submit(wrapper);
+    expect(createHabit).toHaveBeenCalledTimes(1);
+    expect(deleteTodo).toHaveBeenCalledTimes(2);
+    expect(wrapper.emitted("created")).toEqual([[]]);
   });
   it("blocks duplicate submissions until creation resolves", async () => {
     let resolve!: (value: HabitResponse) => void;

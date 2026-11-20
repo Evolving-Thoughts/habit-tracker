@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { historyRange } from './history-range';
+import { historyRange, weekDates } from './history-range';
 describe('historyRange', () => {
   it('returns a single day', () =>
     expect(historyRange('2026-10-07', 'day')).toEqual(['2026-10-07']));
@@ -44,4 +44,21 @@ describe('historyRange', () => {
     expect(() => historyRange('9999-12-30', 'week')).toThrow(
       BadRequestException,
     ));
+});
+
+describe('weekDates', () => {
+  it('lists Monday to Sunday', () =>
+    expect(weekDates('2026-11-16')).toEqual([
+      '2026-11-16',
+      '2026-11-17',
+      '2026-11-18',
+      '2026-11-19',
+      '2026-11-20',
+      '2026-11-21',
+      '2026-11-22',
+    ]));
+  it.each(['2026-11-17', '2026-11-22', '2026-02-30', '16.11.2026'])(
+    'refuses %s as the start of a week',
+    (start) => expect(() => weekDates(start)).toThrow(BadRequestException),
+  );
 });

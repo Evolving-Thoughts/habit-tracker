@@ -1,12 +1,12 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h } from "vue";
-import { getTodoNotes, setTodoNotes } from "../api/todo-notes.api";
+import { getNotes, setNotes } from "../api/todo-notes.api";
 import QuestNotes from "./QuestNotes.vue";
 
 vi.mock("../api/todo-notes.api", () => ({
-  getTodoNotes: vi.fn(),
-  setTodoNotes: vi.fn(),
+  getNotes: vi.fn(),
+  setNotes: vi.fn(),
 }));
 // The editor has its own spec; here it only passes text on.
 vi.mock("./RichTextEditor.vue", () => ({
@@ -23,13 +23,15 @@ vi.mock("./RichTextEditor.vue", () => ({
 
 enableAutoUnmount(afterEach);
 
+const TARGET = { kind: "todo" as const, id: 7 };
+
 const doc = (text: string) => ({
   type: "doc" as const,
   content: [{ type: "paragraph", content: [{ type: "text", text }] }],
 });
 
 async function mountNotes() {
-  const wrapper = mount(QuestNotes, { props: { todoId: 7 } });
+  const wrapper = mount(QuestNotes, { props: { target: TARGET } });
   await flushPromises();
   await vi.dynamicImportSettled();
   await flushPromises();
@@ -45,8 +47,8 @@ describe("QuestNotes", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.useFakeTimers();
-    vi.mocked(getTodoNotes).mockResolvedValue(doc("Schon da"));
-    vi.mocked(setTodoNotes).mockImplementation((_id, notes) =>
+    vi.mocked(getNotes).mockResolvedValue(doc("Schon da"));
+    vi.mocked(setNotes).mockImplementation((_id, notes) =>
       Promise.resolve(notes),
     );
   });
@@ -54,7 +56,7 @@ describe("QuestNotes", () => {
 
   it("loads the notes of its quest into the editor", async () => {
     const { wrapper, status } = await mountNotes();
-    expect(getTodoNotes).toHaveBeenCalledWith(7, expect.anything());
+    expect(getNotes).toHaveBeenCalledWith(TARGET, expect.anything());
     expect(wrapper.get("[data-editor]").text()).toContain("Schon da");
     expect(status()).toBe("");
   });
@@ -67,11 +69,11 @@ describe("QuestNotes", () => {
     expect(status()).toBe("");
     await flushPromises();
     expect(status()).toBe("Speichert …");
-    expect(setTodoNotes).not.toHaveBeenCalled();
+    expect(setNotes).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(800);
-    expect(setTodoNotes).toHaveBeenCalledTimes(1);
-    expect(setTodoNotes).toHaveBeenCalledWith(7, doc("Erster Entwurf"));
+    expect(setNotes).toHaveBeenCalledTimes(1);
+    expect(setNotes).toHaveBeenCalledWith(TARGET, doc("Erster Entwurf"));
     expect(status()).toBe("Gespeichert");
   });
 
@@ -79,14 +81,14 @@ describe("QuestNotes", () => {
     const { type } = await mountNotes();
     type(null);
     await vi.advanceTimersByTimeAsync(800);
-    expect(setTodoNotes).toHaveBeenCalledWith(7, null);
+    expect(setNotes).toHaveBeenCalledWith(TARGET, null);
   });
 
   it("sends what is typed at once when the view is left", async () => {
     const { wrapper, type } = await mountNotes();
     type("Noch schnell");
     wrapper.unmount();
-    expect(setTodoNotes).toHaveBeenCalledWith(7, doc("Noch schnell"));
+    expect(setNotes).toHaveBeenCalledWith(TARGET, doc("Noch schnell"));
   });
 
   it("sends what is typed when the app goes into the background", async () => {
@@ -97,7 +99,7 @@ describe("QuestNotes", () => {
       get: () => "hidden",
     });
     document.dispatchEvent(new Event("visibilitychange"));
-    expect(setTodoNotes).toHaveBeenCalledWith(7, doc("Unterwegs"));
+    expect(setNotes).toHaveBeenCalledWith(TARGET, doc("Unterwegs"));
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
       get: () => "visible",
@@ -105,7 +107,7 @@ describe("QuestNotes", () => {
   });
 
   it("keeps the text, says why saving failed and saves again on request", async () => {
-    vi.mocked(setTodoNotes).mockRejectedValueOnce(
+    vi.mocked(setNotes).mockRejectedValueOnce(
       new TypeError("Failed to fetch"),
     );
     const { wrapper, type, status } = await mountNotes();
@@ -120,14 +122,14 @@ describe("QuestNotes", () => {
     );
     await wrapper.get(".quest-notes__retry").trigger("click");
     await flushPromises();
-    expect(setTodoNotes).toHaveBeenCalledTimes(2);
+    expect(setNotes).toHaveBeenCalledTimes(2);
     expect(status()).toBe("Gespeichert");
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 
   it("does not call an older answer 'saved' while newer text is waiting", async () => {
     let finish: () => void = () => undefined;
-    vi.mocked(setTodoNotes).mockReturnValueOnce(
+    vi.mocked(setNotes).mockReturnValueOnce(
       new Promise((resolve) => (finish = () => resolve(null))),
     );
     const { type, status } = await mountNotes();
@@ -139,12 +141,12 @@ describe("QuestNotes", () => {
     expect(status()).toBe("Speichert …");
     await vi.advanceTimersByTimeAsync(800);
     expect(status()).toBe("Gespeichert");
-    expect(setTodoNotes).toHaveBeenLastCalledWith(7, doc("Eins zwei"));
+    expect(setNotes).toHaveBeenLastCalledWith(TARGET, doc("Eins zwei"));
   });
 
   it("says so when the notes cannot be loaded", async () => {
-    vi.mocked(getTodoNotes).mockRejectedValue(new Error("Nicht gefunden"));
-    const wrapper = mount(QuestNotes, { props: { todoId: 7 } });
+    vi.mocked(getNotes).mockRejectedValue(new Error("Nicht gefunden"));
+    const wrapper = mount(QuestNotes, { props: { target: TARGET } });
     await flushPromises();
     expect(wrapper.get('[role="alert"]').text()).toBe("Nicht gefunden");
     expect(wrapper.find("[data-editor]").exists()).toBe(false);

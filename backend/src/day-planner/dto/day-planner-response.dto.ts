@@ -1,7 +1,9 @@
 import { HabitOccurrenceStatus } from '../../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitScheduleType } from '../../habits/enums/habit-schedule-type.enum';
 import type { QuestHoursToday } from '../../quest-hours/quest-hours.dto';
+import type { CampaignColor } from '../../todos/campaign-style';
 import type { Campaign } from '../../todos/todo-ancestry';
+import type { Streak } from '../../habits/streaks';
 
 export type DayPlannerTodoStatus = 'pending' | 'completed';
 
@@ -30,6 +32,8 @@ export type DayPlannerTodoItemDto = {
   todoId: number;
   title: string;
   categoryName: string | null;
+  /** The category's chosen colour; null while its name picks one. */
+  categoryColor: CampaignColor | null;
   status: DayPlannerTodoStatus;
   scheduledDate: string;
   /** HH:mm of an appointment; null for a todo that only has its day. */
@@ -48,6 +52,8 @@ export type DayPlannerHabitItemDto = {
   habitId: number;
   title: string;
   categoryName: string | null;
+  /** The category's chosen colour; null while its name picks one. */
+  categoryColor: CampaignColor | null;
   status: HabitOccurrenceStatus;
   scheduledDate: string;
   /** Last day this pending occurrence can be moved to; null once resolved. */
@@ -55,6 +61,8 @@ export type DayPlannerHabitItemDto = {
   scheduleType: HabitScheduleType;
   isOverdue: boolean;
   timerEligible: boolean;
+  /** The daily's series (see habits/streaks.ts). */
+  streak: Streak;
 } & DayPlannerItemContext;
 
 export type DayPlannerItemDto = DayPlannerTodoItemDto | DayPlannerHabitItemDto;

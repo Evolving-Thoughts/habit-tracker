@@ -1,4 +1,9 @@
-import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import {
+  expect,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 import { API_URL } from "./environment";
 export async function today(request: APIRequestContext): Promise<string> {
   const result = await request.get(`${API_URL}/day-planner/today`);
@@ -100,6 +105,15 @@ export async function visit(
   await openView(page, view);
   await expect(page.locator(".create-button")).toBeEnabled();
 }
+/**
+ * Picks an option of a combobox ("Gehört zu", "Kategorie", "Kampagne") the
+ * way a keyboard does: type part of its name, Enter on the first match.
+ */
+export async function pick(field: Locator, text: string) {
+  await field.fill(text);
+  await field.press("Enter");
+  await expect(field).toHaveAttribute("aria-expanded", "false");
+}
 export async function createTodo(
   page: Page,
   title: string,
@@ -108,8 +122,8 @@ export async function createTodo(
 ) {
   await page.locator(".create-button").click();
   const dialog = page.getByRole("dialog");
-  if (await dialog.locator('[data-test="choose-todo"]').count())
-    await dialog.locator('[data-test="choose-todo"]').click();
+  // The dialog opens on "Quest" (Questlog, Heute); Dailies opens on "Daily".
+  await dialog.getByRole("radio", { name: "Quest", exact: true }).check();
   await dialog.locator('[name="title"]').fill(title);
   if (date) await dialog.locator('[name="scheduledDate"]').fill(date);
   await dialog.locator('[name="duration"]').fill("30");
@@ -126,8 +140,7 @@ export async function createHabit(
 ) {
   await page.locator(".create-button").click();
   const dialog = page.getByRole("dialog");
-  if (await dialog.locator('[data-test="choose-habit"]').count())
-    await dialog.locator('[data-test="choose-habit"]').click();
+  await dialog.getByRole("radio", { name: "Daily", exact: true }).check();
   await dialog.locator('[name="title"]').fill(title);
   if (startDate) await dialog.locator('[name="startDate"]').fill(startDate);
   await dialog.locator('[name="scheduleType"]').selectOption(type);
@@ -189,4 +202,53 @@ export function berlinTime(date: string, time: string): Date {
     Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3, 5));
   const offset = (minutes(shown) - minutes(time) + 1440) % 1440;
   return new Date(guess.getTime() - offset * 60_000);
+}
+
+/** Opens a card's menu "…" and runs the entry with that spoken name. */
+export async function cardMenu(
+  page: Page,
+  title: string,
+  entry: string,
+): Promise<void> {
+  await page
+    .getByRole("button", { name: `Aktionen für ${title}`, exact: true })
+    .click();
+  await page
+    .getByRole("menu", { name: title, exact: true })
+    .getByRole("menuitem", { name: entry, exact: true })
+    .click();
+}
+
+/**
+ * A point on a card that belongs to no control: the right end of its
+ * heading, past the title button. The whole card drags from there.
+ */
+export async function grabPoint(
+  card: Locator,
+): Promise<{ x: number; y: number }> {
+  const box = (await card.locator("h3").first().boundingBox())!;
+  return { x: box.x + box.width - 6, y: box.y + box.height / 2 };
+}
+
+/**
+ * Drags a card by its body onto another card's upper edge, in steps as a
+ * hand would move: SortableJS decides on the way.
+ */
+export async function dragCard(
+  page: Page,
+  card: Locator,
+  onto: Locator,
+  { above = 2 }: { above?: number } = {},
+): Promise<void> {
+  const from = await grabPoint(card);
+  const target = (await onto.boundingBox())!;
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2 + 8, {
+    steps: 12,
+  });
+  await page.mouse.move(target.x + target.width / 2, target.y + above, {
+    steps: 6,
+  });
+  await page.mouse.up();
 }

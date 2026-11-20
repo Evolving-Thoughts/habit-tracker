@@ -18,9 +18,14 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
+// Timers the open app has already announced itself (src/push/target-notification.ts).
+// Kept in memory only; when the worker was stopped meanwhile, the shared tag still merges both.
+const announcedTimers = new Set();
 self.addEventListener("message", (event) => {
   if (event.data?.type === "activate-push-worker")
     event.waitUntil(self.skipWaiting());
+  if (event.data?.type === "timer-notified" && pushId(event.data.timerId))
+    announcedTimers.add(event.data.timerId);
 });
 // Same metadata store as src/push/preferences.ts. No private app content or session tokens.
 async function pushPreference() {
@@ -85,10 +90,14 @@ self.addEventListener("push", (event) => {
         const latest = await pushPreference();
         if (!latest.enabled || latest.subscriptionId !== data.subscriptionId)
           return;
+        // The open app said it already: no second notification for the same Soll.
+        const tag = `habit-timer-${data.timerId}`;
+        if (announcedTimers.has(data.timerId)) return;
+        if ((await self.registration.getNotifications({ tag })).length) return;
         await self.registration.showNotification("Du hast dein Soll erreicht", {
           body: "Die Stoppuhr läuft weiter.",
           icon: "/icon-192.svg",
-          tag: `habit-timer-${data.timerId}`,
+          tag,
           renotify: false,
           data: { url: "/" },
         });

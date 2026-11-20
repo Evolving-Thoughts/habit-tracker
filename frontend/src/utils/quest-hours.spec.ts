@@ -6,6 +6,8 @@ import {
   againstTarget,
   againstTargetParts,
   campaignTiles,
+  goalFields,
+  goalMinutes,
   hoursToMinutes,
   minutesToHours,
   workLine,
@@ -31,6 +33,34 @@ describe("hoursToMinutes", () => {
       expect(() => hoursToMinutes(value)).toThrow("halben Stunden");
     },
   );
+});
+
+describe("goal fields", () => {
+  it("shows stored minutes as hours and minutes, both empty without a goal", () => {
+    expect(goalFields(null)).toEqual({ hours: "", minutes: "" });
+    expect(goalFields(1200)).toEqual({ hours: "20", minutes: "0" });
+    expect(goalFields(620)).toEqual({ hours: "10", minutes: "20" });
+    expect(goalFields(45)).toEqual({ hours: "0", minutes: "45" });
+  });
+
+  it("reads them back as minutes; empty or zero is no goal", () => {
+    expect(goalMinutes({ hours: "10", minutes: "20" })).toBe(620);
+    expect(goalMinutes({ hours: "12", minutes: "" })).toBe(720);
+    expect(goalMinutes({ hours: "", minutes: "45" })).toBe(45);
+    expect(goalMinutes({ hours: " ", minutes: "" })).toBeNull();
+    expect(goalMinutes({ hours: "0", minutes: "0" })).toBeNull();
+    expect(goalMinutes({ hours: "100", minutes: "0" })).toBe(6000);
+  });
+
+  it.each([
+    { hours: "1.5", minutes: "" },
+    { hours: "-1", minutes: "" },
+    { hours: "2", minutes: "60" },
+    { hours: "100", minutes: "1" },
+    { hours: "zwei", minutes: "" },
+  ])("rejects %o", (fields) => {
+    expect(() => goalMinutes(fields)).toThrow("ganze Stunden und 0 bis 59 Minuten");
+  });
 });
 
 describe("minutesToHours", () => {
@@ -183,8 +213,17 @@ describe("trendText", () => {
   it("names every week and its time", () => {
     expect(
       trendText([0, 90], ["2026-11-09", "2026-11-16"], (date) => date.slice(5)),
-    ).toBe(
-      "Kampagnen-Stunden der letzten 2 Wochen. Woche ab 11-09: 0 Min., Woche ab 11-16: 1 Std. 30 Min.",
-    );
+    ).toBe("Letzte 2 Wochen: ab 11-09 0 Min., ab 11-16 1 Std. 30 Min.");
+  });
+
+  it("calls the running week this week", () => {
+    expect(
+      trendText(
+        [120, 240],
+        ["2026-11-09", "2026-11-16"],
+        (date) => date.slice(5),
+        "2026-11-16",
+      ),
+    ).toBe("Letzte 2 Wochen: ab 11-09 2 Std., diese Woche 4 Std.");
   });
 });

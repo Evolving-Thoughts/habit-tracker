@@ -16,6 +16,8 @@ export type CreateTodoInput = CampaignInput & {
   /** HH:mm makes it an appointment fixed to that time; needs a day. */
   timeOfDay: string | null;
   plannedDurationMinutes: number | null;
+  /** Without a day: the head or (default) the end of the Questlog's order. */
+  backlogPlace?: "top" | "bottom";
 };
 
 export type TodoGoalInput = {
@@ -25,7 +27,8 @@ export type TodoGoalInput = {
   goalTarget?: number | null;
 };
 
-export type UpdateTodoInput = Partial<CreateTodoInput> & TodoGoalInput;
+export type UpdateTodoInput = Partial<Omit<CreateTodoInput, "backlogPlace">> &
+  TodoGoalInput;
 
 /** A reason taken over from the entry above, and which one that is. */
 export type InheritedWhy = { text: string; fromId: number; fromTitle: string };

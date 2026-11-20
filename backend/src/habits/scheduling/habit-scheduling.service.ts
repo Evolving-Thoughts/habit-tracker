@@ -44,6 +44,7 @@ import {
   isCompletedOn,
   lifecycleChanges,
 } from './occurrence-lifecycle';
+import { loadStreaks, NO_STREAK, Streak } from '../streaks';
 
 @Injectable()
 export class HabitSchedulingService {
@@ -82,6 +83,17 @@ export class HabitSchedulingService {
     });
   }
 
+  /** The series of one habit as of `now`. */
+  async streakOf(
+    manager: EntityManager,
+    habitId: number,
+    now: Date,
+  ): Promise<Streak> {
+    return (
+      (await loadStreaks(manager, [habitId], now)).get(habitId) ?? NO_STREAK
+    );
+  }
+
   versionResponse(
     version: HabitScheduleVersionEntity,
   ): ScheduleVersionResponse {
@@ -102,6 +114,7 @@ export class HabitSchedulingService {
     ancestry: TodoAncestry,
     at = this.clock.now(),
     pending?: HabitOccurrenceEntity,
+    streak: Streak = NO_STREAK,
   ): HabitResponseDto {
     const active = activeVersion(versions, at);
 
@@ -114,6 +127,8 @@ export class HabitSchedulingService {
       title: habit.title,
       categoryId: habit.categoryId ?? null,
       why: habit.why ?? null,
+      campaignId: habit.campaignId ?? null,
+      campaign: ancestry.habitCampaign(habit.id),
       inheritedWhy: ancestry.inheritedHabitWhy(habit.id),
       isActive: habit.isActive,
       plannedDurationMinutes: habit.plannedDurationMinutes,
@@ -122,6 +137,7 @@ export class HabitSchedulingService {
       timerDurationMinutes: pending ? effectiveDuration(pending, habit) : null,
       currentSchedule: active ? this.versionResponse(active) : null,
       upcomingSchedule: upcoming ? this.versionResponse(upcoming) : null,
+      streak,
     };
   }
 
@@ -161,6 +177,8 @@ export class HabitSchedulingService {
           versions,
           await loadTodoAncestry(manager, userId, dayOf(now)),
           now,
+          undefined,
+          await this.streakOf(manager, habitId, now),
         );
       }
 
@@ -194,6 +212,8 @@ export class HabitSchedulingService {
         await this.getVersions(manager, habitId),
         await loadTodoAncestry(manager, userId, dayOf(now)),
         now,
+        undefined,
+        await this.streakOf(manager, habitId, now),
       );
     });
   }
@@ -432,11 +452,21 @@ export class HabitSchedulingService {
     );
   }
 
-  private async todayIn(
+  /**
+   * Reconciles every active habit of the user in one locked transaction, so
+   * today's runs are stored (the Plan reads them afterwards, as Heute does).
+   */
+  async reconcileAll(userId: string): Promise<void> {
+    await this.unitOfWork.run(userId, (manager) =>
+      this.reconcileActive(manager, userId, this.clock.now()),
+    );
+  }
+
+  private async reconcileActive(
     manager: EntityManager,
     userId: string,
-  ): Promise<HabitOccurrenceEntity[]> {
-    const now = this.clock.now();
+    now: Date,
+  ): Promise<void> {
     const habits = await manager.getRepository(HabitEntity).find({
       where: { isActive: true, userId },
       order: { id: 'ASC' },
@@ -446,6 +476,14 @@ export class HabitSchedulingService {
     for (const habit of habits) {
       await this.reconcile(manager, habit, now);
     }
+  }
+
+  private async todayIn(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<HabitOccurrenceEntity[]> {
+    const now = this.clock.now();
+    await this.reconcileActive(manager, userId, now);
 
     const today = dayOf(now);
 

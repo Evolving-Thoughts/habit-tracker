@@ -29,6 +29,11 @@ export class UpdateHabitDto {
   readonly categoryId?: number | null;
 
   @IsOptional()
+  @IsInt()
+  @Min(1)
+  readonly campaignId?: number | null;
+
+  @IsOptional()
   @IsString()
   @MaxLength(1000)
   readonly why?: string | null;

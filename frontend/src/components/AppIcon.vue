@@ -14,7 +14,6 @@ defineProps<{
     | "settings"
     | "more"
     | "check"
-    | "grip"
     | "tomorrow"
     | "chevron"
     | "chevron-left"
@@ -39,6 +38,10 @@ defineProps<{
     | "close"
     | "skip"
     | "stop"
+    | "play"
+    | "pause"
+    | "arrow-up"
+    | "arrow-down"
     // Campaign icons (keys of CAMPAIGN_ICONS; "code" is above).
     | "book"
     | "dumbbell"
@@ -54,7 +57,23 @@ defineProps<{
     | "camera"
     | "globe"
     | "star"
-    | "flag";
+    | "flag"
+    | "bike"
+    | "coffee"
+    | "plane"
+    | "palette"
+    | "mountain"
+    | "moon"
+    | "people"
+    | "chat"
+    | "bulb"
+    | "trophy"
+    | "pot"
+    | "gamepad"
+    | "paw"
+    | "laptop"
+    | "map"
+    | "drop";
 }>();
 </script>
 
@@ -124,14 +143,6 @@ defineProps<{
     <template v-else-if="name === 'check'">
       <path d="m5 12.5 4.5 4.5L19 7.5" />
     </template>
-    <template v-else-if="name === 'grip'">
-      <circle cx="9" cy="6" r="1.2" fill="currentColor" />
-      <circle cx="15" cy="6" r="1.2" fill="currentColor" />
-      <circle cx="9" cy="12" r="1.2" fill="currentColor" />
-      <circle cx="15" cy="12" r="1.2" fill="currentColor" />
-      <circle cx="9" cy="18" r="1.2" fill="currentColor" />
-      <circle cx="15" cy="18" r="1.2" fill="currentColor" />
-    </template>
     <template v-else-if="name === 'tomorrow'">
       <path d="M4 12h13M13 7l5 5-5 5M20.5 5v14" />
     </template>
@@ -153,6 +164,12 @@ defineProps<{
     </template>
     <template v-else-if="name === 'stop'">
       <rect x="6" y="6" width="12" height="12" rx="2" />
+    </template>
+    <template v-else-if="name === 'play'">
+      <path d="M8 5.5v13l10.5-6.5Z" />
+    </template>
+    <template v-else-if="name === 'pause'">
+      <path d="M9 5.5v13M15 5.5v13" />
     </template>
     <template v-else-if="name === 'edit'">
       <path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z" />
@@ -274,6 +291,79 @@ defineProps<{
     </template>
     <template v-else-if="name === 'flag'">
       <path d="M5.5 20.5v-16M5.5 4.5h12l-2.5 4.5 2.5 4.5h-12" />
+    </template>
+    <template v-else-if="name === 'arrow-up'">
+      <path d="M12 19V5M6 11l6-6 6 6" />
+    </template>
+    <template v-else-if="name === 'arrow-down'">
+      <path d="M12 5v14M6 13l6 6 6-6" />
+    </template>
+    <template v-else-if="name === 'bike'">
+      <circle cx="5.5" cy="16.5" r="3.5" />
+      <circle cx="18.5" cy="16.5" r="3.5" />
+      <path d="M5.5 16.5 9 9.5l3.5 7h-7M9 9.5h6.5l3 7M15.5 9.5l-1-3h2.5M9 9.5v-2M7.5 7.5h3" />
+    </template>
+    <template v-else-if="name === 'coffee'">
+      <path d="M5 9h11v5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5Z" />
+      <path d="M16 10.5h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5v2M11 3.5v2M14 3.5v2" />
+    </template>
+    <template v-else-if="name === 'plane'">
+      <path d="M20.5 3.5 3.5 10.5l7 3 3 7Z" />
+      <path d="m10.5 13.5 4-4" />
+    </template>
+    <template v-else-if="name === 'palette'">
+      <path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.2 0 1.8-.9 1.8-1.8 0-1.4-1.3-1.9-1.3-3.2 0-1 .8-1.8 1.8-1.8h2.2a4 4 0 0 0 4-4c0-3.4-3.8-6.2-8.5-6.2Z" />
+      <circle cx="7.5" cy="11" r="1" fill="currentColor" />
+      <circle cx="10" cy="7.5" r="1" fill="currentColor" />
+      <circle cx="14.5" cy="7.5" r="1" fill="currentColor" />
+    </template>
+    <template v-else-if="name === 'mountain'">
+      <path d="m3 19.5 6.5-11 4 6.5 2.5-3.5 5 8Z" />
+      <path d="m7.6 11.8 1.9 1.4 1.8-1.5" />
+    </template>
+    <template v-else-if="name === 'moon'">
+      <path d="M19.5 14.5a8 8 0 0 1-10-10 8 8 0 1 0 10 10Z" />
+    </template>
+    <template v-else-if="name === 'people'">
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3.5 19.5a5.5 5.5 0 0 1 11 0M15.5 5.3a3 3 0 0 1 0 5.4M17.5 14.5a5.5 5.5 0 0 1 3 5" />
+    </template>
+    <template v-else-if="name === 'chat'">
+      <path d="M6.5 4.5h11a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11l-4.5 3.5v-3.5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" />
+    </template>
+    <template v-else-if="name === 'bulb'">
+      <path d="M12 3.5a6 6 0 0 0-3.5 10.9c.4.3.5.7.5 1.1v2h6v-2c0-.4.1-.8.5-1.1A6 6 0 0 0 12 3.5Z" />
+      <path d="M10 20.5h4" />
+    </template>
+    <template v-else-if="name === 'trophy'">
+      <path d="M8 4.5h8v5a4 4 0 0 1-8 0Z" />
+      <path d="M8 6.5H5.5a2.5 2.5 0 0 0 2.6 3.9M16 6.5h2.5a2.5 2.5 0 0 1-2.6 3.9M12 13.5v3.5M8.5 20h7l-.8-3H9.3Z" />
+    </template>
+    <template v-else-if="name === 'pot'">
+      <path d="M4.5 10.5h15v6a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3Z" />
+      <path d="M2.5 10.5h19M9 7.5h6M12 5.5v2" />
+    </template>
+    <template v-else-if="name === 'gamepad'">
+      <path d="M7 7.5h10a4.5 4.5 0 0 1 4.4 5.4l-.8 4a2.4 2.4 0 0 1-4.1 1.1L14 15.5h-4l-2.5 2.5a2.4 2.4 0 0 1-4.1-1.1l-.8-4A4.5 4.5 0 0 1 7 7.5Z" />
+      <path d="M7.5 10.5v3M6 12h3M15.5 11.5h.01M17.5 13h.01" />
+    </template>
+    <template v-else-if="name === 'paw'">
+      <circle cx="6.8" cy="10" r="1.6" />
+      <circle cx="10.2" cy="6.3" r="1.6" />
+      <circle cx="13.8" cy="6.3" r="1.6" />
+      <circle cx="17.2" cy="10" r="1.6" />
+      <path d="M12 11.5c-2.5 0-5 3.6-5 5.8 0 1.4 1 2.2 2.3 2.2 1.1 0 1.7-.6 2.7-.6s1.6.6 2.7.6c1.3 0 2.3-.8 2.3-2.2 0-2.2-2.5-5.8-5-5.8Z" />
+    </template>
+    <template v-else-if="name === 'laptop'">
+      <rect x="5" y="5" width="14" height="10" rx="1.5" />
+      <path d="M3 18.5h18" />
+    </template>
+    <template v-else-if="name === 'map'">
+      <path d="M9 5 3.5 7v12L9 17l6 2 5.5-2V5L15 7Z" />
+      <path d="M9 5v12M15 7v12" />
+    </template>
+    <template v-else-if="name === 'drop'">
+      <path d="M12 3.5s-6 6.6-6 10.9a6 6 0 0 0 12 0C18 10.1 12 3.5 12 3.5Z" />
     </template>
     <template v-else>
       <path d="M6 6l12 12M18 6 6 18" />

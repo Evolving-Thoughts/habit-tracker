@@ -153,7 +153,7 @@ test("Befehle: Ctrl+K filters, says when nothing matches, and runs a command", a
   await page.keyboard.press("Control+k");
   const menu = page.getByRole("dialog", { name: "Befehle" });
   const search = menu.getByRole("combobox", {
-    name: "Ansicht oder Aktion suchen",
+    name: "Ansichten, Befehle, Titel und Notizen durchsuchen",
   });
   await expect(search).toBeFocused();
   await expect(menu.getByRole("option", { name: /^Heute/ })).toHaveAttribute(
@@ -162,8 +162,11 @@ test("Befehle: Ctrl+K filters, says when nothing matches, and runs a command", a
   );
 
   await search.fill("zzz");
-  await expect(menu.locator(".command-menu__empty")).toHaveText(
+  await expect(menu.locator(".command-menu__empty p").first()).toHaveText(
     "Nichts gefunden für „zzz“.",
+  );
+  await expect(menu.locator(".command-menu__empty")).toContainText(
+    "Sucht in Ansichten, Befehlen, Titeln und Notizen.",
   );
   await expect(menu.getByRole("status")).toHaveText(
     "Nichts gefunden für „zzz“.",
@@ -187,6 +190,68 @@ test("Befehle: Ctrl+K filters, says when nothing matches, and runs a command", a
   await expect(
     page.locator('.today-view input[name="quickTitle"]'),
   ).toBeFocused();
+});
+
+test("Befehle: the search finds quests by title and notes by their text", async ({
+  page,
+  request,
+}) => {
+  const book = await plan(request, { title: "Buch schreiben", color: "navy" });
+  const chapter = await plan(request, {
+    title: "Kapitel 2 überarbeiten",
+    parentId: book.id,
+  });
+  const notes = await request.put(`${API_URL}/todos/${chapter.id}/notes`, {
+    data: {
+      notes: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Die Drachenszene kürzen" }],
+          },
+        ],
+      },
+    },
+  });
+  expect(notes.status()).toBe(200);
+
+  await openToday(page);
+  await page.keyboard.press("Control+k");
+  const menu = page.getByRole("dialog", { name: "Befehle" });
+  const search = menu.getByRole("combobox");
+  await search.fill("kapitel");
+  const titles = menu.getByRole("group", {
+    name: "Kampagnen, Quests und Dailies",
+  });
+  // The row starts with its title; its side actions name it after their verb.
+  await expect(
+    titles.getByRole("option", { name: /^Kapitel 2 überarbeiten/ }),
+  ).toBeVisible();
+  await expect(
+    titles.getByRole("option", {
+      name: "Stoppuhr starten für „Kapitel 2 überarbeiten“",
+    }),
+  ).toBeVisible();
+  await expect(titles.locator("mark")).toHaveText("Kapitel");
+  await expect(
+    titles.getByRole("option", { name: "Zur Kampagne „Buch schreiben“" }),
+  ).toBeVisible();
+
+  await search.fill("drachen");
+  const texts = menu.getByRole("group", { name: "In Notizen und Texten" });
+  await expect(
+    texts.getByRole("option", { name: /Notiz zu Kapitel 2 überarbeiten/ }),
+  ).toContainText("Die Drachenszene kürzen");
+  await page.keyboard.press("Enter");
+  await expect(menu).toHaveCount(0);
+  const editor = page.getByRole("dialog", { name: "Quest bearbeiten" });
+  await expect(editor.locator('input[name="title"]')).toHaveValue(
+    "Kapitel 2 überarbeiten",
+  );
+  await expect(editor.locator(".quest-notes")).toContainText(
+    "Die Drachenszene kürzen",
+  );
 });
 
 test("Tastenkürzel: the switch in Einstellungen turns single keys off, and that survives a reload", async ({

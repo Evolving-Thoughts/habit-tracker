@@ -2,6 +2,7 @@
  * Holds the backend DTOs against the frontend's hand-written types, so drift
  * fails `npm run check:contract` instead of the app. Types only; nothing runs.
  */
+import type { CategoryResponse as CategoryResponseDto } from '../src/categories/category.dto';
 import type { DayPlannerResponseDto } from '../src/day-planner/dto/day-planner-response.dto';
 import type { WeekPlanResponseDto } from '../src/day-planner/dto/week-plan.dto';
 import type { HabitOccurrenceResponseDto } from '../src/habit-occurrences/dto/habit-occurrence-response.dto';
@@ -18,6 +19,7 @@ import type {
   CAMPAIGN_COLORS as BACKEND_COLORS,
   CAMPAIGN_ICONS as BACKEND_ICONS,
 } from '../src/todos/campaign-style';
+import type { SearchResponse as SearchResponseDto } from '../src/search/search.dto';
 import type { TimerResponse as TimerResponseDto } from '../src/timers/timers.service';
 import type { CreateTodoDto } from '../src/todos/dto/create-todo.dto';
 import type { TodoResponseDto } from '../src/todos/dto/todo-response.dto';
@@ -40,11 +42,13 @@ import type {
   CAMPAIGN_COLORS,
   CAMPAIGN_ICONS,
 } from '../../frontend/src/types/campaign';
+import type { CategoryResponse } from '../../frontend/src/types/category';
 import type { HistoryResponse } from '../../frontend/src/types/history';
 import type {
   QuestHoursResponse,
   QuestTarget,
 } from '../../frontend/src/types/quest-hours';
+import type { SearchResponse } from '../../frontend/src/types/search';
 import type { TimerResponse } from '../../frontend/src/types/timer';
 import type {
   CreateTodoInput,
@@ -82,12 +86,14 @@ type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
 export type Contract = [
   Assert<Reads<TodoResponseDto, TodoResponse>>,
+  Assert<Reads<CategoryResponseDto, CategoryResponse>>,
   Assert<Reads<HabitResponseDto, HabitResponse>>,
   Assert<Reads<HabitOccurrenceResponseDto, HabitOccurrenceResponse>>,
   Assert<Reads<DayPlannerResponseDto, DayPlannerResponse>>,
   Assert<Reads<WeekPlanResponseDto, WeekPlanResponse>>,
   Assert<Reads<HistoryResponseDto, HistoryResponse>>,
   Assert<Reads<TimerResponseDto, TimerResponse>>,
+  Assert<Reads<SearchResponseDto, SearchResponse>>,
   Assert<Reads<WorkLogResponse, WorkLog>>,
   Assert<Reads<QuestHoursResponseDto, QuestHoursResponse>>,
   Assert<Reads<QuestTargetResponse, QuestTarget>>,

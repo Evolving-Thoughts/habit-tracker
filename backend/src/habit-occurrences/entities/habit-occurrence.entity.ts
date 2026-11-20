@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { HabitEntity } from '../../habits/entities/habit.entity';
 import { HabitScheduleVersionEntity } from '../../habits/entities/habit-schedule-version.entity';
+import type { NotesDocument } from '../../todos/todo-notes';
 import { HabitOccurrenceStatus } from '../enums/habit-occurrence-status.enum';
 
 export type HabitOccurrenceCancellationReason =
@@ -82,6 +83,13 @@ export class HabitOccurrenceEntity {
 
   @Column({ type: 'varchar', length: 40, nullable: true })
   cancellationReason!: HabitOccurrenceCancellationReason | null;
+
+  /**
+   * Notes of this one run, the same rich-text document as a todo's notes
+   * (see todos/todo-notes.ts). Not selected by default, like todo notes.
+   */
+  @Column({ type: 'jsonb', nullable: true, select: false })
+  notes?: NotesDocument | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

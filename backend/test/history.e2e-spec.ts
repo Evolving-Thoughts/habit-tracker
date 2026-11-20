@@ -265,6 +265,8 @@ describe('History API (e2e)', () => {
     expect(week.startDate).toBe('2026-10-05');
     expect(week.endDate).toBe('2026-10-11');
     expect(week.days).toHaveLength(7);
+    // The week shows the read Google calendars on its columns, too.
+    expect(week.days.every((day) => Array.isArray(day.external))).toBe(true);
     expect(
       (await get('date=2026-10-07&filter=todos')).days[0].items.map(
         (item) => item.type,
@@ -296,7 +298,9 @@ describe('History API (e2e)', () => {
     });
     expect(items.find((item) => item.title === 'Ohne')).toMatchObject({
       categoryName: null,
+      categoryColor: null,
       why: null,
+      campaign: null,
     });
   });
   it('returns year-crossing weeks', async () => {
@@ -607,7 +611,7 @@ describe('History API (e2e)', () => {
     ).toEqual([date]);
     // The Plan shows the same run on today.
     const plan = await request(server)
-      .get(`/day-planner/week?start=${historyRange(date, 'week')[0]}`)
+      .get(`/day-planner/plan?from=${date}&days=7`)
       .expect(200);
     const today = (
       plan.body as {

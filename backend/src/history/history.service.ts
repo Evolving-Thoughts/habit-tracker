@@ -4,6 +4,7 @@ import { loadHabitForecast } from './habit-forecast';
 import {
   openTargetRuns,
   plannedHabits,
+  type PlannedContext,
   sortedLikeToday,
   weeklyTargets,
 } from './history-planning';
@@ -22,6 +23,10 @@ import { resolvedOccurrences } from '../habit-occurrences/resolved-occurrences';
 import { historyRange } from './history-range';
 import { eventsOfDays } from '../calendar/day-events';
 import { CategoryEntity } from '../categories/category.entity';
+import {
+  categoryLabels,
+  type CategoryLabel,
+} from '../categories/category-lookup';
 import { perfectWeekOf } from './perfect-week';
 import { loadWeekQuota } from './week-quota';
 import {
@@ -54,9 +59,7 @@ export class HistoryService {
         .getRepository(CategoryEntity)
         .find({ where: { userId }, order: { name: 'ASC' } });
       const ancestry = await loadTodoAncestry(manager, userId, today);
-      const names = new Map(categories.map((item) => [item.id, item.name]));
-      const categoryName = (id: number | null): string | null =>
-        id === null ? null : (names.get(id) ?? null);
+      const category = categoryLabels(categories);
       const todos =
         filter === 'habits'
           ? []
@@ -79,8 +82,9 @@ export class HistoryService {
           id: todo.id,
           habitId: null,
           title: todo.title,
-          categoryName: categoryName(todo.categoryId),
+          ...category(todo.categoryId),
           why: ancestry.todoWhy(todo),
+          campaign: ancestry.campaignOf(todo),
           status: 'completed' as const,
           date: dayOf(todo.completedAt!),
           scheduledDate: todo.scheduledDate ?? null,
@@ -94,8 +98,9 @@ export class HistoryService {
           id: occurrence.id,
           habitId: occurrence.habitId,
           title: occurrence.habit.title,
-          categoryName: categoryName(occurrence.habit.categoryId),
+          ...category(occurrence.habit.categoryId),
           why: ancestry.habitWhy(occurrence.habit),
+          campaign: ancestry.habitCampaign(occurrence.habitId),
           status: occurrence.status as 'completed' | 'skipped',
           date:
             occurrence.status === HabitOccurrenceStatus.COMPLETED
@@ -125,13 +130,16 @@ export class HistoryService {
         dates,
         today,
         now,
-        categoryName,
+        category,
         ancestry,
       );
-      const external =
-        query.view === 'week'
-          ? null
-          : await eventsOfDays(manager, { userId }, startDate, endDate);
+      // Every view shows the read Google calendars: the week as blocks too.
+      const external = await eventsOfDays(
+        manager,
+        { userId },
+        startDate,
+        endDate,
+      );
       const logs = await withCampaigns(
         manager,
         userId,
@@ -166,18 +174,14 @@ export class HistoryService {
           date,
           items: items.filter((item) => item.date === date),
           planned: planning.items.filter((item) => item.date === date),
-          ...(external
-            ? {
-                external: external
-                  .filter((event) => dayOf(event.start) === date)
-                  .map(({ id, title, start, end }) => ({
-                    id,
-                    title,
-                    start: start.toISOString(),
-                    end: end.toISOString(),
-                  })),
-              }
-            : {}),
+          external: external
+            .filter((event) => dayOf(event.start) === date)
+            .map(({ id, title, start, end }) => ({
+              id,
+              title,
+              start: start.toISOString(),
+              end: end.toISOString(),
+            })),
           work: dayWork(logs, date, query.view !== 'month'),
         })),
       };
@@ -191,7 +195,7 @@ export class HistoryService {
     dates: string[],
     today: string,
     now: Date,
-    categoryName: (id: number | null) => string | null,
+    category: (id: number | null) => CategoryLabel,
     ancestry: TodoAncestry,
   ): Promise<{ items: HistoryPlannedItem[]; targets: HistoryWeeklyTarget[] }> {
     const items: HistoryPlannedItem[] = [];
@@ -214,8 +218,9 @@ export class HistoryService {
             id: todo.id,
             habitId: null,
             title: todo.title,
-            categoryName: categoryName(todo.categoryId),
+            ...category(todo.categoryId),
             why: ancestry.todoWhy(todo),
+            campaign: ancestry.campaignOf(todo),
             date,
             scheduledDate,
             isOverdue,
@@ -238,18 +243,15 @@ export class HistoryService {
       return { items: sortedLikeToday(items, positions), targets: [] };
     // Target progress is scoped to the selected calendar week even in day view.
     const { startDate: weekStart, endDate: weekEnd } = weekRange(dates[0]);
-    const why = (habit: HabitEntity) => ancestry.habitWhy(habit);
+    const context = (habit: HabitEntity): PlannedContext => ({
+      ...category(habit.categoryId),
+      why: ancestry.habitWhy(habit),
+      campaign: ancestry.habitCampaign(habit.id),
+    });
     items.push(
-      ...plannedHabits(habits, slots, occurrences, today, categoryName, why),
+      ...plannedHabits(habits, slots, occurrences, today, context),
       ...(dates.includes(today)
-        ? openTargetRuns(
-            habits,
-            versions,
-            occurrences,
-            today,
-            categoryName,
-            why,
-          )
+        ? openTargetRuns(habits, versions, occurrences, today, context)
         : []),
     );
     const stored = new Map(

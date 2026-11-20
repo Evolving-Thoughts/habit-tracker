@@ -24,26 +24,32 @@ test("Kampagnen-Stunden: goals, a campaign's colour and icon, its tile and the l
   // The overall goal in the settings.
   await page.goto("/");
   await openView(page, "Einstellungen");
-  const goal = page.locator('[name="weeklyQuestTarget"]');
+  const goal = page.locator('[name="weeklyQuestTargetHours"]');
   await expect(goal).toBeEnabled();
   await goal.fill("20");
+  await page.locator('[name="weeklyQuestTargetMinutes"]').fill("");
   await page.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(
     page.getByRole("status").filter({ hasText: "Gespeichert." }),
   ).toBeVisible();
 
-  // Colour, icon and weekly goal of the campaign, in its editor.
+  // Colour, icon and weekly goal of the campaign, in its editor: the
+  // overview holds only tiles, the campaign's page has "Bearbeiten".
   await openView(page, "Kampagnen");
   await page
-    .locator(`[data-todo-id="${book}"]`)
-    .getByRole("button", { name: "Buch bearbeiten", exact: true })
+    .locator(`[data-campaign-tile="${book}"]`)
+    .getByRole("button", { name: "Buch", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Kampagne Buch bearbeiten", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
-  // Nothing chosen yet, so the campaign's group waits closed.
-  const group = dialog.getByRole("button", { name: /^Kampagne \(/ });
-  await expect(group).toHaveAttribute("aria-expanded", "false");
-  await group.click();
-  await expect(group).toHaveAttribute("aria-expanded", "true");
+  // A campaign's own form shows colour, icon and goal directly, without
+  // a group to open, and no day or duration.
+  await expect(
+    dialog.getByRole("button", { name: /^Kampagne \(/ }),
+  ).toHaveCount(0);
+  await expect(dialog.locator('[name="weeklyTarget"]')).toBeVisible();
   const choose = async (name: string) => {
     const radio = page.getByRole("radio", { name, exact: true });
     await dialog.locator("label").filter({ has: radio }).click();
@@ -54,12 +60,14 @@ test("Kampagnen-Stunden: goals, a campaign's colour and icon, its tile and the l
   await choose("Beere");
   await choose("Buch");
   // The chosen colour is also named in words.
-  await expect(dialog.locator(".campaign-fields__chosen").first()).toHaveText(
+  await expect(dialog.locator(".mark-picker__chosen")).toHaveText(
     "Beere",
   );
   await dialog.locator('[name="weeklyTarget"]').fill("6");
   await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(dialog).not.toBeVisible();
+  await page.getByRole("button", { name: "Alle Kampagnen", exact: true }).click();
+  await expect(page).not.toHaveURL(/kampagne=/);
 
   // Half an hour on its quest, added by hand and ending a minute ago.
   const end = Date.now() - 60_000;
@@ -82,11 +90,15 @@ test("Kampagnen-Stunden: goals, a campaign's colour and icon, its tile and the l
   await expect(tile).toContainText(/Insgesamt \d+ Min\./);
   await expect(tile).toHaveAttribute("style", /--color-mark-berry/);
   await expect(tile.getByRole("img")).toHaveAccessibleName(
-    /^Kampagnen-Stunden der letzten 8 Wochen\./,
+    /^Letzte 8 Wochen: .*diese Woche \d+\sMin\.$/,
   );
+  await expect(tile.getByText("8 Wochen", { exact: true })).toBeVisible();
   expect(
-    (await tile.getByRole("button").boundingBox())!.height,
+    (await tile.getByRole("button", { name: "Buch", exact: true }).boundingBox())!
+      .height,
   ).toBeGreaterThanOrEqual(44);
+  // The figures above the tiles: this week and ever, running and done.
+  await expect(page.locator('[data-stat="week"] dd')).toHaveText(/\d+\sMin\./);
 
   // The tile opens the campaign: its quests, its progress, its burnup.
   await tile.getByRole("button", { name: "Buch", exact: true }).click();
@@ -112,9 +124,15 @@ test("Kampagnen-Stunden: goals, a campaign's colour and icon, its tile and the l
   // Heute relates the time worked to its quest hours, then the week against the goal.
   await openView(page, "Heute");
   // Right after midnight the half hour may lie wholly on yesterday.
+  // A figure keeps its unit with a no-break space, which \s matches.
   await expect(page.locator(".today-view__time")).toHaveText(
-    /^(\d+ Min\. gearbeitet, alles auf Kampagnen · Woche|Kampagnen diese Woche) \d+ Min\. von 20 Std\.$/,
+    /^(\d+\sMin\. gearbeitet, alles auf Kampagnen · Woche|Kampagnen diese Woche) \d+\sMin\. von 20\sStd\.$/,
   );
+  await expect(
+    page.getByRole("progressbar", {
+      name: "Kampagnen-Stunden diese Woche gegen das Wochenziel",
+    }),
+  ).toHaveAttribute("aria-valuemax", "1200");
   // The quest's stripe takes the campaign's stored colour.
   await expect(page.locator(".planner-item.item-row--campaign").first()).toHaveAttribute(
     "style",

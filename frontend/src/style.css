@@ -32,6 +32,12 @@
   --color-ink: #2b1d16;
   --color-ink-muted: #6b4d3d;
   --color-ink-soft: #7a5846;
+  /*
+   * Bars of the charts and the meters beside them (Wochenrückblick, quota):
+   * ink by day. At night full ink would make them the brightest thing on
+   * the page, so they step down to a calmer warm tone there.
+   */
+  --color-bar: var(--color-ink);
 
   /* The one action colour, reserved for what can be tapped. */
   --color-action: #c2410c;
@@ -45,20 +51,28 @@
   --color-danger-tint: #fff0ec;
 
   /*
-   * Quiet marks for categories and campaigns, never the action orange. They
-   * differ in lightness as well as hue, so red-green weakness still tells
-   * most apart; every use also names its campaign or category in text.
+   * Marks for categories and campaigns, never the action orange. The first
+   * eight are the core set: apart in lightness and hue, so they stay
+   * distinct under protanopia, deuteranopia and tritanopia too
+   * (palette.spec.ts). Every use also names its campaign or category.
    */
-  --color-mark-moss: #6d8b5a;
-  --color-mark-pine: #3e6650;
-  --color-mark-sage: #588880;
-  --color-mark-slate: #4f7c99;
-  --color-mark-indigo: #5b5f9e;
-  --color-mark-heather: #9a6b9e;
-  --color-mark-plum: #7a4a6c;
-  --color-mark-berry: #a8566e;
-  --color-mark-walnut: #8c6b55;
-  --color-mark-ochre: #a07c33;
+  --color-mark-indigo: #6765b3;
+  --color-mark-navy: #294d91;
+  --color-mark-ochre: #695900;
+  --color-mark-pine: #194516;
+  --color-mark-berry: #984964;
+  --color-mark-plum: #513058;
+  --color-mark-teal: #338f9c;
+  --color-mark-walnut: #a67a55;
+  /* Extra marks: more choice; some pairs collide for colour-blind eyes. */
+  --color-mark-moss: #5e7454;
+  --color-mark-sage: #195a4f;
+  --color-mark-sky: #196ea1;
+  --color-mark-slate: #02415c;
+  --color-mark-heather: #793369;
+  --color-mark-wine: #703336;
+  --color-mark-olive: #7c8634;
+  --color-mark-lilac: #5f5378;
   /* Measured work without a campaign: a warm neutral beside the marks. */
   --color-mark-none: #a38d7a;
 
@@ -152,6 +166,7 @@
   --color-ink: #f6e9df;
   --color-ink-muted: #cdb4a4;
   --color-ink-soft: #ad9281;
+  --color-bar: #bfa491;
 
   /* Lighter at night, so it still reads as the one tappable colour. */
   --color-action: #f08a4e;
@@ -164,17 +179,24 @@
   --color-danger: #ff8a7a;
   --color-danger-tint: #3f211b;
 
-  /* Lighter and a touch calmer than by day, still apart in lightness. */
-  --color-mark-moss: #93ad80;
-  --color-mark-pine: #6f9a80;
-  --color-mark-sage: #8cbab2;
-  --color-mark-slate: #86abc6;
-  --color-mark-indigo: #9a9edb;
-  --color-mark-heather: #c79ccb;
-  --color-mark-plum: #b483a6;
-  --color-mark-berry: #d78fa4;
-  --color-mark-walnut: #b8987f;
-  --color-mark-ochre: #d6b46e;
+  /* Lighter than by day, the core set still apart for every eye. */
+  --color-mark-indigo: #8ca6f4;
+  --color-mark-navy: #518ccd;
+  --color-mark-ochre: #aa933a;
+  --color-mark-pine: #328048;
+  --color-mark-berry: #e08699;
+  --color-mark-plum: #7c698f;
+  --color-mark-teal: #67d3e0;
+  --color-mark-walnut: #e4b797;
+  /* Extra marks: more choice; some pairs collide for colour-blind eyes. */
+  --color-mark-moss: #bbc96d;
+  --color-mark-sage: #6fcf9e;
+  --color-mark-sky: #3db8e0;
+  --color-mark-slate: #789eb3;
+  --color-mark-heather: #a7859a;
+  --color-mark-wine: #ae5f74;
+  --color-mark-olive: #aab28b;
+  --color-mark-lilac: #9872be;
   --color-mark-none: #857265;
 
   --shadow-card: 0 0 0 1px rgb(255 238 222 / 7%);
@@ -463,6 +485,31 @@ textarea.input {
   resize: vertical;
 }
 
+/*
+ * A form's actions inside a dialog (editor, Neue Quest, Neues Daily): they
+ * stick to the dialog's bottom edge, flush across its padding, so saving
+ * never needs a scroll and nothing shows below them. A sticky box keeps
+ * clear of its scroller's padding, so the offsets undo it; the negative
+ * margin lets it end on the edge when scrolled to the end as well.
+ * --dialog-padding comes from ModalDialog.
+ */
+.modal-dialog .sticky-actions {
+  position: sticky;
+  bottom: calc(-1 * var(--dialog-padding, 0px));
+  z-index: 2;
+  margin: 0 calc(-1 * var(--dialog-padding, 0px))
+    calc(-1 * var(--dialog-padding, 0px));
+  padding: var(--space-3) var(--dialog-padding, 0px)
+    var(--dialog-padding, 0px);
+  border-top: 1px solid var(--color-line);
+  background: var(--color-surface);
+}
+
+/* A field reached with Tab never hides behind the sticky actions. */
+.modal-dialog:has(.sticky-actions) {
+  scroll-padding-bottom: 7rem;
+}
+
 /* Segmented choice: the chosen option is ink on white, not a second colour. */
 .segmented {
   display: inline-flex;
@@ -710,6 +757,43 @@ textarea.input {
   to {
     opacity: 0.5;
   }
+}
+
+/*
+ * The card contract: a quest or daily card opens its editor on a tap
+ * anywhere but its controls (`utils/card-click.ts`). A quiet hairline
+ * says so under the pointer; the title stays the button for keys.
+ */
+.card-target {
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .card-target:hover {
+    outline: 1.5px solid var(--color-line);
+    outline-offset: -1.5px;
+  }
+}
+
+/*
+ * Where a list sorts, the whole card drags (`useSortable`): a finger lifts
+ * it after a long press, so a long press must not select text or open the
+ * system's callout instead.
+ */
+.card-drag {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* What is being dragged, and the gap it leaves behind. */
+.sortable-ghost {
+  opacity: 0.35;
+}
+
+.sortable-fallback {
+  box-shadow: var(--shadow-card);
+  cursor: grabbing;
 }
 
 .visually-hidden {

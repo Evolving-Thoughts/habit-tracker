@@ -1,8 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { getHabits, updateOccurrenceStatus } from "../api/day-planner.api";
-import { getCategories } from "../api/categories.api";
+import { useCategoryLabels } from "../composables/useCategoryLabels";
 import { useListFocus } from "../composables/useListFocus";
+import ActionMenu from "../components/ActionMenu.vue";
+import CampaignChip from "../components/CampaignChip.vue";
+import DeleteItemDialog, {
+  type DeleteTarget,
+} from "../components/DeleteItemDialog.vue";
 import CheckRing from "../components/CheckRing.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
 import UndoToast from "../components/UndoToast.vue";
@@ -16,31 +22,41 @@ import { getHistory } from "../api/history.api";
 import type { HabitResponse, HabitScheduleRule } from "../types/habit";
 import type { HistoryResponse } from "../types/history";
 import { shownWhy } from "../utils/why";
-import { categoryMark } from "../utils/category-mark";
+import { onCardClick } from "../utils/card-click";
+import { rowMenu, type MenuEntry } from "../utils/row-actions";
 import {
   formatDateForGermanDisplay,
   getCurrentDateInTimeZone,
 } from "../utils/date";
 import { WEEKDAY_OPTIONS, dailyWeekStatus } from "../utils/habit";
+import { streakSummary } from "../utils/streak";
+import {
+  WITHOUT,
+  dailyCampaigns,
+  dailyFilterFromQuery,
+  dailyFilterQuery,
+  dailyGroups,
+  passesFilter,
+  type DailyFilter,
+} from "../utils/daily-groups";
 
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
 
 const successMessage = ref<string | null>(null);
 const editingId = ref<number | null>(null);
+/** Today's run of the daily being edited, for its notes. */
+const editingRun = ref<number | null>(null);
+const deleting = ref<DeleteTarget | null>(null);
 const editorBusy = ref(false);
 const creationOpen = ref(false);
 
-/** Category names for the meta line; the list stays usable without them. */
-const categoryNames = ref(new Map<number, string>());
-async function loadCategoryNames(): Promise<void> {
-  try {
-    const categories = await getCategories();
-    categoryNames.value = new Map(categories.map((c) => [c.id, c.name]));
-  } catch {
-    // Without names the cards simply show no category mark.
-  }
-}
+/** Category names and marks for the meta line. */
+const {
+  load: loadCategories,
+  labelOf,
+  list: categories,
+} = useCategoryLabels();
 /*
  * The week as the calendar reads it, for each Daily's status this week; the
  * list stays usable without it. Read once with the list, so both agree.
@@ -58,7 +74,7 @@ async function loadWeek(): Promise<void> {
 async function loadAll(): Promise<HabitResponse[]> {
   const [habits] = await Promise.all([
     getHabits(),
-    loadCategoryNames(),
+    loadCategories(),
     loadWeek(),
   ]);
   return habits;
@@ -74,7 +90,10 @@ const {
   initial: [] as HabitResponse[],
   fallbackError: "Die Dailies konnten nicht geladen werden.",
   refreshOnChange: () =>
-    editingId.value === null && !creationOpen.value && !writes.busy.value,
+    editingId.value === null &&
+    !deleting.value &&
+    !creationOpen.value &&
+    !writes.busy.value,
 });
 const writes = useWrites(loadHabits, errorMessage);
 const { applied } = writes;
@@ -125,18 +144,30 @@ async function undoLast(): Promise<void> {
 }
 
 const isBusy = computed(() => isLoading.value || editorBusy.value);
-const groups = computed(() => [
-  {
-    key: "active",
-    title: "Aktiv",
-    items: habits.value.filter((habit) => habit.isActive),
-  },
-  {
-    key: "paused",
-    title: "Pausiert",
-    items: habits.value.filter((habit) => !habit.isActive),
-  },
-]);
+
+/* The filter lives in the address (#/dailies?kategorie=…&kampagne=…). */
+const route = useRoute();
+const router = useRouter();
+const filter = computed(() => dailyFilterFromQuery(route.query));
+function setFilter(change: Partial<DailyFilter>): void {
+  void router.replace({
+    query: dailyFilterQuery({ ...filter.value, ...change }),
+  });
+}
+/** A select's value as a filter value: "" is all. */
+function chosen(event: Event): number | typeof WITHOUT | null {
+  const value = (event.target as HTMLSelectElement).value;
+  if (value === WITHOUT) return WITHOUT;
+  return value ? Number(value) : null;
+}
+const campaignOptions = computed(() => dailyCampaigns(habits.value));
+/* Grouped by category; the paused ones last. */
+const groups = computed(() =>
+  dailyGroups(
+    habits.value.filter((habit) => passesFilter(habit, filter.value)),
+    categories.value,
+  ),
+);
 
 /** The schedule as a person would say it: "Mo, Mi, Fr", "3× pro Woche". */
 function scheduleInWords(rule: HabitScheduleRule): string {
@@ -172,10 +203,34 @@ function nextScheduleOf(habit: HabitResponse): string | null {
   return `Ab ${shortDate(habit.upcomingSchedule.effectiveFrom)}: ${scheduleInWords(habit.upcomingSchedule.schedule)}`;
 }
 
-function categoryOf(habit: HabitResponse): string | null {
-  return habit.categoryId === null
-    ? null
-    : (categoryNames.value.get(habit.categoryId) ?? null);
+const categoryOf = (habit: HabitResponse) => labelOf(habit.categoryId);
+
+/* The card contract: a tap on the card opens the editor, as its title does. */
+const canEdit = () =>
+  !isBusy.value && editingId.value === null && !deleting.value;
+function openFromCard(event: MouseEvent, habit: HabitResponse): void {
+  if (canEdit()) onCardClick(event, () => openEditing(habit));
+}
+const cardMenu = (habit: HabitResponse): MenuEntry[] =>
+  rowMenu(
+    habit.title,
+    {
+      edit: () => openEditing(habit),
+      remove: { run: () => openDeleting(habit) },
+    },
+    !canEdit(),
+  );
+function openDeleting(habit: HabitResponse): void {
+  if (!canEdit()) return;
+  successMessage.value = null;
+  listFocus.remember(`habit-${habit.id}`);
+  deleting.value = { kind: "habit", id: habit.id, title: habit.title };
+}
+async function onDeleted(): Promise<void> {
+  successMessage.value = "Daily gelöscht. Das Logbuch bleibt erhalten.";
+  await applied();
+  deleting.value = null;
+  editorBusy.value = false;
 }
 
 function statusOf(habit: HabitResponse): string | null {
@@ -199,10 +254,12 @@ function openEditing(habit: HabitResponse): void {
   if (isBusy.value || editingId.value !== null) return;
   successMessage.value = null;
   listFocus.remember(`habit-${habit.id}`);
+  editingRun.value = runToday(habit)?.id ?? null;
   editingId.value = habit.id;
 }
 function closeEditing(): void {
   editingId.value = null;
+  editingRun.value = null;
   editorBusy.value = false;
 }
 async function onEditorChanged(): Promise<void> {
@@ -226,7 +283,7 @@ async function onCreated(): Promise<void> {
 
     <CreateItemDialog
       v-if="creationOpen"
-      mode="habit"
+      kind="habit"
       @close="creationOpen = false"
       @created="onCreated"
     />
@@ -235,10 +292,23 @@ async function onCreated(): Promise<void> {
       :key="editingId"
       kind="habit"
       :entity-id="editingId"
+      :occurrence-id="editingRun"
       :return-focus="listFocus.returnFocus"
       @busy="editorBusy = $event"
       @changed="onEditorChanged"
       @close="closeEditing"
+    />
+
+    <DeleteItemDialog
+      v-if="deleting"
+      :target="deleting"
+      :return-focus="listFocus.returnFocus"
+      @busy="editorBusy = $event"
+      @deleted="onDeleted"
+      @close="
+        deleting = null;
+        editorBusy = false;
+      "
     />
 
     <div v-if="errorMessage" class="alert habits-view__alert">
@@ -273,37 +343,89 @@ async function onCreated(): Promise<void> {
       <span>Tippe auf Plus, um dein erstes Daily anzulegen.</span>
     </div>
     <template v-else-if="habits.length > 0">
+      <!-- Narrows the list; the choice stays in the address. -->
+      <div class="habit-filter" role="group" aria-label="Dailies filtern">
+        <label class="habit-filter__field">
+          <span>Kategorie</span>
+          <select
+            class="input habit-filter__select"
+            name="filterCategory"
+            :value="filter.category ?? ''"
+            @change="setFilter({ category: chosen($event) })"
+          >
+            <option value="">Alle</option>
+            <option
+              v-for="category in categories"
+              :key="category.id"
+              :value="category.id"
+            >
+              {{ category.name }}
+            </option>
+            <option :value="WITHOUT">Ohne Kategorie</option>
+          </select>
+        </label>
+        <label class="habit-filter__field">
+          <span>Kampagne</span>
+          <select
+            class="input habit-filter__select"
+            name="filterCampaign"
+            :value="filter.campaign ?? ''"
+            @change="setFilter({ campaign: chosen($event) })"
+          >
+            <option value="">Alle</option>
+            <option
+              v-for="campaign in campaignOptions"
+              :key="campaign.id"
+              :value="campaign.id"
+            >
+              {{ campaign.title }}
+            </option>
+            <option :value="WITHOUT">Ohne Kampagne</option>
+          </select>
+        </label>
+      </div>
+      <div v-if="!groups.length" class="empty-state">
+        <strong>Keine Dailies für diesen Filter.</strong>
+        <button
+          type="button"
+          class="btn"
+          @click="setFilter({ category: null, campaign: null })"
+        >
+          Alle zeigen
+        </button>
+      </div>
       <template v-for="group in groups" :key="group.key">
         <section
-          v-if="group.items.length"
           :data-group="group.key"
           class="habit-group"
-          :aria-label="group.key === 'active' ? group.title : undefined"
+          :aria-labelledby="`habit-group-${group.key}`"
         >
-          <template v-if="group.key === 'paused'">
-            <h2 class="section-title">
-              {{ group.title }}
-              <span class="count">{{ group.items.length }}</span>
-            </h2>
-            <p class="habit-group__hint">
-              Pausierte Dailies stehen nicht in Heute.
-            </p>
-          </template>
-          <!-- Unseen, but the cards' h3 need an h2 above them. -->
-          <h2 v-else class="visually-hidden">{{ group.title }}</h2>
+          <h2 :id="`habit-group-${group.key}`" class="section-title">
+            <i
+              v-if="group.mark"
+              class="category-mark habit-group__mark"
+              :style="{ background: group.mark }"
+              aria-hidden="true"
+            />{{ group.title }}
+            <span class="count">{{ group.habits.length }}</span>
+          </h2>
+          <p v-if="group.key === 'paused'" class="habit-group__hint">
+            Pausierte Dailies stehen nicht in Heute.
+          </p>
           <ul class="habit-group__items">
             <li
-              v-for="habit in group.items"
+              v-for="habit in group.habits"
               :key="habit.id"
               :data-habit-id="habit.id"
               :data-focus-key="`habit-${habit.id}`"
-              class="habit-card"
+              class="habit-card card-target"
               :class="{
                 'habit-card--paused': !habit.isActive,
-                'habit-card--ring': anyRun && group.key === 'active',
+                'habit-card--ring': anyRun && habit.isActive,
               }"
+              @click="openFromCard($event, habit)"
             >
-              <template v-if="anyRun && group.key === 'active'">
+              <template v-if="anyRun && habit.isActive">
                 <CheckRing
                   v-if="runToday(habit)"
                   class="habit-card__ring"
@@ -340,29 +462,44 @@ async function onCreated(): Promise<void> {
                   <span v-if="statusOf(habit)" class="habit-card__status">{{
                     statusOf(habit)
                   }}</span>
+                  <span
+                    v-if="streakSummary(habit.streak)"
+                    class="habit-card__streak"
+                    >{{ streakSummary(habit.streak) }}</span
+                  >
                   <span v-if="categoryOf(habit)" class="habit-card__category">
                     <i
                       class="category-mark"
-                      :style="{ background: categoryMark(categoryOf(habit)!) }"
+                      :style="{ background: categoryOf(habit)!.mark }"
                       aria-hidden="true"
-                    />{{ categoryOf(habit) }}
+                    />{{ categoryOf(habit)!.name }}
                   </span>
                   <span v-for="part in detailsOf(habit)" :key="part">{{
                     part
                   }}</span>
+                  <CampaignChip
+                    v-if="habit.campaign"
+                    :campaign="habit.campaign"
+                  />
                 </p>
                 <p v-if="nextScheduleOf(habit)" class="habit-card__next">
                   {{ nextScheduleOf(habit) }}
                 </p>
               </div>
-              <ItemPlayButton
-                class="habit-card__play"
-                kind="occurrence"
-                :target-id="habit.timerOccurrenceId"
-                :title="habit.title"
-                :eligible="habit.isActive && habit.timerOccurrenceId !== null"
-                :disabled="isBusy"
-              />
+              <div class="habit-card__end">
+                <ItemPlayButton
+                  kind="occurrence"
+                  :target-id="habit.timerOccurrenceId"
+                  :title="habit.title"
+                  :eligible="habit.isActive && habit.timerOccurrenceId !== null"
+                  :disabled="isBusy"
+                />
+                <ActionMenu
+                  :title="habit.title"
+                  :entries="cardMenu(habit)"
+                  :disabled="isBusy"
+                />
+              </div>
             </li>
           </ul>
         </section>
@@ -387,6 +524,40 @@ async function onCreated(): Promise<void> {
 .habits-view__status {
   color: var(--color-ink-muted);
   font-weight: 600;
+}
+
+/* Two compact selects on one line; under each other only when too narrow. */
+.habit-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+
+.habit-filter__field {
+  display: flex;
+  flex: 1 1 12rem;
+  gap: var(--space-2);
+  align-items: center;
+  min-width: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.habit-filter__select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.habit-group + .habit-group {
+  margin-top: var(--space-5);
+}
+
+.habit-group .section-title {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
 }
 
 .habit-group__hint {
@@ -423,6 +594,11 @@ async function onCreated(): Promise<void> {
 .habit-card__ring {
   width: var(--tap);
   height: var(--tap);
+}
+
+.habit-card__end {
+  display: flex;
+  align-items: center;
 }
 
 .habit-card__content {
@@ -494,6 +670,11 @@ async function onCreated(): Promise<void> {
 /* Where the week stands, first and in ink; a number, never a warning colour. */
 .habit-card__status {
   color: var(--color-ink);
+}
+
+/* The series is a number too, even when it broke. */
+.habit-card__streak {
+  white-space: nowrap;
 }
 
 .habit-card__category {

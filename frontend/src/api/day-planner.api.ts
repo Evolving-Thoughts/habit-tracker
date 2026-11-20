@@ -22,13 +22,14 @@ export function getToday(): Promise<DayPlannerResponse> {
   return request<DayPlannerResponse>("/day-planner/today");
 }
 
-/** The week from Monday `start` as a board of days. */
-export function getWeekPlan(
-  start: string,
+/** `days` days from `from` as a board of columns, and what is overdue. */
+export function getPlan(
+  from: string,
+  days: number,
   signal?: AbortSignal,
 ): Promise<WeekPlanResponse> {
-  const params = new URLSearchParams({ start });
-  return request<WeekPlanResponse>(`/day-planner/week?${params}`, { signal });
+  const params = new URLSearchParams({ from, days: String(days) });
+  return request<WeekPlanResponse>(`/day-planner/plan?${params}`, { signal });
 }
 
 /** Stores the order any day was sorted into; habits go by their occurrence. */
@@ -48,6 +49,14 @@ export function getTodos(): Promise<TodoResponse[]> {
 /** Open todos without a day (the Questlog), filtered by the server's todo agenda. */
 export function getBacklogTodos(): Promise<TodoResponse[]> {
   return request<TodoResponse[]>("/todos/backlog");
+}
+
+/** Stores the Questlog's order: these quests first, the rest after them. */
+export function reorderBacklog(ids: number[]): Promise<void> {
+  return request<void>("/todos/backlog/order", {
+    method: "PUT",
+    body: JSON.stringify({ ids }),
+  });
 }
 
 export function createTodo(input: CreateTodoInput): Promise<TodoResponse> {

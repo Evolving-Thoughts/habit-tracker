@@ -72,7 +72,7 @@ const label = computed(() =>
 }
 
 .quest-split__part--quest {
-  background: var(--color-ink);
+  background: var(--color-bar);
 }
 
 .quest-split__part--other {

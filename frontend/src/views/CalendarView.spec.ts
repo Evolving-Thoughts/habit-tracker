@@ -18,6 +18,7 @@ import type {
   HistoryResponse,
   HistoryWorkLog,
 } from "../types/history";
+import { createMemoryHistory, createRouter } from "vue-router";
 import CalendarView from "./CalendarView.vue";
 
 vi.mock("../api/history.api", () => ({ getHistory: vi.fn() }));
@@ -192,6 +193,25 @@ beforeEach(() => {
   mock.mockResolvedValue(month);
 });
 
+describe("CalendarView address", () => {
+  it("opens the day ?tag= names, then drops it from the address", async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: "/kalender", component: CalendarView }],
+    });
+    await router.push("/kalender?tag=2026-10-05");
+    mount(CalendarView, { global: { plugins: [router] } });
+    await flushPromises();
+    expect(mock).toHaveBeenLastCalledWith(
+      "2026-10-05",
+      "day",
+      "all",
+      expect.anything(),
+    );
+    expect(router.currentRoute.value.fullPath).toBe("/kalender");
+  });
+});
+
 describe("CalendarView month", () => {
   it("opens on the month with today selected and starts on the right weekday", async () => {
     const wrapper = await render();
@@ -239,7 +259,7 @@ describe("CalendarView month", () => {
     expect(wrapper.get(".selected-day h2").text()).toBe("Mittwoch, 7. Okt.");
   });
 
-  it("gives an open quest the ring and its moves a menu; today's forecast run only the ring", async () => {
+  it("gives an open quest the ring, ▶ and its moves in a menu; today's forecast run no moves", async () => {
     const wrapper = await render();
     const rows = wrapper.findAll(".planned-item");
     expect(rows[0]!.text()).toContain("Saugen");
@@ -253,10 +273,19 @@ describe("CalendarView month", () => {
     expect(
       rows[0]!.findAll("button").some((b) => b.text() === "Verschieben"),
     ).toBe(false);
+    expect(
+      rows[0]!.find('[aria-label="Stoppuhr für Saugen starten"]').exists(),
+    ).toBe(true);
     expect(rows[1]!.text()).toContain("voraussichtlich");
-    // A Daily run due today can be ticked; moving a forecast is not possible.
+    // A Daily run due today can be ticked; moving a forecast is not possible,
+    // so its menu only edits it.
     expect(rows[1]!.find(".check-ring").exists()).toBe(true);
-    expect(rows[1]!.find('[aria-haspopup="menu"]').exists()).toBe(false);
+    await rows[1]!.get('[aria-haspopup="menu"]').trigger("click");
+    expect(
+      wrapper
+        .findAll("[role=menuitem] .action-menu__label")
+        .map((entry) => entry.text()),
+    ).toEqual(["Bearbeiten", "Löschen"]);
   });
 
   it("opens the move dialog for a planned entry from its menu", async () => {
@@ -266,7 +295,14 @@ describe("CalendarView month", () => {
       wrapper
         .findAll("[role=menuitem] .action-menu__label")
         .map((entry) => entry.text()),
-    ).toEqual(["Morgen", "Nächste Woche", "Anderer Tag …"]);
+    ).toEqual([
+      "Morgen",
+      "Nächste Woche",
+      "Anderer Tag …",
+      "Bearbeiten",
+      "In Kampagne verschieben …",
+      "Löschen",
+    ]);
     await wrapper.get('[aria-label="Saugen verschieben"]').trigger("click");
     expect(wrapper.text()).toContain("Nächster Montag");
   });
@@ -377,6 +413,41 @@ describe("CalendarView month", () => {
     expect(
       wrapper.get('.month-day[aria-pressed="true"]').attributes("data-date"),
     ).toBe(TODAY);
+  });
+
+  it("lists a day's quests and Daily runs apart, a done run with its time", async () => {
+    mock.mockResolvedValue({
+      ...month,
+      days: month.days.map((day) =>
+        day.date === "2026-10-07"
+          ? {
+              ...day,
+              items: [
+                item(),
+                item({
+                  type: "habit",
+                  id: 4,
+                  habitId: 3,
+                  title: "Laufen",
+                  resolvedAt: "2026-10-07T05:15:00Z",
+                }),
+              ],
+            }
+          : day,
+      ),
+    });
+    const wrapper = await render();
+    // Today: the open run waits under Dailies.
+    expect(wrapper.get('.selected-day [aria-label="Dailies"]').text()).toContain(
+      "Laufen",
+    );
+    await wrapper.get('.month-day[data-date="2026-10-07"]').trigger("click");
+    const dailies = wrapper.get('.selected-day [aria-label="Dailies"]');
+    expect(dailies.get("h3").text()).toBe("Dailies 1");
+    expect(dailies.text()).toContain("Erledigt um 07:15");
+    expect(
+      wrapper.get('.selected-day [aria-label="Quests"]').text(),
+    ).toContain("Artikel");
   });
 
   it("opens the selected day in Tag mode", async () => {
@@ -817,48 +888,65 @@ describe("CalendarView day", () => {
     );
   });
 
-  it("offers time logging with the Logbuch and says plainly when it is empty", async () => {
+  it("offers time logging in the day calendar beside the list", async () => {
     const wrapper = await renderDay(dayResponse([item()]));
-    const logbook = wrapper.get('[aria-labelledby="day-axis-title"]');
+    const logbook = wrapper.get(".calendar-day .day-calendar");
     expect(logbook.get("h2").text()).toBe("Logbuch");
-    expect(logbook.text()).toContain("Heute wurde noch keine Zeit gemessen.");
     // The completion stands on the axis at the time it was ticked off.
     // Read as one phrase; the visible title is not read a second time.
-    const mark = logbook.get('ol[aria-label="Geplant"] .done-mark');
+    const mark = logbook.get('ol[aria-label="Zeitachse"] .done-mark');
     expect(mark.get(".visually-hidden").text()).toBe(
       "Artikel, erledigt um 14:32",
     );
-    expect(mark.get(".day-timeline__title").attributes("aria-hidden")).toBe(
-      "true",
-    );
+    expect(
+      mark.get(".day-calendar__title-text").attributes("aria-hidden"),
+    ).toBe("true");
     expect(logbook.find('select[name="target"]').exists()).toBe(false);
-    await logbook.get('button[aria-controls="work-log-add"]').trigger("click");
+    await button(wrapper, "Zeit nachtragen").trigger("click");
     await flushPromises();
     expect(logbook.find('select[name="target"]').text()).toContain("Artikel");
   });
 
-  it("shows no axis when nothing is planned, measured or done", async () => {
+  it("runs the axis from early morning to midnight on one column", async () => {
     const wrapper = await renderDay(
       dayResponse([item({ resolvedAt: null })]),
     );
-    const logbook = wrapper.get('[aria-labelledby="day-axis-title"]');
-    expect(logbook.find(".day-timeline").exists()).toBe(false);
+    const hours = wrapper
+      .findAll(".day-calendar__hours > span:not(.day-calendar__now-time)")
+      .map((label) => label.text());
+    expect(hours[0]).toBe("06:00");
+    expect(hours.at(-1)).toBe("24:00");
+    expect(wrapper.findAll(".day-calendar__blocks")).toHaveLength(1);
   });
 });
 
 describe("CalendarView week", () => {
-  it("renders seven day rows with only the non-zero counts and opens a day", async () => {
+  it("renders seven day columns on one hour axis and opens a day from its head", async () => {
     const wrapper = await render();
     mock.mockResolvedValue(weekResponse());
     await wrapper.get('[name="historyDate"]').setValue("2026-10-07");
     await chooseMode(wrapper, "Woche");
     expect(wrapper.get("h1").text()).toBe("5.–11. Okt.");
-    const rows = wrapper.findAll(".week-day");
-    expect(rows).toHaveLength(7);
-    expect(rows[0]!.attributes("aria-label")).toBe("Montag, 5. Okt. öffnen");
-    expect(rows[0]!.text()).toContain("Nichts geplant");
-    expect(rows[2]!.text()).toContain("1 von 1 erledigt · 1 übersprungen");
-    await rows[2]!.trigger("click");
+    const heads = wrapper.findAll(".week-head");
+    expect(heads).toHaveLength(7);
+    expect(heads[0]!.attributes("aria-label")).toBe("Montag, 5. Okt. öffnen");
+    expect(heads[0]!.text()).toContain("Mo");
+    expect(heads[0]!.find(".week-head__summary").exists()).toBe(false);
+    // What the day holds without a time; the skipped run counts neither way.
+    expect(heads[2]!.get(".week-head__summary").text()).toBe("1 Quest");
+    const description = heads[2]!.attributes("aria-describedby")!;
+    expect(wrapper.get(`[id="${description}"]`).text()).toBe(
+      "1 von 1 erledigt · 1 übersprungen",
+    );
+    expect(heads[2]!.attributes("aria-current")).toBe("date");
+    expect(
+      wrapper.get('.week-column[data-date="2026-10-07"]').classes(),
+    ).toContain("week-column--today");
+    expect(wrapper.findAll(".week-column .day-calendar")).toHaveLength(7);
+    // One hour axis for all seven columns.
+    expect(wrapper.findAll(".day-calendar__hours")).toHaveLength(0);
+    expect(wrapper.get(".calendar-week__axis").text()).toContain("06:00");
+    await heads[2]!.trigger("click");
     await flushPromises();
     expect(mock).toHaveBeenLastCalledWith(
       "2026-10-07",
@@ -869,30 +957,17 @@ describe("CalendarView week", () => {
     expect(button(wrapper, "Tag").attributes("aria-pressed")).toBe("true");
   });
 
-  it("puts the habit quota first and shows the perfect week per category", async () => {
+  it("leaves the habit quota and the perfect week to the Wochenrückblick", async () => {
     const wrapper = await render();
     mock.mockResolvedValue({
       ...weekResponse(),
       weekQuota: { completed: 5, total: 8, percentage: 63 },
-      perfectWeek: {
-        perfect: true,
-        categories: [
-          { id: 1, name: "Sport", target: 4, completed: 4, reached: true },
-        ],
-      },
+      perfectWeek: { perfect: true, categories: [] },
     });
     await chooseMode(wrapper, "Woche");
-    const quota = wrapper.get(".quota");
-    expect(quota.get(".quota__value").text()).toBe("5 von 8");
-    expect(quota.text()).toContain("Dailies im Wochensoll");
-    expect(quota.get('[role="progressbar"]').attributes("aria-valuenow")).toBe(
-      "5",
-    );
-    const perfect = wrapper.get(".perfect-week");
-    expect(perfect.get("h2").text()).toBe("Perfekte Woche!");
-    expect(perfect.text()).toContain("Sport");
-    expect(perfect.text()).toContain("4 von 4");
-    expect(perfect.text()).toContain("erreicht");
+    expect(wrapper.find(".quota").exists()).toBe(false);
+    expect(wrapper.find(".perfect-week").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("Dailies im Wochensoll");
   });
 
   it("shows completed weekly targets without inventing open day entries", async () => {
@@ -950,7 +1025,7 @@ describe("CalendarView Logbuch", () => {
     };
   }
 
-  it("draws the stretches beside the plan, each named in full", async () => {
+  it("draws the plan and the stretches on one column, each named in full", async () => {
     const data = dayResponse([item()]);
     data.days[0]!.external = [
       {
@@ -980,27 +1055,26 @@ describe("CalendarView Logbuch", () => {
       ],
     };
     const wrapper = await renderDay(data);
-    const logbook = wrapper.get('[aria-labelledby="day-axis-title"]');
+    const logbook = wrapper.get(".calendar-day .day-calendar");
     expect(logbook.get("h2").text()).toBe("Logbuch 32 Min.");
-    expect(logbook.text()).not.toContain("keine Zeit gemessen");
-    const plan = logbook.get('ol[aria-label="Geplant"]');
-    expect(plan.text()).toContain("Besprechung");
-    expect(plan.text()).toContain("08:00–09:00");
-    const blocks = logbook.findAll('ol[aria-label="Gemessen"] button');
+    const lane = logbook.get('ol[aria-label="Zeitachse"]');
+    expect(lane.text()).toContain("Besprechung");
+    expect(lane.text()).toContain("08:00–09:00");
+    const blocks = lane.findAll("button.log-block");
     expect(blocks.map((block) => block.attributes("aria-label"))).toEqual([
       "Kapitel, 10:00 bis 10:30, 30 Min., Kampagne Buch, korrigieren",
       "Mails, 11:00 bis 11:02, 2 Min., ohne Kampagne, korrigieren",
     ]);
-    // The list below says the same in words.
-    expect(logbook.get('[aria-label="Einträge im Logbuch"]').text()).toContain(
-      "Nachtrag",
-    );
+    // The campaign by name beside its stripe, never by colour alone.
+    expect(blocks[0]!.text()).toContain("Buch");
     await blocks[0]!.trigger("click");
     await flushPromises();
     expect(
-      (logbook.get('input[aria-label="Start"]').element as HTMLInputElement)
-        .value,
+      (logbook.get('input[name="start"]').element as HTMLInputElement).value,
     ).toBe("10:00");
+    expect(
+      (logbook.get('input[name="end"]').element as HTMLInputElement).value,
+    ).toBe("10:30");
   });
 
   describe("deleting a stretch", () => {
@@ -1023,24 +1097,33 @@ describe("CalendarView Logbuch", () => {
       return data;
     };
     const rows = (wrapper: Wrapper) =>
-      wrapper
-        .findAll('[aria-label="Einträge im Logbuch"] li strong')
-        .map((row) => row.text());
-    const remove = (wrapper: Wrapper, label: string) =>
-      wrapper.get(`[aria-label="${label}"]`).trigger("click");
+      wrapper.findAll("button.log-block strong").map((row) => row.text());
+    /* Through the block's dialog, the keyboard's way too. */
+    const remove = async (wrapper: Wrapper, title: string) => {
+      await wrapper
+        .findAll("button.log-block")
+        .find((block) =>
+          block.attributes("aria-label")!.startsWith(`${title},`),
+        )!
+        .trigger("click");
+      await flushPromises();
+      await button(wrapper, "Löschen").trigger("click");
+    };
 
     it("takes the stretch out at once and holds the delete behind the toast", async () => {
       const wrapper = await renderDay(twoLogs());
-      await remove(wrapper, "Kapitel 10:00 löschen");
+      await remove(wrapper, "Kapitel");
       await flushPromises();
       expect(rows(wrapper)).toEqual(["Lesen"]);
       expect(
-        wrapper.findAll('ol[aria-label="Gemessen"] button').map((block) =>
+        wrapper.findAll("button.log-block").map((block) =>
           block.attributes("aria-label"),
         ),
       ).toEqual(["Lesen, 11:00 bis 11:05, 5 Min., Kampagne Buch, korrigieren"]);
+      // The dialog closed with it.
+      expect(wrapper.find('input[name="start"]').exists()).toBe(false);
       // The server's total still counts it: no figure rather than a wrong one.
-      expect(wrapper.get("#day-axis-title").text()).toBe("Logbuch");
+      expect(wrapper.get(".day-calendar__title").text()).toBe("Logbuch");
       expect(wrapper.get(".undo-toast").text()).toContain(
         "Abschnitt „Kapitel“ gelöscht",
       );
@@ -1049,7 +1132,7 @@ describe("CalendarView Logbuch", () => {
 
     it("brings the stretch back with Rückgängig and never deletes it", async () => {
       const wrapper = await renderDay(twoLogs());
-      await remove(wrapper, "Kapitel 10:00 löschen");
+      await remove(wrapper, "Kapitel");
       await flushPromises();
       await wrapper
         .findAll("button")
@@ -1057,7 +1140,7 @@ describe("CalendarView Logbuch", () => {
         .trigger("click");
       await flushPromises();
       expect(rows(wrapper)).toEqual(["Kapitel", "Lesen"]);
-      expect(wrapper.get("#day-axis-title").text()).toBe("Logbuch 35 Min.");
+      expect(wrapper.get(".day-calendar__title").text()).toBe("Logbuch 35 Min.");
       wrapper.unmount();
       await flushPromises();
       expect(deleteWorkLog).not.toHaveBeenCalled();
@@ -1066,9 +1149,9 @@ describe("CalendarView Logbuch", () => {
     it("deletes when the next offer replaces the toast", async () => {
       vi.mocked(deleteWorkLog).mockResolvedValue();
       const wrapper = await renderDay(twoLogs());
-      await remove(wrapper, "Kapitel 10:00 löschen");
+      await remove(wrapper, "Kapitel");
       await flushPromises();
-      await remove(wrapper, "Lesen 11:00 löschen");
+      await remove(wrapper, "Lesen");
       await flushPromises();
       expect(deleteWorkLog).toHaveBeenCalledTimes(1);
       expect(deleteWorkLog).toHaveBeenCalledWith(1);
@@ -1080,12 +1163,12 @@ describe("CalendarView Logbuch", () => {
     it("sends a held delete when the page closes or the view goes", async () => {
       vi.mocked(deleteWorkLog).mockResolvedValue();
       const wrapper = await renderDay(twoLogs());
-      await remove(wrapper, "Kapitel 10:00 löschen");
+      await remove(wrapper, "Kapitel");
       window.dispatchEvent(new Event("pagehide"));
       await flushPromises();
       expect(deleteWorkLog).toHaveBeenCalledWith(1);
 
-      await remove(wrapper, "Lesen 11:00 löschen");
+      await remove(wrapper, "Lesen");
       wrapper.unmount();
       await flushPromises();
       expect(deleteWorkLog).toHaveBeenLastCalledWith(2);
@@ -1099,7 +1182,7 @@ describe("CalendarView Logbuch", () => {
         ),
       );
       const wrapper = await renderDay(twoLogs());
-      await remove(wrapper, "Kapitel 10:00 löschen");
+      await remove(wrapper, "Kapitel");
       window.dispatchEvent(new Event("pagehide"));
       await flushPromises();
       expect(rows(wrapper)).toEqual(["Kapitel", "Lesen"]);
@@ -1113,14 +1196,14 @@ describe("CalendarView Logbuch", () => {
         new ApiError("Work log with ID 1 was not found", 404),
       );
       const wrapper = await renderDay(twoLogs());
-      await remove(wrapper, "Kapitel 10:00 löschen");
+      await remove(wrapper, "Kapitel");
       window.dispatchEvent(new Event("pagehide"));
       await flushPromises();
       expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     });
   });
 
-  it("stacks each day's work by campaign in the week and names the colours", async () => {
+  it("names each day's worked time above its column and draws its stretches", async () => {
     const wrapper = await render();
     const week = weekResponse();
     week.days[2]!.work = {
@@ -1129,7 +1212,20 @@ describe("CalendarView Logbuch", () => {
         { campaign: book, minutes: 90 },
         { campaign: null, minutes: 45 },
       ],
-      logs: [],
+      logs: [
+        workLog({
+          endedAt: "2026-10-07T09:30:00.000Z",
+          minutes: 90,
+        }),
+        workLog({
+          id: 2,
+          title: "Mails",
+          startedAt: "2026-10-07T12:00:00.000Z",
+          endedAt: "2026-10-07T12:45:00.000Z",
+          minutes: 45,
+          campaign: null,
+        }),
+      ],
     };
     week.days[3]!.work = {
       minutes: 45,
@@ -1138,31 +1234,29 @@ describe("CalendarView Logbuch", () => {
     };
     mock.mockResolvedValue(week);
     await chooseMode(wrapper, "Woche");
-    const legend = wrapper.get(".week-logbook");
-    expect(legend.get("h2").text()).toBe("Logbuch 3 Std.");
-    expect(legend.findAll("li").map((row) => row.text())).toEqual([
-      "Buch2 Std. 15 Min.",
-      "Ohne Kampagne45 Min.",
-    ]);
-    const rows = wrapper.findAll(".week-day");
-    expect(rows[0]!.find(".work-bar").exists()).toBe(false);
-    expect(rows[2]!.get(".week-day__worked").text()).toBe("2 Std. 15 Min.");
-    expect(rows[2]!.findAll(".work-bar i")).toHaveLength(2);
-    expect(rows[2]!.get(".work-bar").attributes("style")).toContain(
-      "width: 100%",
+    const heads = wrapper.findAll(".week-head");
+    expect(heads[0]!.find(".week-head__worked").exists()).toBe(false);
+    expect(heads[2]!.get(".week-head__worked").text()).toBe("2 Std. 15 Min.");
+    const description = heads[2]!.attributes("aria-describedby")!;
+    expect(wrapper.get(`[id="${description}"]`).text()).toBe(
+      "1 von 1 erledigt · 1 übersprungen, 2 Std. 15 Min. im Logbuch",
     );
-    expect(rows[3]!.get(".work-bar").attributes("style")).toContain(
-      "width: 33.3",
-    );
-    // Nothing planned is not nothing done: the measured time is named.
-    expect(rows[3]!.get(".week-day__summary").text()).toBe(
+    // Nothing planned is not nothing done: the measured time is named once.
+    const quiet = heads[3]!.attributes("aria-describedby")!;
+    expect(wrapper.get(`[id="${quiet}"]`).text()).toBe(
       "Nichts geplant · 45 Min. gemessen",
     );
-    expect(rows[0]!.get(".week-day__summary").text()).toBe("Nichts geplant");
-    const description = rows[2]!.attributes("aria-describedby")!;
-    expect(wrapper.get(`[id="${description}"]`).text()).toContain(
-      "2 Std. 15 Min. im Logbuch: Buch 1 Std. 30 Min., Ohne Kampagne 45 Min.",
-    );
+    const column = wrapper.get('.week-column[data-date="2026-10-07"]');
+    expect(
+      column.findAll("button.log-block").map((block) =>
+        block.attributes("aria-label"),
+      ),
+    ).toEqual([
+      "Kapitel, 10:00 bis 11:30, 1 Std. 30 Min., Kampagne Buch, korrigieren",
+      "Mails, 14:00 bis 14:45, 45 Min., ohne Kampagne, korrigieren",
+    ]);
+    // The old list of the week is gone.
+    expect(wrapper.find(".week-logbook").exists()).toBe(false);
   });
 
   it("shows a day's worked time quietly in the month", async () => {
@@ -1291,11 +1385,16 @@ describe("CalendarView: Daily runs, counting and order of a day", () => {
     mock.mockResolvedValue(week);
     await wrapper.get('[name="historyDate"]').setValue("2026-10-07");
     await chooseMode(wrapper, "Woche");
-    const rows = wrapper.findAll(".week-day__summary");
-    expect(rows[1]!.text()).toBe("Nichts geplant");
-    expect(rows[2]!.text()).toBe(
+    const heads = wrapper.findAll(".week-head");
+    expect(heads[1]!.find(".week-head__summary").exists()).toBe(false);
+    // Without a time, done and open; what waits from earlier is named apart.
+    expect(heads[2]!.get(".week-head__summary").text()).toBe(
+      "2 Quests · 1 von früher",
+    );
+    expect(heads[3]!.get(".week-head__summary").text()).toBe("1 Quest");
+    const description = heads[2]!.attributes("aria-describedby")!;
+    expect(wrapper.get(`[id="${description}"]`).text()).toBe(
       "1 von 2 erledigt · 1 von früher · 1 übersprungen",
     );
-    expect(rows[3]!.text()).toBe("1 geplant");
   });
 });

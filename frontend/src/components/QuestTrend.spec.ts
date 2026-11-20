@@ -1,5 +1,5 @@
 import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import QuestTrend from "./QuestTrend.vue";
 
 const STARTS = ["2026-11-02", "2026-11-09", "2026-11-16"];
@@ -20,14 +20,17 @@ describe("QuestTrend", () => {
     expect(last).toBeLessThan(first!);
   });
 
-  it("says every week in words", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("says every week in words, the running one as this week", () => {
+    vi.useFakeTimers({ now: new Date("2026-11-18T12:00:00Z") });
     const wrapper = mount(QuestTrend, {
       props: { weeks: [0, 120, 60], starts: STARTS, mark: "red" },
     });
     const svg = wrapper.get("svg");
     expect(svg.attributes("role")).toBe("img");
     expect(svg.attributes("aria-label")).toBe(
-      "Kampagnen-Stunden der letzten 3 Wochen. Woche ab 02.11.: 0 Min., Woche ab 09.11.: 2 Std., Woche ab 16.11.: 1 Std.",
+      "Letzte 3 Wochen: ab 02.11. 0 Min., ab 09.11. 2 Std., diese Woche 1 Std.",
     );
   });
 

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { eventsOfDays } from '../calendar/day-events';
 import { CategoryEntity } from '../categories/category.entity';
+import { categoryLabels } from '../categories/category-lookup';
 import { dayOf, weekRange } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
@@ -18,6 +19,7 @@ import {
 } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { lastMovableDate } from '../habits/scheduling/schedule-rules';
+import { loadStreaks, NO_STREAK } from '../habits/streaks';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { habitGoals } from '../todos/habit-goal';
 import { loadTodoAncestry } from '../todos/todo-ancestry';
@@ -26,12 +28,13 @@ import { workedMinutes } from '../work-logs/work-time';
 import {
   completedTodos,
   openScheduledTodos,
+  overdueTodos,
   placeOpenTodo,
 } from '../todos/todo-agenda';
 import { resolvedOccurrences } from '../habit-occurrences/resolved-occurrences';
 import { loadHabitForecast } from '../history/habit-forecast';
 import { openTargetRuns, plannedHabits } from '../history/history-planning';
-import { weeklyQuestTarget } from '../quest-hours/quest-hours.service';
+import { weeklyQuestTarget } from '../quest-hours/weekly-target';
 import { questSoFar } from '../quest-hours/quest-time';
 import { compareInDay } from './day-order';
 import {
@@ -43,16 +46,22 @@ import {
 } from './dto/day-planner-response.dto';
 import { WeekPlanResponseDto } from './dto/week-plan.dto';
 import {
-  arrangeWeek,
+  arrangePlan,
+  planDates,
   plannedHabitCandidate,
   resolvedHabitCandidate,
   todoCandidate,
-  weekDates,
 } from './week-plan';
 
 /** Fields filled after mapping, from lookups across all items. */
 type ContextField =
-  'categoryName' | 'why' | 'goal' | 'campaign' | 'workedMinutes';
+  | 'categoryName'
+  | 'categoryColor'
+  | 'why'
+  | 'goal'
+  | 'campaign'
+  | 'workedMinutes'
+  | 'streak';
 
 @Injectable()
 export class DayPlannerService {
@@ -71,13 +80,11 @@ export class DayPlannerService {
       this.scheduling.getToday(userId),
       this.db.getRepository(CategoryEntity).findBy({ userId }),
     ]);
-    const names = new Map(categories.map((item) => [item.id, item.name]));
-    const categoryName = (id: number | null): string | null =>
-      (id !== null && names.get(id)) || null;
+    const category = categoryLabels(categories);
 
     // The week's stretches: today's work and the week's quest hours.
     const { startDate, endDate } = weekRange(today);
-    const [parents, habitGoalsByHabit, logs, ancestry, questTarget] =
+    const [parents, habitGoalsByHabit, logs, ancestry, questTarget, streaks] =
       await Promise.all([
         this.parentsOf(userId, todos),
         this.habitGoalsFor(
@@ -87,7 +94,12 @@ export class DayPlannerService {
         ),
         logsOfDays(this.db.manager, userId, startDate, endDate),
         loadTodoAncestry(this.db.manager, userId, today),
-        weeklyQuestTarget(this.db.manager, userId),
+        weeklyQuestTarget(this.db.manager, userId, startDate),
+        loadStreaks(
+          this.db.manager,
+          occurrences.map((occurrence) => occurrence.habitId),
+          this.clock.now(),
+        ),
       ]);
     const workedOn = (key: 'todoId' | 'occurrenceId', id: number): number =>
       workedMinutes(
@@ -101,7 +113,7 @@ export class DayPlannerService {
           todo.parentId === null ? undefined : parents.get(todo.parentId);
         const item: DayPlannerItemDto = {
           ...this.mapTodo(todo, today),
-          categoryName: categoryName(todo.categoryId),
+          ...category(todo.categoryId),
           why: ancestry.todoWhy(todo),
           goal: parent
             ? { title: parent, completed: null, target: null, periodEnd: null }
@@ -114,11 +126,12 @@ export class DayPlannerService {
       ...occurrences.map((occurrence) => {
         const item: DayPlannerItemDto = {
           ...this.mapOccurrence(occurrence, today),
-          categoryName: categoryName(occurrence.habit.categoryId),
+          ...category(occurrence.habit.categoryId),
           why: ancestry.habitWhy(occurrence.habit),
           goal: habitGoalsByHabit.get(occurrence.habitId) ?? null,
           campaign: ancestry.habitCampaign(occurrence.habitId),
           workedMinutes: workedOn('occurrenceId', occurrence.id),
+          streak: streaks.get(occurrence.habitId) ?? NO_STREAK,
         };
         return { item, id: occurrence.id, dayPosition: occurrence.dayPosition };
       }),
@@ -158,27 +171,37 @@ export class DayPlannerService {
   }
 
   /**
-   * The week from Monday `start` as a board of days, from one consistent
-   * read that reconciles nothing. Todos follow the todo agenda, habits the
-   * forecast history uses; past days only show what was done.
+   * `days` days from `from` as a board of columns, and what is overdue,
+   * from one consistent read. Todos follow the todo agenda, habits the
+   * forecast history uses; past days only show what was done. Today's runs
+   * are stored first, as Heute does, so the board can sort, move and open
+   * them like Heute; later days keep their forecast.
    */
-  getWeek(userId: string, start: string): Promise<WeekPlanResponseDto> {
-    const dates = weekDates(start);
+  async getPlan(
+    userId: string,
+    from: string,
+    days: number,
+  ): Promise<WeekPlanResponseDto> {
+    const dates = planDates(from, days);
     const firstDay = dates[0];
     const lastDay = dates[dates.length - 1];
     const now = this.clock.now();
     const today = dayOf(now);
-    // Open items only exist from today on; earlier ones are carried to today.
-    const plansAhead = lastDay >= today;
+    // Open items only exist from today on; earlier ones are overdue.
+    const ahead = dates.filter((date) => date >= today);
+    // Today is always forecast: its carried-over runs are overdue.
+    const forecastDates = [today, ...ahead.filter((date) => date !== today)];
+    await this.scheduling.reconcileAll(userId);
     return this.db.transaction('REPEATABLE READ', async (manager) => {
       const ancestry = await loadTodoAncestry(manager, userId, today);
-      const open = plansAhead
+      const open = ahead.length
         ? await openScheduledTodos(manager, userId, {
-            firstDay,
+            firstDay: ahead[0],
             lastDay,
-            includeOverdue: dates.includes(today),
+            includeOverdue: false,
           })
         : [];
+      const overdue = await overdueTodos(manager, userId, today);
       const completed = await completedTodos(manager, userId, {
         firstDay,
         lastDay,
@@ -187,41 +210,47 @@ export class DayPlannerService {
         firstDay,
         lastDay,
       });
-      const forecast = plansAhead
-        ? await loadHabitForecast(manager, userId, dates, today, now)
-        : null;
-      const positions = new Map(
-        (forecast?.occurrences ?? []).map(({ id, dayPosition }) => [
-          id,
-          dayPosition,
-        ]),
+      const forecast = await loadHabitForecast(
+        manager,
+        userId,
+        forecastDates,
+        today,
+        now,
       );
-      const planned = forecast
-        ? [
-            ...plannedHabits(
+      const positions = new Map(
+        forecast.occurrences.map(({ id, dayPosition }) => [id, dayPosition]),
+      );
+      const streaks = await loadStreaks(
+        manager,
+        [
+          ...forecast.habits.map(({ id }) => id),
+          ...resolved.map(({ habitId }) => habitId),
+        ],
+        now,
+      );
+      const streakOf = (habitId: number) => streaks.get(habitId) ?? NO_STREAK;
+      const planned = [
+        ...plannedHabits(
+          forecast.habits,
+          forecast.slots,
+          forecast.occurrences,
+          today,
+        ),
+        // Today's run of a weekly target, as Heute lists it.
+        ...(dates.includes(today)
+          ? openTargetRuns(
               forecast.habits,
-              forecast.slots,
+              forecast.versions,
               forecast.occurrences,
               today,
-            ),
-            // Today's run of a weekly target, as Heute lists it.
-            ...(dates.includes(today)
-              ? openTargetRuns(
-                  forecast.habits,
-                  forecast.versions,
-                  forecast.occurrences,
-                  today,
-                )
-              : []),
-          ]
-            // A stable start for runs that were never sorted.
-            .sort((first, second) =>
-              first.title.localeCompare(second.title, 'de'),
             )
-        : [];
+          : []),
+      ]
+        // A stable start for runs that were never sorted.
+        .sort((first, second) => first.title.localeCompare(second.title, 'de'));
 
       const candidates = [
-        ...[...open, ...completed].map((todo) =>
+        ...[...overdue, ...open, ...completed].map((todo) =>
           todoCandidate(todo, today, ancestry.campaignOf(todo)),
         ),
         ...planned.map((item) =>
@@ -230,6 +259,7 @@ export class DayPlannerService {
             item.id === null ? null : (positions.get(item.id) ?? null),
             today,
             ancestry.habitCampaign(item.habitId!),
+            streakOf(item.habitId!),
           ),
         ),
         ...resolved.map((occurrence) =>
@@ -244,6 +274,7 @@ export class DayPlannerService {
             occurrence.habit,
             effectiveDuration(occurrence, occurrence.habit),
             ancestry.habitCampaign(occurrence.habitId),
+            streakOf(occurrence.habitId),
           ),
         ),
       ];
@@ -251,7 +282,7 @@ export class DayPlannerService {
         startDate: firstDay,
         endDate: lastDay,
         today,
-        days: arrangeWeek(dates, candidates),
+        ...arrangePlan(dates, candidates),
       };
     });
   }

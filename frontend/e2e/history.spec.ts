@@ -114,7 +114,7 @@ test("Calendar day: automatic skips stay on planned days; completed and deleted 
     `${API_URL}/history?date=${earlier}&view=week`,
   );
   await page.getByRole("button", { name: "Woche", exact: true }).click();
-  await expect(page.locator(".week-day")).toHaveCount(7);
+  await expect(page.locator(".week-head")).toHaveCount(7);
   await filterCalendar(page, "Quests");
   await expect(page.locator(".empty-state")).toBeVisible();
   const after = await request.get(
@@ -178,11 +178,19 @@ test("Calendar: month opens a day, Monday-first week rows, filters and soft-dele
   await expect(page.locator(".history-item")).toContainText("Gelöscht");
   await expect(page.locator(".history-item")).toContainText("Geplant für");
   await view.getByRole("button", { name: "Woche", exact: true }).click();
-  await expect(page.locator(".week-day")).toHaveCount(7);
-  await expect(page.locator(".week-day").first()).toContainText("Montag");
-  await expect(page.locator(".week-day").last()).toContainText("Sonntag");
-  const day = page.locator(`.week-day[data-date="${date}"]`);
-  await expect(day).toContainText("1 erledigt");
+  await expect(page.locator(".week-head")).toHaveCount(7);
+  // Seven day columns on one hour axis, Monday first.
+  await expect(page.locator(".week-head").first()).toHaveAccessibleName(
+    /^Montag, /,
+  );
+  await expect(page.locator(".week-head").last()).toHaveAccessibleName(
+    /^Sonntag, /,
+  );
+  await expect(page.locator(".week-column")).toHaveCount(7);
+  const day = page.locator(`.week-head[data-date="${date}"]`);
+  // The head names what the day holds without a time; the sentence counts it.
+  await expect(day.locator(".week-head__summary")).toHaveText("1 Quest");
+  await expect(day).toHaveAccessibleDescription(/1 von 1 erledigt/);
   await page
     .getByRole("button", { name: `${dayLabel(date)} öffnen`, exact: true })
     .click();
@@ -291,10 +299,15 @@ test("Calendar week: open plans, overdue Quests and weekly targets stay calm", a
     }),
   );
   await view.getByRole("button", { name: "Woche", exact: true }).click();
-  const day = page.locator(`.week-day[data-date="${date}"]`);
+  const day = page.locator(`.week-head[data-date="${date}"]`);
   // Counted like Heute: today's own (with the weekly target's run Heute
   // lists) and, apart, what waits from an earlier day.
-  await expect(day).toContainText("0 von 3 erledigt · 1 von früher");
+  await expect(day).toHaveAccessibleDescription(
+    /^0 von 3 erledigt · 1 von früher/,
+  );
+  await expect(day.locator(".week-head__summary")).toContainText(
+    "1 von früher",
+  );
   await expect(targets).toContainText("Leseziel");
   await expect(targets).toContainText("Noch 3 von 3 · 0 erledigt");
   await expect(targets).not.toContainText("Gültig");
@@ -349,12 +362,14 @@ test("Calendar week: open plans, overdue Quests and weekly targets stay calm", a
   });
   await filterCalendar(page, "Quests");
   await expect(targets).toHaveCount(0);
-  await expect(day).toContainText("0 von 1 erledigt · 1 von früher");
+  await expect(day).toHaveAccessibleDescription(
+    /^0 von 1 erledigt · 1 von früher/,
+  );
   await filterCalendar(page, "Dailies");
-  await expect(day).toContainText("0 von 2 erledigt");
+  await expect(day).toHaveAccessibleDescription(/^0 von 2 erledigt/);
   await expect(targets).toBeVisible();
   await page.locator('[name="historyDate"]').fill(daysAfter(date, -14));
-  await expect(page.locator(".week-day")).toHaveCount(0);
+  await expect(page.locator(".week-head")).toHaveCount(0);
   await expect(page.locator(".empty-state")).toBeVisible();
   await expect(targets).toHaveCount(0);
   const after = await Promise.all(
@@ -426,7 +441,7 @@ test("Calendar forecast: future date placement, schedule change, pause and delet
   await page.goto("/");
   const view = await openCalendar(page, "Woche");
   await page.locator('[name="historyDate"]').fill(monday);
-  await expect(page.locator(".week-day")).toHaveCount(7);
+  await expect(page.locator(".week-head")).toHaveCount(7);
   const expected = [
     ["Wechselnder Rhythmus"],
     ["Geplanter Artikel", "Wechselnder Rhythmus"],
@@ -436,14 +451,19 @@ test("Calendar forecast: future date placement, schedule change, pause and delet
     [],
     ["Wechselnder Rhythmus"],
   ];
-  for (let index = 0; index < 7; index++)
-    await expect(
-      page.locator(`.week-day[data-date="${dates[index]}"]`),
-    ).toContainText(
+  // The head names quests and Dailies without a time; the sentence counts the day.
+  const untimed = ["1 Daily", "1 Quest · 1 Daily", "1 Daily", null, "1 Daily", null, "1 Daily"];
+  for (let index = 0; index < 7; index++) {
+    const head = page.locator(`.week-head[data-date="${dates[index]}"]`);
+    const line = untimed[index];
+    if (line) await expect(head.locator(".week-head__summary")).toHaveText(line);
+    else await expect(head.locator(".week-head__summary")).toHaveCount(0);
+    await expect(head).toHaveAccessibleDescription(
       expected[index]!.length
         ? `${expected[index]!.length} geplant`
         : "Nichts geplant",
     );
+  }
   await page
     .getByRole("button", { name: `${dayLabel(monday)} öffnen`, exact: true })
     .click();
@@ -608,30 +628,27 @@ test("Calendar day: reflection saves only after a change and time is logged in t
   await expect(reflection.getByLabel("Reflexion")).toHaveValue("Ruhiger Tag");
 
   const logbook = view.getByRole("region", { name: /^Logbuch/ });
-  await expect(logbook).toContainText("Heute wurde noch keine Zeit gemessen.");
   await logbook
     .getByRole("button", { name: "Zeit nachtragen", exact: true })
     .click();
-  await logbook
+  const dialog = page.getByRole("dialog", { name: "Zeit nachtragen" });
+  await dialog
     .locator('[name="target"]')
     .selectOption({ label: "Schreibzeit" });
   // Early in the day, so the end is never in the future.
-  await logbook.locator('[name="from"]').fill("00:00");
-  await logbook.locator('[name="to"]').fill("00:01");
-  await logbook
-    .getByRole("button", { name: "Nachtragen", exact: true })
-    .click();
-  const entries = logbook.getByRole("list", { name: "Einträge im Logbuch" });
-  await expect(entries).toContainText("Schreibzeit");
-  await expect(entries).toContainText("1 Min.");
+  await dialog.locator('[name="from"]').fill("00:00");
+  await dialog.locator('[name="to"]').fill("00:01");
+  await dialog.getByRole("button", { name: "Nachtragen", exact: true }).click();
+  // Saved, the dialog closes and the stretch stands on the day's column.
+  await expect(dialog).toHaveCount(0);
   await expect(
     logbook
-      .getByRole("list", { name: "Gemessen", exact: true })
+      .getByRole("list", { name: "Zeitachse", exact: true })
       .getByRole("button", { name: /^Schreibzeit, 00:00 bis 00:01, 1 Min\./ }),
   ).toBeVisible();
-  await expect(logbook).not.toContainText("keine Zeit gemessen");
-  // Saved, the form folds away again.
-  await expect(logbook.locator('[name="target"]')).toHaveCount(0);
+  await expect(logbook.getByRole("heading", { level: 2 })).toHaveText(
+    "Logbuch 1 Min.",
+  );
 });
 
 test("Calendar day: sorted like Heute, counted like Heute, and Dailies are ticked with undo", async ({
@@ -712,7 +729,7 @@ test("Calendar day: sorted like Heute, counted like Heute, and Dailies are ticke
   // The completion mark on the axis reads as one phrase.
   await expect(
     page
-      .getByRole("list", { name: "Geplant", exact: true })
+      .getByRole("list", { name: "Zeitachse", exact: true })
       .getByRole("listitem")
       .filter({ hasText: "Gliederung" }),
   ).toMatchAriaSnapshot(String.raw`- listitem: /Gliederung, erledigt um \d\d:\d\d/`);

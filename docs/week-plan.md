@@ -1,49 +1,63 @@
-# The week plan (Plan)
+# The plan board (Plan)
 
-A board of seven day columns, Monday to Sunday in Europe/Berlin, to plan a
-week the way Heute plans a day. It reads and writes the same model as Heute
-(see `day-order.md`): a todo has its day, an appointment also a time, and
-everything else follows the order of its day.
+A board that starts with today, to plan the next days the way Heute plans
+one. From left to right: the Questlog, what was left behind ("Liegen
+geblieben", only when there is something), today, then as many following
+days as fit the window. There are no past days and no fixed weeks. The board
+reads and writes the same model as Heute (see `day-order.md`): a todo has
+its day, an appointment also a time, and everything else follows the order
+of its day. In code the feature keeps its earlier name, the week plan
+(`week-plan.ts`, `WeekPlan*` types).
 
-## Read: `GET /day-planner/week?start=YYYY-MM-DD`
+## Read: `GET /day-planner/plan?from=YYYY-MM-DD&days=N`
 
-`start` must be a Monday (`week-plan.ts` `weekDates`; anything else is 400,
-as is a malformed or out-of-range date or an unknown query field). The answer
-is one `REPEATABLE READ` snapshot that reconciles and generates nothing:
+`days` columns from `from`, any weekday, `days` from 1 to 31
+(`week-plan.ts` `planDates`, `MAX_PLAN_DAYS`; anything else is 400, as is a
+malformed or out-of-range date or an unknown query field). The board only
+asks from today on, but a past day would just show what was done. First it
+reconciles the user's active habits the way Heute does
+(`HabitSchedulingService.reconcileAll`), so today's runs are stored and the
+board can sort, move and open them; then the answer is one `REPEATABLE READ`
+snapshot that writes nothing:
 
 ```ts
-{ startDate, endDate, today, days: [{ date, entries: WeekPlanEntry[] }] }
+{ startDate, endDate, today, days: [{ date, entries: WeekPlanEntry[] }], overdue: WeekPlanEntry[] }
 ```
 
 Each day lists its open entries in the order of the day, then the resolved
-ones in that same order (`arrangeWeek`, sorting with `day-order.ts`
+ones in that same order (`arrangePlan`, sorting with `day-order.ts`
 `compareInDay`). An entry is a todo (`todoId`, `status`, `scheduledDate`) or a
-habit run (`habitId`, `occurrenceId`, `status`), both with `title`,
-`timeOfDay`, `plannedDurationMinutes`, `campaign` (`todo-ancestry.ts`) and
-`isOverdue`.
+habit run (`habitId`, `occurrenceId`, `status`, `moveUntil`, the last
+day an open stored run may move to, `timerEligible` and `streak`, see
+`streaks.md`), both with `title`, `timeOfDay`, `plannedDurationMinutes`,
+`campaign` (`todo-ancestry.ts`) and `isOverdue`.
 
 Where things show up, built from the existing definitions instead of a second
 projection:
 
-- **Open todos** follow the todo agenda (`todo-agenda.ts`): on their day, or
-  on today when overdue (with their original `scheduledDate`). A week that
-  lies entirely in the past has no open entries.
+- **Open todos** follow the todo agenda (`todo-agenda.ts`): on their day.
+- **Overdue** (`overdue`) is what Heute offers under Nachholen, whatever days
+  were asked for: open todos planned before today (`overdueTodos`, the rule
+  of `placeOpenTodo`) and open runs the forecast carries to today from an
+  earlier slot (`isOverdue` of `plannedHabits`). Earliest day first, then the
+  order they had. They never stand on today's column.
 - **Completed todos** sit on the day they were completed (`completedTodos`).
 - **Open habit runs** come from the forecast history uses
   (`history/habit-forecast.ts` → `history-planning.ts` `plannedHabits`): a
   stored pending run where it exists, otherwise a run the schedule forecasts,
-  with `occurrenceId: null`. Forecast runs are never written by this read;
-  they have no position, so they follow everything sorted. Weekly-target
-  dailies have no day of their own and are not shown, as in the calendar's
-  day lists.
+  with `occurrenceId: null`. Today's runs are stored by the reconciliation
+  before the read, so only later days hold forecasts. Today is always part of
+  the forecast, so its carried-over runs are found even when the board starts
+  later. Forecast runs are never written by this read; they have no position, so they follow
+  everything sorted. Weekly-target dailies have no day of their own and are
+  not shown, except today's stored run (`openTargetRuns`), as in the
+  calendar.
 - **Resolved runs** (`resolvedOccurrences`): a completed one on the day it
   was done, a skipped one on its due day.
 
 Every query is scoped to the user; occurrences through their habit.
 
 ## Write: the existing paths
-
-The board has no write endpoint of its own.
 
 - **Within a day** it stores the day's order with `PUT /day-planner/order`.
   That endpoint was never tied to today: a position only counts among the
@@ -52,103 +66,148 @@ The board has no write endpoint of its own.
   (which resets its position, see `day-order.md`) and then stores the target
   day's order, so the quest lands where it was dropped. An appointment is
   moved with `confirmFixed` (the drag is the confirmation), keeps its time
-  and needs no order.
-- Dropping an overdue quest on today plans it for today.
+  and needs no order. A quest left behind moves the same way.
+- **A daily's stored run** sorts within its day with the same order
+  endpoint and moves to another day with `POST /habit-occurrences/:id/reschedule`
+  (Heute's "Morgen" and "Anderer Tag …"), then the target day's order is
+  stored. It only moves within its window, from today to `moveUntil`
+  (`utils/week-plan.ts` `runMayMoveTo`, the server checks the same); a drop
+  beyond it stays where it was and the board says how far it may wait. A
+  forecast run has nothing stored and does not drag.
 - The past takes no drops, and reschedule refuses past days anyway.
 - The day's order sent to the server holds the open untimed entries that are
-  stored: quests and stored habit runs, not appointments, not carried-over
-  entries, not forecast runs (`utils/week-plan.ts` `dayOrder`).
-- **From the Questlog column** (below) a quest has no day yet, and
-  `reschedule` refuses quests without one. It is planned with the Questlog
-  editor's own save (`PATCH /todos/:id` with title, day, no time and its
-  duration; `api/questlog.api.ts` `planQuest`, which the Questlog and its
-  T/D/W use too), then the target day's order is stored, so it lands where
-  it was dropped.
+  stored: quests and stored habit runs, not appointments, not forecast runs
+  (`utils/week-plan.ts` `dayOrder`).
+- **From the Questlog column** a quest has no day yet, and `reschedule`
+  refuses quests without one. It is planned with the Questlog editor's own
+  save (`PATCH /todos/:id` with title, day, no time and its duration;
+  `api/questlog.api.ts` `planQuest`, which the Questlog and its T/D/W use
+  too), then the target day's order is stored.
+- **Into the Questlog column** a quest from a day (or one left behind) loses
+  its day (`PATCH /todos/:id` with `scheduledDate: null`, `unplanQuest`;
+  an appointment loses its time with it), then the column's whole order is
+  stored with `PUT /todos/backlog/order`, so it lands where it was dropped.
+  Sorting inside the column only stores that order (see `day-order.md` ›
+  The Questlog's order).
 
-## The Questlog column
+## The columns
 
-From 56rem the board has the Questlog on its left: the open quests without
-a day that one can work on (`GET /todos/backlog`: no campaigns, no
-Questreihen with open quests, see `todo-hierarchy.md`; it names each quest's
-`campaign` like Heute's items do, so the column draws the stripe). It is a drag source in
-the board's SortableJS group (`put: false`, so nothing is dropped back);
-dropping a quest on a day applies `dropOnDay` with the quest as `incoming`
-(it comes from no column and always moves), shows it there and removes it
-from the column at once, then writes as above. A failed write puts both
-back and reloads quietly, like any other drop.
+- **Questlog** (`PlanQuestlog.vue`), always at the far left, also on a
+  phone: the open quests without a day that one can work on, in the
+  Questlog's own order (`GET /todos/backlog`: no campaigns, no Questreihen
+  with open quests, see `todo-hierarchy.md`; each names its `campaign`, so
+  the column draws the stripe). Its list is part of the board's SortableJS
+  group in both directions. Collapsed it is a rail as wide as its toggle
+  (2.75rem) with the count. Without a choice it starts open from 80rem and
+  collapsed below (`questlogStartsOpen`); toggling stores the explicit
+  choice per device in `localStorage` (`plan:questlog` = `open` or
+  `closed`), which then wins at any width. When the board has to scroll
+  sideways the column is sticky at the left edge, on an opaque ground.
+- **Liegen geblieben** (`PlanOverdue.vue`), only when `overdue` has
+  entries: a column like a day's without a quick add. Its quests drag onto
+  a day or into the Questlog column and move through their menu (Heute,
+  Morgen, Nächste Woche, Anderer Tag …); its runs drag onto a day of their
+  window and move through Heute's menu. They take no arrow keys and the
+  column takes no drops and keeps its order.
+- **Days** (`PlanDay.vue`): today with the calendar's ink frame, then the
+  following days.
 
-The keyboard and touch alternative is each row's menu "Aktionen für …" with
-"Einplanen auf …" for every day of the board from today on; it puts the
-quest at the end of that day's order through the same path. T, D and W on
-a column row do the same (beyond the board, next Monday is planned with the
-editor's save alone), X ticks it with the undo toast and Space runs its
-stopwatch.
+## How many days, and the address
 
-Collapsed it is a rail as wide as its toggle (2.75rem) with the count.
-Without a choice it starts open from 80rem and collapsed below
-(`utils/week-plan.ts` `questlogStartsOpen`, reactive to the window); toggling
-stores the explicit choice per device in `localStorage` (`plan:questlog` =
-`open` or `closed`), which then wins at any width. Beside it a day column is
-at least 8.5rem wide, enough for common German words at the entries' type
-size, so the whole week fits from about 1100px beside the rail and from
-1280px beside the open column. A phone has no column and loads nothing for
-it.
+The view measures its frame with a `ResizeObserver` and counts how many day
+columns of at least 14rem fit beside the Questlog column (12rem open,
+2.75rem as a rail) and, when there is one, the column of what was left
+behind, with 0.5rem gaps (`utils/week-plan.ts` `fittingDays`, `BOARD`). The
+columns share the rest of the width (`boardColumns`: `minmax(14rem, 1fr)`).
+At least one day shows, from 56rem at least two; where even that does not
+fit, the board scrolls sideways inside itself (never the page) and opens so
+that today stands right beside the sticky Questlog column (`todayScroll`).
+The page is up to 120rem wide. One read loads 14 days (more if more fit), so
+a resize rarely loads again; what is shown is the first `fittingDays` of
+them. Without layout (tests) it shows seven.
 
-## Widths, wrapping and where the board opens
+The address keeps the first day shown: `#/plan` is today, `#/plan?ab=<day>`
+a later one (`firstDayFromQuery`; a past or unusable day means today).
+"Vorige Tage" and "Nächste Tage" step by the number of days shown, never
+before today (`shiftedStart`; "Vorige Tage" is disabled at today). "Heute"
+stands before the arrows and shows only away from today (The Way-Back Rule);
+after it the focus goes to the heading, which names the range
+(`rangeLabel`, "20.–23. Nov."). An old link with `?woche=<Monday>` is
+redirected by the router to the first day of that week still ahead
+(`planQueryFromWeek`): the current or a past week opens on today.
+
+## Cards and keys
+
+- `components/PlanEntry.vue`: a compact card. A quest's title, or a tap
+  anywhere else on it, opens `EditItemDialog`; the whole card drags; its
+  menu (built by `PlanView` with `rowMenu`) holds Morgen / Nächste Woche,
+  "Anderer Tag …" (`MoveItemDialog`), Bearbeiten, Stoppuhr starten (a
+  compact card has no ▶), "In Kampagne verschieben …"
+  (`CampaignMoveDialog`), Nach oben / Nach unten in the day and Löschen
+  (`DeleteItemDialog`, the editor's confirmation). With the focus on a
+  quest's card (its title button), the arrow keys move it like dragging:
+  ArrowUp / ArrowDown one place in the day's order, ArrowLeft / ArrowRight
+  to the end of the day before or after among the days shown (never into
+  the past); the focus stays on the card and the move is announced in the
+  live region. A daily's run is a card like a quest's: a tap opens the
+  daily's editor with the notes of this run (`EditItemDialog` with
+  `occurrenceId`), a stored open run drags and takes the arrow keys within
+  its window, and its menu holds what Heute's does: the quick moves its
+  window allows, "Anderer Tag …", Überspringen (once due), Bearbeiten,
+  Stoppuhr starten, Nach oben / Nach unten and Löschen of the whole daily;
+  X ticks it with the undo toast once it is due, Space measures it, T, D and
+  W move it like its menu. A forecast run only opens its daily, and its menu
+  holds Bearbeiten and Löschen. Its details name a running series ("4 in
+  Folge"). In the Questlog
+  column the menu holds the days shown, Bearbeiten, Stoppuhr starten,
+  "In Kampagne verschieben …", Nach oben / Nach unten in the Questlog and
+  Löschen; its cards take no arrow keys. T, D and W on a column row plan it
+  (beyond the board with the editor's save alone), X ticks it with the undo
+  toast and Space runs its stopwatch.
+- The Questlog column starts with the same quick add without a day: Enter
+  puts the quest at the head or the end of the Questlog's order
+  (`backlogPlace`, see `day-order.md`).
+- Each day starts with its quick add (`QuickAddQuest`) above the cards:
+  Enter plans the quest on that day, at the end of its order, or at its head
+  while ↑ ("Oben einfügen") is pressed. The two small toggles ↑ / ↓ beside
+  the field are one choice per device for every quick add, Heute's too
+  (`composables/useInsertPlace.ts`, `localStorage` `quickAdd:place`).
+
+## Widths and wrapping
 
 - A day column has slim side padding (0.375rem); an entry gives its title
-  the full width and puts the grip below it (beside the details, if any).
-  From a 15rem entry (a phone's single day) the grip sits beside title and
-  details again. Below an 8.25rem entry the title is 0.875rem instead of
-  0.9375rem.
+  the full width and puts its menu "…" below it (beside the details, if any).
+  From a 15rem entry the menu sits beside title and details again. Below an
+  8.25rem entry the title is 0.875rem instead of 0.9375rem.
 - Titles wrap between words (`overflow-wrap: break-word`); only a word
   longer than the whole line breaks inside. `hyphens: auto` (words of ten
   characters and more) helps where the platform has a German dictionary, but
   the widths never rely on it. A title is clamped to three lines; its tooltip
-  and accessible names keep it whole. The campaign has its own line with an
-  ellipsis in narrow columns.
+  and accessible names keep it whole. The campaign's chip has its own line
+  and ends in an ellipsis in narrow columns.
 - The quick add's placeholder is "Quest hinzufügen …" where it fits and
   "Hinzufügen …" where not, measured against the field (`utils/fit-text.ts`,
   re-measured on resize and once the web font is in).
-- Where the days do not fit, the board scrolls sideways inside itself and
-  snaps to column starts. It opens at Monday while today is fully visible
-  from there (always when the week fits); otherwise it scrolls as little as
-  needed for today to be fully visible, landing on a column's start
-  (`utils/week-plan.ts` `boardScroll`). A phone, where one day fills the
-  view, thus opens on today.
-- The loading bones take the board's columns (with the Questlog column
-  where it exists) and are clipped, never scrolled.
+- The loading bones take the board's columns and are clipped, never scrolled.
 
 ## Frontend
 
-- `views/PlanView.vue` (`#/plan`, the week in `?woche=<Monday>`; the current
-  week has the plain address). Week switcher, the range as heading, loading
-  skeleton, load error with retry, a lead when an upcoming week is empty.
-  "Diese Woche" stands before the arrows and shows only away from the
-  current week (`offersWayBack`; the Wochenrückblick and the Kalender's
-  "Heute" follow the same rule); after it the focus goes to the heading.
-- `components/PlanDay.vue`: one column (heading, "n offen · Dauer", the open
-  list as a SortableJS list in the group `week-plan`, quick add, then what is
-  done). Past columns take no drops and offer no quick add.
-- `components/PlanEntry.vue`: a compact row. A quest's title opens
-  `EditItemDialog`; its grip is its one move control: drag it, use Arrow
-  Up/Down (place in the day) and Left/Right (day before/after), or tap it for
-  `MoveItemDialog`. Dailies are fixed rows without controls. In the
-  Questlog column the same row takes a `menu` and a drag-only grip.
-- `components/PlanQuestlog.vue`: the Questlog column (list, drag source,
-  menus, collapse toggle); `composables/useMediaQuery.ts` decides whether it
-  exists.
-- `utils/week-plan.ts`: the pure rules: `dropOnDay` applies a drop to the plan
+- `views/PlanView.vue` (`#/plan`, `?ab=<first day>`): the range as heading,
+  "Heute" and the arrows, loading skeleton, load error with retry, a lead
+  when nothing is planned on the days shown and nothing was left behind.
+- `utils/week-plan.ts`: the pure rules: `dropOnDay` applies a drop on a day
   at once and says what to write (also for an `incoming` quest from the
-  Questlog column), `arrowDrop` turns arrow keys into drops, `arrangeOpen`
-  mirrors the server's sorting for the optimistic view, `questlogEntry` shows
-  a Questlog quest as a row of the board.
+  Questlog column and for a quest left behind), `shelveQuest` the same for a
+  drop into the Questlog column, `stepDrop` turns "Nach oben" / "Nach unten"
+  and the arrow keys into drops, `dropRunOnDay` and `stepRunDrop` do the
+  same for a stored run (`isMovableRun`) within its window, `arrangeOpen`
+  mirrors the server's sorting for the optimistic view, `boardDrop` reads
+  where a drag ended from the card (`data-todo-id` or `data-run-id`) and the
+  list's `data-date` / `data-questlog`, plus the column and address rules
+  above.
 - Writes go through `useWrites` (one at a time, then `notifyDataChanged` and a
-  quiet reload). A failed write puts the old plan back at once, shows the
-  error and reloads quietly to show what the server kept.
-- `useSortable` takes an optional `group` (and `accepts`) so lists trade
-  items; it reports the drop's target list and its index among all children.
-- `QuickAddQuest` takes `choosePlace: false` for the board: Enter creates the
-  quest on that day at the end of its order.
-- A phone shows one day at a time (scroll snapping); the current week opens
-  scrolled to today (see above). The page itself never scrolls sideways.
+  quiet reload). A failed write puts the old plan (and column) back at once,
+  shows the error and reloads quietly to show what the server kept.
+- `useSortable` takes an optional `group` (and `accepts`, and `sort: false`
+  for a list whose items only leave it) so lists trade items; it reports the
+  drop's target list and its index among all children.

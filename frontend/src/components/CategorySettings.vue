@@ -5,15 +5,24 @@ import {
   deleteCategory,
   getCategories,
   renameCategory,
+  setCategoryColor,
   setCategoryTarget,
 } from "../api/categories.api";
 import AppIcon from "../components/AppIcon.vue";
+import MarkPicker from "../components/MarkPicker.vue";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
+import type { CampaignColor } from "../types/campaign";
 import type { CategoryResponse } from "../types/category";
+import { COLOR_NAMES, isCampaignColor } from "../utils/campaign-style";
 import { categoryMark } from "../utils/category-mark";
 
 const newName = ref("");
+/** The new category's colour; null lets its name pick one. */
+const newColor = ref<CampaignColor | null>(null);
+const newColorOpen = ref(false);
+/** The category whose palette is open below its row. */
+const colorOpenId = ref<number | null>(null);
 const editingId = ref<number | null>(null);
 const editedName = ref("");
 const deletingId = ref<number | null>(null);
@@ -48,7 +57,33 @@ const run = (action: () => Promise<unknown>): Promise<boolean> =>
 
 async function add(): Promise<void> {
   const name = newName.value.trim();
-  if (name && (await run(() => createCategory(name)))) newName.value = "";
+  if (name && (await run(() => createCategory(name, newColor.value)))) {
+    newName.value = "";
+    newColor.value = null;
+    newColorOpen.value = false;
+  }
+}
+
+/** The chosen colour as a key; null while the name picks it. */
+const chosenColor = (category: CategoryResponse): CampaignColor | null =>
+  isCampaignColor(category.color) ? category.color : null;
+
+/** "Tanne" or "automatisch": what the dot shows, in words. */
+const colorWords = (color: CampaignColor | null): string =>
+  color ? COLOR_NAMES[color] : "automatisch";
+
+function toggleColor(id: number): void {
+  colorOpenId.value = colorOpenId.value === id ? null : id;
+  editingId.value = null;
+  deletingId.value = null;
+}
+
+async function saveColor(
+  id: number,
+  color: CampaignColor | null,
+): Promise<void> {
+  if (await run(() => setCategoryColor(id, color)))
+    showTargetFeedback({ id, saved: true });
 }
 
 function startEditing(category: CategoryResponse): void {
@@ -109,6 +144,18 @@ async function remove(id: number): Promise<void> {
     </p>
 
     <form class="category-settings__create" @submit.prevent="add">
+      <button
+        class="category-settings__dot"
+        type="button"
+        :style="{ '--mark': categoryMark(newName.trim(), newColor) }"
+        :aria-label="`Farbe der neuen Kategorie: ${colorWords(newColor)}`"
+        :aria-expanded="newColorOpen"
+        aria-controls="new-category-color"
+        title="Farbe wählen"
+        @click="newColorOpen = !newColorOpen"
+      >
+        <span aria-hidden="true" />
+      </button>
       <label class="field category-settings__grow">
         Neue Kategorie
         <input v-model="newName" name="name" maxlength="60" />
@@ -121,6 +168,16 @@ async function remove(id: number): Promise<void> {
         <AppIcon name="plus" />
         Anlegen
       </button>
+      <MarkPicker
+        v-if="newColorOpen"
+        id="new-category-color"
+        v-model="newColor"
+        class="category-settings__picker"
+        name="new-category-color"
+        legend="Farbe der neuen Kategorie"
+        :automatic="categoryMark(newName.trim())"
+        automatic-label="Automatisch aus dem Namen"
+      />
     </form>
     <p
       v-if="saveError"
@@ -216,11 +273,21 @@ async function remove(id: number): Promise<void> {
         </div>
 
         <div v-else class="category-settings__entry">
-          <span
-            class="category-mark"
-            :style="{ background: categoryMark(category.name) }"
-            aria-hidden="true"
-          />
+          <!-- The dot opens the palette, the same one campaigns use. -->
+          <button
+            class="category-settings__dot"
+            type="button"
+            :style="{
+              '--mark': categoryMark(category.name, category.color),
+            }"
+            :aria-label="`Farbe von ${category.name}: ${colorWords(chosenColor(category))}`"
+            :aria-expanded="colorOpenId === category.id"
+            :aria-controls="`category-color-${category.id}`"
+            title="Farbe wählen"
+            @click="toggleColor(category.id)"
+          >
+            <span aria-hidden="true" />
+          </button>
           <span class="category-settings__name">{{ category.name }}</span>
           <div class="category-settings__target">
             <label class="category-settings__target-field">
@@ -269,6 +336,17 @@ async function remove(id: number): Promise<void> {
               <AppIcon name="trash" />
             </button>
           </div>
+          <MarkPicker
+            v-if="colorOpenId === category.id"
+            :id="`category-color-${category.id}`"
+            class="category-settings__picker"
+            :model-value="chosenColor(category)"
+            :name="`category-color-${category.id}`"
+            :legend="`Farbe von ${category.name}`"
+            :automatic="categoryMark(category.name)"
+            automatic-label="Automatisch aus dem Namen"
+            @update:model-value="saveColor(category.id, $event)"
+          />
           <p
             v-if="targetFeedback?.id === category.id && !targetFeedback.saved"
             class="form-error category-settings__row-error"
@@ -338,11 +416,47 @@ p.category-settings__state strong {
   align-items: center;
 }
 
-.category-mark {
+/* The mark in a tap-sized button: it opens the palette. */
+.category-settings__dot {
+  display: grid;
   flex: none;
-  width: 0.625rem;
-  height: 0.625rem;
-  border-radius: 0.2rem;
+  width: var(--tap);
+  height: var(--tap);
+  place-items: center;
+  margin-inline: calc(var(--space-2) * -1) calc(var(--space-3) * -1);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 420ms var(--spring);
+}
+
+.category-settings__dot span {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.3rem;
+  background: var(--mark);
+}
+
+.category-settings__dot:hover {
+  background: var(--color-action-tint);
+}
+
+.category-settings__dot:active {
+  transform: var(--press);
+  transition-duration: 90ms;
+}
+
+.category-settings__create .category-settings__dot {
+  align-self: end;
+  margin-inline: 0;
+}
+
+.category-settings__picker {
+  flex: 1 0 100%;
+  grid-area: picker;
+  padding: var(--space-2) 0 var(--space-1);
 }
 
 .category-settings__name {
@@ -360,12 +474,13 @@ p.category-settings__state strong {
   grid-template-areas:
     "mark name actions"
     ". target target"
+    "picker picker picker"
     ". error error";
   gap: 0 var(--space-3);
   align-items: center;
 }
 
-.category-settings__entry .category-mark {
+.category-settings__entry .category-settings__dot {
   grid-area: mark;
 }
 
@@ -419,6 +534,7 @@ p.category-settings__state strong {
     grid-template-columns: auto minmax(0, 1fr) auto auto;
     grid-template-areas:
       "mark name target actions"
+      "picker picker picker picker"
       ". error error error";
   }
 

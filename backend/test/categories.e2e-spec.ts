@@ -60,8 +60,27 @@ describe('Categories and why (e2e)', () => {
       .expect(200);
     const list = await request(server).get('/categories').expect(200);
     expect(list.body).toEqual([
-      { id: created.id, name: 'Musik', weeklyTarget: null },
+      { id: created.id, name: 'Musik', weeklyTarget: null, color: null },
     ]);
+  });
+
+  it('keeps a chosen colour, refusing one outside the palette', async () => {
+    const created = (
+      await request(server)
+        .post('/categories')
+        .send({ name: 'Lesen', color: 'navy' })
+        .expect(201)
+    ).body as Named & { color: string | null };
+    expect(created.color).toBe('navy');
+    await request(server)
+      .patch(`/categories/${created.id}`)
+      .send({ color: 'orange' })
+      .expect(400);
+    const reset = await request(server)
+      .patch(`/categories/${created.id}`)
+      .send({ color: null })
+      .expect(200);
+    expect(reset.body).toMatchObject({ name: 'Lesen', color: null });
   });
 
   it('stores category and why on todos and habits', async () => {
@@ -204,8 +223,12 @@ describe('Categories and why (e2e)', () => {
     });
   });
 
-  it('shows the category name in the day planner', async () => {
+  it('shows the category name and colour in the day planner', async () => {
     const { id } = await category('Sport');
+    await request(server)
+      .patch(`/categories/${id}`)
+      .send({ color: 'teal' })
+      .expect(200);
     await todo({
       categoryId: id,
       scheduledDate: dayOf(new Date()),
@@ -213,6 +236,7 @@ describe('Categories and why (e2e)', () => {
     const planner = await request(server).get('/day-planner/today').expect(200);
     expect((planner.body as { items: unknown[] }).items[0]).toMatchObject({
       categoryName: 'Sport',
+      categoryColor: 'teal',
     });
   });
 });

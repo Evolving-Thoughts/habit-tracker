@@ -100,12 +100,18 @@ Per row kind:
 | Heute: appointment | stopwatch | tick | opens "Verschieben", where moving is confirmed |
 | Heute: Daily run | stopwatch if eligible | tick, undo toast | move only up to its `moveUntil`, like the chips; otherwise nothing |
 | Heute: done or skipped | nothing | nothing (reopening stays a click) | nothing |
-| Plan: open quest | stopwatch | tick, new undo toast in Plan | onto a day of the board like dragging (optimistic, at the end of the day's order); next Monday beyond the board via `reschedule`; never into the past |
+| Plan: open quest (also one left behind) | stopwatch | tick, new undo toast in Plan | onto a day shown on the board like dragging (optimistic, at the end of the day's order); a day beyond the board via `reschedule`; never into the past |
 | Plan: appointment | stopwatch | tick | opens "Verschieben" |
-| Plan: Daily, done quest | nothing | nothing | nothing |
+| Plan: stored open Daily run (also one left behind) | stopwatch if eligible | tick once it is due (its day is today or earlier), undo toast in Plan | within its window only (from today to `moveUntil`), like dragging; otherwise nothing |
+| Plan: forecast Daily run, done quest or run | nothing | nothing | nothing |
+| Plan: open quest or stored run of a day, focus on its card | as above | as above | as above; in addition ArrowUp / ArrowDown move it one place in the day's order and ArrowLeft / ArrowRight to the end of the day before or after among the days shown (as "Nach oben" / "Nach unten" in its menu and dragging; never into the past, a run never beyond its window) |
 | Questlog: open quest | stopwatch | tick, undo toast | plans it for that day with the editor's own save (`PATCH /todos/:id`), message in the status line |
 | Questlog: ticked here | nothing | nothing | nothing |
-| Plan: row of the Questlog column | stopwatch | tick, undo toast in Plan | onto that day of the board like dropping it (end of the day's order); next Monday beyond the board with the editor's save |
+| Plan: row of the Questlog column | stopwatch | tick, undo toast in Plan | onto that day of the board like dropping it (end of the day's order); a day beyond the board with the editor's save |
+
+"Nach oben" / "Nach unten" in the menus of Heute, the Plan's days, the
+Questlog and the Plan's Questlog column sort by key; the focus stays on the
+card's menu button.
 
 The row menus "Aktionen für …" (Heute, Questlog, Kalender) name the same
 keys on their entries: Heute/Morgen/Nächste Woche carry `aria-keyshortcuts`
@@ -114,10 +120,11 @@ the same code as the key. While a menu is open its scrim lies over the page,
 so a row key under the pointer does nothing; inside the menu the arrow keys,
 Home, End, Escape and Tab belong to the menu.
 
-N: Heute focuses its quick add; Plan focuses today's quick add, or the first
-day's when the shown week lies ahead; Questlog opens its "Quest erstellen"
-dialog; Kampagnen opens its plus dialog (a new top quest). Everywhere else,
-and in a past week of the Plan, N goes to Heute and focuses the quick add
+N: Heute focuses its quick add; Plan focuses the quick add of its first
+column (today's, or the first day shown when the board starts later);
+Questlog opens its "Quest erstellen" dialog (its quick add takes Tab);
+Kampagnen opens its plus dialog: on the overview a new campaign, inside a
+campaign a new quest below it. Everywhere else N goes to Heute and focuses the quick add
 once it has loaded (`focusWhenReady`).
 
 ## Off switch (WCAG 2.1.4)
@@ -144,9 +151,13 @@ the gear's names the comma; both carry `aria-keyshortcuts`.
 `CommandMenu.vue` on `ModalDialog` (focus trap, Escape, focus return): a
 combobox field controlling a listbox (`aria-activedescendant`, groups
 "Ansichten" and "Aktionen" while nothing is typed, one ranked list while
-searching). Entries: every view in the order of the navigation (the Fokus-Modus also
+searching, followed by what the server finds; see below). Under the empty
+field a muted line says what it searches: "Sucht in Ansichten, Befehlen,
+Titeln und Notizen." Entries: every view in the order of the navigation (the Fokus-Modus also
 found as "Fokus-Modus starten"), then "Kategorien", which opens its section
-in Einstellungen (`#/einstellungen?abschnitt=kategorien`), "Neue Quest", pausing or resuming a running stopwatch, what the
+in Einstellungen (`#/einstellungen?abschnitt=kategorien`), "Neue Quest", "Neue Kampagne" and "Neues Daily" (both open their dialog over
+the current view; a created campaign then opens in Kampagnen, a created daily
+leads to Dailies), pausing or resuming a running stopwatch, what the
 open view adds (Heute: "Offenes auf morgen verschieben", which opens the same
 confirmation as its button), the two other looks ("Darstellung: Dunkel",
 "Darstellung: Hell", "Darstellung: Wie das Gerät"; see `theme.md`) and
@@ -155,6 +166,32 @@ confirmation as its button), the two other looks ("Darstellung: Dunkel",
 and lists matches at word starts before matches inside words. The menu
 closes before a command runs, so the command finds the focus where it was.
 
-Quest search would fit as a third group filled from a debounced server
-search, shown only once something is typed, its entries opening the quest's
-editor; it is out of scope for now.
+### Search in titles and texts
+
+From two typed characters on, the menu asks `GET /search?q=` (`search.md`)
+200 ms after the last keystroke; a newer query aborts the older request, and
+an answer that overlaps the new query stays until the next one arrives. Below
+the matching commands (then headed "Ansichten und Aktionen") come two groups:
+
+- "Kampagnen, Quests und Dailies": the title with the match in `<mark>`,
+  below it what it is ("Quest · erledigt · 18. Nov.") and the campaign chip.
+  Enter opens a quest's editor, a daily's editor, a campaign's page
+  (`#/kampagnen?kampagne=…`). An open quest has two further options right
+  after it in the list, shown as quiet pills on its row: "Stoppuhr starten"
+  and "Zur Kampagne". They are ordinary options, reached with the arrow
+  keys like any other, so no key is taken from the text field.
+- "In Notizen und Texten": where the text is ("Notiz zu …", "Reflexion vom
+  18. Nov.", "Wochenrückblick 16.–22. Nov. · Was ändere ich?") and a snippet
+  with the match marked. Quest notes and a run's notes open their editor
+  scrolled to the notes, a reflection opens its day in the Kalender
+  (`#/kalender?tag=…`, which the Kalender reads once and drops), a weekly
+  review its week (`#/rueckblick?woche=…`).
+
+Editors and dialogs opened from the menu live in `AppShortcuts.vue`, over
+whatever view is shown; a write there calls `notifyDataChanged()`, so the
+view refreshes. Highlights come from the server as offsets
+(`utils/search-entries.ts` splits the text, `SearchHighlight.vue` renders the
+parts as text): user text is never rendered as HTML. The status line
+announces the count of options, "Suche läuft …" while nothing is listed yet,
+or "Nichts gefunden für „…“."; when the server cannot be reached, a quiet line
+says so and the commands keep working.

@@ -11,8 +11,12 @@ Every closed stretch of work is a row in `work_logs`
 `occurrenceId`), a copied `title`, `startedAt`, `endedAt` and
 `source: 'timer' | 'manual'`. The stopwatch writes a row when a stretch ends
 (pause, end, completion, see `timers-and-completion.md`); a running stretch has
-no row yet. Rows are added, corrected and deleted by hand through
-`POST /work-logs`, `PATCH /work-logs/:id` and `DELETE /work-logs/:id`.
+no row yet. It works in blocks: a stretch resumed within a minute of its pause
+extends the row of the block before it (`endedAt` moves on, the short pause is
+work), and a block shorter than a minute gets no row at all, so quick pause and
+play never leaves 0-minute stretches. Rows are added, corrected and deleted by
+hand through `POST /work-logs`, `PATCH /work-logs/:id` and
+`DELETE /work-logs/:id`.
 
 ## Rules
 
@@ -64,8 +68,9 @@ and other calendars are only read.
   `workLogId` (migration `1795200000000-LogbookEvents`).
 - `logChanges` in `calendar-sync.service.ts` follows the outgoing pattern of
   todos and runs: every stretch of **at least five minutes** becomes an event
-  at its real start and end; a correction patches it; a deleted stretch, or one
-  shortened below five minutes, deletes it. New stretches are exported back
+  at its real start and end; a correction, or a stopwatch block extended after a
+  short pause (same row, later `updatedAt`), patches it; a deleted stretch, or
+  one shortened below five minutes, deletes it. New stretches are exported back
   31 days, so connecting does not write the whole past at once.
 - The events say what they are: the stretch's title as summary and the
   description "Logbuch · gemessene Arbeitszeit", plus "Kampagne: …" when there
@@ -84,49 +89,63 @@ and other calendars are only read.
 - `views/CalendarView.vue` keeps navigation, loading, the filter and the move
   dialog; `components/CalendarMonth.vue`, `CalendarWeek.vue` and
   `CalendarDay.vue` draw the three views (`WeeklyTargets.vue` is shared).
-- **Day**: the list of the day (reflection, done, skipped, open, weekly goals)
-  and, beside it on wide screens (from 56rem, page up to 64rem) or below it on a
-  phone, the section "Logbuch" with the day's total and the time axis
-  `components/DayTimeline.vue`. Its two lanes are named for what they hold,
-  "Geplant" and "Gemessen", so the section and a lane never both say
-  "Logbuch". "Geplant" has the appointments, timed dailies and events of the
-  read calendars, and a slim mark (the history dot and the title, read as
-  "…, erledigt um 05:37") for each completion without a planned time, at the
-  time it was ticked off; a completed appointment stays its block. "Gemessen"
-  has the stretches: white blocks with the campaign's stripe (a neutral one
-  without campaign), title and duration; a block is never smaller than a tap
-  target, its label names title, real times, duration and campaign, and a tap
-  opens it for correcting.
-- **The axis window** (`axisHours`): from the full hour of the earliest
-  block, mark or stretch to the full hour after the latest one as drawn (a
-  short block still takes its least room, `drawnEnd`). It never starts later
-  than 8 or ends earlier than 18 (`DEFAULT_HOURS`), so a quiet day still reads
-  as a day and an empty one shows 8 to 18; a stretch at 05:37 starts it at 5.
-- Below the axis `DayWorkLogs.vue` lists the stretches in words (correct,
-  delete; the source reads "Stoppuhr" or "Nachtrag"). Adding time by hand
-  waits behind one quiet button "Zeit nachtragen" (`aria-expanded`): it opens
-  the fields in place with the focus in the first, Abbrechen or Escape close
-  them and give the focus back to the button. A refused entry keeps what was
-  typed next to the reason; a saved one closes the form, empties it and gives
-  the focus back. A day without a stretch says so in one quiet line ("Heute
-  wurde noch keine Zeit gemessen."). Days ahead have no Logbuch; their section
-  is "Termine".
-- **Deleting a stretch** has an undo, the toast of the calendar ("Abschnitt
-  „Lesen“ gelöscht · Rückgängig", see below).
-- **Week**: a legend of the week's work by campaign, then per day a stacked bar
-  in the campaigns' marks, scaled to the longest day, with the total as text and
-  the split in words for screen readers. A day without plans or entries but
-  with measured time says both ("Nichts geplant · 2 Std. 10 Min. gemessen",
-  `daySummary`), so the words never contradict the bar.
-- **Month**: the day's worked time as a small figure in the cell ("2 Std. 15
-  Min.", on a phone "2:15 h"); the cell's label says it in full.
+- **The day calendar** (`components/DayCalendar.vue`) is one column per day
+  where the plan and the Logbuch share one hour axis: appointments, timed
+  dailies and the events of the read Google calendars (read-only), a slim
+  mark for each completion without a planned time at the moment it was ticked
+  off (the history dot and the title, read as "…, erledigt um 05:37"; a
+  completed appointment stays its block), and the stretches as white blocks
+  with the campaign's stripe (a neutral one without campaign), title, times
+  and the campaign chip. Blocks that overlap stand side by side
+  (`calendarBlocks` → `layoutLane`); a block is never smaller than a tap
+  target. On today an ink line marks now, with the time in the hour labels.
+  Heute (beside the list from 64rem, `TodayCalendar.vue` reads the day from
+  `GET /history`), the Kalender's day and each column of its week use it;
+  in the week it is `compact`: no head, the hour labels and the scrolling
+  are the week's.
+- **The axis window** (`axisHours`): from early morning (6, `DEFAULT_HOURS`)
+  to midnight; an earlier block, mark or stretch starts it at that full hour
+  (a stretch at 05:37 starts it at 5). A single day scrolls in its own column
+  and opens on now (today), else on its first entry, else on the morning.
+- **Correcting a stretch**: a tap on its block opens "Abschnitt korrigieren"
+  (`WorkLogDialog.vue`: start, end, Speichern, Löschen, Abbrechen; the dialog
+  keeps the days a stretch covers across midnight). Its top and bottom edges
+  drag with pointer events (mouse, pen and touch; `touch-action: none` on
+  the edge): the edge follows the pointer on a 5-minute grid
+  (`resizedEdge`, `SNAP_MINUTES`) with the live times in the block, never
+  past the other edge (a stretch keeps 5 minutes), never before midnight and
+  never after now on today. Releasing saves through `PATCH /work-logs/:id`
+  with only the moved edge changed; the block keeps its new place until the
+  reload brings it, and a status line says the new times. Escape or a
+  cancelled pointer drops the drag. Only an edge on the shown day drags (a
+  stretch from the evening before keeps its start). The dialog is the
+  keyboard's way to the same; appointments are edited in their editor, Google
+  events not at all.
+- **Adding time**: "Zeit nachtragen" in the head of the day, or a tap on
+  empty time in the column, opens the same dialog for a new stretch (Eintrag,
+  Von, Bis; from the tapped quarter hour for half an hour, never into the
+  future). A refused entry keeps what was typed next to the reason; a saved
+  one closes the dialog and gives the focus back. Days ahead have no Logbuch;
+  their head is "Termine".
+- **Deleting a stretch** has an undo, the toast of the view ("Abschnitt
+  „Lesen“ gelöscht · Rückgängig", see below; Heute and the Kalender share it
+  through `useLogRemoval`).
+- **Week**: seven day columns on one shared hour axis; above each the day,
+  its worked time and what it holds without a time ("5 Quests · 2 Dailies",
+  `untimedOfHistoryDay`), with the day counted in words for screen readers
+  (`daySummary`: "Nichts geplant · 2 Std. 10 Min. gemessen" for a day with
+  time but no plan). Today's column is tinted and carries the now line.
+- **Month**: the day's worked time as a figure in the cell ("2 Std. 15 Min.",
+  on a phone "2:15 h", in 0.8125rem); the cell's label says it in full. The
+  chosen day lists its quests and its Daily runs apart, a done run with the
+  time it was done.
 ## Deleting with undo
 
-"Löschen" in the day's list does not send the `DELETE` at once. The stretch
-leaves the list and the axis immediately (`CalendarView` keeps a set of
-held-back ids and `CalendarDay` filters them), the focus moves to the
-neighbouring row, and the calendar's `UndoToast` offers "Rückgängig" for
-five seconds. The `DELETE` goes out when that offer ends without being
+"Löschen" in a stretch's dialog does not send the `DELETE` at once. The
+stretch leaves the day calendar immediately (`useLogRemoval` keeps a set of
+held-back ids and `DayCalendar` filters them), the focus goes to the head
+of the column, and the view's `UndoToast` offers "Rückgängig" for five
+seconds. The `DELETE` goes out when that offer ends without being
 taken: the time is up, the next offer replaces it (another delete, a tick),
 the view is left (unmount) or the page closes (`pagehide`; the request uses
 `keepalive` so it outlives the page). This is `useUndo`'s `commit` step.

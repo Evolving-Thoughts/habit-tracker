@@ -1,11 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
-import { dayOf, weekRange } from '../common/date/local-day';
+import { addDays, dayOf } from '../common/date/local-day';
+import { NO_STREAK, Streak } from '../habits/streaks';
 import { HistoryPlannedItem } from '../history/history.dto';
 import { historyRange } from '../history/history-range';
 import { placeOpenTodo } from '../todos/todo-agenda';
 import { Campaign } from '../todos/todo-ancestry';
 import { compareInDay, Orderable } from './day-order';
-import {
+import type {
   WeekPlanDayDto,
   WeekPlanEntryDto,
   WeekPlanHabitEntryDto,
@@ -19,11 +20,19 @@ export type WeekCandidate = {
   order: Orderable;
 };
 
-/** The seven days of the week starting on `start`, which must be a Monday. */
-export function weekDates(start: string): string[] {
-  const dates = historyRange(start, 'week');
-  if (weekRange(start).startDate !== start)
-    throw new BadRequestException('The week must start on a Monday');
+/** The most days one read of the board answers. */
+export const MAX_PLAN_DAYS = 31;
+
+/** `days` consecutive days from `from`, the columns of the board. */
+export function planDates(from: string, days: number): string[] {
+  if (!Number.isInteger(days) || days < 1 || days > MAX_PLAN_DAYS)
+    throw new BadRequestException(`The plan covers 1 to ${MAX_PLAN_DAYS} days`);
+  historyRange(from, 'day');
+  const dates = Array.from({ length: days }, (_, index) =>
+    addDays(from, index),
+  );
+  // The last day must also be a supported date.
+  historyRange(dates[dates.length - 1], 'day');
   return dates;
 }
 
@@ -76,13 +85,15 @@ export function todoCandidate(
 /**
  * A run the habit forecast plans (see history-planning.ts). An open run from
  * an earlier day shows on today, like an overdue todo. A forecast run has no
- * position yet, so it follows everything sorted.
+ * position yet, so it follows everything sorted. A stored run due by today
+ * can be measured.
  */
 export function plannedHabitCandidate(
   item: HistoryPlannedItem,
   dayPosition: number | null,
   today: string,
   campaign: Campaign | null,
+  streak: Streak = NO_STREAK,
 ): WeekCandidate {
   if (item.habitId === null) throw new Error('Expected a planned habit run');
   const date = item.date < today ? today : item.date;
@@ -91,6 +102,9 @@ export function plannedHabitCandidate(
     habitId: item.habitId,
     occurrenceId: item.id,
     status: 'pending',
+    moveUntil: item.moveUntil,
+    timerEligible: item.id !== null && date <= today,
+    streak,
     isOverdue: item.isOverdue,
     title: item.title,
     timeOfDay: item.timeOfDay,
@@ -122,6 +136,7 @@ export function resolvedHabitCandidate(
   habit: { title: string; timeOfDay: string | null },
   plannedDurationMinutes: number | null,
   campaign: Campaign | null,
+  streak: Streak = NO_STREAK,
 ): WeekCandidate {
   const date =
     occurrence.status === 'completed'
@@ -132,6 +147,9 @@ export function resolvedHabitCandidate(
     habitId: occurrence.habitId,
     occurrenceId: occurrence.id,
     status: occurrence.status,
+    moveUntil: null,
+    timerEligible: false,
+    streak,
     isOverdue: false,
     title: habit.title,
     timeOfDay: habit.timeOfDay ?? null,
@@ -152,22 +170,42 @@ export function resolvedHabitCandidate(
 
 const isOpen = (entry: WeekPlanEntryDto): boolean => entry.status === 'pending';
 
+/** What one read of the board shows: its days and what was left behind. */
+export type ArrangedPlan = {
+  days: WeekPlanDayDto[];
+  overdue: WeekPlanEntryDto[];
+};
+
 /**
- * The board of a week: every day lists its open entries in the order of the
- * day (day-order.ts), then what is already done in that same order.
- * Candidates outside the week are left out.
+ * The board: every day lists its open entries in the order of the day
+ * (day-order.ts), then what is already done in that same order. What is
+ * open and overdue (the agenda carries it to today, as Heute's Nachholen
+ * does) stands apart, earliest day first, whatever days are shown.
+ * Other candidates outside the days are left out.
  */
-export function arrangeWeek(
+export function arrangePlan(
   dates: string[],
   candidates: WeekCandidate[],
-): WeekPlanDayDto[] {
-  return dates.map((date) => {
-    const own = candidates.filter((candidate) => candidate.date === date);
-    const sorted = (open: boolean): WeekPlanEntryDto[] =>
-      own
-        .filter(({ entry }) => isOpen(entry) === open)
-        .sort((first, second) => compareInDay(first.order, second.order))
-        .map(({ entry }) => entry);
-    return { date, entries: [...sorted(true), ...sorted(false)] };
-  });
+): ArrangedPlan {
+  const sorted = (list: WeekCandidate[]): WeekPlanEntryDto[] =>
+    [...list]
+      .sort((first, second) => compareInDay(first.order, second.order))
+      .map(({ entry }) => entry);
+  const overdue = candidates.filter(
+    ({ entry }) => isOpen(entry) && entry.isOverdue,
+  );
+  const placed = candidates.filter((candidate) => !overdue.includes(candidate));
+  return {
+    days: dates.map((date) => {
+      const own = placed.filter((candidate) => candidate.date === date);
+      return {
+        date,
+        entries: [
+          ...sorted(own.filter(({ entry }) => isOpen(entry))),
+          ...sorted(own.filter(({ entry }) => !isOpen(entry))),
+        ],
+      };
+    }),
+    overdue: sorted(overdue),
+  };
 }

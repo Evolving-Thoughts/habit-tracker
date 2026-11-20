@@ -36,6 +36,9 @@ describe("CalendarConnection", () => {
     await flushPromises();
     expect(wrapper.find("section").exists()).toBe(false);
     expect(wrapper.text()).toContain("nicht eingerichtet");
+    expect(wrapper.text()).toContain("fehlen die Google-Zugangsdaten");
+    expect(wrapper.text()).toContain("docs/betrieb.md");
+    expect(wrapper.find("button").exists()).toBe(false);
   });
 
   it("offers connecting, also after access was withdrawn", async () => {
@@ -46,7 +49,12 @@ describe("CalendarConnection", () => {
     const wrapper = mount(CalendarConnection);
     await flushPromises();
     expect(wrapper.text()).toContain("neu verbinden");
-    expect(wrapper.find("button").text()).toBe("Verbinden");
+    const connect = wrapper.get("button");
+    expect(connect.text()).toBe("Verbinden");
+    // What happens next is said before it happens.
+    expect(
+      wrapper.get(`#${connect.attributes("aria-describedby")}`).text(),
+    ).toContain("schreibt nie in deine anderen Kalender");
   });
 
   it("lists the calendars it reads and says where it writes", async () => {

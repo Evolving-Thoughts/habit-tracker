@@ -17,6 +17,9 @@ import {
   MAX_WEEKLY_TARGET_MINUTES,
 } from '../campaign-style';
 
+export const BACKLOG_PLACES = ['top', 'bottom'] as const;
+export type BacklogPlace = (typeof BACKLOG_PLACES)[number];
+
 export class CreateTodoDto {
   @IsOptional()
   @IsInt()
@@ -42,6 +45,14 @@ export class CreateTodoDto {
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   readonly scheduledDate?: string | null;
+
+  /**
+   * Without a day: where the quest joins the Questlog's order, at its head
+   * or (the default) its end. Ignored with a day.
+   */
+  @IsOptional()
+  @IsIn(BACKLOG_PLACES)
+  readonly backlogPlace?: BacklogPlace;
 
   /** HH:mm makes it an appointment fixed to that time; needs a day. */
   @IsOptional()

@@ -4,7 +4,7 @@ import { CategoryEntity } from '../categories/category.entity';
 import { Clock } from '../common/clock';
 import { addDays, weekRange } from '../common/date/local-day';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
-import { weekDates } from '../day-planner/week-plan';
+import { weekDates } from '../history/history-range';
 import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { resolvedOccurrences } from '../habit-occurrences/resolved-occurrences';

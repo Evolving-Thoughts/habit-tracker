@@ -107,6 +107,43 @@ describe("CampaignTiles", () => {
     expect(wrapper.text()).toContain("Noch keine Kampagne abgeschlossen.");
   });
 
+  it("completes or reopens a campaign from its tile, and offers a new one", async () => {
+    const wrapper = mount(CampaignTiles, {
+      props: {
+        tiles: [tile(1), tile(2, {}, true)],
+        starts: STARTS,
+        counted: true,
+      },
+    });
+    await wrapper.get('[aria-label="Kampagne 1 abschließen"]').trigger("click");
+    expect(wrapper.emitted("complete")![0]![0]).toMatchObject({
+      todo: { id: 1 },
+    });
+    expect(wrapper.emitted("open")).toBeUndefined();
+    const create = wrapper.get(".campaign-tile__create");
+    expect(create.text()).toBe("Neue Kampagne");
+    await create.trigger("click");
+    expect(wrapper.emitted("create")).toHaveLength(1);
+
+    await wrapper.findAll(".segmented button")[1]!.trigger("click");
+    await wrapper.get('[aria-label="Kampagne 2 wieder öffnen"]').trigger("click");
+    expect(wrapper.emitted("complete")![1]![0]).toMatchObject({
+      todo: { id: 2 },
+    });
+    // A new campaign is something active.
+    expect(wrapper.find(".campaign-tile__create").exists()).toBe(false);
+  });
+
+  it("names its trend with a short label and in words", () => {
+    const wrapper = mount(CampaignTiles, {
+      props: { tiles: [tile(1, { weeks: [60, 120] })], starts: STARTS, counted: true },
+    });
+    expect(wrapper.get(".campaign-tile__trend-label").text()).toBe("2 Wochen");
+    expect(wrapper.get("svg[role=img]").attributes("aria-label")).toMatch(
+      /^Letzte 2 Wochen: ab 09.11. 1 Std., /,
+    );
+  });
+
   it("leaves the numbers out while they are not loaded", () => {
     const wrapper = mount(CampaignTiles, {
       props: { tiles: [tile(1)], starts: STARTS, counted: false },

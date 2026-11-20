@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import {
   disablePush,
   enablePush,
@@ -15,6 +15,14 @@ const available = ref(false);
 const permission = ref<NotificationPermission>("default");
 const config = ref<PushConfig>({ configured: false, publicKey: null });
 const error = ref("");
+/** Turning it on opens the browser's own question first. */
+const asksFirst = computed(
+  () =>
+    available.value &&
+    config.value.configured &&
+    !enabled.value &&
+    permission.value === "default",
+);
 let alive = true;
 async function refresh(): Promise<void> {
   if (busy.value) return;
@@ -46,8 +54,10 @@ async function toggle(): Promise<void> {
     if (enabled.value) await disablePush();
     else await enablePush(config.value, true);
   } catch (cause) {
-    error.value =
-      cause instanceof Error ? cause.message : "Änderung fehlgeschlagen.";
+    // Refused in the browser's prompt: the steps below say how to undo it.
+    if (Notification.permission !== "denied")
+      error.value =
+        cause instanceof Error ? cause.message : "Änderung fehlgeschlagen.";
   } finally {
     try {
       enabled.value = (await readPreference()).enabled;
@@ -86,6 +96,7 @@ onUnmounted(() => {
         type="button"
         role="switch"
         aria-labelledby="push-settings-label"
+        :aria-describedby="asksFirst ? 'push-settings-prompt' : undefined"
         :aria-checked="enabled"
         :disabled="busy"
         @click="toggle"
@@ -98,6 +109,9 @@ onUnmounted(() => {
     <p class="push-settings__text">
       Meldet sich auf diesem Gerät, sobald eine Stoppuhr ihr Soll erreicht, ohne
       Quest- oder Daily-Titel. Die Stoppuhr läuft dabei weiter.
+    </p>
+    <p v-if="asksFirst" id="push-settings-prompt" class="push-settings__text">
+      Der Browser fragt gleich, ob die App dir Benachrichtigungen schicken darf.
     </p>
     <p class="visually-hidden" role="status">
       {{
@@ -112,13 +126,40 @@ onUnmounted(() => {
       Dieser Browser kann hier keine Benachrichtigungen anzeigen. Öffne die App
       dafür als installierte App auf deinem Handy.
     </p>
-    <p v-else-if="!config.configured" class="push-settings__hint">
-      Benachrichtigungen sind auf dem Server noch nicht eingerichtet.
-    </p>
-    <p v-else-if="permission === 'denied'" class="push-settings__hint">
-      Dein Browser blockiert Benachrichtigungen für diese App. Du kannst sie in
-      den Website-Einstellungen des Browsers wieder erlauben.
-    </p>
+    <div v-else-if="!config.configured" class="push-settings__hint">
+      <p>Benachrichtigungen sind auf dem Server noch nicht eingerichtet.</p>
+      <p class="push-settings__operator">
+        Auf dem Server fehlen die Schlüssel für Push (VAPID). Wie man sie
+        einrichtet, steht in <code>docs/betrieb.md</code>.
+      </p>
+    </div>
+    <div v-else-if="permission === 'denied'" class="push-settings__hint">
+      <p>
+        Dein Browser blockiert Benachrichtigungen für diese App. So erlaubst du
+        sie wieder:
+      </p>
+      <ul class="push-settings__steps">
+        <li>
+          <strong>Chrome:</strong> links in der Adressleiste auf das Symbol vor
+          der Adresse, dann „Website-Einstellungen“ und bei „Benachrichtigungen“
+          „Zulassen“ wählen.
+        </li>
+        <li>
+          <strong>Edge:</strong> auf das Schloss vor der Adresse, dann
+          „Berechtigungen für diese Website“ und „Benachrichtigungen“ auf
+          „Zulassen“ stellen.
+        </li>
+        <li>
+          <strong>Firefox:</strong> auf das Symbol vor der Adresse und bei
+          „Benachrichtigungen senden“ die Sperre mit dem × aufheben.
+        </li>
+        <li>
+          <strong>Android, als installierte App:</strong> das App-Symbol lange
+          drücken, „App-Info“ › „Benachrichtigungen“ einschalten.
+        </li>
+      </ul>
+      <p>Danach die Seite neu laden und hier einschalten.</p>
+    </div>
     <template v-if="error">
       <p class="form-error" role="alert">{{ error }}</p>
       <button
@@ -159,10 +200,22 @@ onUnmounted(() => {
   text-wrap: pretty;
 }
 .push-settings__hint {
+  display: grid;
+  gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-control);
   background: var(--color-ground);
   color: var(--color-ink);
+}
+.push-settings__operator {
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+}
+.push-settings__steps {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding-left: 1.25rem;
 }
 .push-settings__retry {
   margin-top: var(--space-1);

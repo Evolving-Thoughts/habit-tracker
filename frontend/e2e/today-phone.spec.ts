@@ -45,22 +45,9 @@ test("Heute at 375 px: focus card in one action row, the next row in view, short
     0,
   );
 
-  // The grip sits in the top right corner of the card, clear of the plus button.
-  const grip = (await focus
-    .getByRole("button", {
-      name: "Steuer sortieren in der Reihenfolge verschieben",
-      exact: true,
-    })
-    .boundingBox())!;
-  const card = (await focus.boundingBox())!;
-  expect(grip.y - card.y).toBeLessThan(40);
-  const plus = (await page.locator(".create-button").boundingBox())!;
-  const overlaps =
-    grip.x < plus.x + plus.width &&
-    grip.x + grip.width > plus.x &&
-    grip.y < plus.y + plus.height &&
-    grip.y + grip.height > plus.y;
-  expect(overlaps).toBe(false);
+  // No grip: the whole card drags after a long press, so a swipe still scrolls.
+  await expect(page.locator(".sort-handle")).toHaveCount(0);
+  await expect(focus).toHaveClass(/card-drag/);
 
   // A row with one meta line stays short and carries no text buttons.
   const row = page.locator(".order .planner-item").first();

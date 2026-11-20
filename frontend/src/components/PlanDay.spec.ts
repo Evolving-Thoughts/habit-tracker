@@ -1,7 +1,12 @@
 import { enableAutoUnmount, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { WEEK_ENTRY_FIELDS } from "../types/fixtures";
-import type { WeekPlanDay, WeekPlanTodoEntry } from "../types/week-plan";
+import { WEEK_ENTRY_FIELDS, WEEK_HABIT_FIELDS } from "../types/fixtures";
+import type {
+  WeekPlanDay,
+  WeekPlanEntry,
+  WeekPlanHabitEntry,
+  WeekPlanTodoEntry,
+} from "../types/week-plan";
 import PlanDay from "./PlanDay.vue";
 
 vi.mock("../api/day-planner.api", () => ({
@@ -24,8 +29,18 @@ const quest = (
   ...overrides,
 });
 
+const menu = vi.fn((entry: WeekPlanEntry) => [
+  {
+    id: "edit",
+    label: "Bearbeiten",
+    icon: "edit" as const,
+    run: () => undefined,
+    ariaLabel: `${entry.title}: Bearbeiten`,
+  },
+]);
+
 const mountDay = (day: WeekPlanDay, today = "2026-11-17") =>
-  mount(PlanDay, { props: { day, today, busy: false } });
+  mount(PlanDay, { props: { day, today, busy: false, menu } });
 
 describe("PlanDay", () => {
   it("is a region named by its day, with open and done as separate lists", () => {
@@ -48,14 +63,47 @@ describe("PlanDay", () => {
     expect(wrapper.attributes("aria-current")).toBeUndefined();
   });
 
-  it("hands a quest's actions up with the quest", async () => {
+  it("hands a quest's edit up and gives each open quest the view's menu", async () => {
+    const entry = quest(1);
+    const done = quest(2, { status: "completed" });
+    const wrapper = mountDay({ date: "2026-11-18", entries: [entry, done] });
+    await wrapper.get('button[aria-label="Quest 1 bearbeiten"]').trigger("click");
+    expect(wrapper.emitted("edit")).toEqual([[entry]]);
+    expect(menu).toHaveBeenCalledWith(entry);
+    expect(menu).not.toHaveBeenCalledWith(done);
+    expect(
+      wrapper.find('button[aria-label="Aktionen für Quest 1"]').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('button[aria-label="Aktionen für Quest 2"]').exists(),
+    ).toBe(false);
+  });
+
+  it("lets a stored run drag like a quest; a forecast run stays put", () => {
+    const run = (occurrenceId: number | null): WeekPlanHabitEntry => ({
+      ...WEEK_ENTRY_FIELDS,
+      ...WEEK_HABIT_FIELDS,
+      type: "habit",
+      habitId: 4,
+      occurrenceId,
+      title: occurrenceId ? "Laufen" : "Lesen",
+      status: "pending",
+    });
+    const wrapper = mountDay({
+      date: "2026-11-18",
+      entries: [run(12), run(null)],
+    });
+    const [stored, forecast] = wrapper.findAll("ol li");
+    expect(stored!.attributes("data-run-id")).toBe("12");
+    expect(stored!.attributes("data-todo-id")).toBeUndefined();
+    expect(forecast!.attributes("data-run-id")).toBeUndefined();
+    expect(menu).toHaveBeenCalledWith(run(12));
+  });
+
+  it("opens the editor from a tap anywhere on the card", async () => {
     const entry = quest(1);
     const wrapper = mountDay({ date: "2026-11-18", entries: [entry] });
-    await wrapper.get('button[aria-label="Quest 1 verschieben"]').trigger("keydown", {
-      key: "ArrowRight",
-    });
-    await wrapper.get('button[aria-label="Quest 1 bearbeiten"]').trigger("click");
-    expect(wrapper.emitted("arrow")).toEqual([[entry, "right"]]);
+    await wrapper.get(".plan-entry__details, .plan-entry").trigger("click");
     expect(wrapper.emitted("edit")).toEqual([[entry]]);
   });
 
@@ -70,9 +118,14 @@ describe("PlanDay", () => {
     ).toBe("Quest für Mittwoch, 18. Nov. hinzufügen");
   });
 
-  it("offers nothing new on a past day", () => {
-    const wrapper = mountDay({ date: "2026-11-16", entries: [] });
-    expect(wrapper.find("form").exists()).toBe(false);
-    expect(wrapper.get(".plan-day__empty").text()).toBe("Nichts mehr offen.");
+  it("puts the quick add on top, above the cards, with where new quests go", () => {
+    const wrapper = mountDay({ date: "2026-11-18", entries: [quest(1)] });
+    const children = [...wrapper.element.children].map((node) => node.tagName);
+    expect(children.indexOf("FORM")).toBeLessThan(children.indexOf("OL"));
+    const toggles = wrapper.get('[role="group"]').findAll("button");
+    expect(toggles.map((button) => button.attributes("aria-label"))).toEqual([
+      "Oben einfügen",
+      "Unten einfügen",
+    ]);
   });
 });

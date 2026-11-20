@@ -4,7 +4,7 @@ import { Body, Controller, Get, HttpCode, Put, Query } from '@nestjs/common';
 import { DayPlannerService } from './day-planner.service';
 import { DayPlannerResponseDto } from './dto/day-planner-response.dto';
 import { ReorderDayDto } from './dto/reorder-day.dto';
-import { WeekPlanQueryDto, WeekPlanResponseDto } from './dto/week-plan.dto';
+import { PlanQueryDto, WeekPlanResponseDto } from './dto/week-plan.dto';
 
 @Controller('day-planner')
 export class DayPlannerController {
@@ -15,12 +15,12 @@ export class DayPlannerController {
     return this.dayPlannerService.getToday(user.id);
   }
 
-  @Get('week')
-  getWeek(
+  @Get('plan')
+  getPlan(
     @CurrentUser() user: AuthUser,
-    @Query() query: WeekPlanQueryDto,
+    @Query() query: PlanQueryDto,
   ): Promise<WeekPlanResponseDto> {
-    return this.dayPlannerService.getWeek(user.id, query.start);
+    return this.dayPlannerService.getPlan(user.id, query.from, query.days);
   }
 
   @Put('order')

@@ -10,8 +10,11 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
 } from '@nestjs/common';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
+import { NotesResponse, SetNotesDto } from '../todos/dto/todo-notes.dto';
+import { OccurrenceNotesService } from './occurrence-notes.service';
 import { HabitOccurrenceEntity } from './entities/habit-occurrence.entity';
 import { HabitOccurrenceResponseDto } from './dto/habit-occurrence-response.dto';
 import { RescheduleOccurrenceDto } from './dto/reschedule-occurrence.dto';
@@ -34,7 +37,10 @@ function response(
 
 @Controller()
 export class HabitOccurrencesController {
-  constructor(private readonly scheduling: HabitSchedulingService) {}
+  constructor(
+    private readonly scheduling: HabitSchedulingService,
+    private readonly notesService: OccurrenceNotesService,
+  ) {}
 
   @Get('habit-occurrences/today')
   async findToday(
@@ -49,6 +55,25 @@ export class HabitOccurrencesController {
     @Param('habitId', ParseIntPipe) habitId: number,
   ): Promise<HabitOccurrenceResponseDto[]> {
     return (await this.scheduling.history(user.id, habitId)).map(response);
+  }
+
+  @Get('habit-occurrences/:id/notes')
+  async notes(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<NotesResponse> {
+    return { notes: await this.notesService.notes(user.id, id) };
+  }
+
+  @Put('habit-occurrences/:id/notes')
+  async setNotes(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SetNotesDto,
+  ): Promise<NotesResponse> {
+    return {
+      notes: await this.notesService.setNotes(user.id, id, dto.notes ?? null),
+    };
   }
 
   @Post('habit-occurrences/:id/reschedule')

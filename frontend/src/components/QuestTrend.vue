@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { formatDateForGermanDisplay } from "../utils/date";
+import {
+  formatDateForGermanDisplay,
+  getCurrentDateInTimeZone,
+  weekStart,
+} from "../utils/date";
 import { trendText } from "../utils/quest-hours";
 
 const props = defineProps<{
@@ -29,8 +33,11 @@ const line = computed(() =>
   points.value.map(({ x, y }) => `${x},${y}`).join(" "),
 );
 const label = computed(() =>
-  trendText(props.weeks, props.starts, (date) =>
-    formatDateForGermanDisplay(date).slice(0, 6),
+  trendText(
+    props.weeks,
+    props.starts,
+    (date) => formatDateForGermanDisplay(date).slice(0, 6),
+    weekStart(getCurrentDateInTimeZone()),
   ),
 );
 </script>

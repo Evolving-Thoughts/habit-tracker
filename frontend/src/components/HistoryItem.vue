@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import AppIcon from "./AppIcon.vue";
+import CampaignChip from "./CampaignChip.vue";
 import type { HistoryItem } from "../types/history";
-import { categoryMark } from "../utils/category-mark";
+import { campaignMark, categoryMark } from "../utils/category-mark";
 import { formatTimeForGermanDisplay } from "../utils/date";
 import { shortDate } from "../utils/history";
 
@@ -37,9 +38,15 @@ const details = computed(() => {
     :class="{
       'history-item--skipped': !completed,
       'history-item--untimed': !time,
+      'history-item--campaign': item.campaign,
     }"
     :data-history-key="`${item.type}-${item.id}`"
     :data-status="item.status"
+    :style="
+      item.campaign
+        ? { '--campaign-mark': campaignMark(item.campaign)! }
+        : undefined
+    "
   >
     <span v-if="time" class="history-item__time">{{ time }}</span>
     <!-- Read-only state: history is a record, not something to tick. -->
@@ -50,17 +57,20 @@ const details = computed(() => {
       <h3>{{ item.title }}</h3>
       <p v-if="item.why" class="history-item__why">{{ item.why }}</p>
       <p
-        v-if="item.categoryName || details.length"
+        v-if="item.categoryName || details.length || item.campaign"
         class="history-item__details"
       >
         <span v-if="item.categoryName" class="history-item__category">
           <i
             class="history-item__mark"
-            :style="{ background: categoryMark(item.categoryName) }"
+            :style="{
+              background: categoryMark(item.categoryName, item.categoryColor),
+            }"
             aria-hidden="true"
           />{{ item.categoryName }}
         </span>
         <span v-for="part in details" :key="part">{{ part }}</span>
+        <CampaignChip v-if="item.campaign" :campaign="item.campaign" />
       </p>
     </div>
   </li>
@@ -75,6 +85,11 @@ const details = computed(() => {
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-card);
   background: var(--color-surface);
+}
+
+/* The stripe names the campaign, as on every card. */
+.history-item--campaign {
+  box-shadow: inset 0.3125rem 0 0 var(--campaign-mark);
 }
 
 .history-item--untimed {

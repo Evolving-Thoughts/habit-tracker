@@ -7,15 +7,18 @@ import QuestNotes from "./QuestNotes.vue";
 import WhyField from "./WhyField.vue";
 import TodoGoalFields from "./TodoGoalFields.vue";
 import CampaignFields from "./CampaignFields.vue";
+import CategoryPicker from "./CategoryPicker.vue";
+import CreateHabitForm, { type HabitDraft } from "./CreateHabitForm.vue";
 import FormDisclosure from "./FormDisclosure.vue";
+import KindSwitch from "./KindSwitch.vue";
+import ParentPicker from "./ParentPicker.vue";
 import AppIcon from "./AppIcon.vue";
 
 import {
   TIMER_DURATION_MESSAGE,
   TIMER_MAX_MINUTES,
 } from "../utils/timer-duration";
-import { computed, onMounted, ref } from "vue";
-import { getCategories } from "../api/categories.api";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import type { CategoryResponse } from "../types/category";
 import {
   changeHabitSchedule,
@@ -32,6 +35,7 @@ import type {
   ScheduleVersionResponse,
   UpdateHabitInput,
 } from "../types/habit";
+import type { HierarchyTodo } from "../types/todo-hierarchy";
 import { formatHabitSchedule, WEEKDAY_OPTIONS } from "../utils/habit";
 import type {
   CampaignInput,
@@ -48,6 +52,8 @@ import {
   isCampaignIcon,
 } from "../utils/campaign-style";
 import { hoursToMinutes, minutesToHours } from "../utils/quest-hours";
+import { categoryOfChoice, type ParentChoice } from "../utils/parent-choice";
+import { whyBelow } from "../utils/why";
 import {
   emptyScheduleDraft,
   positiveInteger,
@@ -64,12 +70,16 @@ const props = defineProps<{
   kind: "todo" | "habit";
   entityId: number;
   embedded?: boolean;
+  /** The run a daily was opened from: its notes are shown and saved here. */
+  occurrenceId?: number | null;
 }>();
 
 const emit = defineEmits<{
   changed: [];
   close: [];
   busy: [value: boolean];
+  /** A quest's editor switched to "Daily" (or back). */
+  mode: [kind: "todo" | "habit"];
 }>();
 
 const isLoading = ref(true);
@@ -77,6 +87,7 @@ const isSaving = ref(false);
 const hasLoaded = ref(false);
 const errorMessage = ref<string | null>(null);
 const confirmDeletion = ref(false);
+const keepButton = ref<HTMLButtonElement | null>(null);
 const {
   preview: deletionPreview,
   prepare: prepareDeletion,
@@ -100,6 +111,16 @@ async function requestDeletion(): Promise<void> {
     isSaving.value = false;
     emit("busy", false);
   }
+  if (confirmDeletion.value) {
+    // The question stands right above the actions; the safe answer has the focus.
+    await nextTick();
+    keepButton.value?.scrollIntoView?.({ block: "nearest" });
+    keepButton.value?.focus();
+  }
+}
+function keep(): void {
+  confirmDeletion.value = false;
+  cancelDeletion();
 }
 
 const title = ref("");
@@ -109,6 +130,8 @@ const why = ref("");
 const originalCategoryId = ref<number | null>(null);
 const originalWhy = ref("");
 const inheritedWhy = ref<InheritedWhy | null>(null);
+/** What the server said is inherited, before another place was chosen. */
+const loadedInheritedWhy = ref<InheritedWhy | null>(null);
 
 // Todo-Felder
 const periodStart = ref("");
@@ -120,11 +143,44 @@ const todoDate = ref("");
 const todoTime = ref("");
 const duration = ref<string | number>("");
 const timeOfDay = ref("");
+/** "Gehört zu": the quest it sits below; null at the top. */
+const parentId = ref<number | null>(null);
+/** The places "Gehört zu" offers, once loaded. */
+const parentChoicesLoaded = ref<ParentChoice[]>([]);
+/** Known once "Gehört zu" has read the tree; until then no switch to Daily. */
+const hasChildren = ref<boolean | null>(null);
 // Only a quest without parent is a campaign and offers these.
 const campaignColor = ref<CampaignColor | null>(null);
 const campaignIcon = ref<CampaignIcon | null>(null);
 const weeklyTarget = ref<string | number>("");
-const isCampaign = computed(() => loadedTodo.value?.parentId === null);
+/**
+ * A campaign as it was opened (a top-level quest with quests below or a
+ * colour, icon or goal): its form leaves out what a campaign is not planned
+ * by, unless a value is already set there.
+ */
+const isCampaign = computed(
+  () =>
+    !!loadedTodo.value &&
+    loadedTodo.value.campaign?.id === loadedTodo.value.id,
+);
+/** At the top now (as chosen): colour, icon and goal are on offer. */
+const isTopLevel = computed(() => parentId.value === null);
+const showPlan = computed(
+  () => !isCampaign.value || !!loadedTodo.value?.scheduledDate,
+);
+const showDuration = computed(
+  () => !isCampaign.value || loadedTodo.value?.plannedDurationMinutes != null,
+);
+const showAppointment = computed(
+  () => !isCampaign.value || !!loadedTodo.value?.timeOfDay,
+);
+const showGoal = computed(
+  () =>
+    !isCampaign.value ||
+    loadedTodo.value?.goalHabitId != null ||
+    !!loadedTodo.value?.periodStart ||
+    !!loadedTodo.value?.periodEnd,
+);
 const campaignSummary = computed(() =>
   campaignChoices(campaignColor.value, campaignIcon.value, weeklyTarget.value),
 );
@@ -134,9 +190,43 @@ const categoryName = computed(
       ?.name ?? "",
 );
 
+/*
+ * Quest or Daily: an open quest with nothing below it can become a daily.
+ * The daily takes over title, reason, category and campaign; once it is
+ * saved, the quest is deleted (see CreateHabitForm). Nothing changes before.
+ */
+const form = ref<"todo" | "habit">("todo");
+watch(form, (value) => emit("mode", value));
+const canBecomeDaily = computed(
+  () =>
+    props.kind === "todo" &&
+    !!loadedTodo.value &&
+    !loadedTodo.value.completed &&
+    !isCampaign.value &&
+    hasChildren.value === false,
+);
+/** The campaign the chosen place belongs to. */
+const chosenCampaignId = computed(() => {
+  if (parentId.value === null) return null;
+  const choice = parentChoicesLoaded.value.find(
+    (entry) => entry.todo.id === parentId.value,
+  );
+  if (choice) return choice.campaign.id;
+  const campaign = loadedTodo.value?.campaign;
+  return campaign && campaign.id !== loadedTodo.value?.id ? campaign.id : null;
+});
+const habitDraft = computed<HabitDraft>(() => ({
+  title: title.value.trim(),
+  why: why.value.trim(),
+  categoryId: categoryId.value,
+  campaignId: chosenCampaignId.value,
+}));
+
 // Habit-Felder
 const isActive = ref(true);
 const loadedHabit = ref<HabitResponse | null>(null);
+const campaignId = ref<number | null>(null);
+const originalCampaignId = ref<number | null>(null);
 const changeSchedule = ref(false);
 const effectiveFrom = ref(getCurrentDateInTimeZone());
 const today = computed(() => getCurrentDateInTimeZone());
@@ -153,7 +243,7 @@ function fillAssignment(entity: {
 }): void {
   categoryId.value = originalCategoryId.value = entity.categoryId ?? null;
   why.value = originalWhy.value = entity.why ?? "";
-  inheritedWhy.value = entity.inheritedWhy ?? null;
+  inheritedWhy.value = loadedInheritedWhy.value = entity.inheritedWhy ?? null;
 }
 
 /** Only what changed, so a plain edit never overwrites these fields. */
@@ -170,6 +260,42 @@ function assignmentChanges(): {
   };
 }
 
+/** The category a new place brings, unless the entry has one already. */
+function takeCategory(choice: ParentChoice | null): void {
+  if (choice && categoryId.value === null)
+    categoryId.value = categoryOfChoice(choice);
+}
+
+/** "Gehört zu" changed: the reason now comes from there, live as ever. */
+function chooseParent(choice: ParentChoice | null): void {
+  inheritedWhy.value =
+    parentId.value === loadedTodo.value?.parentId
+      ? loadedInheritedWhy.value
+      : choice
+        ? whyBelow(choice.todo)
+        : null;
+  takeCategory(choice);
+}
+function readParents(choices: ParentChoice[], todos: HierarchyTodo[]): void {
+  parentChoicesLoaded.value = choices;
+  hasChildren.value = todos.some((todo) => todo.parentId === props.entityId);
+}
+
+/**
+ * A daily's campaign changed: its reason comes from there; without one in
+ * the campaign, the goal counting the daily (the server's answer) still
+ * applies when the daily named no campaign before.
+ */
+function chooseCampaign(choice: ParentChoice | null): void {
+  const fallback =
+    originalCampaignId.value === null ? loadedInheritedWhy.value : null;
+  inheritedWhy.value =
+    campaignId.value === originalCampaignId.value
+      ? loadedInheritedWhy.value
+      : ((choice ? whyBelow(choice.todo) : null) ?? fallback);
+  takeCategory(choice);
+}
+
 /*
  * Loading is not reported as busy: "busy" keeps a dialog open while a write
  * is under way, and nothing can be lost by closing an editor that is still
@@ -177,13 +303,12 @@ function assignmentChanges(): {
  */
 async function loadEntity(): Promise<void> {
   try {
-    categories.value = await getCategories();
-
     if (props.kind === "todo") {
       const todo = await getTodo(props.entityId);
 
       fillAssignment(todo);
       loadedTodo.value = todo;
+      parentId.value = todo.parentId;
       periodStart.value = todo.periodStart ?? "";
       periodEnd.value = todo.periodEnd ?? "";
       goalHabitId.value = todo.goalHabitId ?? null;
@@ -202,6 +327,7 @@ async function loadEntity(): Promise<void> {
       title.value = habit.title;
       isActive.value = habit.isActive;
       loadedHabit.value = habit;
+      campaignId.value = originalCampaignId.value = habit.campaignId ?? null;
       duration.value = habit.plannedDurationMinutes ?? "";
       timeOfDay.value = habit.timeOfDay ?? "";
       const version = habit.currentSchedule ?? habit.upcomingSchedule;
@@ -253,10 +379,13 @@ function goalChanges(): TodoGoalInput {
   );
 }
 
-/** Only what changed; a quest below another one never sends these. */
+/**
+ * Only what changed, and only at the top: below another quest it carries
+ * none of these (the server clears them when a campaign moves below).
+ */
 function campaignChanges(): CampaignInput {
   const todo = loadedTodo.value;
-  if (!todo || !isCampaign.value) return {};
+  if (!todo || !isTopLevel.value) return {};
   const next = {
     weeklyTargetMinutes: hoursToMinutes(weeklyTarget.value),
     color: campaignColor.value,
@@ -278,6 +407,9 @@ function todoInput(): UpdateTodoInput {
       time: todoTime.value,
       duration: duration.value,
     }),
+    ...(parentId.value !== loadedTodo.value?.parentId
+      ? { parentId: parentId.value }
+      : {}),
     ...assignmentChanges(),
     ...goalChanges(),
     ...campaignChanges(),
@@ -306,6 +438,8 @@ function buildHabitInput(): UpdateHabitInput {
   if (value !== loadedHabit.value?.title) input.title = value;
   if (isActive.value !== loadedHabit.value?.isActive)
     input.isActive = isActive.value;
+  if (campaignId.value !== originalCampaignId.value)
+    input.campaignId = campaignId.value;
   const minutes = String(duration.value).trim()
     ? positiveInteger(duration.value, TIMER_DURATION_MESSAGE, TIMER_MAX_MINUTES)
     : null;
@@ -448,7 +582,23 @@ onMounted(loadEntity);
       </div>
     </div>
 
-    <form v-if="hasLoaded" novalidate @submit.prevent="save">
+    <KindSwitch
+      v-if="hasLoaded && canBecomeDaily"
+      v-model="form"
+      class="item-editor__kind"
+    />
+
+    <!-- The quest as a daily: a new daily that replaces it once saved. -->
+    <CreateHabitForm
+      v-if="hasLoaded && form === 'habit'"
+      :initial="habitDraft"
+      :replaces="{ id: entityId, title: loadedTodo?.title ?? title }"
+      @busy="emit('busy', $event)"
+      @created="emit('changed')"
+      @cancel="emit('close')"
+    />
+
+    <form v-else-if="hasLoaded" novalidate @submit.prevent="save">
       <fieldset :disabled="isBusy">
         <label class="field">
           Titel
@@ -457,12 +607,41 @@ onMounted(loadEntity);
 
         <!--
           A quest shows what most edits touch; the rarer groups wait behind
-          disclosures that open by themselves when they hold a value.
+          disclosures that open by themselves when they hold a value. A
+          campaign is planned through its quests, so its form leaves out day,
+          duration and appointment unless one is set.
         -->
         <template v-if="kind === 'todo'">
-          <PlanFields v-model:date="todoDate" id-prefix="planner-edit" />
+          <p v-if="isCampaign" class="item-editor__hint">
+            Eine oberste Quest wird zur Kampagne, sobald sie Unter-Quests hat
+            oder eine Farbe, ein Symbol oder ein Wochenziel bekommt.
+          </p>
 
-          <div class="item-editor__row">
+          <div v-else class="field">
+            <label for="planner-edit-parent">Gehört zu · optional</label>
+            <ParentPicker
+              id="planner-edit-parent"
+              v-model="parentId"
+              :exclude="entityId"
+              :none-label="
+                hasChildren ? 'Keine (eigene Kampagne)' : 'Keine (lose Quest)'
+              "
+              described-by="planner-edit-parent-hint"
+              @chosen="chooseParent"
+              @ready="readParents"
+            />
+            <small id="planner-edit-parent-hint" class="item-editor__hint"
+              >Alle Unter-Quests ziehen mit.</small
+            >
+          </div>
+
+          <PlanFields
+            v-if="showPlan"
+            v-model:date="todoDate"
+            id-prefix="planner-edit"
+          />
+
+          <div v-if="showDuration" class="item-editor__row">
             <label class="field">
               Dauer in Minuten · optional
               <input
@@ -481,9 +660,27 @@ onMounted(loadEntity);
             :inherited="inheritedWhy"
           />
 
+          <template v-if="isCampaign">
+            <div class="field">
+              <label for="planner-edit-category">Kategorie · optional</label>
+              <CategoryPicker
+                id="planner-edit-category"
+                v-model="categoryId"
+                @loaded="categories = $event"
+              />
+            </div>
+            <CampaignFields
+              v-model:color="campaignColor"
+              v-model:icon="campaignIcon"
+              v-model:target="weeklyTarget"
+              id-prefix="planner-edit-campaign"
+              :title="title"
+            />
+          </template>
+
           <div class="item-editor__more">
             <FormDisclosure
-              v-if="isCampaign"
+              v-if="!isCampaign && isTopLevel"
               label="Kampagne"
               detail="Farbe, Symbol, Wochenziel"
               :summary="campaignSummary"
@@ -499,12 +696,14 @@ onMounted(loadEntity);
             </FormDisclosure>
 
             <AppointmentFields
+              v-if="showAppointment"
               v-model:time="todoTime"
               :date="todoDate"
               id-prefix="planner-edit"
             />
 
             <TodoGoalFields
+              v-if="showGoal"
               v-model:period-start="periodStart"
               v-model:period-end="periodEnd"
               v-model:habit-id="goalHabitId"
@@ -512,83 +711,30 @@ onMounted(loadEntity);
             />
 
             <FormDisclosure
+              v-if="!isCampaign"
               label="Kategorie"
               :summary="categoryName"
               :start-open="categoryId !== null"
             >
-              <label class="field">
-                Kategorie
-                <select v-model="categoryId" name="category">
-                  <option :value="null">Keine</option>
-                  <option
-                    v-for="category in categories"
-                    :key="category.id"
-                    :value="category.id"
-                  >
-                    {{ category.name }}
-                  </option>
-                </select>
-              </label>
+              <div class="field">
+                <label for="planner-edit-category">Kategorie</label>
+                <CategoryPicker
+                  id="planner-edit-category"
+                  v-model="categoryId"
+                  @loaded="categories = $event"
+                />
+              </div>
             </FormDisclosure>
           </div>
 
-          <QuestNotes :todo-id="entityId" />
+          <QuestNotes :target="{ kind: 'todo', id: entityId }" />
         </template>
 
+        <!-- A daily: the rhythm first, then what it belongs to, then why. -->
         <template v-else>
-          <label class="field">
-            Kategorie · optional
-            <select v-model="categoryId" name="category">
-              <option :value="null">Keine</option>
-              <option
-                v-for="category in categories"
-                :key="category.id"
-                :value="category.id"
-              >
-                {{ category.name }}
-              </option>
-            </select>
-          </label>
-
-          <WhyField
-            id="planner-edit-why"
-            v-model="why"
-            :inherited="inheritedWhy"
-          />
-
-          <div class="item-editor__row">
-            <label class="field">
-              Uhrzeit · optional
-              <input v-model="timeOfDay" name="timeOfDay" type="time" />
-            </label>
-            <div class="field">
-              <label for="habit-edit-duration"
-                >Dauer in Minuten · optional</label
-              >
-              <input
-                id="habit-edit-duration"
-                v-model="duration"
-                name="duration"
-                type="number"
-                min="1"
-                :max="TIMER_MAX_MINUTES"
-                step="1"
-                aria-describedby="habit-edit-duration-hint"
-              />
-              <small id="habit-edit-duration-hint" class="item-editor__hint"
-                >Gilt für jeden Tag ohne eigene Dauer.</small
-              >
-            </div>
-          </div>
-
-          <label class="item-editor__checkbox">
-            <input v-model="isActive" name="isActive" type="checkbox" />
-            Aktiv: erscheint an fälligen Tagen in Heute
-          </label>
-
           <div class="item-editor__notice" data-test="schedule-summary">
             <p v-if="loadedHabit?.currentSchedule">
-              Jetzt:
+              Rhythmus:
               <strong>{{
                 describeSchedule(loadedHabit.currentSchedule)
               }}</strong>, seit
@@ -628,7 +774,7 @@ onMounted(loadEntity);
               name="changeSchedule"
               type="checkbox"
             />
-            Zeitplan ändern
+            Rhythmus ändern
           </label>
 
           <fieldset
@@ -636,25 +782,9 @@ onMounted(loadEntity);
             class="item-editor__schedule"
             data-test="schedule-fields"
           >
-            <legend class="visually-hidden">Neuer Zeitplan</legend>
-            <div class="field">
-              <label for="planner-edit-effective-from">Gültig ab</label>
-              <input
-                id="planner-edit-effective-from"
-                v-model="effectiveFrom"
-                name="effectiveFrom"
-                type="date"
-                :min="today"
-                required
-                aria-describedby="planner-edit-effective-hint"
-              />
-              <small id="planner-edit-effective-hint" class="item-editor__hint"
-                >Heute gilt es sofort, ein späterer Tag ab Mitternacht.</small
-              >
-            </div>
-
+            <legend class="visually-hidden">Neuer Rhythmus</legend>
             <label class="field">
-              Wie oft?
+              Rhythmus
               <select v-model="schedule.type" name="scheduleType">
                 <option value="interval">Alle paar Tage</option>
                 <option value="fixed_weekdays">An festen Wochentagen</option>
@@ -724,15 +854,134 @@ onMounted(loadEntity);
               </select>
             </label>
 
-            <p class="item-editor__notice">
-              Ersetzt einen schon geplanten Zeitplan. Erledigtes bleibt
-              erhalten.
-            </p>
+            <div class="field">
+              <label for="planner-edit-effective-from">Gültig ab</label>
+              <input
+                id="planner-edit-effective-from"
+                v-model="effectiveFrom"
+                name="effectiveFrom"
+                type="date"
+                :min="today"
+                required
+                aria-describedby="planner-edit-effective-hint"
+              />
+              <small id="planner-edit-effective-hint" class="item-editor__hint"
+                >Heute gilt es sofort, ein späterer Tag ab Mitternacht. Ersetzt
+                einen schon geplanten Rhythmus; Erledigtes bleibt.</small
+              >
+            </div>
           </fieldset>
+
+          <div class="item-editor__row">
+            <div class="field">
+              <label for="planner-edit-category">Kategorie · optional</label>
+              <CategoryPicker
+                id="planner-edit-category"
+                v-model="categoryId"
+                @loaded="categories = $event"
+              />
+            </div>
+            <div class="field">
+              <label for="planner-edit-campaign">Kampagne · optional</label>
+              <ParentPicker
+                id="planner-edit-campaign"
+                v-model="campaignId"
+                campaigns-only
+                described-by="planner-edit-campaign-hint"
+                @chosen="chooseCampaign"
+              />
+              <small id="planner-edit-campaign-hint" class="item-editor__hint"
+                >Seine gemessene Zeit zählt dort als Kampagnen-Stunden.</small
+              >
+            </div>
+          </div>
+
+          <WhyField
+            id="planner-edit-why"
+            v-model="why"
+            :inherited="inheritedWhy"
+          />
+
+          <div class="item-editor__row">
+            <label class="field">
+              Uhrzeit · optional
+              <input v-model="timeOfDay" name="timeOfDay" type="time" />
+            </label>
+            <div class="field">
+              <label for="habit-edit-duration"
+                >Dauer in Minuten · optional</label
+              >
+              <input
+                id="habit-edit-duration"
+                v-model="duration"
+                name="duration"
+                type="number"
+                min="1"
+                :max="TIMER_MAX_MINUTES"
+                step="1"
+                aria-describedby="habit-edit-duration-hint"
+              />
+              <small id="habit-edit-duration-hint" class="item-editor__hint"
+                >Gilt für jeden Tag ohne eigene Dauer.</small
+              >
+            </div>
+          </div>
+
+          <label class="item-editor__checkbox">
+            <input v-model="isActive" name="isActive" type="checkbox" />
+            Aktiv: erscheint an fälligen Tagen in Heute
+          </label>
+
+          <QuestNotes
+            v-if="occurrenceId"
+            :target="{ kind: 'occurrence', id: occurrenceId }"
+          />
         </template>
 
-        <!-- In a dialog it sticks to the bottom, so saving never needs a scroll. -->
-        <div class="item-editor__footer" data-test="editor-actions">
+        <!-- The last, quiet step asks right above the actions. -->
+        <div
+          v-if="confirmDeletion"
+          class="item-editor__confirm"
+          data-test="delete-question"
+        >
+          <TodoDeletionSummary
+            v-if="deletionPreview"
+            :preview="deletionPreview"
+          />
+          <p>„{{ title }}“ wirklich löschen?</p>
+
+          <p v-if="kind === 'habit'" class="item-editor__hint">
+            Es verschwindet aus Heute. Das Logbuch bleibt erhalten.
+          </p>
+
+          <div class="item-editor__actions">
+            <button
+              class="btn btn--danger"
+              type="button"
+              data-test="confirm-delete"
+              @click="remove"
+            >
+              Ja, löschen
+            </button>
+
+            <button
+              ref="keepButton"
+              class="btn"
+              type="button"
+              data-test="cancel-delete"
+              @click="keep"
+            >
+              Nicht löschen
+            </button>
+          </div>
+        </div>
+
+        <!-- In a dialog it is the last thing, flush with the bottom edge. -->
+        <div
+          class="item-editor__footer"
+          :class="{ 'sticky-actions': embedded }"
+          data-test="editor-actions"
+        >
           <p v-if="errorMessage" class="form-error" role="alert">
             {{ errorMessage }}
           </p>
@@ -745,54 +994,18 @@ onMounted(loadEntity);
             <button class="btn" type="button" @click="emit('close')">
               Abbrechen
             </button>
+
+            <button
+              v-if="!confirmDeletion"
+              class="btn btn--quiet item-editor__delete"
+              type="button"
+              data-test="request-delete"
+              @click="requestDeletion"
+            >
+              <AppIcon name="trash" />
+              {{ kind === "todo" ? "Quest löschen" : "Gesamtes Daily löschen" }}
+            </button>
           </div>
-        </div>
-
-        <div class="item-editor__delete">
-          <button
-            v-if="!confirmDeletion"
-            class="btn btn--quiet"
-            type="button"
-            data-test="request-delete"
-            @click="requestDeletion"
-          >
-            <AppIcon name="trash" />
-            {{ kind === "todo" ? "Quest löschen" : "Gesamtes Daily löschen" }}
-          </button>
-
-          <template v-else>
-            <TodoDeletionSummary
-              v-if="deletionPreview"
-              :preview="deletionPreview"
-            />
-            <p>„{{ title }}“ wirklich löschen?</p>
-
-            <p v-if="kind === 'habit'" class="item-editor__hint">
-              Es verschwindet aus Heute. Das Logbuch bleibt erhalten.
-            </p>
-
-            <div class="item-editor__actions">
-              <button
-                class="btn btn--danger"
-                type="button"
-                data-test="confirm-delete"
-                @click="remove"
-              >
-                Ja, löschen
-              </button>
-
-              <button
-                class="btn"
-                type="button"
-                @click="
-                  confirmDeletion = false;
-                  cancelDeletion();
-                "
-              >
-                Nicht löschen
-              </button>
-            </div>
-          </template>
         </div>
       </fieldset>
     </form>
@@ -857,24 +1070,9 @@ onMounted(loadEntity);
   gap: var(--space-3);
 }
 
-/*
- * Inside the dialog the actions stick to its bottom edge, across its padding,
- * so Speichern and Abbrechen stay in reach above a long form on a phone.
- */
-.item-editor--embedded .item-editor__footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
-  margin: 0 calc(-1 * var(--dialog-padding, 0px));
-  padding: var(--space-3) var(--dialog-padding, 0px)
-    var(--dialog-padding, 0px);
-  border-top: 1px solid var(--color-line);
-  background: var(--color-surface);
-}
-
-/* A field reached with Tab never hides behind the sticky actions. */
-:global(.modal-dialog:has(.item-editor--embedded)) {
-  scroll-padding-bottom: 7rem;
+/* Quest | Daily above the form, with the form's gap below it. */
+.item-editor__kind {
+  margin-bottom: var(--space-4);
 }
 
 .item-editor__hint {
@@ -944,7 +1142,12 @@ onMounted(loadEntity);
   height: 1.125rem;
 }
 
+/* The way to deletion: last in the actions, pushed to their far end. */
 .item-editor__delete {
+  margin-left: auto;
+}
+
+.item-editor__confirm {
   display: grid;
   gap: var(--space-3);
   justify-items: start;
@@ -952,14 +1155,8 @@ onMounted(loadEntity);
   border-top: 1px solid var(--color-line);
 }
 
-.item-editor__delete p {
+.item-editor__confirm p {
   margin: 0;
-}
-
-/* Below the sticky actions, whose edge already sets it apart. */
-.item-editor--embedded .item-editor__delete {
-  padding-top: 0;
-  border-top: 0;
 }
 
 /* The way to deletion stays quiet ink; only "Ja, löschen" is red. */

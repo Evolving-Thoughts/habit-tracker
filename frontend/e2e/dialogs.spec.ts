@@ -63,9 +63,7 @@ for (const view of ["Questlog", "Heute", "Dailies"] as const) {
     await expect(
       isMobile
         ? dialog
-        : dialog.locator(
-            view === "Questlog" ? '[name="editTitle"]' : '[name="title"]',
-          ),
+        : dialog.locator('[name="title"]'),
     ).toBeFocused();
     expect(await dialog.evaluate((el) => el.matches(":modal"))).toBe(true);
     const box = await dialog.boundingBox();
@@ -92,12 +90,7 @@ for (const view of ["Questlog", "Heute", "Dailies"] as const) {
     await plus.click();
     await expect(
       page.getByRole("dialog", {
-        name:
-          view === "Questlog"
-            ? "Neue Quest"
-            : view === "Dailies"
-              ? "Neues Daily"
-              : "Was möchtest du erstellen?",
+        name: view === "Dailies" ? "Neues Daily" : "Neue Quest",
       }),
     ).toBeVisible();
     await page.keyboard.press("Escape");

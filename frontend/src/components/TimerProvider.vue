@@ -8,6 +8,7 @@ import {
 } from "../utils/timer-duration";
 import { computed, onMounted, onUnmounted, provide, ref, watch } from "vue";
 import { createTimerController, timerKey } from "../composables/useTimer";
+import { useTargetNotice } from "../composables/useTargetNotice";
 import {
   updateTodoCompletion,
   updateOccurrenceStatus,
@@ -17,13 +18,15 @@ import type { MenuEntry } from "../utils/row-actions";
 import ActionMenu from "./ActionMenu.vue";
 import TimerIconButton from "./TimerIconButton.vue";
 import ModalDialog from "./ModalDialog.vue";
+import NoticeToast from "./NoticeToast.vue";
 
 /**
  * Holds the one stopwatch of the signed-in user for everything below it and
  * shows it in a bar that stays in view. A view that shows the stopwatch large
  * itself hides the bar; the dialogs stay available either way. On a phone
  * the bar is one line (title, time, pause or resume); Soll ändern,
- * erledigen and beenden wait in its menu.
+ * erledigen and beenden wait in its menu. Reaching the Soll is announced
+ * once on every view, with the bar or without it.
  */
 defineProps<{ hideBar?: boolean }>();
 
@@ -31,6 +34,7 @@ useDevicePushRestore();
 const controller = createTimerController();
 provide(timerKey, controller);
 const { timer, elapsed, reached, error, busy, switching } = controller;
+const notice = useTargetNotice(controller);
 const editingId = ref<string>();
 const editing = ref(false);
 const completing = ref(false);
@@ -207,6 +211,7 @@ onUnmounted(() => {
     </p>
   </aside>
   <slot />
+  <NoticeToast :message="notice.message.value" @close="notice.dismiss" />
   <ModalDialog
     v-if="switching"
     title="Andere Stoppuhr starten?"

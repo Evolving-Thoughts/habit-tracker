@@ -72,6 +72,7 @@ export type WeekReviewResponse = {
     categories: {
       id: number;
       name: string;
+      color: string | null;
       target: number;
       completed: number;
       reached: boolean;

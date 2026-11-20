@@ -71,9 +71,35 @@ export class TodosService {
     });
   }
 
-  /** Open todos without a date (Todo-Dump). */
+  /** Open todos without a day that one can work on: the Questlog, in its order. */
   backlog(userId: string): Promise<TodoEntity[]> {
     return backlogTodos(this.todoRepository.manager, userId);
+  }
+
+  /**
+   * Stores the order the user sorted the Questlog into: the given quests
+   * first, in that order, then every other quest of the Questlog in the
+   * order it had. Nothing is written unless every id is one of the user's
+   * quests in the Questlog.
+   */
+  async reorderBacklog(userId: string, ids: number[]): Promise<void> {
+    if (new Set(ids).size !== ids.length)
+      throw new BadRequestException('Every quest may appear only once');
+    return this.unitOfWork.run(userId, async (manager) => {
+      const backlog = await backlogTodos(manager, userId);
+      const byId = new Map(backlog.map((todo) => [todo.id, todo]));
+      if (ids.some((id) => !byId.has(id)))
+        throw new NotFoundException('A quest to sort is not in the Questlog');
+      const listed = new Set(ids);
+      const order = [
+        ...ids.map((id) => byId.get(id)!),
+        ...backlog.filter((todo) => !listed.has(todo.id)),
+      ];
+      const repository = manager.getRepository(TodoEntity);
+      for (const [backlogPosition, todo] of order.entries())
+        if (todo.backlogPosition !== backlogPosition)
+          await repository.update({ id: todo.id, userId }, { backlogPosition });
+    });
   }
 
   async findOne(userId: string, id: number): Promise<TodoEntity> {
@@ -162,6 +188,12 @@ export class TodosService {
           completedAt: null,
           scheduledDate,
           timeOfDay,
+          backlogPosition:
+            scheduledDate === null
+              ? dto.backlogPlace === 'top'
+                ? await this.firstBacklogPosition(manager, userId)
+                : await this.nextBacklogPosition(manager, userId)
+              : null,
           plannedDurationMinutes: dto.plannedDurationMinutes ?? null,
           ...campaign,
         }),
@@ -213,7 +245,7 @@ export class TodosService {
         dto.scheduledDate !== undefined &&
         dto.scheduledDate !== todo.scheduledDate
       )
-        this.moveToDay(todo, dto.scheduledDate);
+        await this.moveToDay(manager, todo, dto.scheduledDate);
       if (dto.timeOfDay !== undefined) todo.timeOfDay = dto.timeOfDay;
       if (dto.plannedDurationMinutes !== undefined)
         todo.plannedDurationMinutes = dto.plannedDurationMinutes;
@@ -267,7 +299,8 @@ export class TodosService {
         throw new ConflictException(
           'Beende zuerst die Stoppuhr, bevor du die Quest verschiebst.',
         );
-      if (todo.scheduledDate !== dto.date) this.moveToDay(todo, dto.date);
+      if (todo.scheduledDate !== dto.date)
+        await this.moveToDay(manager, todo, dto.date);
       return repository.save(todo);
     });
   }
@@ -395,12 +428,57 @@ export class TodosService {
 
   /**
    * Another day has its own order, so the todo joins it at the end. Back in
-   * the backlog there is no day an appointment could be on.
+   * the backlog there is no day an appointment could be on, and the todo
+   * joins the end of the Questlog's order; with a day it has no place there.
    */
-  private moveToDay(todo: TodoEntity, date: string | null): void {
+  private async moveToDay(
+    manager: EntityManager,
+    todo: TodoEntity,
+    date: string | null,
+  ): Promise<void> {
     todo.scheduledDate = date;
     todo.dayPosition = null;
+    todo.backlogPosition =
+      date === null
+        ? await this.nextBacklogPosition(manager, todo.userId)
+        : null;
     if (date === null) todo.timeOfDay = null;
+  }
+
+  /** The place after every quest of the user that has no day. */
+  private async nextBacklogPosition(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<number> {
+    const last = await this.backlogEdge(manager, userId, 'MAX');
+    return last === null ? 0 : last + 1;
+  }
+
+  /**
+   * The place before every quest of the user that has no day, in the same
+   * transaction as the insert; positions may go below zero.
+   */
+  private async firstBacklogPosition(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<number> {
+    const first = await this.backlogEdge(manager, userId, 'MIN');
+    return first === null ? 0 : first - 1;
+  }
+
+  private async backlogEdge(
+    manager: EntityManager,
+    userId: string,
+    edge: 'MIN' | 'MAX',
+  ): Promise<number | null> {
+    const result = await manager
+      .getRepository(TodoEntity)
+      .createQueryBuilder('todo')
+      .select(`${edge}("todo"."backlogPosition")`, 'edge')
+      .where('"todo"."userId" = :userId', { userId })
+      .andWhere('"todo"."scheduledDate" IS NULL')
+      .getRawOne<{ edge: number | null }>();
+    return result?.edge == null ? null : Number(result.edge);
   }
 
   private validatePlan(

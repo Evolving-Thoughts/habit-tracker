@@ -1,14 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed } from "vue";
+import DayCalendar from "./DayCalendar.vue";
 import DayReflection from "./DayReflection.vue";
-import DayTimeline from "./DayTimeline.vue";
-import DayWorkLogs from "./DayWorkLogs.vue";
 import HistoryItem from "./HistoryItem.vue";
 import HistoryPlannedItems, {
   type PlannedActions,
 } from "./HistoryPlannedItems.vue";
 import WeeklyTargets from "./WeeklyTargets.vue";
-import type { WorkTarget } from "../api/work-logs.api";
 import type {
   HistoryFilter,
   HistoryResponse,
@@ -17,7 +15,6 @@ import type {
 } from "../types/history";
 import { dayRelation, tallyLine, tallyOfHistoryDay } from "../utils/day-tally";
 import { hasEntries } from "../utils/history";
-import { formatDuration, logBlocks, planBlocks } from "../utils/logbook";
 
 type Day = HistoryResponse["days"][number];
 
@@ -62,54 +59,12 @@ const tally = computed(() =>
 const isEmpty = computed(
   () => !props.weeklyTargets.length && !hasEntries(props.day),
 );
-/** Only what has begun can have been worked on. */
+/** Only what has begun can be reflected on. */
 const isPastOrToday = computed(() => props.day.date <= props.today);
-
-const plan = computed(() => planBlocks(props.day));
-const logs = computed(() =>
-  (props.day.work.logs ?? []).filter((log) => !props.hiddenLogs?.has(log.id)),
-);
-/*
- * The day's total comes from the server, which still counts a stretch whose
- * delete is held back. Until the delete went through, the head shows no
- * figure rather than one that is about to be wrong.
- */
-const holdsBack = computed(() =>
-  (props.day.work.logs ?? []).some((log) => props.hiddenLogs?.has(log.id)),
-);
-const blocks = computed(() =>
-  isPastOrToday.value
-    ? logBlocks({ ...props.day.work, logs: logs.value }, props.day.date)
-    : null,
-);
-const hasAxis = computed(() => plan.value.length > 0 || logs.value.length > 0);
-const hasAside = computed(() => isPastOrToday.value || plan.value.length > 0);
-
-/** Entries of the day that can take a manual work log. */
-const workTargets = computed<WorkTarget[]>(() => {
-  const seen = new Set<string>();
-  return [...props.day.items, ...plannedItems.value].flatMap((entry) => {
-    if (entry.id === null) return [];
-    const kind =
-      entry.type === "todo" ? ("todo" as const) : ("occurrence" as const);
-    const key = `${kind}-${entry.id}`;
-    if (seen.has(key)) return [];
-    seen.add(key);
-    return [{ kind, targetId: entry.id, title: entry.title }];
-  });
-});
-
-const editing = ref<number | null>(null);
-watch(
-  () => props.day.date,
-  () => {
-    editing.value = null;
-  },
-);
 </script>
 
 <template>
-  <div class="calendar-day" :class="{ 'calendar-day--split': hasAside }">
+  <div class="calendar-day">
     <div class="calendar-day__list">
       <DayReflection v-if="isPastOrToday" :date="day.date" />
 
@@ -165,51 +120,24 @@ watch(
       <WeeklyTargets v-if="weeklyTargets.length" :targets="weeklyTargets" />
     </div>
 
-    <!-- The plan and the Logbuch on one time axis, with the list to correct it. -->
-    <section
-      v-if="hasAside"
-      class="calendar-day__axis"
-      aria-labelledby="day-axis-title"
-    >
-      <h2 id="day-axis-title" class="section-title" tabindex="-1">
-        <template v-if="isPastOrToday">
-          Logbuch
-          <span v-if="day.work.minutes && !holdsBack" class="count">{{
-            formatDuration(day.work.minutes)
-          }}</span>
-        </template>
-        <template v-else>Termine</template>
-      </h2>
-      <DayTimeline
-        v-if="hasAxis"
-        :plan="plan"
-        :logs="blocks"
-        @edit="editing = $event"
-      />
-      <template v-if="isPastOrToday">
-        <p v-if="!logs.length" class="calendar-day__quiet">
-          {{
-            day.date === today
-              ? "Heute wurde noch keine Zeit gemessen."
-              : "An diesem Tag wurde keine Zeit gemessen."
-          }}
-        </p>
-        <div v-if="logs.length || workTargets.length" class="card">
-          <DayWorkLogs
-            v-model:editing="editing"
-            :date="day.date"
-            :logs="logs"
-            :targets="workTargets"
-            :reload="reload"
-            @remove="emit('removeLog', $event)"
-          />
-        </div>
-      </template>
-    </section>
+    <!-- The plan and the Logbuch on one hour axis; a block opens to correct it. -->
+    <DayCalendar
+      class="calendar-day__calendar"
+      :day="day"
+      :today="today"
+      :reload="reload"
+      :hidden-logs="hiddenLogs"
+      @remove-log="emit('removeLog', $event)"
+    />
   </div>
 </template>
 
 <style scoped>
+.calendar-day {
+  display: grid;
+  gap: var(--space-6);
+}
+
 .calendar-day__empty {
   margin-top: var(--space-5);
 }
@@ -229,32 +157,25 @@ watch(
   list-style: none;
 }
 
-.calendar-day__axis {
-  display: grid;
-  gap: var(--space-3);
-  align-content: start;
+/* Below the list on a phone: a window onto the day that scrolls in itself. */
+.calendar-day__calendar {
+  height: min(75dvh, 40rem);
 }
 
-.calendar-day__axis > .section-title {
-  margin-bottom: 0;
-}
-
-.calendar-day__quiet {
-  margin: 0;
-  color: var(--color-ink-muted);
-}
-
-/* Wide screens: the list of the day beside its time axis. */
+/*
+ * Wide screens: the list of the day beside its calendar, which stays in
+ * view at the full height of the window while the list scrolls.
+ */
 @media (min-width: 56rem) {
-  .calendar-day--split {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(19rem, 24rem);
-    gap: var(--space-6);
+  .calendar-day {
+    grid-template-columns: minmax(0, 1fr) clamp(22rem, 38%, 30rem);
     align-items: start;
   }
 
-  .calendar-day--split .calendar-day__axis > .section-title {
-    margin-top: 0;
+  .calendar-day__calendar {
+    position: sticky;
+    top: calc(3.5rem + var(--space-4));
+    height: calc(100dvh - 3.5rem - var(--space-6));
   }
 }
 </style>

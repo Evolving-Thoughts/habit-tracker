@@ -8,6 +8,19 @@ Das Erreichen des Solls einer Stoppuhr kann auch bei geschlossener PWA oder gesp
 - Meldungen an alle **angemeldeten Geräte/Browser mit ausdrücklich aktiviertem Push**. Andere Nutzer erhalten keine Meldung.
 - Nachricht immer neutral: **„Du hast dein Soll erreicht“**, dazu „Die Stoppuhr läuft weiter.“ Keine Aufgaben-/Habit-Titel, E-Mails oder Nutzerinformationen im Payload.
 - Antippen öffnet die App oder fokussiert ein bereits offenes App-Fenster, ohne dessen Formular zu verwerfen. Es markiert nichts als erledigt.
+- Eine Stoppuhr, die schon beim Start über ihrem Soll liegt (sie zählt von der bereits geloggten Zeit weiter, siehe `timers-and-completion.md`), gilt sofort als erreicht und meldet nichts.
+
+## Offene App: Hinweis und Systemmeldung ohne Doppelung
+
+Ist die App offen, wenn das Soll erreicht wird, zeigt sie selbst auf jeder Ansicht einen Hinweis ("Soll erreicht: <Titel> · <Soll>. Die Stoppuhr läuft weiter.", `NoticeToast`) und, wenn die Benachrichtigungs-Erlaubnis schon erteilt ist, eine Systemmeldung über `registration.showNotification` (`frontend/src/push/target-notification.ts`). Diese Meldung entsteht lokal und darf den Titel nennen; der Push-Payload bleibt neutral. Bemerkt ein aus dem Hintergrund geweckter Tab das Erreichen erst mehr als 30 Sekunden später, zeigt er nur den Hinweis.
+
+Doppelte Meldungen verhindern drei Dinge:
+
+1. Beide Wege benutzen denselben Tag `habit-timer-<timerId>`. Kommt die zweite Meldung doch, ersetzt sie die erste still (`renotify` bleibt aus).
+2. Die App schaut vor dem Anzeigen mit `getNotifications({ tag })` nach, ob der Push schon da war, und zeigt dann nichts.
+3. Nach dem Anzeigen meldet die App dem Service Worker `{ type: "timer-notified", timerId }`. Der Worker merkt sich die Stoppuhr im Speicher und zeigt den Push für sie nicht mehr; außerdem lässt er ihn aus, wenn eine Meldung mit dem Tag noch sichtbar ist. Wurde der Worker zwischendurch beendet, greift nur noch Punkt 1.
+
+Ist die Erlaubnis noch "default", fragt weder der Hinweis noch die Stoppuhr danach; das bleibt den Einstellungen.
 - Opt-in ist pro Origin und Browserprofil. Keine automatische Berechtigungsanfrage bei Login/Seitenaufruf.
 - Nach Logout wird die Session samt Gerätezuordnung und ausstehenden Lieferungen serverseitig entfernt. Die Browser-Erlaubnis und lokale Opt-in-Einstellung bleiben bestehen. Bei erneutem Login wird ein weiterhin aktiviertes Gerät ohne erneuten Prompt zugeordnet.
 - „Push deaktivieren“ speichert zuerst das lokale Opt-out und entfernt danach die Serverzuordnung sowie das Browser-Abonnement. Es bleibt auch nach Login deaktiviert. Bei Netzausfall bleibt das Opt-out gespeichert; „Erneut prüfen“/nächster Login versucht die Serverbereinigung erneut.

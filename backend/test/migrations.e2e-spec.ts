@@ -1,12 +1,14 @@
-import { DataSource } from 'typeorm';
+import { DataSource, MigrationInterface } from 'typeorm';
 import { ENTITY_FILES } from '../src/database/data-source';
 import { databaseOptions } from '../src/database/database.options';
 import { Baseline1793522450873 } from '../src/database/migrations/1793522450873-Baseline';
+import { WeeklyQuestTargets1796000000000 } from '../src/database/migrations/1796000000000-WeeklyQuestTargets';
 
 const MIGRATION_DB = 'habit_tracker_migration_test';
 
 describe('Migrations (e2e)', () => {
   const options = databaseOptions((key) => process.env[key]);
+  const allMigrations = options.migrations as (new () => MigrationInterface)[];
   const admin = new DataSource(options);
   const target = (): DataSource =>
     new DataSource({
@@ -41,6 +43,40 @@ describe('Migrations (e2e)', () => {
   it('builds the full schema on an empty database', async () => {
     await db.runMigrations();
     expect(await remainingChanges()).toEqual([]);
+  });
+
+  it('moves the overall weekly goal into its history', async () => {
+    // The schema just before the history: the goal is a column on users.
+    const before = new DataSource({
+      ...options,
+      database: MIGRATION_DB,
+      migrations: allMigrations.slice(
+        0,
+        allMigrations.indexOf(WeeklyQuestTargets1796000000000),
+      ),
+    });
+    await before.initialize();
+    await before.runMigrations();
+    const [{ id: withGoal }] = await before.query<{ id: string }[]>(
+      `INSERT INTO users (email, "passwordHash", "weeklyQuestTargetMinutes")
+       VALUES ('ziel@example.test', 'x', 1200) RETURNING id`,
+    );
+    await before.query(
+      `INSERT INTO users (email, "passwordHash") VALUES ('ohne@example.test', 'x')`,
+    );
+    await before.destroy();
+
+    expect((await db.runMigrations()).map(({ name }) => name)).toContain(
+      'WeeklyQuestTargets1796000000000',
+    );
+    expect(await remainingChanges()).toEqual([]);
+    // One row from long ago carries the goal; no goal needs no row.
+    expect(
+      await db.query(
+        `SELECT "userId", "validFrom"::text AS "validFrom", minutes
+         FROM weekly_quest_targets`,
+      ),
+    ).toEqual([{ userId: withGoal, validFrom: '2000-01-03', minutes: 1200 }]);
   });
 
   it('adopts a database from before migrations and converts its data', async () => {
@@ -94,7 +130,7 @@ describe('Migrations (e2e)', () => {
 
     const applied = await db.runMigrations();
 
-    expect(applied).toHaveLength(9);
+    expect(applied).toHaveLength(allMigrations.length);
     expect(await remainingChanges()).toEqual([]);
     // Progress no longer counts the campaign: the old rows are gone.
     expect(await db.query('SELECT id FROM goal_snapshots')).toEqual([]);

@@ -4,7 +4,11 @@ export type HistoryItem = {
   habitId: number | null;
   title: string;
   categoryName: string | null;
+  /** A colour key from `campaign.ts`; null while the name picks one. */
+  categoryColor: string | null;
   why: string | null;
+  /** The campaign it works towards; null for a loose entry. */
+  campaign: Campaign | null;
   status: "completed" | "skipped";
   date: string;
   scheduledDate: string | null;
@@ -21,7 +25,11 @@ export type HistoryPlannedItem = {
   habitId: number | null;
   title: string;
   categoryName: string | null;
+  /** A colour key from `campaign.ts`; null while the name picks one. */
+  categoryColor: string | null;
   why: string | null;
+  /** The campaign it works towards; null for a loose entry. */
+  campaign: Campaign | null;
   date: string;
   scheduledDate: string;
   isOverdue: boolean;
@@ -78,6 +86,7 @@ export type PerfectWeek = {
   categories: {
     id: number;
     name: string;
+    color: string | null;
     target: number;
     completed: number;
     reached: boolean;

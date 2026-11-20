@@ -97,16 +97,3 @@ export function isCampaign(
       todo.weeklyTargetMinutes !== null)
   );
 }
-
-export function descendantIds(todos: HierarchyTodo[], id: number) {
-  const groups = hierarchyChildren(todos),
-    stack = [id],
-    seen = new Set<number>();
-  while (stack.length) {
-    const next = stack.pop()!;
-    if (seen.has(next)) continue;
-    seen.add(next);
-    for (const child of groups.get(next) ?? []) stack.push(child.id);
-  }
-  return seen;
-}

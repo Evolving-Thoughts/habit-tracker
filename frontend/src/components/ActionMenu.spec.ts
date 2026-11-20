@@ -113,6 +113,54 @@ describe("ActionMenu", () => {
     expect(wrapper.get("button").attributes("disabled")).toBeDefined();
   });
 
+  it("hangs below its button, above it near the bottom, and stays whole in a short window", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: true })),
+    );
+    vi.stubGlobal("innerHeight", 720);
+    vi.stubGlobal("innerWidth", 1280);
+    const height = vi
+      .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains("action-menu") ? 540 : 0;
+      });
+    const width = vi
+      .spyOn(HTMLElement.prototype, "offsetWidth", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains("action-menu") ? 272 : 0;
+      });
+    try {
+      const wrapper = mountMenu();
+      const trigger = wrapper.get("button");
+      const topAt = async (buttonTop: number) => {
+        vi.spyOn(trigger.element, "getBoundingClientRect").mockReturnValue({
+          top: buttonTop,
+          bottom: buttonTop + 40,
+          left: 788,
+          right: 828,
+        } as DOMRect);
+        await trigger.trigger("click");
+        await flushPromises();
+        const panel = document.querySelector<HTMLElement>(".action-menu")!;
+        const top = panel.style.top;
+        await trigger.trigger("click");
+        await flushPromises();
+        return top;
+      };
+      // Room below: 4px under the button.
+      expect(await topAt(100)).toBe("144px");
+      // Near the bottom with room above: it ends 4px over the button.
+      expect(await topAt(620)).toBe("76px");
+      // Room on neither side: it moves up just enough to end 8px above the bottom.
+      expect(await topAt(394)).toBe("172px");
+    } finally {
+      height.mockRestore();
+      width.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("takes another spoken name for its button where the title is taken", () => {
     const wrapper = mount(ActionMenu, {
       props: {

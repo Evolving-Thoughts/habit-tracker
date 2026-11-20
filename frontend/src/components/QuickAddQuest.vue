@@ -1,34 +1,35 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, useId } from "vue";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import { createTodo, reorderDay } from "../api/day-planner.api";
+import { useInsertPlace } from "../composables/useInsertPlace";
 import { firstThatFits } from "../utils/fit-text";
+import AppIcon from "./AppIcon.vue";
 
 type OrderedItem = { type: "todo" | "habit"; id: number };
 
 /**
- * One line to put a quest on a day: type a title, press Enter. It joins the
- * end of the day's order, or its head when "Oben" is chosen.
+ * One line to put a quest on a day, or into the Questlog: type a title,
+ * press Enter. It joins the end of the day's order (or of the Questlog's),
+ * or its head while ↑ ("Oben einfügen") is chosen; the choice beside the
+ * field holds for every quick add on the device.
  */
 const props = withDefaults(
   defineProps<{
-    /** The day the quest is planned for, YYYY-MM-DD. */
-    date: string;
+    /** The day the quest is planned for, YYYY-MM-DD; null for the Questlog. */
+    date: string | null;
     /** The day's current order; a quest added on top goes in front of it. */
     order?: OrderedItem[];
     /** Names the field when a view shows one per day. */
     label?: string;
-    /** Offers "Oben | Unten"; without it a quest always joins the end. */
-    choosePlace?: boolean;
   }>(),
-  { order: () => [], label: "Quest für heute hinzufügen", choosePlace: true },
+  { order: () => [], label: "Quest für heute hinzufügen" },
 );
 const emit = defineEmits<{ created: [] }>();
 
 const title = ref("");
-const place = ref<"top" | "bottom">("bottom");
+const { place, choose } = useInsertPlace();
 const busy = ref(false);
 const errorMessage = ref<string | null>(null);
-const placeLabelId = useId();
 
 /*
  * The placeholder says as much as its field holds: a narrow day column of the
@@ -76,15 +77,17 @@ async function add(): Promise<void> {
   busy.value = true;
   errorMessage.value = null;
   try {
+    // Into the Questlog the server places it at the head or the end itself.
     const created = await createTodo({
       title: text,
       scheduledDate: props.date,
       timeOfDay: null,
       plannedDurationMinutes: null,
+      ...(props.date === null ? { backlogPlace: place.value } : {}),
     });
     title.value = "";
     // The quest exists either way; a failed sort only leaves it at the end.
-    if (place.value === "top" && props.order.length)
+    if (props.date !== null && place.value === "top" && props.order.length)
       await reorderDay([{ type: "todo", id: created.id }, ...props.order]);
     emit("created");
   } catch (error: unknown) {
@@ -115,32 +118,30 @@ async function add(): Promise<void> {
         :aria-label="label"
         :disabled="busy"
       />
-      <!-- Said in words, not left to guess: where a new quest joins the day. -->
+      <!-- Where a new quest joins the list: two small toggles, named in words. -->
       <div
-        v-if="choosePlace"
-        class="quick-add__place"
+        class="segmented quick-add__place"
         role="group"
-        :aria-labelledby="placeLabelId"
+        aria-label="Neue Quests einfügen"
       >
-        <span :id="placeLabelId" class="quick-add__place-label">
-          Neue Quests
-        </span>
-        <div class="segmented">
-          <button
-            type="button"
-            :aria-pressed="place === 'top'"
-            @click="place = 'top'"
-          >
-            Oben
-          </button>
-          <button
-            type="button"
-            :aria-pressed="place === 'bottom'"
-            @click="place = 'bottom'"
-          >
-            Unten
-          </button>
-        </div>
+        <button
+          type="button"
+          aria-label="Oben einfügen"
+          title="Oben einfügen"
+          :aria-pressed="place === 'top'"
+          @click="choose('top')"
+        >
+          <AppIcon name="arrow-up" />
+        </button>
+        <button
+          type="button"
+          aria-label="Unten einfügen"
+          title="Unten einfügen"
+          :aria-pressed="place === 'bottom'"
+          @click="choose('bottom')"
+        >
+          <AppIcon name="arrow-down" />
+        </button>
       </div>
     </div>
     <p v-if="errorMessage" class="form-error" role="alert">
@@ -167,41 +168,23 @@ async function add(): Promise<void> {
   min-width: 0;
 }
 
-/* On a phone the label sits small above the choice, so the field keeps its width. */
+/* Compact: in a narrow Plan column the field keeps most of the width. */
 .quick-add__place {
-  display: flex;
   flex: none;
-  flex-direction: column;
   gap: 0.125rem;
-  align-items: flex-end;
+  padding: 0.1875rem;
 }
 
-.quick-add__place-label {
-  padding-right: var(--space-3);
-  color: var(--color-ink-muted);
-  font-size: 0.75rem;
-  font-weight: 700;
-  line-height: 1.2;
+.quick-add__place > button {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  min-height: calc(var(--tap) - 0.375rem);
+  padding: 0;
 }
 
-.quick-add__row:has(.quick-add__place) {
-  align-items: flex-end;
-}
-
-@media (min-width: 40rem) {
-  .quick-add__place {
-    flex-direction: row;
-    gap: var(--space-2);
-    align-items: center;
-  }
-
-  .quick-add__place-label {
-    padding-right: 0;
-    font-size: 0.875rem;
-  }
-
-  .quick-add__row:has(.quick-add__place) {
-    align-items: center;
-  }
+.quick-add__place :deep(svg) {
+  width: 1.125rem;
+  height: 1.125rem;
 }
 </style>

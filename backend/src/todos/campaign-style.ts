@@ -1,20 +1,29 @@
 import { BadRequestException } from '@nestjs/common';
 
 /**
- * The colours and icons a campaign can store, as keys. The frontend keeps
- * the same lists in `types/campaign.ts`; the contract check holds them in step.
+ * The colours and icons a campaign can store, as keys; categories pick
+ * from the same colours. The frontend keeps the same lists in
+ * `types/campaign.ts`; the contract check holds them in step. The first
+ * eight colours are the core set that stays apart under every kind of
+ * colour blindness; every key stored before the larger palette is still in it.
  */
 export const CAMPAIGN_COLORS = [
-  'moss',
-  'pine',
-  'sage',
-  'slate',
   'indigo',
-  'heather',
-  'plum',
-  'berry',
-  'walnut',
+  'navy',
   'ochre',
+  'pine',
+  'berry',
+  'plum',
+  'teal',
+  'walnut',
+  'moss',
+  'sage',
+  'sky',
+  'slate',
+  'heather',
+  'wine',
+  'olive',
+  'lilac',
 ] as const;
 
 export const CAMPAIGN_ICONS = [
@@ -34,6 +43,22 @@ export const CAMPAIGN_ICONS = [
   'globe',
   'star',
   'flag',
+  'bike',
+  'coffee',
+  'plane',
+  'palette',
+  'mountain',
+  'moon',
+  'people',
+  'chat',
+  'bulb',
+  'trophy',
+  'pot',
+  'gamepad',
+  'paw',
+  'laptop',
+  'map',
+  'drop',
 ] as const;
 
 export type CampaignColor = (typeof CAMPAIGN_COLORS)[number];

@@ -344,6 +344,7 @@ describe('Week review (e2e)', () => {
         {
           id: category,
           name: 'Schreiben',
+          color: null,
           target: 2,
           completed: 2,
           reached: true,

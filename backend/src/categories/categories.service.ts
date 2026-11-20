@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { HabitEntity } from '../habits/entities/habit.entity';
+import type { CampaignColor } from '../todos/campaign-style';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { UpdateCategoryDto } from './category.dto';
 import { CategoryEntity } from './category.entity';
@@ -27,12 +28,16 @@ export class CategoriesService {
     });
   }
 
-  create(userId: string, rawName: string): Promise<CategoryEntity> {
+  create(
+    userId: string,
+    rawName: string,
+    color: CampaignColor | null = null,
+  ): Promise<CategoryEntity> {
     const name = this.validName(rawName);
     return this.unitOfWork.run(userId, async (manager) => {
       await this.assertNameFree(manager, userId, name, null);
       const repository = manager.getRepository(CategoryEntity);
-      return repository.save(repository.create({ userId, name }));
+      return repository.save(repository.create({ userId, name, color }));
     });
   }
 
@@ -50,6 +55,7 @@ export class CategoriesService {
       }
       if (dto.weeklyTarget !== undefined)
         category.weeklyTarget = dto.weeklyTarget;
+      if (dto.color !== undefined) category.color = dto.color;
       return manager.getRepository(CategoryEntity).save(category);
     });
   }

@@ -213,5 +213,54 @@ describe('TodoAncestry', () => {
       expect(ancestry.habitCampaign(8)?.id).toBe(3);
       expect(ancestry.habitCampaign(9)).toBeNull();
     });
+
+    it('prefers the campaign a habit names over the goal counting it', () => {
+      const period = { periodStart: '2026-11-01', periodEnd: '2026-12-31' };
+      const ancestry = new TodoAncestry(
+        [
+          node(1, null, null),
+          node(2, 1, null, { goalHabitId: 7, ...period }),
+          node(5, null, null, { color: 'pine' }),
+          node(6, 5, null),
+        ],
+        TODAY,
+        new Map([
+          [7, 5],
+          [8, 6],
+          [9, 99],
+        ]),
+      );
+      expect(ancestry.habitCampaign(7)?.id).toBe(5);
+      // A named todo that moved below another one counts for its campaign.
+      expect(ancestry.habitCampaign(8)?.id).toBe(5);
+      // A deleted campaign counts as none.
+      expect(ancestry.habitCampaign(9)).toBeNull();
+    });
+  });
+
+  describe('reason of habits with a named campaign', () => {
+    const period = { periodStart: '2026-11-01', periodEnd: '2026-12-31' };
+    const nodes = [
+      node(1, null, 'Vom Ziel', { goalHabitId: 7, ...period }),
+      node(5, null, 'Von der Kampagne'),
+      node(6, null, null, { goalHabitId: 8, ...period }),
+      node(9, null, null),
+    ];
+
+    it('takes the named campaign before the counting goal', () => {
+      const ancestry = new TodoAncestry(nodes, TODAY, new Map([[7, 5]]));
+      expect(ancestry.inheritedHabitWhy(7)).toEqual({
+        text: 'Von der Kampagne',
+        fromId: 5,
+        fromTitle: 'Todo 5',
+      });
+      expect(ancestry.habitWhy({ id: 7, why: 'Eigenes' })).toBe('Eigenes');
+    });
+
+    it('falls back to the goal when the campaign states no reason', () => {
+      const ancestry = new TodoAncestry(nodes, TODAY, new Map([[7, 9]]));
+      expect(ancestry.inheritedHabitWhy(7)?.fromId).toBe(1);
+      expect(ancestry.inheritedHabitWhy(8)).toBeNull();
+    });
   });
 });

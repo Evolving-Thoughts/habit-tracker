@@ -3,10 +3,25 @@ import { tallyOfPlanner, type DayTally } from "./day-tally";
 
 export type ExternalEvent = DayPlannerResponse["externalEvents"][number];
 
-/** One row of the day's appointments: a timed item or a calendar event. */
-export type TimelineEntry =
-  | { kind: "item"; minutes: number; time: string; item: DayPlannerItem }
-  | { kind: "event"; minutes: number; time: string; event: ExternalEvent };
+/**
+ * An appointment of the day: a timed item or a calendar event, at its start.
+ * `past` once it is over: an item after its window, an event after its end.
+ */
+export type AppointmentEntry =
+  | {
+      kind: "item";
+      minutes: number;
+      time: string;
+      past: boolean;
+      item: DayPlannerItem;
+    }
+  | {
+      kind: "event";
+      minutes: number;
+      time: string;
+      past: boolean;
+      event: ExternalEvent;
+    };
 
 export type TodayAgenda = {
   /** The one thing that is up now (`currentItem`), shown large with its why. */
@@ -15,10 +30,13 @@ export type TodayAgenda = {
   focusWindow: AppointmentWindow | null;
   /** Open items from earlier days, offered for catching up. */
   carriedOver: DayPlannerItem[];
-  /** Today's appointments, timed dailies and events by clock, without the focus. */
-  timeline: TimelineEntry[];
-  /** Index in `timeline` where "now" falls. */
-  nowIndex: number;
+  /**
+   * Today's open appointments, timed dailies and events by clock, without
+   * the focus. Heute lists them in the order of the day, anchored by time.
+   */
+  appointments: AppointmentEntry[];
+  /** The first of `appointments` that has not begun yet. */
+  nextAppointment: AppointmentEntry | null;
   /**
    * Everything open that only has its day, in the order of the day. Its first
    * entry is the focus unless an appointment is running right now.
@@ -99,7 +117,8 @@ export function formatWindow(window: AppointmentWindow): string {
  * duration, or DEFAULT_APPOINTMENT_MINUTES); when several are, the one that
  * began last. Otherwise it is the head of the order: the next item one can
  * work on. Before its start and after its end an appointment stays on the
- * time axis; it never stands in for an empty order.
+ * list of the day, anchored by its time; it never stands in for an empty
+ * order.
  */
 export function currentItem(
   pending: readonly DayPlannerItem[],
@@ -117,27 +136,45 @@ export function currentItem(
 }
 
 /**
- * The next minute at which `currentItem` or the "now" line can change: an
- * appointment starts or ends, or an entry of the axis falls behind "now".
+ * The next minute at which `currentItem` or the list of appointments can
+ * change: an appointment starts (and the next one is another) or ends (and
+ * is over). With `leadMinutes`, also that long before an appointment
+ * starts, for a view that names it ahead (`soonAppointment`).
  * Null when nothing changes any more today. A timer waits for exactly this
  * instead of polling the clock.
  */
 export function nextChangeAt(
   planner: DayPlannerResponse,
   now: number,
+  leadMinutes = 0,
 ): number | null {
   const moments: number[] = [];
+  const ahead = (start: number) => (leadMinutes ? [start - leadMinutes] : []);
   for (const item of planner.items) {
     if (item.status !== "pending" || item.isOverdue) continue;
     const window = appointmentWindow(item);
-    if (window) moments.push(window.start, window.start + 1, window.end);
+    if (window)
+      moments.push(
+        ...ahead(window.start),
+        window.start,
+        window.start + 1,
+        window.end,
+      );
   }
   for (const event of planner.externalEvents) {
     const { minutes } = clockOf(event.start);
-    moments.push(minutes + 1);
+    moments.push(...ahead(minutes), minutes + 1, eventEnd(event));
   }
   const later = moments.filter((moment) => moment > now && moment < 1440);
   return later.length ? Math.min(...later) : null;
+}
+
+/** Where an event ends today; one running past midnight ends at 1440. */
+function eventEnd(event: ExternalEvent): number {
+  const start = clockOf(event.start).minutes;
+  const end = clockOf(event.end).minutes;
+  const length = Date.parse(event.end) - Date.parse(event.start);
+  return end < start || length >= 86_400_000 ? 1440 : end;
 }
 
 /** Arranges today around what is up now. `now` is minutes since midnight. */
@@ -161,29 +198,51 @@ export function arrangeToday(
   const queue = pending.filter((item) => plannedClock(item) === null);
   const focus = currentItem(pending, queue, now);
 
-  const events: TimelineEntry[] = planner.externalEvents.map((event) => ({
+  const events: AppointmentEntry[] = planner.externalEvents.map((event) => ({
     kind: "event",
     ...clockOf(event.start),
+    past: eventEnd(event) <= now,
     event,
   }));
-  const items: TimelineEntry[] = timed
+  const items: AppointmentEntry[] = timed
     .filter(({ item }) => item !== focus)
-    .map(({ item, clock }) => ({ kind: "item", ...clock, item }));
-  const timeline = [...items, ...events].sort(
+    .map(({ item, clock }) => ({
+      kind: "item",
+      ...clock,
+      past: appointmentWindow(item)!.end <= now,
+      item,
+    }));
+  const appointments = [...items, ...events].sort(
     (first, second) => first.minutes - second.minutes,
   );
-  const nowIndex = timeline.findIndex((entry) => entry.minutes >= now);
 
   return {
     focus,
     focusWindow: focus ? appointmentWindow(focus) : null,
     carriedOver,
-    timeline,
-    nowIndex: nowIndex === -1 ? timeline.length : nowIndex,
+    appointments,
+    nextAppointment:
+      appointments.find((entry) => entry.minutes >= now) ?? null,
     queue,
     resolved,
     tally: tallyOfPlanner(planner.items),
   };
+}
+
+/** How long before its start the Fokus-Modus names an appointment. */
+export const APPOINTMENT_LEAD_MINUTES = 15;
+
+/**
+ * The next appointment when it starts within `leadMinutes`; null while it
+ * is further away, so the time before it stays free of it.
+ */
+export function soonAppointment(
+  agenda: TodayAgenda,
+  now: number,
+  leadMinutes = APPOINTMENT_LEAD_MINUTES,
+): AppointmentEntry | null {
+  const entry = agenda.nextAppointment;
+  return entry && entry.minutes - now <= leadMinutes ? entry : null;
 }
 
 /** `list` with the entry at `from` moved to `to`; out-of-range moves change nothing. */

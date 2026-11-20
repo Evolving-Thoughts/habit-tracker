@@ -56,7 +56,15 @@ const wide = () =>
   typeof window.matchMedia === "function" &&
   window.matchMedia("(min-width: 40rem)").matches;
 
-/** From 40rem the popover hangs below the button, or above it near the bottom. */
+/** Space the popover keeps from the window's edges. */
+const EDGE = 8;
+
+/**
+ * From 40rem the popover hangs below the button, or above it near the
+ * bottom. Where it fits on neither side, it moves up just as far as it
+ * must to stay whole in the window, over its button if need be; it is never
+ * taller than the window (CSS), so every entry stays in reach.
+ */
 function position(): void {
   const button = trigger.value;
   const menu = panel.value;
@@ -69,13 +77,16 @@ function position(): void {
   const height = menu.offsetHeight;
   const gap = 4;
   const below = rect.bottom + gap;
+  const above = rect.top - gap - height;
   const top =
-    below + height > window.innerHeight && rect.top - gap - height > 0
-      ? rect.top - gap - height
-      : below;
+    below + height <= window.innerHeight - EDGE
+      ? below
+      : above >= EDGE
+        ? above
+        : Math.max(EDGE, window.innerHeight - EDGE - height);
   const left = Math.min(
-    Math.max(8, rect.right - width),
-    window.innerWidth - width - 8,
+    Math.max(EDGE, rect.right - width),
+    window.innerWidth - width - EDGE,
   );
   place.value = { top, left };
 }
@@ -258,6 +269,10 @@ defineExpose({ close });
   z-index: 40;
   display: grid;
   gap: var(--space-1);
+  /* Never taller than the window: a long menu scrolls inside itself. */
+  max-height: calc(100dvh - var(--space-6));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--space-3) var(--space-3)
     calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
   border-radius: var(--radius-card) var(--radius-card) 0 0;
@@ -276,6 +291,8 @@ defineExpose({ close });
     inset: auto;
     min-width: 15rem;
     max-width: min(22rem, calc(100vw - 1rem));
+    /* Twice the edge it keeps (EDGE in position()). */
+    max-height: calc(100dvh - 1rem);
     padding: var(--space-2);
     border-radius: var(--radius-card);
   }

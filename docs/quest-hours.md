@@ -10,29 +10,73 @@ number, never in a warning colour.
 - Measured work is the Logbuch (`work_logs`, see `logbook.md`). Quest hours
   add no table of their own; they are read from the stretches.
 - **Weekly goals** are minutes (integers, like `plannedDurationMinutes`):
-  `users.weeklyQuestTargetMinutes` is the overall goal, `todos.weeklyTargetMinutes`
-  an optional goal per campaign. Both are 1 to 6000 (100 hours) or null.
+  the overall goal has a history in `weekly_quest_targets` (below),
+  `todos.weeklyTargetMinutes` is an optional goal per campaign (one value,
+  no history). Both are 1 to 6000 (100 hours) or null.
+- **History of the overall goal**: `weekly_quest_targets` (`userId`,
+  `validFrom` date, `minutes` nullable; primary key `userId` + `validFrom`,
+  `ON DELETE CASCADE`, entity `quest-hours/weekly-quest-target.entity.ts`,
+  migration `1796000000000-WeeklyQuestTargets`). `validFrom` is always a
+  Monday (`CHK_weekly_quest_targets_monday`), `minutes` 1 to 6000 or null
+  (`CHK_weekly_quest_targets_minutes`); a null row means "no goal from this
+  week on". The goal of week W is the row with the latest `validFrom` on or
+  before W's Monday; before the first row there is none (`targetOfWeek` in
+  `quest-hours/weekly-target.ts`). Every reader goes through
+  `weeklyQuestTarget(manager, userId, monday)` there: the week's quest hours,
+  `GET /quest-hours/target` and Heute (`questHours` in
+  `GET /day-planner/today`). Push does not read the goal. Writing
+  (`setWeeklyQuestTarget`) always targets the running week's Monday, so
+  weeks that are over keep the goal they had; changing it twice in a week
+  overwrites that week's row, and a value equal to what the weeks before
+  lead to removes the row instead of repeating it (`needsStep`). The
+  migration moved every user's former `users.weeklyQuestTargetMinutes`
+  into one row valid from Monday 3 January 2000 (users without a goal get
+  none) and dropped the column and `CHK_users_weekly_quest_target`.
 - **Colour and icon** of a campaign: `todos.color` and `todos.icon`, each a
   key from a fixed list (`backend/src/todos/campaign-style.ts`,
   `frontend/src/types/campaign.ts`; the contract check holds both lists in
-  step). Ten colours (`moss`, `pine`, `sage`, `slate`, `indigo`, `heather`,
-  `plum`, `berry`, `walnut`, `ochre`) and sixteen icons (`book`, `code`,
+  step). Sixteen colours, the core eight first (`indigo`, `navy`, `ochre`,
+  `pine`, `berry`, `plum`, `teal`, `walnut`), then `moss`, `sage`, `sky`,
+  `slate`, `heather`, `wine`, `olive`, `lilac`; every key stored before the
+  palette grew is still one of them. Thirty-two icons: `book`, `code`,
   `dumbbell`, `heart`, `home`, `briefcase`, `graduation`, `music`, `leaf`,
-  `money`, `wrench`, `pen`, `camera`, `globe`, `star`, `flag`). The DTOs reject
-  any other key with 400.
+  `money`, `wrench`, `pen`, `camera`, `globe`, `star`, `flag`, `bike`,
+  `coffee`, `plane`, `palette`, `mountain`, `moon`, `people`, `chat`, `bulb`,
+  `trophy`, `pot`, `gamepad`, `paw`, `laptop`, `map`, `drop`. The DTOs reject
+  any other key with 400; the column is `varchar(16)` without a check, so
+  the list lives in code only.
+- **Colour of a category:** `categories.color` (nullable, migration
+  `CategoryColor`), a key from the same colours. Null lets the name pick one
+  (see below). `POST /categories` and `PATCH /categories/:id` take
+  `color` (a key or null); every category response carries it.
 - The three campaign fields belong to a todo without parent. Setting one on a
   todo with a parent is a 400, both on create and update; moving a campaign
   below another todo clears them (`TodosService.update`). The database holds
   the rule too: `CHK_todos_campaign_fields`, next to `CHK_todos_weekly_target`
-  and `CHK_users_weekly_quest_target` for the bounds (migration
-  `1795300000000-QuestHours`).
+  for the bounds (migration `1795300000000-QuestHours`).
 
 ## Rules
 
 - **Campaign of a stretch**: the one the Logbuch already names
   (`withCampaigns` in `work-logs/day-logs.ts`, `todo-ancestry.ts`): a quest's
-  topmost ancestor, a daily's goal that counts it in a period covering today.
-  A deleted quest has none, so its time counts as other time.
+  topmost ancestor; for a daily's run, the campaign the daily names
+  (`habits.campaignId`, see below) and, only without one, the goal that
+  counts the daily in a period covering today. A deleted quest has none, so
+  its time counts as other time; a daily whose named campaign was deleted
+  falls back to its goal. Like the goal, the named campaign is read as it is
+  now: changing a daily's campaign moves all of its measured time along.
+- **Campaign of a daily**: `habits.campaignId` (nullable FK to `todos.id`,
+  `ON DELETE SET NULL`, migration `DailyCampaignAndRunNotes`). Create and
+  update (`campaignId` in `POST /habits`, `PATCH /habits/:id`) accept only a
+  live top-level todo of the same user (`habits/habit-campaign.ts`, 400
+  otherwise); null clears it. Todos are soft-deleted, so the FK only guards
+  hard deletes: a soft-deleted campaign stays referenced and simply stops
+  counting. Should the named todo later move below another quest, the daily
+  counts for that quest's campaign. Habit responses carry `campaignId` and
+  `campaign` (`{ id, title, color, icon }`, the named campaign or else the
+  goal's), so the Dailies view shows the chip; day planner, Plan, Kalender and
+  week review already name a run's campaign through the same
+  `TodoAncestry.habitCampaign`.
 - **What is a campaign**: a top-level todo with todos below it, or one that
   was given a weekly goal, colour or icon. Choosing one of these makes even a
   lone top-level quest a campaign; a lone goal that counts a daily stays one
@@ -51,17 +95,18 @@ number, never in a warning colour.
 
 ### `GET /quest-hours?week=YYYY-MM-DD`
 
-`week` must be a Monday (validated like `GET /day-planner/week`: a malformed
+`week` must be a Monday (validated by `weekDates` in `history-range.ts`: a malformed
 date, another weekday or an unknown query field is 400). One endpoint carries
 what the tiles, Heute and the weekly review (`week-review.md`) need:
 
 ```ts
 {
   startDate, endDate, today,
-  weeklyTargetMinutes: number | null,   // the overall goal
+  weeklyTargetMinutes: number | null,   // the overall goal that held for this week
   questMinutes, otherMinutes,           // the week
+  totalQuestMinutes,                    // every quest minute ever measured
   days: { date, questMinutes, otherMinutes }[],          // Monday to Sunday
-  weeks: { startDate, questMinutes }[], // eight weeks up to this one, oldest first
+  weeks: { startDate, questMinutes, otherMinutes }[], // eight weeks up to this one, oldest first
   campaigns: {
     campaign: { id, title, color, icon },
     minutes,                 // this week
@@ -73,53 +118,88 @@ what the tiles, Heute and the weekly review (`week-review.md`) need:
 ```
 
 `campaigns` lists every campaign with measured time or a weekly goal, most
-time this week first. It is one `REPEATABLE READ` snapshot that writes
+time this week first. Each of `weeks` splits like a day: quest minutes and
+the rest of the measured time (`otherMinutes`), so the review can stack
+them. `weeklyTargetMinutes` is the goal of the asked-for week from the
+history, not today's: a week that is over shows the goal it had. It is one `REPEATABLE READ` snapshot that writes
 nothing, scoped to the signed-in user. Totals and the trend need every stretch
 the user logged, so this read loads all of their work logs; that is fine at
 the app's size and the first thing to change if accounts grow large.
 
 ### `GET /quest-hours/target`, `PUT /quest-hours/target`
 
-`{ weeklyTargetMinutes: number | null }`: the overall goal, read and written
-for the signed-in user only. The write runs in the user's unit of work; a
-missing field, a fraction, 0 or more than 6000 is 400.
+`{ weeklyTargetMinutes: number | null }`: the overall goal of the running
+week, read and written for the signed-in user only. The write sets it for
+the running week and the weeks after it (a row valid from this week's
+Monday, see the history above); weeks that are over keep theirs. It runs in
+the user's unit of work; a missing field, a fraction, 0 or more than 6000 is
+400. Changing the goal of a past week is not offered.
 
 ### Heute and every campaign name
 
 `GET /day-planner/today` adds `questHours: { todayMinutes, weekMinutes,
 weeklyTargetMinutes }`, computed by the same functions from the week's
 stretches. Every answer that names a campaign (Heute, Plan, the calendar's
-Logbuch, quest hours) carries `{ id, title, color, icon }`.
+lists and Logbuch, quest hours, the week review) carries
+`{ id, title, color, icon }`. Answers that name a category by
+`categoryName` (Heute, the calendar's lists) also carry `categoryColor`,
+and the Perfect Week rows carry `color`; `categories/category-lookup.ts`
+resolves both from one read of the user's categories.
 
 ## Frontend
 
-- `utils/category-mark.ts` `campaignMark` is the one place that decides a
-  campaign's colour: the stored colour, else one derived from the title as
-  before. The colours are tokens in `style.css` (`--color-mark-<key>`); the
-  first six are also the category marks. None is the action orange; they
-  differ in lightness as well as hue, and every use names the campaign in text.
+- `utils/category-mark.ts` decides every colour: `categoryMark(name, color)`
+  takes a category's stored colour, else one of the eight core colours from
+  the name (FNV-1a); `campaignMark` does the same for a campaign and its
+  title. The colours are tokens in `style.css` (`--color-mark-<key>`), none
+  the action orange. The core eight stay apart under protanopia,
+  deuteranopia and tritanopia in both themes; `src/palette.spec.ts`
+  simulates them (Machado 2009 on linear sRGB, OKLab distance) and checks
+  3:1 against what a mark sits on. Every use names the campaign or category
+  in text as well; rows show `CampaignChip.vue` (icon and name) beside the
+  stripe.
+- `MarkPicker.vue` is the one palette: radio swatches, "Automatisch" first,
+  then the core colours, then the extra ones, each with its name as tooltip
+  and spoken label and the choice in words below. Campaigns use it in
+  `CampaignFields.vue`, categories behind their dot in
+  `CategorySettings.vue` (also when creating one).
 - Icons are drawn in `AppIcon.vue` in the app's stroke family.
-- `CampaignFields.vue` edits colour (radio swatches with spoken names, the
-  chosen one also named in words), icon (radio group) and "Wochenziel" in
+- `CampaignFields.vue` edits colour (`MarkPicker`), icon (radio group) and "Wochenziel" in
   hours (halves allowed, empty is none). `PlannerItemEditor.vue` offers it for
   a todo without parent, behind the disclosure "Kampagne", which starts open
   once one of the three is set; `CreateTodoForm.vue` shows it open when the
   Kampagnen view creates a new campaign. Hours become minutes in `utils/quest-hours.ts`.
-- `CampaignsView.vue` shows a tile per campaign (`CampaignTiles.vue`, tabs
-  "Aktiv" and "Abgeschlossen") above the tree of the campaigns and their
-  quests (loose quests are not in it): icon, colour stripe, title, this week
-  against its goal, an eight-week trend (`QuestTrend.vue`, a small SVG with
-  the weeks in words as its label) and the total. A tile opens the campaign in
+- `CampaignsView.vue` starts with a strip of four figures
+  (`CampaignStats.vue`: Kampagnen-Stunden this week, `questMinutes`, and
+  ever, `totalQuestMinutes`, "–" while not loaded; campaigns running and
+  done), then a tile per campaign (`CampaignTiles.vue`, tabs "Aktiv" and
+  "Abgeschlossen"; loose quests get none): icon, colour stripe, title, this
+  week against its goal, an eight-week trend with the short label "8 Wochen"
+  (`QuestTrend.vue`, a small SVG named "Letzte 8 Wochen: ab 28.09. 2 Std., …,
+  diese Woche 4 Std."), the total and "Abschließen" (on a completed one
+  "Wieder öffnen"; it asks like the ring, see `todo-hierarchy.md`, with undo
+  in the toast). After the active tiles a dashed tile "Neue Kampagne" opens
+  the campaign form, as the plus button does there. The overview has no tree:
+  a campaign's quests show on its own page. A tile opens the campaign in
   the same view (`#/kampagnen?kampagne=<id>`, so Back closes it): its own
   `why` under the title, a group "Diese Woche" (this week against its goal as
   a bar, the eight-week trend labelled "letzte 8 Wochen" and the total), a
   group "Fortschritt" (the quests below it, never itself, see
   `todo-hierarchy.md`, as "x von y Quests" with a bar, and `GoalBurnup.vue`,
   which offers its switches only once it has two days to draw), "Bearbeiten"
-  and "…" with the campaign's own actions, and the quests below it as the
-  tree, with every row action the full list has. The campaign is the card,
-  not a row of the tree.
-- Einstellungen: `QuestTargetSetting.vue` reads and saves the overall goal.
+  and "Abschließen" side by side, "…" with the campaign's own actions, and
+  the quests below it as the tree (dragging a row onto another re-parents
+  it). The campaign is the card, not a row of the tree. Inside a campaign the
+  plus button (and N) creates a quest below it, so its Warum and category are
+  taken over.
+- The overall goal is edited in `QuestTargetForm.vue`: hours and minutes
+  (`goalFields` / `goalMinutes` in `utils/quest-hours.ts`: whole hours, 0
+  to 59 minutes, both empty or zero is no goal, at most 100 hours), saved
+  with `PUT /quest-hours/target` for this week and the ones after, with a
+  line saying so. Einstellungen (`QuestTargetSetting.vue`) loads the goal of
+  the running week into it; the weekly review opens it in place in its
+  Kampagnen-Stunden card (`week-review.md`). A campaign's own goal stays an
+  hours field in half hours (`hoursToMinutes`).
 - Heute: one quiet line in the head that relates the day's quest time to
   what was worked (both from the same stretches, so the part is never more
   than the whole), then the week: "1 Std. 40 Min. gearbeitet, davon 1 Std.
@@ -127,6 +207,10 @@ Logbuch, quest hours) carries `{ id, title, color, icon }`.
   Kampagnen" when all of it was; just "40 Min. gearbeitet · Kampagnen diese
   Woche …" when none was; only the week before anything was worked today;
   without a goal only the numbers; nothing without time and goal
-  (`workLine` in `utils/quest-hours.ts`).
+  (`workLine` in `utils/quest-hours.ts`). A figure keeps its unit (no-break
+  spaces: "4 Std. 20 Min." never breaks inside). With a goal, a slim ink bar
+  on deep apricot below shows the week's campaign hours against it (a
+  `progressbar` with both figures as its text); behind the goal is a shorter
+  bar, never a warning colour.
 - Stripes in Heute, Plan and the calendar's Logbuch take the stored colour
   through `campaignMark`; those rows get no icon.

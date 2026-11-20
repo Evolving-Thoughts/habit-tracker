@@ -44,6 +44,22 @@ Ownership and live-parent checks are enforced on the server. Requests cannot
 point to themselves, descendants, another user's Todos or soft-deleted parents.
 The frontend's filtered move choices are convenience, not authorization.
 
+Re-parenting goes through the ordinary `PATCH /todos/:id` with `parentId`
+(a positive id or null): the server checks the parent's live ancestor chain
+(no cycle, no self, no descendant, owned and live), moves the whole subtree
+and, when a campaign goes below another todo, clears its weekly goal, colour
+and icon (`NO_CAMPAIGN_FIELDS`). The frontend offers it in three places with
+one picker (`ParentPicker.vue` on `utils/parent-choice.ts`): "Gehört zu" in
+the quest editor and in "Neue Quest", "In Kampagne verschieben …" in every
+quest card's menu (`CampaignMoveDialog.vue`) and dragging in the Kampagnen
+tree. The picker lists campaigns and every open quest below them as a path
+("Buch schreiben › Kapitel 2"), never the quest itself or its subtree; typing
+a name that does not exist offers "Neue Kampagne „…“ anlegen", which creates a
+top-level todo in the colour its title picks (so it is a campaign at once) and
+chooses it. Choosing a place shows its reason as the inherited Warum (live,
+never copied) and, while the quest has no category, preselects the place's
+category or else its campaign's.
+
 ### Atomic mutation and concurrency
 
 Every Todo mutation runs in the per-user unit of work (`UserUnitOfWork`), which
@@ -64,8 +80,8 @@ X): "Kampagne abschließen?", "3 Quests in „Buch“ sind noch offen. Sie bleib
 offen; die Kampagne steht danach unter „Abgeschlossen“." The count is the
 server's (`todoCount - doneCount` of its progress); without open todos below
 nothing asks. `useCampaignCompletion` and `CampaignCompletionDialog` do this in
-the Kampagnen view (the tree is at hand: the ring of a campaign's row, and
-"Kampagne abschließen" in the "…" of an opened campaign's detail card), Heute
+the Kampagnen view (the tree is at hand: "Abschließen" on a campaign's tile
+and on its detail card, and "Kampagne abschließen" in the card's "…"), Heute
 and the Plan's X (they read `GET /todos/hierarchy` once, only for a row that
 is itself a campaign; a failed read asks nothing). The Questlog lists no
 campaigns (see below) and never asks. The calendar's rows do not name their
@@ -76,7 +92,8 @@ view, offers the undo toast.
 
 `GET /todos/backlog` (`todo-agenda.ts`: `backlogTodos`, the pure rule
 `workableBacklog`) is the one definition of the Questlog; the Questlog view and
-the Plan's Questlog column only show it. A todo is in it when it is open, has
+the Plan's Questlog column only show it, in the order the user sorted it
+(`backlogPosition`, see `day-order.md` › The Questlog's order). A todo is in it when it is open, has
 no day, and
 
 - has no open todo below it: a Questreihe is worked on through its quests; one
@@ -94,14 +111,15 @@ the open undated ones, so it costs one more light query, not one per todo.
 
 ### The Kampagnen view
 
-The tiles and the tree below them show campaigns only (`campaignTiles`, using
+The overview shows campaigns only, as tiles (`campaignTiles`, using
 `isCampaign` from `utils/todo-hierarchy.ts`, the frontend twin of
-`TodoAncestry.campaignOf`, plus roots the quest hours count). The tree
-("Kampagnen und ihre Quests") is `visibleHierarchy` with `keepTop` set to the
-campaigns. An opened campaign is its detail card; its tree starts with the
-quests below it (`visibleHierarchy` with `under`), so the campaign is not
-repeated as a root row with the same progress bar. The card takes the
-campaign's actions ("Bearbeiten" and "…") and accepts drops. Moving a quest to
+`TodoAncestry.campaignOf`, plus roots the quest hours count), without a tree.
+An opened campaign is its detail card and, below it, the tree of its quests
+(`visibleHierarchy` with `under`), so the campaign is not repeated as a
+root row with the same progress bar. The card takes the campaign's actions
+("Bearbeiten", "Abschließen" and "…") and accepts drops; a row dropped on
+another row goes below it. Every row there has a parent, so the row menu
+has no "Fortschritt anzeigen"; the campaign's burnup stands on its card. Moving a quest to
 the top says what it becomes: "Eigene Kampagne" when it has quests below it
 (or already is one), otherwise "Keine Kampagne (Questlog oder ihr Tag)", and
 it then leaves the tree. A new top-level quest that is no campaign yet is
@@ -182,14 +200,18 @@ of these fields (`TodoAncestry.campaignOf`). See `quest-hours.md`.
 ## Inherited why
 
 A todo without its own `why` shows the reason of its nearest ancestor that
-states one. A habit without its own shows the reason of the todo whose habit
-goal counts it in a period covering today (or what that todo inherits).
+states one. A habit without its own takes, in this order: the reason of the
+campaign it names (`habits.campaignId`, or what that todo inherits if it has
+moved below another), else the reason of the todo whose habit goal counts it
+in a period covering today (or what that todo inherits). A named campaign
+without any reason falls through to the goal.
 
 Inheritance is live, not a copy: `todos.why` stays null for an inheriting todo,
 so a changed reason reaches everything below it. The rule is one pure function,
-`inheritedWhy` in `todo-hierarchy.ts`; `why-sources.ts` reads the user's live
-todos once per request (id, parent, reason, title, habit goal) and answers every
-lookup from that.
+`inheritedWhy` in `todo-hierarchy.ts`; `TodoAncestry` (`todo-ancestry.ts`)
+reads the user's live todos and the campaigns their habits name once per
+request (id, parent, reason, title, habit goal) and answers every lookup from
+that (`inheritedHabitWhy`, `habitWhy`, `habitCampaign`).
 
 - `TodoResponseDto` and `HabitResponseDto` carry the own `why` and
   `inheritedWhy: { text, fromId, fromTitle } | null`, so an editor can show both.

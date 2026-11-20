@@ -72,6 +72,20 @@ test("Wochenrückblick: the week in numbers, its campaigns, what was done, and t
   await expect(questHours.locator(".figures__value")).toHaveText("45 Min.");
   await expect(questHours).toContainText("von 10 Std. Wochenziel");
   await expect(questHours).toContainText("8 % vom Ziel");
+  // The fourth figure: no Daily was due this week, said calmly.
+  await expect(view.locator(".figures__item--dailies")).toContainText(
+    "Dailies im Wochensoll",
+  );
+  // The goal changes in place, for this week and the weeks after.
+  await questHours.getByRole("button", { name: "Wochenziel ändern" }).click();
+  await questHours.locator('[name="weeklyQuestTargetHours"]').fill("12");
+  await questHours.locator('[name="weeklyQuestTargetMinutes"]').fill("30");
+  await questHours.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(questHours).toContainText("von 12 Std. 30 Min. Wochenziel");
+  await expect(questHours).toContainText("6 % vom Ziel");
+  await expect(
+    questHours.getByRole("button", { name: "Wochenziel ändern" }),
+  ).toBeFocused();
   // Seven days, today's value written out.
   const todayBar = view.locator(`.day-bars__day[data-date="${date}"]`);
   await expect(todayBar).toContainText("0:45");
@@ -99,7 +113,7 @@ test("Wochenrückblick: the week in numbers, its campaigns, what was done, and t
   // It names the quest with its campaign.
   await expect(
     view.locator(`[data-done-key="todo-${chapter}"]`),
-  ).toContainText("Kapitel schreibenBuch");
+  ).toContainText("Kapitel schreibenKampagne Buch");
   expect(
     await page.evaluate(
       () =>

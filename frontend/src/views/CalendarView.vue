@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import {
   computed,
+  inject,
   nextTick,
   onBeforeUnmount,
   onMounted,
   ref,
   watch,
 } from "vue";
+import { routeLocationKey, routerKey } from "vue-router";
 import {
   openRunToday,
   rescheduleOccurrence,
@@ -15,13 +17,15 @@ import {
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { getHistory } from "../api/history.api";
-import { ApiError } from "../api/http";
-import { deleteWorkLog } from "../api/work-logs.api";
 import AppIcon from "../components/AppIcon.vue";
 import CalendarDay from "../components/CalendarDay.vue";
 import CalendarMonth from "../components/CalendarMonth.vue";
 import CalendarWeek from "../components/CalendarWeek.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
+import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
+import DeleteItemDialog, {
+  type DeleteTarget,
+} from "../components/DeleteItemDialog.vue";
 import type { PlannedActions } from "../components/HistoryPlannedItems.vue";
 import MoveItemDialog, {
   type MoveTarget,
@@ -29,14 +33,15 @@ import MoveItemDialog, {
 import UndoToast from "../components/UndoToast.vue";
 import { useListFocus } from "../composables/useListFocus";
 import { useLoader } from "../composables/useLoader";
+import { useLogRemoval } from "../composables/useLogRemoval";
 import { useUndo } from "../composables/useUndo";
 import { useWrites } from "../composables/useWrites";
 import type {
   HistoryFilter,
   HistoryPlannedItem,
   HistoryResponse,
-  HistoryWorkLog,
 } from "../types/history";
+import { DAY_QUERY } from "../routes";
 import { getCurrentDateInTimeZone, isValidIsoDate } from "../utils/date";
 import {
   addDays,
@@ -46,7 +51,7 @@ import {
   supportedHistoryDate,
   weekLabel,
 } from "../utils/history";
-import { quickMoveEntries, quickMoves } from "../utils/row-actions";
+import { quickMoveEntries, quickMoves, rowMenu } from "../utils/row-actions";
 
 type Mode = "month" | "week" | "day";
 
@@ -65,7 +70,15 @@ const mode = ref<Mode>("month");
 const date = ref(getCurrentDateInTimeZone());
 const filter = ref<HistoryFilter>("all");
 const moving = ref<MoveTarget | null>(null);
-const editing = ref<{ kind: "todo" | "habit"; id: number } | null>(null);
+const editing = ref<{
+  kind: "todo" | "habit";
+  id: number;
+  /** The stored run a daily was opened from, for its notes. */
+  occurrenceId?: number;
+} | null>(null);
+/** "In Kampagne verschieben …" and "Löschen" from a row's menu. */
+const campaignMoving = ref<{ todoId: number; title: string } | null>(null);
+const deleting = ref<DeleteTarget | null>(null);
 const editorBusy = ref(false);
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
@@ -96,6 +109,8 @@ const {
     refreshOnChange: () =>
       !moving.value &&
       !editing.value &&
+      !campaignMoving.value &&
+      !deleting.value &&
       !editorBusy.value &&
       !writes.busy.value,
   },
@@ -248,6 +263,23 @@ function openDay(value: string): void {
   mode.value = "day";
 }
 
+/*
+ * `#/kalender?tag=<day>` opens that day, e.g. for a reflection the search
+ * found; the address then drops it, so paging on leaves no stale day.
+ * Injected rather than used: a spec may mount the view without a router.
+ */
+const route = inject(routeLocationKey, null);
+const router = inject(routerKey, null);
+watch(
+  () => route?.query[DAY_QUERY],
+  (day) => {
+    if (typeof day !== "string" || !isValidIsoDate(day)) return;
+    openDay(day);
+    void router?.replace({ query: {} });
+  },
+  { immediate: true },
+);
+
 /* Moving planned entries */
 function moveTarget(item: HistoryPlannedItem): MoveTarget | null {
   if (item.id === null) return null;
@@ -277,6 +309,8 @@ async function onDialogDone(): Promise<void> {
 function closeDialogs(): void {
   moving.value = null;
   editing.value = null;
+  campaignMoving.value = null;
+  deleting.value = null;
   editorBusy.value = false;
 }
 
@@ -285,10 +319,8 @@ function closeDialogs(): void {
  * undo, as on Heute), the title opens the editor, and moving sits in the
  * menu "Aktionen für …" with the same quick days as Heute.
  *
- * Deleting a Logbuch stretch shares the toast. The DELETE waits until the
- * offer ends (five seconds, the next offer, leaving the view or the page),
- * so "Rückgängig" only shows the stretch again: nothing was deleted, and its
- * event in Google, its source and its id stay as they were.
+ * Deleting a Logbuch stretch shares the toast; its DELETE waits until the
+ * offer ends (`useLogRemoval`).
  */
 type Undoable = { kind: "todo" | "occurrence" | "log"; id: number };
 const {
@@ -297,39 +329,10 @@ const {
   take: takeUndo,
   flush: flushUndo,
 } = useUndo<Undoable>();
-const hiddenLogs = ref<ReadonlySet<number>>(new Set());
-function showLog(id: number, shown: boolean): void {
-  const next = new Set(hiddenLogs.value);
-  if (shown) next.delete(id);
-  else next.add(id);
-  hiddenLogs.value = next;
-}
-function removeLog(log: HistoryWorkLog): void {
-  showLog(log.id, false);
-  offerUndo(
-    { kind: "log", id: log.id },
-    `Abschnitt „${log.title}“ gelöscht`,
-    () => void deleteLog(log.id),
-  );
-}
-async function deleteLog(id: number): Promise<void> {
-  await writes.write(
-    async () => {
-      try {
-        await deleteWorkLog(id);
-      } catch (cause) {
-        // Already gone, e.g. deleted on another device: what was asked for.
-        if (!(cause instanceof ApiError && cause.status === 404)) throw cause;
-      }
-    },
-    {
-      key: `log-${id}`,
-      fallbackError: "Der Abschnitt konnte nicht gelöscht werden.",
-    },
-  );
-  // Gone after the reload, or back in the list next to the error.
-  showLog(id, true);
-}
+const { hiddenLogs, removeLog, restoreLog } = useLogRemoval(
+  offerUndo,
+  writes.write,
+);
 /* Closing or reloading the page sends a held delete on its way. */
 onMounted(() => window.addEventListener("pagehide", flushUndo));
 onBeforeUnmount(() => window.removeEventListener("pagehide", flushUndo));
@@ -400,35 +403,76 @@ const plannedActions: PlannedActions = {
     const id = item.type === "todo" ? item.id : item.habitId;
     if (id === null || writes.busy.value) return;
     listFocus.remember(item.key);
-    editing.value = { kind: item.type, id };
+    editing.value = {
+      kind: item.type,
+      id,
+      occurrenceId:
+        item.type === "habit" && item.id !== null ? item.id : undefined,
+    };
   },
   menu: (item) => {
     const today = result.value?.today;
-    if (!moveTarget(item) || !today) return [];
+    if (!today) return [];
     const disabled = writes.busy.value;
-    return [
-      ...quickMoveEntries(
-        item.title,
-        quickMoves(today, {
-          date: item.scheduledDate,
-          timeOfDay: item.timeOfDay,
-          moveUntil: item.type === "habit" ? item.moveUntil : undefined,
-        }),
-        (move) => quickMove(item, move.date),
-        { disabled },
-      ),
+    const movable = !!moveTarget(item);
+    return rowMenu(
+      item.title,
       {
-        id: "move",
-        label:
-          item.type === "todo" && item.timeOfDay
-            ? "Termin verschieben …"
-            : "Anderer Tag …",
-        icon: "move",
-        ariaLabel: `${item.title} verschieben`,
-        disabled,
-        run: () => startMoving(item),
+        quickMoves: movable
+          ? quickMoveEntries(
+              item.title,
+              quickMoves(today, {
+                date: item.scheduledDate,
+                timeOfDay: item.timeOfDay,
+                moveUntil: item.type === "habit" ? item.moveUntil : undefined,
+              }),
+              (move) => quickMove(item, move.date),
+              { disabled },
+            )
+          : [],
+        otherDay: movable
+          ? {
+              run: () => startMoving(item),
+              appointment: item.type === "todo" && !!item.timeOfDay,
+            }
+          : undefined,
+        edit: plannedActions.editable(item)
+          ? () => plannedActions.edit(item)
+          : undefined,
+        reparent:
+          item.type === "todo" && item.id !== null
+            ? () => {
+                listFocus.remember(item.key);
+                campaignMoving.value = { todoId: item.id!, title: item.title };
+              }
+            : undefined,
+        remove: plannedActions.editable(item)
+          ? {
+              run: () => {
+                const id = item.type === "todo" ? item.id : item.habitId;
+                if (id === null || writes.busy.value) return;
+                listFocus.remember(item.key);
+                deleting.value = { kind: item.type, id, title: item.title };
+              },
+              ariaLabel:
+                item.type === "habit"
+                  ? `Daily ${item.title} ganz löschen`
+                  : undefined,
+            }
+          : undefined,
       },
-    ];
+      disabled,
+    );
+  },
+  measure: (item) => {
+    if (item.id === null) return null;
+    if (item.type === "todo")
+      return { kind: "todo", targetId: item.id, eligible: true };
+    const today = result.value?.today;
+    // A stored run can be measured once it is due.
+    return today && item.date <= today
+      ? { kind: "occurrence", targetId: item.id, eligible: true }
+      : null;
   },
   busy: (item) => writes.isWriting(busyKey(item)),
 };
@@ -436,7 +480,7 @@ async function undoLast(): Promise<void> {
   const target = takeUndo();
   if (target === null) return;
   // A held delete never went out: the stretch only comes back into view.
-  if (target.kind === "log") return showLog(target.id, true);
+  if (target.kind === "log") return restoreLog(target.id);
   const id = target.id;
   await writes.write(
     () =>
@@ -455,7 +499,10 @@ async function undoLast(): Promise<void> {
   <main
     ref="page"
     class="page calendar-view"
-    :class="{ 'calendar-view--day': mode === 'day' }"
+    :class="{
+      'calendar-view--day': mode === 'day',
+      'calendar-view--week': mode === 'week',
+    }"
   >
     <!--
       Two rows instead of a wall of controls: the range as title (it opens
@@ -611,8 +658,11 @@ async function undoLast(): Promise<void> {
         :result="result"
         :filter="filter"
         :filter-label="filterLabel"
+        :reload="reload"
+        :hidden-logs="hiddenLogs"
         @open-day="openDay"
         @show-all="filter = 'all'"
+        @remove-log="removeLog"
       />
       <CalendarDay
         v-else-if="shownDay"
@@ -637,11 +687,29 @@ async function undoLast(): Promise<void> {
         @moved="onDialogDone"
         @close="closeDialogs"
       />
+      <CampaignMoveDialog
+        v-if="campaignMoving"
+        :todo-id="campaignMoving.todoId"
+        :title="campaignMoving.title"
+        :return-focus="listFocus.returnFocus"
+        @busy="editorBusy = $event"
+        @moved="onDialogDone"
+        @close="closeDialogs"
+      />
+      <DeleteItemDialog
+        v-if="deleting"
+        :target="deleting"
+        :return-focus="listFocus.returnFocus"
+        @busy="editorBusy = $event"
+        @deleted="onDialogDone"
+        @close="closeDialogs"
+      />
       <EditItemDialog
         v-if="editing"
         :key="`${editing.kind}-${editing.id}`"
         :kind="editing.kind"
         :entity-id="editing.id"
+        :occurrence-id="editing.occurrenceId"
         :return-focus="listFocus.returnFocus"
         @busy="editorBusy = $event"
         @changed="onDialogDone"
@@ -806,10 +874,17 @@ async function undoLast(): Promise<void> {
   margin-bottom: var(--space-4);
 }
 
-/* Tag puts the list and the time axis side by side on wide screens. */
+/*
+ * Tag puts the list beside its day calendar on wide screens; the week needs
+ * room for seven columns, like the plan.
+ */
 @media (min-width: 56rem) {
   .calendar-view--day {
-    width: min(100% - 2rem, 64rem);
+    width: min(100% - 2rem, 80rem);
+  }
+
+  .calendar-view--week {
+    width: min(100% - 2rem, 90rem);
   }
 }
 </style>

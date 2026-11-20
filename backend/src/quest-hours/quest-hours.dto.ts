@@ -2,7 +2,10 @@ import { IsInt, Max, Min, ValidateIf } from 'class-validator';
 import { MAX_WEEKLY_TARGET_MINUTES } from '../todos/campaign-style';
 import type { Campaign } from '../todos/todo-ancestry';
 
-/** PUT /quest-hours/target: the overall weekly goal; null removes it. */
+/**
+ * PUT /quest-hours/target: the overall weekly goal from the running week on;
+ * null removes it. Weeks that are over keep theirs.
+ */
 export class QuestTargetDto {
   @ValidateIf((dto: QuestTargetDto) => dto.weeklyTargetMinutes !== null)
   @IsInt()
@@ -41,10 +44,15 @@ export type QuestHoursResponse = {
   weeklyTargetMinutes: number | null;
   questMinutes: number;
   otherMinutes: number;
+  /** Every quest minute ever measured, on any campaign (overlap once). */
+  totalQuestMinutes: number;
   /** Monday to Sunday. */
   days: QuestHoursDay[];
-  /** The eight weeks up to and including this one, oldest first. */
-  weeks: { startDate: string; questMinutes: number }[];
+  /**
+   * The eight weeks up to and including this one, oldest first, each split
+   * like the days: quest minutes and the rest of the measured time.
+   */
+  weeks: { startDate: string; questMinutes: number; otherMinutes: number }[];
   /** Campaigns with measured time or a weekly goal, most time this week first. */
   campaigns: QuestHoursCampaign[];
 };

@@ -2,7 +2,12 @@
 import { computed } from "vue";
 import type { QuestHoursResponse } from "../types/quest-hours";
 import { formatDuration } from "../utils/today-agenda";
-import { clockDuration, weekTrend, weekTrendText } from "../utils/week-review";
+import {
+  clockDuration,
+  weekBarText,
+  weekTrend,
+  weekTrendText,
+} from "../utils/week-review";
 
 const props = defineProps<{ hours: QuestHoursResponse }>();
 
@@ -16,27 +21,42 @@ const label = computed(() => weekTrendText(trend.value));
       <h2 id="review-trend-title" class="card-title">
         Kampagnen-Stunden · letzte Wochen
       </h2>
-      <p
-        v-if="trend.average !== null"
-        class="week-trend__average-note"
-        aria-hidden="true"
-      >
-        <i class="week-trend__dash" />Schnitt der
-        {{ trend.bars.length - 1 }} Wochen davor
-        <strong>{{ formatDuration(trend.average) }}</strong>
-      </p>
+      <!-- The same keys as "Kampagnen-Arbeit gegen Sonstiges", and the line. -->
+      <ul class="week-trend__legend" aria-hidden="true">
+        <li>
+          <i class="week-trend__key week-trend__part--quest" />Kampagnen-Arbeit
+        </li>
+        <li><i class="week-trend__key week-trend__part--other" />Sonstiges</li>
+        <li v-if="trend.average !== null" class="week-trend__average-note">
+          <i class="week-trend__dash" />Schnitt der
+          {{ trend.bars.length - 1 }} Wochen davor
+          <strong>{{ formatDuration(trend.average) }}</strong>
+        </li>
+      </ul>
     </div>
     <div class="week-trend__chart" role="img" :aria-label="label">
       <div class="week-trend__plot" aria-hidden="true">
+        <!-- Quest time on the baseline, the rest stacked on it. -->
         <span
           v-for="bar in trend.bars"
           :key="bar.startDate"
           class="week-trend__slot"
+          :class="{ 'week-trend__slot--shown': bar.isShown }"
+          :title="weekBarText(bar)"
         >
           <span
-            class="week-trend__bar"
-            :class="{ 'week-trend__bar--shown': bar.isShown }"
-            :style="{ height: `${bar.height}%` }"
+            v-if="bar.questHeight"
+            class="week-trend__part week-trend__part--quest"
+            :style="{ height: `${bar.questHeight}%` }"
+          />
+          <span
+            v-if="bar.otherHeight"
+            class="week-trend__part week-trend__part--other"
+            :style="{
+              height: bar.questHeight
+                ? `calc(${bar.otherHeight}% - 2px)`
+                : `${bar.otherHeight}%`,
+            }"
           />
         </span>
         <span
@@ -53,6 +73,10 @@ const label = computed(() => weekTrendText(trend.value));
           :class="{ 'week-trend__label--shown': bar.isShown }"
         >
           <span class="week-trend__value">{{ clockDuration(bar.minutes) }}</span>
+          <!-- The other time is written too, never only in the tooltip. -->
+          <span class="week-trend__other">{{
+            bar.otherMinutes ? `+${clockDuration(bar.otherMinutes)}` : " "
+          }}</span>
           <span class="week-trend__date">{{ bar.label }}</span>
           <span v-if="bar.isRunning" class="week-trend__running">bisher</span>
         </span>
@@ -62,16 +86,34 @@ const label = computed(() => weekTrendText(trend.value));
 </template>
 
 <style scoped>
-.week-trend__average-note {
-  display: inline-flex;
+.week-trend__legend {
+  display: flex;
   flex-wrap: wrap;
-  gap: 0 var(--space-2);
+  gap: var(--space-1) var(--space-4);
   align-items: center;
   margin: 0;
+  padding: 0;
   color: var(--color-ink-muted);
   font-size: 0.8125rem;
   font-weight: 700;
+  list-style: none;
   font-variant-numeric: tabular-nums;
+}
+
+.week-trend__legend li {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.week-trend__key {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 0.2rem;
+}
+
+.week-trend__average-note {
+  flex-wrap: wrap;
 }
 
 .week-trend__average-note strong {
@@ -100,26 +142,41 @@ const label = computed(() => weekTrendText(trend.value));
   border-bottom: 1px solid var(--color-line);
 }
 
+/* A column stacks from the baseline up, the parts 2px apart in the card's white. */
 .week-trend__slot {
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
+  flex-direction: column-reverse;
+  gap: 2px;
+  justify-self: center;
+  width: min(100% - 0.5rem, 3rem);
 }
 
-.week-trend__bar {
+/* The shown week is marked quietly, like today in the day bars: a firmer baseline. */
+.week-trend__slot--shown {
+  box-shadow: 0 2px 0 var(--color-ink);
+}
+
+.week-trend__part {
   display: block;
-  width: min(100% - 0.5rem, 3rem);
-  border-radius: 0.375rem 0.375rem 0 0;
-  background: var(--color-ink-soft);
+  flex: none;
+  width: 100%;
   transition: height 240ms var(--ease-out);
 }
 
-/* The shown week in full ink; the others step back. */
-.week-trend__bar--shown {
-  background: var(--color-ink);
+/* Only the top of a column is rounded; it stands on the baseline. */
+.week-trend__part:last-child {
+  border-radius: 0.375rem 0.375rem 0 0;
 }
 
-/* The average as a dashed rule across all weeks. */
+.week-trend__part--quest {
+  background: var(--color-bar);
+}
+
+.week-trend__part--other {
+  background: var(--color-mark-none);
+}
+
+/* The average of quest time as a dashed rule across all weeks. */
 .week-trend__average {
   position: absolute;
   right: 0;
@@ -147,6 +204,7 @@ const label = computed(() => weekTrendText(trend.value));
   font-weight: 700;
 }
 
+.week-trend__other,
 .week-trend__date {
   color: var(--color-ink-soft);
   font-size: 0.6875rem;
@@ -174,6 +232,7 @@ const label = computed(() => weekTrendText(trend.value));
     font-size: 0.8125rem;
   }
 
+  .week-trend__other,
   .week-trend__date,
   .week-trend__running {
     font-size: 0.75rem;

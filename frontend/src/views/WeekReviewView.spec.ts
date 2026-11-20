@@ -1,7 +1,7 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
-import { getQuestHours } from "../api/quest-hours.api";
+import { getQuestHours, setQuestTarget } from "../api/quest-hours.api";
 import { getWeekReview, saveWeekReview } from "../api/week-review.api";
 import {
   campaignRow,
@@ -11,7 +11,10 @@ import {
 } from "../test/week-review-fixtures";
 import WeekReviewView from "./WeekReviewView.vue";
 
-vi.mock("../api/quest-hours.api", () => ({ getQuestHours: vi.fn() }));
+vi.mock("../api/quest-hours.api", () => ({
+  getQuestHours: vi.fn(),
+  setQuestTarget: vi.fn(),
+}));
 vi.mock("../api/week-review.api", () => ({
   getWeekReview: vi.fn(),
   saveWeekReview: vi.fn(),
@@ -123,7 +126,7 @@ describe("WeekReviewView", () => {
     ).toEqual(["Stunden je Kampagne", "Kampagnen-Arbeit gegen Sonstiges"]);
   });
 
-  it("shows the Dailies against what was due and the perfect week side by side", async () => {
+  it("shows the Dailies and the perfect week as the fourth figure, not again below", async () => {
     const { hours, review } = busyWeek();
     vi.mocked(getQuestHours).mockResolvedValue(hours);
     vi.mocked(getWeekReview).mockResolvedValue({
@@ -132,23 +135,66 @@ describe("WeekReviewView", () => {
       perfectWeek: {
         perfect: false,
         categories: [
-          { id: 1, name: "Sport", target: 2, completed: 1, reached: false },
+          { id: 1, name: "Sport", color: null, target: 2, completed: 1, reached: false },
         ],
       },
     });
     const { wrapper } = await mountReview();
-    const pair = wrapper.get(".week-quota--dashboard");
-    expect(pair.findAll("h2").map((heading) => heading.text())).toEqual([
-      "Dailies im Wochensoll",
-      "Perfekte Woche",
-    ]);
-    expect(pair.get(".quota").classes()).not.toContain("quota--lifted");
-    expect(sectionTitles(wrapper).slice(-4)).toEqual([
-      "Dailies im Wochensoll",
-      "Perfekte Woche",
-      "Erledigt 1",
-      "Rückblick",
-    ]);
+    const dailies = wrapper.get(".figures__item--dailies");
+    expect(dailies.get("dt").text()).toBe("Dailies im Wochensoll");
+    expect(dailies.get(".figures__value").text()).toBe("5 von 8");
+    expect(dailies.get(".figures__perfect").text()).toBe(
+      "Perfekte Woche: Sport 1 von 2",
+    );
+    expect(wrapper.findAll(".figures__item")).toHaveLength(4);
+    expect(sectionTitles(wrapper)).not.toContain("Perfekte Woche");
+    expect(sectionTitles(wrapper).slice(-2)).toEqual(["Erledigt 1", "Rückblick"]);
+  });
+
+  it("changes the weekly goal in place for this week and the weeks after", async () => {
+    vi.mocked(setQuestTarget).mockResolvedValue({ weeklyTargetMinutes: 620 });
+    const { wrapper } = await mountReview();
+    // What the server answers once the goal is stored.
+    vi.mocked(getQuestHours).mockResolvedValue({
+      ...busyWeek().hours,
+      weeklyTargetMinutes: 620,
+    });
+    const card = wrapper.get(".figures__item--hours");
+    expect(card.get(".figures__note").text()).toBe("von 10 Std. Wochenziel");
+    await card.get('button[aria-label="Wochenziel ändern"]').trigger("click");
+    const hoursField = card.get<HTMLInputElement>(
+      'input[name="weeklyQuestTargetHours"]',
+    );
+    expect(hoursField.element.value).toBe("10");
+    expect(document.activeElement).toBe(hoursField.element);
+    await hoursField.setValue("10");
+    await card
+      .get('input[name="weeklyQuestTargetMinutes"]')
+      .setValue("20");
+    await card.get("form").trigger("submit");
+    await flushPromises();
+    expect(setQuestTarget).toHaveBeenCalledWith(620);
+    expect(card.find("form").exists()).toBe(false);
+    expect(card.get(".figures__note").text()).toBe(
+      "von 10 Std. 20 Min. Wochenziel",
+    );
+    // The focus returns to where the editor was opened.
+    expect(document.activeElement).toBe(
+      card.get('button[aria-label="Wochenziel ändern"]').element,
+    );
+  });
+
+  it("shows a past week's goal without offering to change it", async () => {
+    const { hours, review } = busyWeek(LAST_MONDAY);
+    vi.mocked(getQuestHours).mockResolvedValue({
+      ...hours,
+      weeklyTargetMinutes: 300,
+    });
+    vi.mocked(getWeekReview).mockResolvedValue(review);
+    const { wrapper } = await mountReview(`/rueckblick?woche=${LAST_MONDAY}`);
+    const card = wrapper.get(".figures__item--hours");
+    expect(card.get(".figures__note").text()).toBe("von 5 Std. Wochenziel");
+    expect(card.find("button").exists()).toBe(false);
   });
 
   it("shows the figures but no empty charts for a week with only resolved quests", async () => {
@@ -211,10 +257,10 @@ describe("WeekReviewView", () => {
     const loading = wrapper.get(
       '[role="status"][aria-label="Wochenrückblick wird geladen"]',
     );
-    // Three figures, the day bars beside two side cards, the recent weeks.
+    // Four figures, the day bars beside two side cards, the recent weeks.
     expect(
       loading.get(".week-review__figures-bones").findAll(".week-review__bone"),
-    ).toHaveLength(3);
+    ).toHaveLength(4);
     const charts = loading.get(".week-review__charts");
     expect(charts.find(".week-review__bone--days").exists()).toBe(true);
     expect(
@@ -268,7 +314,7 @@ describe("WeekReviewView", () => {
         perfectWeek: {
           perfect: false,
           categories: [
-            { id: 1, name: "Sport", target: 2, completed: 0, reached: false },
+            { id: 1, name: "Sport", color: null, target: 2, completed: 0, reached: false },
           ],
         },
       }),

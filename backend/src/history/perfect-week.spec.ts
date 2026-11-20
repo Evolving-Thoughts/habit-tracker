@@ -1,9 +1,9 @@
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { perfectWeek, perfectWeekOf } from './perfect-week';
 
-const sport = { id: 1, name: 'Sport', weeklyTarget: 2 };
-const music = { id: 2, name: 'Musik', weeklyTarget: 1 };
-const free = { id: 3, name: 'Frei', weeklyTarget: null };
+const sport = { id: 1, name: 'Sport', color: 'navy' as const, weeklyTarget: 2 };
+const music = { id: 2, name: 'Musik', color: null, weeklyTarget: 1 };
+const free = { id: 3, name: 'Frei', color: null, weeklyTarget: null };
 
 describe('perfectWeek', () => {
   it('ignores categories without a target', () => {
@@ -20,8 +20,22 @@ describe('perfectWeek', () => {
     expect(perfectWeek([sport, music], [1, 2])).toEqual({
       perfect: false,
       categories: [
-        { id: 1, name: 'Sport', target: 2, completed: 1, reached: false },
-        { id: 2, name: 'Musik', target: 1, completed: 1, reached: true },
+        {
+          id: 1,
+          name: 'Sport',
+          color: 'navy',
+          target: 2,
+          completed: 1,
+          reached: false,
+        },
+        {
+          id: 2,
+          name: 'Musik',
+          color: null,
+          target: 1,
+          completed: 1,
+          reached: true,
+        },
       ],
     });
   });
@@ -45,8 +59,22 @@ describe('perfectWeekOf', () => {
     ).toEqual({
       perfect: false,
       categories: [
-        { id: 1, name: 'Sport', target: 2, completed: 2, reached: true },
-        { id: 2, name: 'Musik', target: 1, completed: 0, reached: false },
+        {
+          id: 1,
+          name: 'Sport',
+          color: 'navy',
+          target: 2,
+          completed: 2,
+          reached: true,
+        },
+        {
+          id: 2,
+          name: 'Musik',
+          color: null,
+          target: 1,
+          completed: 0,
+          reached: false,
+        },
       ],
     });
   });

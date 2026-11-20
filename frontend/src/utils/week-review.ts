@@ -7,7 +7,7 @@ import type {
   WeekReviewResponse,
 } from "../types/week-review";
 import { campaignMark } from "./category-mark";
-import { addDays } from "./date";
+import { addDays, isValidIsoDate, weekStart } from "./date";
 import { dayLabel, shortDate } from "./history";
 import { formatDuration } from "./today-agenda";
 import { questWord } from "./todo-hierarchy";
@@ -209,8 +209,14 @@ export type WeekBar = {
   startDate: string;
   /** "16.11." */
   label: string;
+  /** Quest minutes: the Kampagnen-Arbeit of the week. */
   minutes: number;
-  height: number;
+  /** Measured minutes without a campaign: Sonstiges. */
+  otherMinutes: number;
+  /** Height of the quest part, in percent of the chart's height. */
+  questHeight: number;
+  /** Height of the other part stacked on it, on the same scale. */
+  otherHeight: number;
   isShown: boolean;
   /** The shown week while it still runs: its figure is "bisher". */
   isRunning: boolean;
@@ -218,14 +224,16 @@ export type WeekBar = {
 
 export type WeekTrend = {
   bars: WeekBar[];
-  /** Mean of the weeks before the shown one; null when there are none. */
+  /** Mean quest minutes of the weeks before the shown one; null without any. */
   average: number | null;
   /** Where the average line sits, in percent of the chart's height. */
   averageAt: number | null;
 };
 
 /**
- * The eight weeks up to the shown one. The average leaves the shown week
+ * The eight weeks up to the shown one, each a stack of quest time and the
+ * rest of the measured time on one scale, so the quest part reads against
+ * the average line. The average is of quest time and leaves the shown week
  * out: it may still be running, and it is what the line is compared with.
  */
 export function weekTrend(hours: QuestHoursResponse): WeekTrend {
@@ -238,18 +246,25 @@ export function weekTrend(hours: QuestHoursResponse): WeekTrend {
     : null;
   const top = Math.max(
     average ?? 0,
-    ...hours.weeks.map((week) => week.questMinutes),
+    ...hours.weeks.map((week) => week.questMinutes + week.otherMinutes),
   );
   const running =
     hours.startDate <= hours.today && hours.today <= hours.endDate;
   return {
     bars: hours.weeks.map((week) => {
       const isShown = week.startDate === hours.startDate;
+      const questHeight = barHeight(week.questMinutes, top);
+      const whole = barHeight(week.questMinutes + week.otherMinutes, top);
       return {
         startDate: week.startDate,
         label: `${week.startDate.slice(8, 10)}.${week.startDate.slice(5, 7)}.`,
         minutes: week.questMinutes,
-        height: barHeight(week.questMinutes, top),
+        otherMinutes: week.otherMinutes,
+        questHeight,
+        // A sliver keeps a little other time visible on top of a tall part.
+        otherHeight: week.otherMinutes
+          ? Math.max(3, whole - questHeight)
+          : 0,
         isShown,
         isRunning: isShown && running,
       };
@@ -259,17 +274,18 @@ export function weekTrend(hours: QuestHoursResponse): WeekTrend {
   };
 }
 
+/** One week's two parts in words, also the column's tooltip. */
+export function weekBarText(bar: WeekBar): string {
+  return `Woche ab ${shortDate(bar.startDate)}: ${formatDuration(bar.minutes)} Kampagnen-Arbeit, ${formatDuration(bar.otherMinutes)} Sonstiges${bar.isRunning ? " bisher" : ""}`;
+}
+
 /** The weeks in words, the average included. */
 export function weekTrendText(trend: WeekTrend): string {
-  const parts = trend.bars.map(
-    (bar) =>
-      `Woche ab ${shortDate(bar.startDate)}: ${formatDuration(bar.minutes)}${bar.isRunning ? " bisher" : ""}`,
-  );
   const average =
     trend.average === null
       ? ""
-      : `; Schnitt der Wochen davor: ${formatDuration(trend.average)}`;
-  return `Kampagnen-Stunden der letzten ${trend.bars.length} Wochen. ${parts.join(", ")}${average}`;
+      : `; Schnitt der Kampagnen-Arbeit in den Wochen davor: ${formatDuration(trend.average)}`;
+  return `Kampagnen-Stunden der letzten ${trend.bars.length} Wochen, gestapelt aus Kampagnen-Arbeit und Sonstigem. ${trend.bars.map(weekBarText).join(", ")}${average}`;
 }
 
 /** What the answer fields show for stored answers. */
@@ -301,4 +317,25 @@ export function weekDistance(week: string, thisWeek: string): string {
   if (weeks === -1) return "vorige Woche";
   if (weeks === 1) return "nächste Woche";
   return weeks < 0 ? `vor ${-weeks} Wochen` : `in ${weeks} Wochen`;
+}
+
+/** The Monday of the week in the address, or of `today` when it is unusable. */
+export function weekFromQuery(value: unknown, today: string): string {
+  return typeof value === "string" && isValidIsoDate(value)
+    ? weekStart(value)
+    : weekStart(today);
+}
+
+/** The weeks before and after, for the switcher. */
+export function neighbourWeek(start: string, direction: -1 | 1): string {
+  return addDays(start, direction * 7);
+}
+
+/**
+ * The way back to now ("Diese Woche" here, "Heute" in the Plan and the
+ * Kalender) only shows once the shown range has left today: on the current
+ * week it would change nothing.
+ */
+export function offersWayBack(shownWeek: string, currentWeek: string): boolean {
+  return shownWeek !== currentWeek;
 }

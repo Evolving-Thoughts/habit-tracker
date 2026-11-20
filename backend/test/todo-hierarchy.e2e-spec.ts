@@ -36,7 +36,8 @@ describe('Todo hierarchy T2/T3 PostgreSQL API', () => {
   });
   beforeEach(async () => {
     await db.query(
-      'TRUNCATE push_deliveries, push_subscriptions, timers, todos RESTART IDENTITY',
+      // Dailies may name a todo as their campaign, so they go along.
+      'TRUNCATE push_deliveries, push_subscriptions, timers, todos RESTART IDENTITY CASCADE',
     );
   });
   afterAll(async () => {

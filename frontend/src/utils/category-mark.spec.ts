@@ -9,7 +9,7 @@ describe("categoryMark", () => {
 
   it("spreads common category names over different marks", () => {
     const names = ["Sport", "Haushalt", "Lernen und Lesen", "Gesundheit"];
-    expect(new Set(names.map(categoryMark)).size).toBe(names.length);
+    expect(new Set(names.map((name) => categoryMark(name))).size).toBe(names.length);
   });
 
   it("returns a mark token for every name", () => {

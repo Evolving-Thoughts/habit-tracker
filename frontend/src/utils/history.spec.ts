@@ -11,6 +11,7 @@ import {
   longDate,
   monthLabel,
   rangeContains,
+  rangeLabel,
   shortDate,
   supportedHistoryDate,
   weekLabel,
@@ -36,6 +37,11 @@ describe("history calendar", () => {
     expect(weekLabel("2026-11-12")).toBe("9.–15. Nov.");
     expect(weekLabel("2026-12-01")).toBe("30. Nov. – 6. Dez.");
   });
+  it("names any range of days, or one day alone", () => {
+    expect(rangeLabel("2026-11-20", "2026-11-23")).toBe("20.–23. Nov.");
+    expect(rangeLabel("2026-11-28", "2026-12-02")).toBe("28. Nov. – 2. Dez.");
+    expect(rangeLabel("2026-11-20", "2026-11-20")).toBe("20. Nov.");
+  });
   it.each(["", "07.10.2026", "2026-02-30", "0000-01-01", "9999-12-31"])(
     "rejects invalid/unsupported %s",
     (date) => expect(supportedHistoryDate(date, "day")).toBe(false),
@@ -51,6 +57,8 @@ it("counts a day and names only the non-zero counts", () => {
     habitId: null,
     title: "Quest",
     categoryName: null,
+    categoryColor: null,
+    campaign: null,
     why: null,
     status: "completed" as const,
     date: "2026-10-07",
@@ -94,6 +102,8 @@ it("counts today like Heute does, with what waits from earlier named apart", () 
     habitId: null,
     title: key,
     categoryName: null,
+    categoryColor: null,
+    campaign: null,
     why: null,
     date: "2026-10-07",
     scheduledDate: isOverdue ? "2026-10-05" : "2026-10-07",
@@ -108,6 +118,8 @@ it("counts today like Heute does, with what waits from earlier named apart", () 
     habitId: null,
     title: "Erledigt",
     categoryName: null,
+    categoryColor: null,
+    campaign: null,
     why: null,
     status: "completed" as const,
     date: "2026-10-07",
@@ -176,6 +188,8 @@ it("counts the app's own appointments and Google's events for the month's marker
     habitId: null,
     title: "Zahnarzt",
     categoryName: null,
+    categoryColor: null,
+    campaign: null,
     why: null,
     date: "2026-11-19",
     scheduledDate: "2026-11-19",

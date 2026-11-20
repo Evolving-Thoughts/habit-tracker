@@ -8,6 +8,12 @@ import { LogbookEvents1795200000000 } from './migrations/1795200000000-LogbookEv
 import { QuestHours1795300000000 } from './migrations/1795300000000-QuestHours';
 import { WeekReviews1795400000000 } from './migrations/1795400000000-WeekReviews';
 import { ProgressBelowCampaign1795500000000 } from './migrations/1795500000000-ProgressBelowCampaign';
+import { CategoryColor1795600000000 } from './migrations/1795600000000-CategoryColor';
+import { DailyCampaignAndRunNotes1795700000000 } from './migrations/1795700000000-DailyCampaignAndRunNotes';
+import { BacklogOrder1795800000000 } from './migrations/1795800000000-BacklogOrder';
+import { StopwatchBlocks1795900000000 } from './migrations/1795900000000-StopwatchBlocks';
+import { WeeklyQuestTargets1796000000000 } from './migrations/1796000000000-WeeklyQuestTargets';
+import { SearchUnaccent1796100000000 } from './migrations/1796100000000-SearchUnaccent';
 
 type PostgresOptions = Extract<DataSourceOptions, { type: 'postgres' }>;
 
@@ -38,6 +44,12 @@ export function databaseOptions(
       QuestHours1795300000000,
       WeekReviews1795400000000,
       ProgressBelowCampaign1795500000000,
+      CategoryColor1795600000000,
+      DailyCampaignAndRunNotes1795700000000,
+      BacklogOrder1795800000000,
+      StopwatchBlocks1795900000000,
+      WeeklyQuestTargets1796000000000,
+      SearchUnaccent1796100000000,
     ],
   };
 }

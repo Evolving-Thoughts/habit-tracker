@@ -54,11 +54,10 @@ describe('Todos API (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await app
-      .get(DataSource)
-      .query(
-        'TRUNCATE TABLE push_deliveries, push_subscriptions, timers, todos RESTART IDENTITY',
-      );
+    await app.get(DataSource).query(
+      // Dailies may name a todo as their campaign, so they go along.
+      'TRUNCATE TABLE push_deliveries, push_subscriptions, timers, todos RESTART IDENTITY CASCADE',
+    );
   });
 
   afterAll(async () => {
@@ -541,6 +540,76 @@ describe('Todos API (e2e)', () => {
         outline,
         loose,
       ]);
+    });
+  });
+
+  describe('PUT /todos/backlog/order', () => {
+    const create = async (body: object) =>
+      (
+        (await request(httpServer).post('/todos').send(body).expect(201))
+          .body as TodoResponseDto
+      ).id;
+    const backlog = async () =>
+      (
+        (await request(httpServer).get('/todos/backlog').expect(200))
+          .body as TodoResponseDto[]
+      ).map((t) => t.title);
+    const sort = (ids: unknown) =>
+      request(httpServer).put('/todos/backlog/order').send({ ids });
+
+    it('keeps the order the Questlog was sorted into; a quest back from a day joins the end', async () => {
+      const first = await create({ title: 'Erstes' });
+      const second = await create({ title: 'Zweites' });
+      const third = await create({ title: 'Drittes' });
+      expect(await backlog()).toEqual(['Erstes', 'Zweites', 'Drittes']);
+
+      await sort([third, first]).expect(204);
+      expect(await backlog()).toEqual(['Drittes', 'Erstes', 'Zweites']);
+
+      // Planned it leaves the order; back without a day it joins the end.
+      await request(httpServer)
+        .patch(`/todos/${third}`)
+        .send({ scheduledDate: dayOf(new Date()) })
+        .expect(200);
+      expect(await backlog()).toEqual(['Erstes', 'Zweites']);
+      await create({ title: 'Neu' });
+      await request(httpServer)
+        .patch(`/todos/${third}`)
+        .send({ scheduledDate: null })
+        .expect(200);
+      expect(await backlog()).toEqual(['Erstes', 'Zweites', 'Neu', 'Drittes']);
+
+      // The board drops it where it belongs.
+      await sort([first, third, second]).expect(204);
+      expect(await backlog()).toEqual(['Erstes', 'Drittes', 'Zweites', 'Neu']);
+    });
+
+    it('puts a new quest at the head of the order when asked', async () => {
+      await create({ title: 'Erstes' });
+      await create({ title: 'Zweites' });
+      await create({ title: 'Oben', backlogPlace: 'top' });
+      await create({ title: 'Unten', backlogPlace: 'bottom' });
+      expect(await backlog()).toEqual(['Oben', 'Erstes', 'Zweites', 'Unten']);
+      await request(httpServer)
+        .post('/todos')
+        .send({ title: 'Seitwärts', backlogPlace: 'middle' })
+        .expect(400);
+    });
+
+    it('writes nothing unless every quest is in the Questlog', async () => {
+      await create({ title: 'Lose' });
+      const planned = await create({
+        title: 'Geplant',
+        scheduledDate: dayOf(new Date()),
+      });
+      const other = await create({ title: 'Andere' });
+
+      await sort([other, planned]).expect(404);
+      await sort([other, 999_999]).expect(404);
+      await sort([other, other]).expect(400);
+      await sort(['eins']).expect(400);
+      await sort('nichts').expect(400);
+      expect(await backlog()).toEqual(['Lose', 'Andere']);
     });
   });
 

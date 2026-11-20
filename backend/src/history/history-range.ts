@@ -34,3 +34,11 @@ export function historyRange(
   endOfDay(dates[dates.length - 1]);
   return dates;
 }
+
+/** The seven days of the week starting on `start`, which must be a Monday. */
+export function weekDates(start: string): string[] {
+  const dates = historyRange(start, 'week');
+  if (weekRange(start).startDate !== start)
+    throw new BadRequestException('The week must start on a Monday');
+  return dates;
+}

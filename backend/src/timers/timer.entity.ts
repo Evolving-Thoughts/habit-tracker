@@ -69,9 +69,22 @@ export class TimerEntity {
   /** Time of all finished stretches; the running one comes on top. */
   @Column({ type: 'integer', default: 0 })
   elapsedMilliseconds!: number;
-  /** Start of the running stretch; closed into a work log when it ends. */
+  /**
+   * Start of the running stretch; closed into a work log when it ends. A
+   * stretch resumed within a minute of its pause starts where the block
+   * before it started (`resumeWorkSegment`).
+   */
   @Column({ type: 'timestamptz', nullable: true })
   segmentStartedAt!: Date | null;
+  /** While paused: where the block of the last stretch started. */
+  @Column({ type: 'timestamptz', nullable: true })
+  blockStartedAt!: Date | null;
+  /** While paused: when the last stretch ended. */
+  @Column({ type: 'timestamptz', nullable: true })
+  pausedAt!: Date | null;
+  /** The work log of the current block, once it is long enough to be one. */
+  @Column({ type: 'integer', nullable: true })
+  workLogId!: number | null;
   /** When a running stopwatch will reach its target; null once it has. */
   @Column({ type: 'timestamptz', nullable: true })
   targetReachesAt!: Date | null;

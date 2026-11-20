@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import TodoDeletionSummary from "../components/TodoDeletionSummary.vue";
-import { useTodoDeletion } from "../composables/useTodoDeletion";
+import { computed, nextTick, ref } from "vue";
 import {
   getBacklogTodos,
-  updateTodo,
+  reorderBacklog,
   updateTodoCompletion,
 } from "../api/day-planner.api";
-import { getCategories } from "../api/categories.api";
 import { planQuest } from "../api/questlog.api";
 import { useListFocus } from "../composables/useListFocus";
+import { useSortable } from "../composables/useSortable";
 import AppIcon from "../components/AppIcon.vue";
+import CampaignChip from "../components/CampaignChip.vue";
 import ItemRow from "../components/ItemRow.vue";
+import { useCategoryLabels } from "../composables/useCategoryLabels";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import { useUndo } from "../composables/useUndo";
@@ -19,20 +19,21 @@ import { useShortcutHandlers } from "../composables/useShortcuts";
 import { toggleTimer, useTimer } from "../composables/useTimer";
 import { addDays, getCurrentDateInTimeZone, weekStart } from "../utils/date";
 import CreateButton from "../components/CreateButton.vue";
+import QuickAddQuest from "../components/QuickAddQuest.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
-import ModalDialog from "../components/ModalDialog.vue";
+import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
+import DeleteItemDialog from "../components/DeleteItemDialog.vue";
+import EditItemDialog from "../components/EditItemDialog.vue";
 import UndoToast from "../components/UndoToast.vue";
-import type { CreateTodoInput, TodoResponse } from "../types/todo";
+import type { TodoResponse } from "../types/todo";
 import { shownWhy } from "../utils/why";
-import PlanFields from "../components/PlanFields.vue";
-import AppointmentFields from "../components/AppointmentFields.vue";
-import QuestNotes from "../components/QuestNotes.vue";
-import { campaignMark, categoryMark } from "../utils/category-mark";
-import { buildTodoInput } from "../utils/todo-input";
+import { campaignMark } from "../utils/category-mark";
 import { dayLabel, fullStop } from "../utils/history";
+import { moved } from "../utils/today-agenda";
 import {
   quickMoveEntries,
   quickMoves,
+  rowMenu as cardMenu,
   type MenuEntry,
 } from "../utils/row-actions";
 
@@ -41,46 +42,27 @@ const listFocus = useListFocus(page);
 
 const successMessage = ref<string | null>(null);
 
-const selectedTodo = ref<TodoResponse | null>(null);
-const {
-  preview: deletionPreview,
-  prepare: prepareDeletion,
-  confirm: confirmPreviewedDeletion,
-  cancel: cancelDeletion,
-} = useTodoDeletion();
-const confirmDeletion = computed(() => deletionPreview.value !== null);
-async function requestDeletion(): Promise<void> {
-  if (isBusy.value) return;
-  errorMessage.value = null;
-  try {
-    await prepareDeletion(selectedTodo.value!.id);
-  } catch (error) {
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : "Löschvorschau konnte nicht geladen werden.";
-  }
-}
+/*
+ * One dialog at a time for a quest of the list: the shared editor (at its
+ * day for "Anderer Tag …"), "In Kampagne verschieben …" or "Löschen".
+ */
+type Dialog = {
+  kind: "edit" | "move" | "delete";
+  todo: TodoResponse;
+  atDay?: boolean;
+};
+const dialog = ref<Dialog | null>(null);
+/** Where "Anderer Tag …" puts the focus in the editor. */
+const DAY_FIELD = 'input[name="scheduledDate"]';
+const dialogBusy = ref(false);
+const selectedTodo = computed(() => dialog.value?.todo ?? null);
 
 const creationOpen = ref(false);
 
-const editTitle = ref("");
-const editDate = ref("");
-const editTime = ref("");
-const editDuration = ref<string | number>("");
-
-/** Category names for the meta line; the list stays usable without them. */
-const categoryNames = ref(new Map<number, string>());
-async function loadCategoryNames(): Promise<void> {
-  try {
-    const categories = await getCategories();
-    categoryNames.value = new Map(categories.map((c) => [c.id, c.name]));
-  } catch {
-    // Without names the items simply show no category mark.
-  }
-}
+/** Category names and marks for the meta line. */
+const { load: loadCategories, labelOf } = useCategoryLabels();
 async function loadDump(): Promise<TodoResponse[]> {
-  const [backlog] = await Promise.all([getBacklogTodos(), loadCategoryNames()]);
+  const [backlog] = await Promise.all([getBacklogTodos(), loadCategories()]);
   return backlog;
 }
 
@@ -93,7 +75,7 @@ const {
   initial: [] as TodoResponse[],
   fallbackError: "Die Quests konnten nicht geladen werden.",
   refreshOnChange: () =>
-    !(isSaving.value || selectedTodo.value || creationOpen.value),
+    !(isSaving.value || dialog.value || dialogBusy.value || creationOpen.value),
 });
 const { write, applied, busy: isSaving } = useWrites(loadTodos, errorMessage);
 
@@ -122,11 +104,10 @@ function forgetDone(id: number): void {
 
 const { undo, offer, take: takeUndo } = useUndo<TodoResponse>();
 
-function categoryOf(todo: TodoResponse): string | null {
-  return todo.categoryId === null
-    ? null
-    : (categoryNames.value.get(todo.categoryId) ?? null);
-}
+const categoryOf = (todo: TodoResponse) => labelOf(todo.categoryId);
+/** A campaign's own quest wears its stripe but does not repeat its name. */
+const campaignOf = (todo: TodoResponse) =>
+  todo.campaign && todo.campaign.id !== todo.id ? todo.campaign : null;
 
 function detailsOf(todo: TodoResponse): string[] {
   const parts: string[] = [];
@@ -164,100 +145,30 @@ async function undoLast(): Promise<void> {
     forgetDone(todo.id);
 }
 
-/** Where the editor puts the focus: the title, or the day for "Tag wählen …". */
-const editorFocus = ref('input[name="editTitle"]');
-function openEditing(todo: TodoResponse, { atDay = false } = {}): void {
-  if (isBusy.value) {
-    return;
-  }
-
+function openDialog(
+  kind: Dialog["kind"],
+  todo: TodoResponse,
+  { atDay = false } = {},
+): void {
+  if (isBusy.value || dialog.value) return;
   listFocus.remember(`todo-${todo.id}`);
-  editorFocus.value = atDay
-    ? 'input[name="scheduledDate"]'
-    : 'input[name="editTitle"]';
-  selectedTodo.value = todo;
-  cancelDeletion();
-
-  editTitle.value = todo.title;
-
-  // The Questlog only holds quests without a day.
-  editDate.value = "";
-  editTime.value = "";
-
-  editDuration.value = todo.plannedDurationMinutes ?? "";
-
   errorMessage.value = null;
   successMessage.value = null;
+  dialog.value = { kind, todo, atDay };
 }
-
-function closeEditing(): void {
-  selectedTodo.value = null;
-  cancelDeletion();
-
-  editTitle.value = "";
-  editDate.value = "";
-  editTime.value = "";
-  editDuration.value = "";
+function openEditing(todo: TodoResponse, options = {}): void {
+  openDialog("edit", todo, options);
 }
-
-function buildUpdateInput(): CreateTodoInput {
-  return buildTodoInput({
-    title: editTitle.value,
-    date: editDate.value,
-    time: editTime.value,
-    duration: editDuration.value,
-  });
+function closeDialog(): void {
+  dialog.value = null;
+  dialogBusy.value = false;
 }
-
-async function saveTodo(): Promise<void> {
-  if (isBusy.value || !selectedTodo.value) {
-    return;
-  }
-
-  errorMessage.value = null;
-  successMessage.value = null;
-
-  let input: CreateTodoInput;
-  try {
-    input = buildUpdateInput();
-  } catch (error: unknown) {
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : "Die Änderungen konnten nicht gespeichert werden.";
-    return;
-  }
-  const todoId = selectedTodo.value.id;
-  if (
-    await write(() => updateTodo(todoId, input), {
-      fallbackError: "Die Änderungen konnten nicht gespeichert werden.",
-    })
-  ) {
-    successMessage.value =
-      input.scheduledDate === null
-        ? "Änderungen gespeichert."
-        : "Eingeplant. Die Quest steht jetzt an ihrem Tag.";
-    closeEditing();
-  }
-}
-
-async function removeSelectedTodo(): Promise<void> {
-  if (isBusy.value || !selectedTodo.value || !confirmDeletion.value) {
-    return;
-  }
-
-  successMessage.value = null;
-  const removedId = selectedTodo.value.id;
-  if (
-    await write(confirmPreviewedDeletion, {
-      fallbackError: "Die Quest konnte nicht gelöscht werden.",
-      notify: null,
-    })
-  ) {
-    forgetDone(removedId);
-    successMessage.value = "Quest gelöscht.";
-    closeEditing();
-  }
+async function onDialogDone(message: string): Promise<void> {
+  const done = dialog.value;
+  await applied();
+  if (done?.kind === "delete") forgetDone(done.todo.id);
+  successMessage.value = message;
+  closeDialog();
 }
 
 function openCreation(): void {
@@ -269,6 +180,50 @@ async function onCreated(): Promise<void> {
   successMessage.value = "Quest erstellt.";
   await applied();
   creationOpen.value = false;
+}
+
+/*
+ * The Questlog keeps the order it is sorted into: the whole card drags (a
+ * finger after a long press), and "Nach oben" / "Nach unten" in its menu
+ * do the same by key. The new order shows at once and is then stored.
+ */
+const openList = ref<HTMLElement | null>(null);
+function listRef(key: string) {
+  return (element: unknown) => {
+    if (key === "open") openList.value = (element as HTMLElement | null) ?? null;
+  };
+}
+async function moveInList(from: number, to: number): Promise<void> {
+  if (isBusy.value || selectedTodo.value) return;
+  const before = todos.value;
+  const order = moved(before, from, to);
+  const todo = order[to];
+  if (!todo || order[from] === todo) return;
+  todos.value = order;
+  successMessage.value = `„${todo.title}“ steht jetzt an Stelle ${to + 1} von ${order.length}.`;
+  const written = await write(
+    () => reorderBacklog(order.map(({ id }) => id)),
+    { fallbackError: "Die Reihenfolge konnte nicht gespeichert werden." },
+  );
+  if (written) return;
+  // Taken back at once; the error says why.
+  todos.value = before;
+  successMessage.value = null;
+}
+useSortable(openList, {
+  item: "[data-todo-id]",
+  onMove: (from, to) => void moveInList(from, to),
+});
+async function shiftInList(todo: TodoResponse, direction: -1 | 1): Promise<void> {
+  const from = todos.value.indexOf(todo);
+  if (from === -1) return;
+  await moveInList(from, from + direction);
+  await nextTick();
+  page.value
+    ?.querySelector<HTMLElement>(
+      `[data-focus-key="todo-${todo.id}"] [aria-haspopup="menu"]`,
+    )
+    ?.focus();
 }
 
 /*
@@ -305,26 +260,35 @@ function plan(key: string | null, date: string): boolean {
 
 /*
  * "Aktionen für …": Einplanen for today, tomorrow or next week runs the same
- * step as T, D and W; "Tag wählen …" opens the editor at its day field.
+ * step as T, D and W; "Anderer Tag …" opens the editor at its day field.
  */
 function rowMenu(todo: TodoResponse): MenuEntry[] {
   const key = `todo-${todo.id}`;
-  return [
-    ...quickMoveEntries(
-      todo.title,
-      quickMoves(getCurrentDateInTimeZone(), { date: null }),
-      (move) => void plan(key, move.date),
-      { disabled: isBusy.value, plan: true },
-    ),
+  const place = todos.value.indexOf(todo);
+  return cardMenu(
+    todo.title,
     {
-      id: "choose-day",
-      label: "Tag wählen …",
-      icon: "calendar",
-      ariaLabel: `Tag für ${todo.title} wählen`,
-      disabled: isBusy.value,
-      run: () => openEditing(todo, { atDay: true }),
+      quickMoves: quickMoveEntries(
+        todo.title,
+        quickMoves(getCurrentDateInTimeZone(), { date: null }),
+        (move) => void plan(key, move.date),
+        { disabled: isBusy.value, plan: true },
+      ),
+      otherDay: {
+        run: () => openEditing(todo, { atDay: true }),
+        plan: true,
+      },
+      edit: () => openEditing(todo),
+      reparent: () => openDialog("move", todo),
+      up: place > 0 ? () => void shiftInList(todo, -1) : undefined,
+      down:
+        place !== -1 && place < todos.value.length - 1
+          ? () => void shiftInList(todo, 1)
+          : undefined,
+      remove: { run: () => openDialog("delete", todo) },
     },
-  ];
+    isBusy.value,
+  );
 }
 useShortcutHandlers({
   "quest.new": () => {
@@ -362,115 +326,39 @@ useShortcutHandlers({
 
     <CreateItemDialog
       v-if="creationOpen"
-      mode="todo"
+      kind="todo"
       @close="creationOpen = false"
       @created="onCreated"
     />
 
-    <ModalDialog
-      v-if="selectedTodo"
-      class="dump-edit-dialog"
-      title="Quest bearbeiten"
-      :busy="isSaving"
+    <EditItemDialog
+      v-if="dialog?.kind === 'edit'"
+      :key="dialog.todo.id"
+      kind="todo"
+      :entity-id="dialog.todo.id"
+      :focus="dialog.atDay ? DAY_FIELD : undefined"
       :return-focus="listFocus.returnFocus"
-      :focus-selector="editorFocus"
-      @close="closeEditing"
-    >
-      <section class="todo-editor">
-        <form data-test="editing-form" novalidate @submit.prevent="saveTodo">
-          <fieldset :disabled="isBusy">
-            <label class="field">
-              Titel
-              <input
-                v-model="editTitle"
-                name="editTitle"
-                type="text"
-                maxlength="200"
-                required
-              />
-            </label>
-
-            <PlanFields v-model:date="editDate" id-prefix="questlog-edit" />
-
-            <div class="todo-editor__row">
-              <label class="field">
-                Dauer in Minuten · optional
-                <input
-                  v-model="editDuration"
-                  name="editDuration"
-                  type="number"
-                  min="1"
-                  step="1"
-                />
-              </label>
-            </div>
-
-            <AppointmentFields
-              v-model:time="editTime"
-              :date="editDate"
-              id-prefix="questlog-edit"
-            />
-
-            <QuestNotes :todo-id="selectedTodo.id" />
-
-            <p v-if="errorMessage" class="form-error" role="alert">
-              {{ errorMessage }}
-            </p>
-
-            <div class="todo-editor__actions">
-              <button class="btn btn--primary" type="submit">
-                {{ isSaving ? "Wird gespeichert …" : "Speichern" }}
-              </button>
-
-              <button class="btn" type="button" @click="closeEditing">
-                Abbrechen
-              </button>
-            </div>
-
-            <div class="todo-editor__delete">
-              <button
-                v-if="!confirmDeletion"
-                class="btn btn--quiet"
-                type="button"
-                data-test="dump-request-delete"
-                @click="requestDeletion"
-              >
-                <AppIcon name="trash" />
-                Quest löschen
-              </button>
-
-              <template v-else>
-                <TodoDeletionSummary
-                  v-if="deletionPreview"
-                  :preview="deletionPreview"
-                />
-                <p>„{{ selectedTodo.title }}“ wirklich löschen?</p>
-
-                <div class="todo-editor__actions">
-                  <button
-                    class="btn btn--danger"
-                    type="button"
-                    data-test="dump-confirm-delete"
-                    @click="removeSelectedTodo"
-                  >
-                    Ja, löschen
-                  </button>
-
-                  <button
-                    class="btn"
-                    type="button"
-                    data-test="dump-cancel-delete"
-                    @click="cancelDeletion"
-                  >
-                    Nicht löschen
-                  </button>
-                </div>
-              </template>
-            </div>
-          </fieldset>
-        </form>
-      </section>
-    </ModalDialog>
+      @busy="dialogBusy = $event"
+      @changed="onDialogDone('Änderungen gespeichert.')"
+      @close="closeDialog"
+    />
+    <CampaignMoveDialog
+      v-if="dialog?.kind === 'move'"
+      :todo-id="dialog.todo.id"
+      :title="dialog.todo.title"
+      :return-focus="listFocus.returnFocus"
+      @busy="dialogBusy = $event"
+      @moved="onDialogDone('Quest verschoben.')"
+      @close="closeDialog"
+    />
+    <DeleteItemDialog
+      v-if="dialog?.kind === 'delete'"
+      :target="{ kind: 'todo', id: dialog.todo.id, title: dialog.todo.title }"
+      :return-focus="listFocus.returnFocus"
+      @busy="dialogBusy = $event"
+      @deleted="onDialogDone('Quest gelöscht.')"
+      @close="closeDialog"
+    />
 
     <div v-if="errorMessage && !selectedTodo" class="alert questlog__alert">
       <p role="alert">{{ errorMessage }}</p>
@@ -487,6 +375,13 @@ useShortcutHandlers({
     <p v-if="successMessage" class="questlog__status" role="status">
       {{ successMessage }}
     </p>
+
+    <!-- A new quest without a day: at the head or the end of the order (↑ / ↓). -->
+    <QuickAddQuest
+      :date="null"
+      label="Quest ins Questlog hinzufügen"
+      @created="applied()"
+    />
 
     <div
       v-if="isLoading"
@@ -505,7 +400,7 @@ useShortcutHandlers({
         class="empty-state questlog__empty"
       >
         <strong>Dein Questlog ist leer.</strong>
-        <span>Tippe auf Plus, um etwas abzulegen.</span>
+        <span>Schreib oben hinein, was ansteht, oder tippe auf Plus.</span>
       </div>
 
       <!-- Each list opens with an h2, so the rows' h3 never skip a level. -->
@@ -535,6 +430,7 @@ useShortcutHandlers({
         <ul
           v-if="list.items.length"
           :id="list.key === 'done' ? 'dump-done-list' : undefined"
+          :ref="listRef(list.key)"
           class="dump-list"
           :aria-label="list.key === 'done' ? 'Erledigt' : 'Offene Quests'"
         >
@@ -550,6 +446,7 @@ useShortcutHandlers({
               :state="todo.completed ? 'completed' : 'open'"
               :ring-pressed="todo.completed"
               :busy="isBusy"
+              :draggable="!todo.completed"
               :campaign-mark="campaignMark(todo.campaign)"
               :measure="
                 todo.completed
@@ -566,26 +463,24 @@ useShortcutHandlers({
             >
               <template
                 v-if="
-                  categoryOf(todo) || detailsOf(todo).length || todo.campaign
+                  categoryOf(todo) || detailsOf(todo).length || campaignOf(todo)
                 "
                 #meta
               >
                 <span v-if="categoryOf(todo)" class="dump-item__category">
                   <i
                     class="category-mark"
-                    :style="{ background: categoryMark(categoryOf(todo)!) }"
+                    :style="{ background: categoryOf(todo)!.mark }"
                     aria-hidden="true"
-                  />{{ categoryOf(todo) }}
+                  />{{ categoryOf(todo)!.name }}
                 </span>
                 <span v-for="part in detailsOf(todo)" :key="part">{{
                   part
                 }}</span>
-                <span
-                  v-if="todo.campaign && todo.campaign.id !== todo.id"
-                  class="dump-item__campaign"
-                >
-                  {{ todo.campaign.title }}
-                </span>
+                <CampaignChip
+                  v-if="campaignOf(todo)"
+                  :campaign="campaignOf(todo)!"
+                />
               </template>
               <template v-if="shownWhy(todo)" #below>
                 <p class="dump-item__why">{{ shownWhy(todo) }}</p>
@@ -618,47 +513,6 @@ useShortcutHandlers({
   font-weight: 600;
 }
 
-/* Dialog body. */
-.todo-editor fieldset {
-  display: grid;
-  gap: var(--space-4);
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.todo-editor__row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-4);
-}
-
-.todo-editor__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  align-items: center;
-}
-
-.todo-editor__delete {
-  display: grid;
-  gap: var(--space-3);
-  justify-items: start;
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-line);
-}
-
-.todo-editor__delete p {
-  margin: 0;
-}
-
-/* ModalDialog tints every button; destructive ones keep the danger tint. */
-.todo-editor button.btn--danger:not(:disabled) {
-  background: var(--color-danger-tint);
-  color: var(--color-danger);
-}
-
 /* List: each quest on the shared row (ItemRow). */
 .dump-list {
   display: grid;
@@ -679,10 +533,6 @@ useShortcutHandlers({
   display: inline-flex;
   gap: 0.375rem;
   align-items: center;
-}
-
-.dump-item__campaign {
-  font-weight: 700;
 }
 
 .category-mark {
@@ -728,9 +578,4 @@ useShortcutHandlers({
   transform: rotate(90deg);
 }
 
-@media (max-width: 32rem) {
-  .todo-editor__row {
-    grid-template-columns: 1fr;
-  }
-}
 </style>
