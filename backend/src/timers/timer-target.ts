@@ -2,7 +2,7 @@ import { Brackets, EntityManager, LessThan } from 'typeorm';
 import { occurrenceDueDate } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { WorkLogEntity } from '../work-logs/work-log.entity';
 import { coveredMilliseconds } from '../work-logs/work-time';
-import { MAX_SEGMENT_MS } from './timer-math';
+import { elapsedAt, MAX_SEGMENT_MS } from './timer-math';
 import { TimerEntity } from './timer.entity';
 
 /**
@@ -123,8 +123,14 @@ export function resumeWorkSegment(timer: TimerEntity, now: Date): void {
     if (timer.workLogId !== null)
       timer.elapsedMilliseconds -=
         pausedAt.getTime() - blockStartedAt.getTime();
+    // The log counts the pause; the stopwatch does not show it.
+    timer.idleMilliseconds = (timer.idleMilliseconds ?? 0) + gap;
     timer.segmentStartedAt = blockStartedAt;
   } else {
+    // The block before is over: from here on it counts as it was shown,
+    // its pauses left out and a stretch too short for a log kept.
+    timer.elapsedMilliseconds = elapsedAt(timer, now);
+    timer.idleMilliseconds = 0;
     timer.workLogId = null;
     timer.segmentStartedAt = now;
   }

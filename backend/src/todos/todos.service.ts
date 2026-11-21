@@ -246,7 +246,11 @@ export class TodosService {
         dto.scheduledDate !== todo.scheduledDate
       )
         await this.moveToDay(manager, todo, dto.scheduledDate);
-      if (dto.timeOfDay !== undefined) todo.timeOfDay = dto.timeOfDay;
+      if (dto.timeOfDay !== undefined && dto.timeOfDay !== todo.timeOfDay) {
+        // A new time anchors it anew: right after the appointment before it.
+        todo.timeOfDay = dto.timeOfDay;
+        todo.dayPosition = null;
+      }
       if (dto.plannedDurationMinutes !== undefined)
         todo.plannedDurationMinutes = dto.plannedDurationMinutes;
       if (dto.completed !== undefined) {

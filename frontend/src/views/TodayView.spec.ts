@@ -308,19 +308,36 @@ describe("TodayView", () => {
     const wrapper = mount(TodayView);
     await flushPromises();
     expect(wrapper.get("#focus-title").text()).toBe("NestJS lernen");
-    // By clock first, the rest of the order after them.
+    // In the order the server sends: appointments stand where they are anchored.
     expect(
       wrapper.findAll(".order .planner-item h3").map((row) => row.text()),
     ).toEqual(["Zahnarzt", "Bewerbung", "Lesen"]);
     const appointment = wrapper.get(".today-view__appointment");
     expect(appointment.text()).toContain("14:00");
-    // Not part of the sortable order: it does not drag.
-    expect(appointment.attributes("data-sort-key")).toBeUndefined();
+    // A place to drop a card next to, but it never lifts itself.
+    expect(appointment.attributes("data-sort-key")).toBe("todo-3");
+    expect(appointment.attributes("data-sort-anchor")).toBeDefined();
     expect(wrapper.get(".today-view__event").text()).toContain(
       "12:00Mittagessen",
     );
     expect(wrapper.find(".timeline").exists()).toBe(false);
     expect(wrapper.text()).not.toContain("Termine");
+  });
+
+  it("keeps an item the server placed between two appointments there", async () => {
+    getTodayMock.mockResolvedValueOnce(
+      makePlanner([
+        makeTodo(),
+        makeTodo({ todoId: 3, title: "Standup", timeOfDay: "13:00" }),
+        makeTodo({ todoId: 2, title: "Bewerbung" }),
+        makeTodo({ todoId: 4, title: "Zahnarzt", timeOfDay: "15:00" }),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(
+      wrapper.findAll(".order .planner-item h3").map((row) => row.text()),
+    ).toEqual(["Standup", "Bewerbung", "Zahnarzt"]);
   });
 
   it("asks quietly about an appointment that is over and still open", async () => {

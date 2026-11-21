@@ -5,9 +5,16 @@
  */
 export type Stopwatch = {
   state: 'running' | 'paused' | 'stopped';
+  /** The logged blocks, short pauses inside them included. */
   elapsedMilliseconds: number;
   segmentStartedAt: Date | null;
   targetMinutes: number | null;
+  /** Short pauses inside the current block, counted by its log only. */
+  idleMilliseconds?: number;
+  /** While paused: the last block, and its log once it has one. */
+  blockStartedAt?: Date | null;
+  pausedAt?: Date | null;
+  workLogId?: number | null;
 };
 
 const MINUTE_MS = 60_000;
@@ -18,13 +25,32 @@ const MINUTE_MS = 60_000;
  */
 export const MAX_SEGMENT_MS = 12 * 60 * MINUTE_MS;
 
-/** Time worked so far: the finished stretches plus the running one. */
+/**
+ * Time worked so far, as the stopwatch shows it: only while it ran. A pause
+ * never counts and a short stretch never vanishes from view, so the shown
+ * time neither jumps ahead on resume nor back on pause, even though the
+ * work log joins short pauses into one block and leaves out a block under a
+ * minute (`timer-target.ts`).
+ */
 export function elapsedAt(timer: Stopwatch, now: Date): number {
-  const running =
-    timer.state === 'running' && timer.segmentStartedAt
-      ? Math.max(0, now.getTime() - timer.segmentStartedAt.getTime())
-      : 0;
-  return timer.elapsedMilliseconds + running;
+  const idle = timer.idleMilliseconds ?? 0;
+  if (timer.state === 'running' && timer.segmentStartedAt)
+    return Math.max(
+      0,
+      timer.elapsedMilliseconds +
+        Math.max(0, now.getTime() - timer.segmentStartedAt.getTime()) -
+        idle,
+    );
+  if (timer.state === 'paused')
+    return Math.max(0, timer.elapsedMilliseconds + unloggedBlock(timer) - idle);
+  return timer.elapsedMilliseconds;
+}
+
+/** While paused: the last block when it is too short to be logged yet. */
+export function unloggedBlock(timer: Stopwatch): number {
+  const { blockStartedAt, pausedAt, workLogId } = timer;
+  if (workLogId != null || !blockStartedAt || !pausedAt) return 0;
+  return Math.max(0, pausedAt.getTime() - blockStartedAt.getTime());
 }
 
 /**
@@ -38,7 +64,9 @@ export function targetReachesAt(timer: Stopwatch): Date | null {
     timer.targetMinutes === null
   )
     return null;
-  const left = timer.targetMinutes * MINUTE_MS - timer.elapsedMilliseconds;
+  const idle = timer.idleMilliseconds ?? 0;
+  const left =
+    timer.targetMinutes * MINUTE_MS - (timer.elapsedMilliseconds - idle);
   return left > 0 ? new Date(timer.segmentStartedAt.getTime() + left) : null;
 }
 

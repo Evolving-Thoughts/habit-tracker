@@ -5,7 +5,7 @@ import { HistoryPlannedItem } from '../history/history.dto';
 import { historyRange } from '../history/history-range';
 import { placeOpenTodo } from '../todos/todo-agenda';
 import { Campaign } from '../todos/todo-ancestry';
-import { compareInDay, Orderable } from './day-order';
+import { Orderable, sortInDay } from './day-order';
 import type {
   WeekPlanDayDto,
   WeekPlanEntryDto,
@@ -188,9 +188,7 @@ export function arrangePlan(
   candidates: WeekCandidate[],
 ): ArrangedPlan {
   const sorted = (list: WeekCandidate[]): WeekPlanEntryDto[] =>
-    [...list]
-      .sort((first, second) => compareInDay(first.order, second.order))
-      .map(({ entry }) => entry);
+    sortInDay(list, ({ order }) => order).map(({ entry }) => entry);
   const overdue = candidates.filter(
     ({ entry }) => isOpen(entry) && entry.isOverdue,
   );

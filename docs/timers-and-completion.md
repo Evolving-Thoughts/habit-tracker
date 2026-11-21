@@ -97,8 +97,8 @@ The stopwatch logs **blocks**, not every stretch (`closeWorkSegment` and
 `BLOCK_GAP_MS` and `MIN_BLOCK_MS`, both 60 seconds):
 
 - **Resumed within 60 seconds** of a pause, the stretch continues the block
-  before it: `segmentStartedAt` becomes the block's start, so the pause counts
-  as worked. When it ends, the block's work log (`timers.workLogId`) gets the
+  before it: `segmentStartedAt` becomes the block's start, so the log counts
+  the pause as worked. When it ends, the block's work log (`timers.workLogId`) gets the
   new `endedAt` instead of a second row; Google sync patches its event.
 - **A block shorter than 60 seconds** that continues nothing is not logged and
   adds nothing to `elapsedMilliseconds` (a stretch of seconds after a mis-tap
@@ -110,6 +110,13 @@ The stopwatch logs **blocks**, not every stretch (`closeWorkSegment` and
   again, and closing it adds the whole block back, so the total is exact. If the
   block's log was deleted or corrected meanwhile so it cannot be extended, the
   block is logged anew.
+- **What the stopwatch shows is only the time it ran** (`elapsedAt` in
+  `timer-math.ts`): a short pause inside a block is counted by the block's
+  log but kept in `timers.idleMilliseconds` and left out of the shown time,
+  and a stretch under a minute stays in view while paused. So the time
+  neither jumps back on a pause nor ahead on resume. When a block is over
+  (resumed after a minute or more), the shown time becomes the base it
+  counts on from (migration `1796300000000-StopwatchIdle`).
 - The twelve-hour cap applies per block (it is measured from
   `segmentStartedAt`); a cut stretch pauses long ago, so it never continues.
 

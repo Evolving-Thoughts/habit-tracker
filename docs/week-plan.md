@@ -26,7 +26,8 @@ snapshot that writes nothing:
 
 Each day lists its open entries in the order of the day, then the resolved
 ones in that same order (`arrangePlan`, sorting with `day-order.ts`
-`compareInDay`). An entry is a todo (`todoId`, `status`, `scheduledDate`) or a
+`sortInDay`; appointments are anchors and take part in a day's
+written order, so a quest can be dropped between two of them). An entry is a todo (`todoId`, `status`, `scheduledDate`) or a
 habit run (`habitId`, `occurrenceId`, `status`, `moveUntil`, the last
 day an open stored run may move to, `timerEligible` and `streak`, see
 `streaks.md`), both with `title`, `timeOfDay`, `plannedDurationMinutes`,

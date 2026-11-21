@@ -18,9 +18,16 @@ overdue, completed-on-a-day and backlog; `backend/src/day-planner/day-order.ts`
 is the one sorting rule:
 
 1. Earlier day first (carried-over items).
-2. Appointments and timed habits by clock.
-3. Everything else by `dayPosition`; what was never sorted comes last, oldest
-   first, so a new item joins at the end.
+2. Within a day one sequence by `dayPosition` (`sortInDay`); what was never
+   sorted comes last, oldest first, so a new item joins at the end.
+3. Appointments and timed habits are **anchors** in that sequence: they
+   stand at their stored place, so an item can be sorted between two of
+   them, but among each other they always follow the clock (one stored
+   before an earlier one moves down to it). One never sorted stands right
+   after the appointment before it on the clock, or at the head of the day.
+   A new time resets the place (it anchors anew); migration
+   `1796200000000-AnchoredAppointments` cleared the places appointments
+   carried from before, when they meant nothing.
 
 The time-based replanner ("Neu planen"), the day-end setting and the per-calendar
 "blocks planning" switch are gone: there are no time slots to redistribute.
@@ -99,8 +106,9 @@ export only, as Logbuch events (see `logbook.md`).
   start plus its planned duration or `DEFAULT_APPOINTMENT_MINUTES` (30) without
   one; when several overlap, the one that began last. Otherwise the head of the
   order. Before its start and after its end an appointment sits in Heute's
-  list with its time (`appointments`, by clock, before the rest of the order
-  and never part of its sorting), with the calendar's events on a phone; it
+  list with its time, anchored in the order of the day (`list`, the server's
+  order, with the calendar's events by clock among the appointments on a
+  phone); it
   never stands in for an empty order (Heute then says "In der Reihenfolge ist
   nichts mehr offen." and names the next appointment). One that is over and
   still open (`past`) asks quietly "Vorbei – erledigt?" with its ring and
@@ -111,12 +119,16 @@ export only, as Logbuch events (see `logbook.md`).
   (`DayCalendar.vue`, see `logbook.md`) stands beside the list and shows
   the events there instead.
 - The Kalender lists a day's open entries in the same order: `GET /history`
-  sorts `days[].planned` with `compareInDay` (`sortedLikeToday` in
-  `history-planning.ts`): carried-over first, appointments by clock, then the
-  stored `dayPosition`, forecast runs (never sorted) last by title. See
+  sorts `days[].planned` with `sortInDay` (`sortedLikeToday` in
+  `history-planning.ts`): carried-over first, then the stored order with the
+  appointments anchored in it, forecast runs (never sorted) last by title. See
   `history.md`.
 - Heute sorts by drag and drop: the focus card and the rows after it are one
-  list (`useSortable`, SortableJS), and the whole card drags. A mouse lifts
+  list (`useSortable`, SortableJS), and the whole card drags. Appointments
+  and events are anchors (`data-sort-anchor`): a card drops next to them,
+  they never lift, and every write sends the whole day (`sequence`) so they
+  keep their place. A card passes another once the pointer crosses its
+  middle (`swapThreshold` 0.5), so cards of different heights do not jump. A mouse lifts
   it after 6px, a finger only after a 300ms press (`delayOnTouchOnly`), so a
   swipe still scrolls and a short tap still opens the editor; the card's own
   controls never start a drag. The keyboard sorts with "Nach oben" and "Nach

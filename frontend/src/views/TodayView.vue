@@ -54,8 +54,9 @@ import {
   itemKey,
   moved,
   nextChangeAt,
-  withQueueOrder,
+  withDayOrder,
 } from "../utils/today-agenda";
+import { anchoredOrder } from "../utils/day-order";
 import { tallyLine } from "../utils/day-tally";
 import { useDayClock } from "../composables/useDayClock";
 import { categoryMark } from "../utils/category-mark";
@@ -419,10 +420,20 @@ const orderMessage = ref("");
 const focusInQueue = computed(
   () => !!agenda.value?.focus && agenda.value.focus === agenda.value.queue[0],
 );
-const rows = computed(
-  () =>
-    agenda.value?.queue.filter((item) => item !== agenda.value?.focus) ?? [],
-);
+/**
+ * What the sortable list holds, in its order: the focus card when it heads
+ * the order, then every entry below it. Appointments and calendar events
+ * are anchors: one can drop a card next to them, but they never lift.
+ * A calendar event is `null`: it is not part of the stored order.
+ */
+const sortables = computed<(DayPlannerItem | null)[]>(() => {
+  const current = agenda.value;
+  if (!current) return [];
+  return [
+    ...(focusInQueue.value && current.focus ? [current.focus] : []),
+    ...current.list.map((entry) => (entry.kind === "event" ? null : entry.item)),
+  ];
+});
 
 /** How the server names an item of the order. */
 function orderRef(item: DayPlannerItem): {
@@ -433,34 +444,53 @@ function orderRef(item: DayPlannerItem): {
     ? { type: "todo", id: item.todoId }
     : { type: "habit", id: item.occurrenceId };
 }
-const orderRefs = computed(() => (agenda.value?.queue ?? []).map(orderRef));
+const orderRefs = computed(() =>
+  (agenda.value?.sequence ?? []).map(orderRef),
+);
 
 async function moveInOrder(from: number, to: number): Promise<void> {
   const current = planner.value;
-  if (!current || !agenda.value || writes.isWriting("order")) return;
-  const queue = moved(agenda.value.queue, from, to);
-  const item = queue[to];
-  if (!item || queue[from] === item) return;
+  const today = agenda.value;
+  if (!current || !today || from === to || writes.isWriting("order")) return;
+  const list = moved(sortables.value, from, to);
+  const item = list[to];
+  if (!item) return;
+  const items = list.filter((entry): entry is DayPlannerItem => !!entry);
+  // A running appointment stands on the focus card, outside the list.
+  const running = today.focus && !focusInQueue.value ? [today.focus] : [];
+  const sequence = anchoredOrder([...running, ...items]);
   // Shown at once; the reload after the write confirms it or takes it back.
-  planner.value = withQueueOrder(current, queue);
-  orderMessage.value = `„${item.title}“ steht jetzt an Stelle ${to + 1} von ${queue.length}.`;
-  await writes.write(() => reorderDay(queue.map(orderRef)), {
+  planner.value = withDayOrder(current, sequence);
+  orderMessage.value = `„${item.title}“ steht jetzt an Stelle ${sequence.indexOf(item) + 1} von ${sequence.length}.`;
+  await writes.write(() => reorderDay(sequence.map(orderRef)), {
     key: "order",
     fallbackError: "Die Reihenfolge konnte nicht gespeichert werden.",
   });
 }
 
+/** Where one step up or down lands; calendar events are stepped over. */
+function stepFrom(item: DayPlannerItem, direction: -1 | 1): number | null {
+  if (item.timeOfDay) return null;
+  const list = sortables.value;
+  const from = list.indexOf(item);
+  if (from === -1) return null;
+  for (let to = from + direction; to >= 0 && to < list.length; to += direction)
+    if (list[to]) return to;
+  return null;
+}
+
 /**
  * "Nach oben" and "Nach unten" in the menu: the keyboard's way to sort.
- * The focus stays on the moved card's menu button.
+ * An appointment counts as one step. The focus stays on the moved card's
+ * menu button.
  */
 async function shiftInOrder(
   item: DayPlannerItem,
   direction: -1 | 1,
 ): Promise<void> {
-  const from = agenda.value?.queue.indexOf(item) ?? -1;
-  if (from === -1) return;
-  await moveInOrder(from, from + direction);
+  const to = stepFrom(item, direction);
+  if (to === null) return;
+  await moveInOrder(sortables.value.indexOf(item), to);
   await nextTick();
   page.value
     ?.querySelector<HTMLElement>(
@@ -472,6 +502,7 @@ async function shiftInOrder(
 /* The whole card drags: the focus card and every row of the order. */
 useSortable(order, {
   item: "[data-sort-key]",
+  anchor: "[data-sort-anchor]",
   onMove: (from, to) => void moveInOrder(from, to),
 });
 
@@ -563,8 +594,6 @@ function rowMenu(item: DayPlannerItem): MenuEntry[] {
     timeOfDay: item.type === "todo" ? item.timeOfDay : null,
     moveUntil: item.type === "habit" ? item.moveUntil : undefined,
   });
-  const queue = agenda.value?.queue ?? [];
-  const place = queue.indexOf(item);
   const isFocus = item === agenda.value?.focus;
   return cardMenu(
     item.title,
@@ -592,9 +621,12 @@ function rowMenu(item: DayPlannerItem): MenuEntry[] {
         item.type === "todo"
           ? () => openMenuDialog(item, "move")
           : undefined,
-      up: place > 0 ? () => void shiftInOrder(item, -1) : undefined,
+      up:
+        stepFrom(item, -1) !== null
+          ? () => void shiftInOrder(item, -1)
+          : undefined,
       down:
-        place !== -1 && place < queue.length - 1
+        stepFrom(item, 1) !== null
           ? () => void shiftInOrder(item, 1)
           : undefined,
       remove: {
@@ -970,17 +1002,19 @@ useShortcutHandlers(
           </section>
 
           <!--
-            Appointments sit in the list, anchored by their time: by clock
-            before the rest of the order. One that is over but still open asks
-            quietly. Google events are read-only and, on wide screens, stand
-            in the day calendar instead.
+            The rest of the day in one order. Appointments stand in it,
+            anchored by their time: a card can be dropped next to them, but
+            they never lift. One that is over but still open asks quietly.
+            Google events are read-only and, on wide screens, stand in the
+            day calendar instead. On a phone only the next two rows carry
+            their Warum, so the day stays short.
           -->
           <template
-            v-for="entry in agenda.appointments"
+            v-for="(entry, index) in agenda.list"
             :key="
-              entry.kind === 'item'
-                ? getItemKey(entry.item)
-                : `event-${entry.event.id}`
+              entry.kind === 'event'
+                ? `event-${entry.event.id}`
+                : getItemKey(entry.item)
             "
           >
             <PlannerItem
@@ -988,6 +1022,8 @@ useShortcutHandlers(
               class="today-view__appointment"
               :class="{ 'today-view__appointment--past': entry.past }"
               :data-focus-key="getItemKey(entry.item)"
+              :data-sort-key="getItemKey(entry.item)"
+              data-sort-anchor
               :item="entry.item"
               :time="entry.time"
               :is-updating="isUpdating(entry.item)"
@@ -1000,29 +1036,29 @@ useShortcutHandlers(
               @move="openMoving"
             />
             <div
-              v-else
+              v-else-if="entry.kind === 'event'"
               class="today-view__event"
               :class="{ 'today-view__event--past': entry.past }"
+              :data-sort-key="`event-${entry.event.id}`"
+              data-sort-anchor
             >
               <span class="today-view__event-time">{{ entry.time }}</span>
               <span class="today-view__event-title">{{ entry.event.title }}</span>
               <span class="today-view__event-source">Google Kalender</span>
             </div>
+            <PlannerItem
+              v-else
+              :data-focus-key="getItemKey(entry.item)"
+              :data-sort-key="getItemKey(entry.item)"
+              :item="entry.item"
+              :is-updating="isUpdating(entry.item)"
+              :menu="rowMenu(entry.item)"
+              :why-wide-only="index >= 2"
+              sortable
+              @toggle="toggleItem"
+              @edit="openEditing"
+            />
           </template>
-          <!-- On a phone only the next two rows carry their Warum, so the day stays short. -->
-          <PlannerItem
-            v-for="(item, index) in rows"
-            :key="getItemKey(item)"
-            :data-focus-key="getItemKey(item)"
-            :data-sort-key="getItemKey(item)"
-            :item="item"
-            :is-updating="isUpdating(item)"
-            :menu="rowMenu(item)"
-            :why-wide-only="index >= 2"
-            sortable
-            @toggle="toggleItem"
-            @edit="openEditing"
-          />
         </div>
 
         <section

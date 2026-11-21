@@ -19,6 +19,12 @@ type SortableOptions = {
   accepts?: () => boolean;
   /** False for a list whose items only leave it, never change places in it. */
   sort?: boolean;
+  /**
+   * Selector of items that hold their place: a card can be dropped next to
+   * them, but they never lift (an appointment anchored by its time). They
+   * still count in `onMove`'s places.
+   */
+  anchor?: string;
 };
 
 /** A finger has to rest this long before a card lifts, so a swipe still scrolls. */
@@ -41,6 +47,13 @@ export function useSortable(
   let sortable: Sortable | undefined;
   /** Sortable can end a press that never lifted the card; that stays a click. */
   let lifted = false;
+  /**
+   * Where the card stood before it lifted: its parent and the very node
+   * after it. Vue keeps a list's entries between text anchors it cannot do
+   * without; counting only elements would put the card back outside its
+   * anchors, and Vue would then draw a new card beside the lost one.
+   */
+  let home: { parent: Node; next: Node | null } | null = null;
 
   watch(
     container,
@@ -51,7 +64,9 @@ export function useSortable(
       sortable = Sortable.create(element, {
         draggable: options.item,
         // Ring, ▶, "…" and links keep their own tap; they never lift the card.
-        filter: CARD_CONTROLS,
+        filter: options.anchor
+          ? `${CARD_CONTROLS}, ${options.anchor}`
+          : CARD_CONTROLS,
         preventOnFilter: false,
         group: options.group && {
           name: options.group,
@@ -59,6 +74,10 @@ export function useSortable(
         },
         sort: options.sort ?? true,
         animation: 160,
+        // A card passes another only once the pointer crosses its middle,
+        // so cards of different heights (the focus card, a row) do not
+        // trade places at the first touch of an edge and jump back and forth.
+        swapThreshold: 0.5,
         delay: TOUCH_HOLD_MS,
         delayOnTouchOnly: true,
         // A finger that moves before the hold is over scrolls instead.
@@ -66,8 +85,11 @@ export function useSortable(
         // The own drag layer behaves the same with mouse, touch and pen.
         forceFallback: true,
         fallbackTolerance: DRAG_DISTANCE_PX,
-        onStart() {
+        onStart({ item }) {
           lifted = true;
+          home = item.parentNode
+            ? { parent: item.parentNode, next: item.nextSibling }
+            : null;
         },
         onEnd({
           item,
@@ -80,6 +102,8 @@ export function useSortable(
         }) {
           if (lifted) noteDragEnd();
           lifted = false;
+          const origin = home;
+          home = null;
           if (
             oldIndex === undefined ||
             newIndex === undefined ||
@@ -88,8 +112,10 @@ export function useSortable(
             (from === to && oldIndex === newIndex)
           )
             return;
-          item.remove();
-          from.insertBefore(item, from.children[oldIndex] ?? null);
+          // Back exactly where it stood; the data decides where it shows.
+          if (origin && (!origin.next || origin.next.parentNode === origin.parent))
+            origin.parent.insertBefore(item, origin.next);
+          else from.insertBefore(item, from.children[oldIndex] ?? null);
           options.onMove(oldDraggableIndex, newDraggableIndex, {
             item,
             list: to,

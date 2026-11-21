@@ -146,11 +146,12 @@ test("Heute: appointments sit in the list by their time and stay when the rest m
   await plan(request, { title: "Einkaufen", scheduledDate: date });
   await page.goto("/");
 
-  // In the list with its time, but not part of the order: it does not drag.
+  // In the list with its time, an anchor of the order: cards drop next to it,
+  // it never lifts itself.
   const appointment = card(page, "Zahnarzt");
   await expect(appointment).toHaveClass(/today-view__appointment/);
   await expect(appointment).toContainText("23:58");
-  await expect(appointment).not.toHaveAttribute("data-sort-key", /./);
+  await expect(appointment).toHaveAttribute("data-sort-anchor", "");
 
   await page.getByRole("button", { name: "Auf morgen", exact: true }).click();
   const dialog = page.getByRole("dialog");
@@ -162,7 +163,9 @@ test("Heute: appointments sit in the list by their time and stay when the rest m
 
   // An appointment never stands in for an empty order: it waits in the list.
   await expect(page.locator("#focus-title")).toHaveCount(0);
-  await expect(page.locator(".order [data-sort-key]")).toHaveCount(0);
+  await expect(
+    page.locator(".order [data-sort-key]:not([data-sort-anchor])"),
+  ).toHaveCount(0);
   await expect(page.locator(".today-view__empty")).toContainText(
     "Nächster Termin: 23:58 Zahnarzt.",
   );

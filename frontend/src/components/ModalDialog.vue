@@ -215,7 +215,9 @@ onUnmounted(() => {
   color: var(--color-ink-soft);
   cursor: not-allowed;
 }
-.modal-dialog__content :deep(input:not([type="checkbox"]):not([type="radio"])),
+/* A combobox styles its own field: it leaves room for a mark and its toggle. */
+.modal-dialog__content
+  :deep(input:not([type="checkbox"]):not([type="radio"]):not(.combo__input)),
 .modal-dialog__content :deep(select),
 .modal-dialog__content :deep(textarea) {
   min-height: var(--tap);
