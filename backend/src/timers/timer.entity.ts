@@ -28,6 +28,7 @@ export type TimerState = 'running' | 'paused' | 'stopped';
   '"targetMinutes" IS NULL OR "targetMinutes" BETWEEN 1 AND 10080',
 )
 @Check('CHK_timer_elapsed', '"elapsedMilliseconds" >= 0')
+@Check('CHK_timer_idle', '"idleMilliseconds" >= 0')
 @Check(
   'CHK_timer_segment',
   `("state" = 'running') = ("segmentStartedAt" IS NOT NULL)`,
