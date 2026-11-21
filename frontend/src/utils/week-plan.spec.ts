@@ -158,6 +158,17 @@ describe("dayOrder", () => {
 });
 
 describe("arrangeOpen", () => {
+  it("anchors forecast appointments by clock while sending only stored positions", () => {
+    const early = daily(null, { timeOfDay: "09:00" });
+    const late = daily(null, { timeOfDay: "16:00" });
+    const noon = quest(2, { timeOfDay: "12:00" });
+    const first = quest(1);
+    const last = quest(3);
+    const arranged = arrangeOpen([first, noon, last, late, early]);
+    expect(arranged).toEqual([early, first, noon, late, last]);
+    expect(dayOrder(arranged)).toEqual(dayOrder([first, noon, last]));
+  });
+
   it("sorts like the server: the order with appointments on the clock, then forecasts", () => {
     expect(
       arrangeOpen([

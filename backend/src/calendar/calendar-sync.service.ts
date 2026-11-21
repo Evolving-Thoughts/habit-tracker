@@ -310,9 +310,11 @@ export class CalendarSyncService {
     if (todo && times && !todo.completedAt && !localWins) {
       todo.title = (event.summary?.trim() || todo.title).slice(0, 200);
       const day = dayOf(times.start);
-      if (day !== todo.scheduledDate) todo.dayPosition = null;
+      const time = timeOfDayOf(times.start);
+      if (day !== todo.scheduledDate || time !== todo.timeOfDay)
+        todo.dayPosition = null;
       todo.scheduledDate = day;
-      todo.timeOfDay = timeOfDayOf(times.start);
+      todo.timeOfDay = time;
       todo.plannedDurationMinutes = times.minutes;
       link.syncedAt = (await repository.save(todo)).updatedAt;
     }

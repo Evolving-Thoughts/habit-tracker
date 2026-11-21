@@ -381,12 +381,13 @@ describe("TodayView", () => {
   });
 
   it("sorts with Nach oben in the menu, shows it at once and stores it", async () => {
+    const anchor = makeTodo({ todoId: 3, title: "Zahnarzt", timeOfDay: "14:00" });
     const first = makeTodo();
     const second = makeTodo({ todoId: 2, title: "Bewerbung" });
     const third = makeHabit({ title: "Lesen" });
     getTodayMock
-      .mockResolvedValueOnce(makePlanner([first, second, third]))
-      .mockResolvedValue(makePlanner([first, third, second]));
+      .mockResolvedValueOnce(makePlanner([anchor, first, second, third]))
+      .mockResolvedValue(makePlanner([anchor, first, third, second]));
     let stored = (): void => undefined;
     vi.mocked(reorderDay).mockReturnValueOnce(
       new Promise<void>((resolve) => (stored = resolve)),
@@ -402,14 +403,15 @@ describe("TodayView", () => {
     // Before the server has answered, the new order already shows.
     expect(
       wrapper.findAll(".order .planner-item h3").map((row) => row.text()),
-    ).toEqual(["Lesen", "Bewerbung"]);
+    ).toEqual(["Zahnarzt", "Lesen", "Bewerbung"]);
     expect(reorderDay).toHaveBeenCalledWith([
+      { type: "todo", id: 3 },
       { type: "todo", id: 1 },
       { type: "habit", id: 20 },
       { type: "todo", id: 2 },
     ]);
     expect(wrapper.get('[role="status"].visually-hidden').text()).toBe(
-      "„Lesen“ steht jetzt an Stelle 2 von 3.",
+      "„Lesen“ steht jetzt an Stelle 3 von 4.",
     );
 
     stored();

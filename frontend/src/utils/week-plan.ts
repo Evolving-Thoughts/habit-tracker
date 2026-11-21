@@ -158,12 +158,10 @@ export function dayOrder(open: readonly WeekPlanEntry[]): OrderRef[] {
 /**
  * The open rows of a day the way the server sorts them (day-order.ts), with
  * the sequenced ones in the order given and the appointments among them
- * held on the clock; forecast dailies, which have no place, come last.
+ * held on the clock. An untimed forecast follows the stored entries.
  */
 export function arrangeOpen(open: readonly WeekPlanEntry[]): WeekPlanEntry[] {
-  const sequenced = open.filter(isSequenced);
-  const rest = open.filter((entry) => !isSequenced(entry));
-  return [...anchoredOrder(sequenced), ...rest];
+  return anchoredOrder(open, isSequenced);
 }
 
 const withOpen = (day: WeekPlanDay, open: WeekPlanEntry[]): WeekPlanDay => ({

@@ -258,6 +258,12 @@ describe('Google calendar sync (e2e)', () => {
   it('applies the newer change on both sides', async () => {
     await connect();
     const id = await scheduledTodo();
+    await request(server)
+      .put('/day-planner/order')
+      .send({ items: [{ type: 'todo', id }] })
+      .expect(204);
+    const before = await db.getRepository(TodoEntity).findOneByOrFail({ id });
+    expect(before.dayPosition).toBe(0);
     await sync();
 
     const [event] = google.events(OWN);
@@ -270,6 +276,7 @@ describe('Google calendar sync (e2e)', () => {
     expect(moved).toMatchObject({
       scheduledDate: '2026-10-30',
       timeOfDay: '15:00',
+      dayPosition: null,
     });
     expect(moved.plannedDurationMinutes).toBe(30);
 

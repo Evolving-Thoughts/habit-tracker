@@ -52,11 +52,9 @@ import {
   formatDuration,
   formatWindow,
   itemKey,
-  moved,
   nextChangeAt,
   withDayOrder,
 } from "../utils/today-agenda";
-import { anchoredOrder } from "../utils/day-order";
 import { tallyLine } from "../utils/day-tally";
 import { useDayClock } from "../composables/useDayClock";
 import { categoryMark } from "../utils/category-mark";
@@ -452,13 +450,19 @@ async function moveInOrder(from: number, to: number): Promise<void> {
   const current = planner.value;
   const today = agenda.value;
   if (!current || !today || from === to || writes.isWriting("order")) return;
-  const list = moved(sortables.value, from, to);
-  const item = list[to];
+  const visible = sortables.value;
+  const item = visible[from];
   if (!item) return;
-  const items = list.filter((entry): entry is DayPlannerItem => !!entry);
-  // A running appointment stands on the focus card, outside the list.
-  const running = today.focus && !focusInQueue.value ? [today.focus] : [];
-  const sequence = anchoredOrder([...running, ...items]);
+  // Only move past stored entries crossed on screen. The focus card is
+  // displayed separately from its stored position; Google events have none.
+  const down = from < to;
+  const crossed = down
+    ? visible.slice(from + 1, to + 1).reverse()
+    : visible.slice(to, from);
+  const neighbour = crossed.find((entry) => entry !== null);
+  if (!neighbour) return;
+  const sequence = today.sequence.filter((entry) => entry !== item);
+  sequence.splice(sequence.indexOf(neighbour) + Number(down), 0, item);
   // Shown at once; the reload after the write confirms it or takes it back.
   planner.value = withDayOrder(current, sequence);
   orderMessage.value = `„${item.title}“ steht jetzt an Stelle ${sequence.indexOf(item) + 1} von ${sequence.length}.`;

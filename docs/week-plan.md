@@ -49,8 +49,9 @@ projection:
   with `occurrenceId: null`. Today's runs are stored by the reconciliation
   before the read, so only later days hold forecasts. Today is always part of
   the forecast, so its carried-over runs are found even when the board starts
-  later. Forecast runs are never written by this read; they have no position, so they follow
-  everything sorted. Weekly-target dailies have no day of their own and are
+  later. A forecast has no stored position. A timed forecast follows the
+  preceding appointment on the clock, or heads the day if there is none.
+  An untimed forecast follows the stored entries. Weekly-target dailies have no day of their own and are
   not shown, except today's stored run (`openTargetRuns`), as in the
   calendar.
 - **Resolved runs** (`resolvedOccurrences`): a completed one on the day it
@@ -67,7 +68,7 @@ Every query is scoped to the user; occurrences through their habit.
   (which resets its position, see `day-order.md`) and then stores the target
   day's order, so the quest lands where it was dropped. An appointment is
   moved with `confirmFixed` (the drag is the confirmation), keeps its time
-  and needs no order. A quest left behind moves the same way.
+  and takes part in the target day's order. A quest left behind moves the same way.
 - **A daily's stored run** sorts within its day with the same order
   endpoint and moves to another day with `POST /habit-occurrences/:id/reschedule`
   (Heute's "Morgen" and "Anderer Tag …"), then the target day's order is
@@ -76,8 +77,8 @@ Every query is scoped to the user; occurrences through their habit.
   beyond it stays where it was and the board says how far it may wait. A
   forecast run has nothing stored and does not drag.
 - The past takes no drops, and reschedule refuses past days anyway.
-- The day's order sent to the server holds the open untimed entries that are
-  stored: quests and stored habit runs, not appointments, not forecast runs
+- The day's order sent to the server holds every open quest and stored habit run,
+  including appointments. Forecast runs have no occurrence ID to send
   (`utils/week-plan.ts` `dayOrder`).
 - **From the Questlog column** a quest has no day yet, and `reschedule`
   refuses quests without one. It is planned with the Questlog editor's own
