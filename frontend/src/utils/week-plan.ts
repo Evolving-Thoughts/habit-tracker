@@ -1,3 +1,4 @@
+import { anchoredOrder } from "./day-order";
 import type { TodoResponse } from "../types/todo";
 import type {
   WeekPlanDay,
@@ -137,11 +138,11 @@ export function doneEntries(day: WeekPlanDay): WeekPlanEntry[] {
 }
 
 /**
- * Whether an entry takes part in the day's stored order: not anchored by
- * the clock and stored on the server.
+ * Whether an entry takes part in the day's stored order: open and stored on
+ * the server. Appointments take part as anchors, held on the clock.
  */
 function isSequenced(entry: WeekPlanEntry): boolean {
-  if (entry.status !== "pending" || entry.timeOfDay !== null) return false;
+  if (entry.status !== "pending") return false;
   return entry.type === "todo" || entry.occurrenceId !== null;
 }
 
@@ -156,18 +157,13 @@ export function dayOrder(open: readonly WeekPlanEntry[]): OrderRef[] {
 
 /**
  * The open rows of a day the way the server sorts them (day-order.ts), with
- * the sequenced ones in the order given: the clock first, then the order of
- * the day, then forecast dailies, which have none.
+ * the sequenced ones in the order given and the appointments among them
+ * held on the clock; forecast dailies, which have no place, come last.
  */
 export function arrangeOpen(open: readonly WeekPlanEntry[]): WeekPlanEntry[] {
-  const timed = open
-    .filter((entry) => entry.timeOfDay !== null)
-    .sort((first, second) => first.timeOfDay!.localeCompare(second.timeOfDay!));
   const sequenced = open.filter(isSequenced);
-  const rest = open.filter(
-    (entry) => !timed.includes(entry) && !isSequenced(entry),
-  );
-  return [...timed, ...sequenced, ...rest];
+  const rest = open.filter((entry) => !isSequenced(entry));
+  return [...anchoredOrder(sequenced), ...rest];
 }
 
 const withOpen = (day: WeekPlanDay, open: WeekPlanEntry[]): WeekPlanDay => ({
@@ -223,8 +219,7 @@ function place(
   const before = dayOrder(openEntries(target));
   const after = dayOrder(arranged);
   const sorted =
-    placed.timeOfDay === null &&
-    (from.moves || JSON.stringify(before) !== JSON.stringify(after));
+    from.moves || JSON.stringify(before) !== JSON.stringify(after);
   if (!from.moves && !sorted) return null;
 
   return {
@@ -363,7 +358,8 @@ function stepPlace(
     if (!next || next.date < plan.today) return null;
     return { toDate: next.date, index: openEntries(next).length };
   }
-  if (!isSequenced(entry)) return null;
+  // An appointment holds its place by the clock; others step past it.
+  if (!isSequenced(entry) || entry.timeOfDay !== null) return null;
   const sequence = open.filter(isSequenced);
   const neighbour =
     sequence[sequence.indexOf(entry) + (direction === "up" ? -1 : 1)];

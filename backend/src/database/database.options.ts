@@ -14,6 +14,7 @@ import { BacklogOrder1795800000000 } from './migrations/1795800000000-BacklogOrd
 import { StopwatchBlocks1795900000000 } from './migrations/1795900000000-StopwatchBlocks';
 import { WeeklyQuestTargets1796000000000 } from './migrations/1796000000000-WeeklyQuestTargets';
 import { SearchUnaccent1796100000000 } from './migrations/1796100000000-SearchUnaccent';
+import { AnchoredAppointments1796200000000 } from './migrations/1796200000000-AnchoredAppointments';
 
 type PostgresOptions = Extract<DataSourceOptions, { type: 'postgres' }>;
 
@@ -50,6 +51,7 @@ export function databaseOptions(
       StopwatchBlocks1795900000000,
       WeeklyQuestTargets1796000000000,
       SearchUnaccent1796100000000,
+      AnchoredAppointments1796200000000,
     ],
   };
 }

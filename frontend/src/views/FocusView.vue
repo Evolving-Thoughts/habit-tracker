@@ -196,11 +196,12 @@ function skip(): Promise<void> {
 /** Not now: it goes to the end of the order, and its stopwatch ends. */
 function postpone(): Promise<void> {
   const item = current.value;
-  const queue = agenda.value?.queue;
-  if (!item || !queue || !canPostpone.value) return Promise.resolve();
+  const sequence = agenda.value?.sequence;
+  if (!item || !sequence || !canPostpone.value) return Promise.resolve();
   return act(async () => {
     if (timed.value) await timer?.action("stop");
-    const order = [...queue.filter((entry) => entry !== item), item];
+    // Appointments keep their place; only this one goes to the end.
+    const order = [...sequence.filter((entry) => entry !== item), item];
     await reorderDay(
       order.map((entry) =>
         entry.type === "todo"

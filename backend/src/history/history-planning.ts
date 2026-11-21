@@ -18,7 +18,7 @@ import {
 } from '../habits/scheduling/occurrence-lifecycle';
 import { HistoryPlannedItem, HistoryWeeklyTarget } from './history.dto';
 import { effectiveDuration } from '../timers/timer-target';
-import { compareInDay } from '../day-planner/day-order';
+import { sortInDay } from '../day-planner/day-order';
 
 /** What a planned run shows beside its own fields, resolved by the caller. */
 export type PlannedContext = Pick<
@@ -253,9 +253,9 @@ export function weeklyTargets(
 }
 /**
  * Open entries sorted the way Heute and the Plan sort a day (day-order.ts):
- * what waits from an earlier day first, then appointments by clock, then
- * the order the user sorted the day into; forecast runs, never sorted, come
- * last by title. Completed and skipped entries keep their own order, the
+ * what waits from an earlier day first, then the order the user sorted
+ * the day into, appointments anchored in it by clock; forecast runs, never
+ * sorted, come last by title. Completed and skipped entries keep their own order, the
  * time they were resolved.
  */
 export function sortedLikeToday(
@@ -268,9 +268,10 @@ export function sortedLikeToday(
     dayPosition: positions.get(item.key) ?? null,
     id: item.id ?? Number.MAX_SAFE_INTEGER,
   });
-  return [...items].sort(
+  return sortInDay(
+    items,
+    order,
     (first, second) =>
-      compareInDay(order(first), order(second)) ||
       first.title.localeCompare(second.title, 'de') ||
       first.key.localeCompare(second.key),
   );
