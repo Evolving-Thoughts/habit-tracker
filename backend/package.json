@@ -21,7 +21,8 @@
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts --pretty",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "push:keys": "node scripts/generate-push-keys.cjs"
+    "push:keys": "node scripts/generate-push-keys.cjs",
+    "seed:demo": "ts-node --transpile-only scripts/seed-demo.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.7",
