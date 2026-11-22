@@ -112,8 +112,10 @@ watch(
 
 .settings-view__sections > .card {
   padding: var(--space-5);
-  /* A section opened by address stops a little below the page's top. */
-  scroll-margin-top: var(--space-4);
+  /* A section opened by address stops a little below the fixed top bar. */
+  scroll-margin-top: calc(
+    var(--tab-bar-height) + env(safe-area-inset-top, 0px) + var(--space-4)
+  );
 }
 
 .settings-view .section-title {
@@ -150,10 +152,12 @@ watch(
   margin-inline-end: calc(var(--space-2) * -1);
 }
 
-@media (min-width: 56rem) {
-  /* Clear of the top bar. */
+@media (min-width: 56rem), (hover: hover) and (pointer: fine) {
+  /* Clear of the slimmer top bar of wide screens. */
   .settings-view__sections > .card {
-    scroll-margin-top: calc(3.5rem + var(--space-4));
+    scroll-margin-top: calc(
+      3.5rem + env(safe-area-inset-top, 0px) + var(--space-4)
+    );
   }
 }
 
