@@ -305,7 +305,16 @@ describe('Habit domain and day planner (e2e)', () => {
       expect((read.body as HabitResponseDto).streak).toEqual(streak);
       // Today's open run breaks nothing; the list and Heute say the same.
       const list = await request(server).get('/habits').expect(200);
-      expect((list.body as HabitResponseDto[])[0]?.streak).toEqual(streak);
+      const listed = (list.body as HabitResponseDto[])[0].streak;
+      expect(listed).toMatchObject(streak);
+      expect(listed.recentDays).toHaveLength(14);
+      expect(listed.recentDays?.slice(-5).map((day) => day.state)).toEqual([
+        'done',
+        'done',
+        'missed',
+        'done',
+        'open',
+      ]);
       expect((await planner()).items[0]).toMatchObject({
         type: 'habit',
         status: HabitOccurrenceStatus.PENDING,
@@ -430,7 +439,7 @@ describe('Habit domain and day planner (e2e)', () => {
       const body = single.body as HabitResponseDto;
       expect(body.timerOccurrenceId).toEqual(expect.any(Number));
       expect({ ...body, timerOccurrenceId: null }).toEqual(habit);
-      expect(list.body).toEqual([body]);
+      expect(list.body).toMatchObject([body]);
     });
 
     it('reconciles only the requested Habit and leaves other Habits untouched', async () => {

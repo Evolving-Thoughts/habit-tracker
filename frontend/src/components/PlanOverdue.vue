@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import AppIcon from "./AppIcon.vue";
 import PlanEntry from "./PlanEntry.vue";
 import { useSortable } from "../composables/useSortable";
 import type { WeekPlanEntry } from "../types/week-plan";
@@ -20,14 +21,16 @@ import {
  * its window, or either moves through its menu; the column itself takes
  * nothing back and keeps the earliest first.
  */
-const props = defineProps<{
+const props = withDefaults(defineProps<{
+  open?: boolean;
   entries: WeekPlanEntry[];
   busy: boolean;
   /** "Aktionen für …" of an open entry. */
   menu: (entry: WeekPlanEntry) => MenuEntry[];
-}>();
+}>(), { open: true });
 
 const emit = defineEmits<{
+  toggle: [];
   edit: [entry: WeekPlanEntry];
   /** An entry was dropped on a day (a quest also into the Questlog column). */
   move: [drop: BoardDrop];
@@ -47,17 +50,18 @@ useSortable(list, {
 </script>
 
 <template>
-  <section class="plan-overdue" aria-labelledby="plan-overdue-title">
+  <section class="plan-overdue" :class="{ 'plan-overdue--closed': !open }" aria-labelledby="plan-overdue-title">
     <header class="plan-overdue__header">
+      <button type="button" class="btn btn--quiet btn--icon plan-overdue__toggle" :aria-label="open ? 'Liegen geblieben ausblenden' : 'Liegen geblieben einblenden'" :aria-expanded="open" aria-controls="plan-overdue-list" @click="emit('toggle')"><AppIcon :name="open ? 'chevron-left' : 'chevron'" /></button>
       <h2 id="plan-overdue-title" class="plan-overdue__title">
         Liegen geblieben
         <span class="count">{{ entries.length }}</span>
       </h2>
-      <p class="plan-overdue__lead">
+      <p v-if="open" class="plan-overdue__lead">
         Auf einen Tag ziehen oder über „…“ verschieben.
       </p>
     </header>
-    <ol ref="list" class="plan-overdue__list" aria-label="Liegen geblieben">
+    <ol v-show="open" id="plan-overdue-list" ref="list" class="plan-overdue__list" aria-label="Liegen geblieben">
       <li
         v-for="entry in entries"
         :key="entryKey(entry, 'overdue')"
@@ -121,4 +125,7 @@ useSortable(list, {
   padding: 0;
   list-style: none;
 }
+.plan-overdue__toggle { float: right; }
+.plan-overdue--closed, .plan-overdue--closed .plan-overdue__header { padding-inline: 0; }
+.plan-overdue--closed .plan-overdue__title { writing-mode: vertical-rl; margin: var(--space-2) auto; clear: both; }
 </style>

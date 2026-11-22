@@ -425,6 +425,8 @@ watch(
               :key="block.key"
               class="day-calendar__slot"
               :class="{
+                'day-calendar__slot--log': block.kind === 'log',
+                'day-calendar__slot--short': block.kind === 'log' && span(block).end - span(block).start < 20,
                 'day-calendar__slot--mark':
                   block.kind === 'plan' && block.source === 'done',
                 'day-calendar__slot--resizing': resizing(block),
@@ -466,6 +468,7 @@ watch(
                   type="button"
                   class="log-block"
                   :style="{ '--campaign-mark': stripe(block.log) }"
+                  :title="logLabel(block.log)"
                   :aria-label="`${logLabel(block.log)}, korrigieren`"
                   @click="
                     openDialog(
@@ -681,6 +684,16 @@ watch(
 }
 
 /* A completion is a moment: a slim mark, nothing to tap. */
+.day-calendar__slot--log {
+  height: max(1px, calc(var(--length) * var(--minute)));
+  padding: 0 1px;
+}
+.day-calendar__slot--log .log-block { padding-block: 0; }
+.day-calendar__slot--log .log-handle { height: min(25%, 0.625rem); }
+.day-calendar__slot--short .log-handle { width: 22%; height: var(--tap); top: 50%; transform: translateY(-50%); }
+.day-calendar__slot--short .log-handle--start { right: auto; }
+.day-calendar__slot--short .log-handle--end { left: auto; }
+.day-calendar__slot--short .log-block::after { content: ""; position: absolute; inset-inline: 24%; top: 50%; height: var(--tap); transform: translateY(-50%); }
 .day-calendar__slot--mark {
   height: calc(1.5rem + 2px);
 }

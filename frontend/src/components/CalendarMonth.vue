@@ -105,6 +105,7 @@ function cellLabel(day: Day): string {
       :aria-pressed="day.date === date"
       :aria-label="cellLabel(day)"
       @click="emit('select', day.date)"
+      @dblclick="emit('openDay', day.date)"
     >
       <span class="month-day__number">{{ Number(day.date.slice(8)) }}</span>
       <span class="month-day__marks" aria-hidden="true">

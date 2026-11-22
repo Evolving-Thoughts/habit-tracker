@@ -143,6 +143,7 @@ export function currentItem(
   queue: readonly DayPlannerItem[],
   now: number,
 ): DayPlannerItem | null {
+  if (pending.some((item) => item.dayPosition != null)) return pending[0] ?? null;
   let running: { item: DayPlannerItem; start: number } | null = null;
   for (const item of pending) {
     const window = appointmentWindow(item);
@@ -313,7 +314,7 @@ export function withDayOrder(
   planner: DayPlannerResponse,
   sequence: readonly DayPlannerItem[],
 ): DayPlannerResponse {
-  return withQueueOrder(planner, anchoredOrder(sequence));
+  return withQueueOrder(planner, anchoredOrder(sequence).map((item, dayPosition) => ({ ...item, dayPosition })));
 }
 
 /**

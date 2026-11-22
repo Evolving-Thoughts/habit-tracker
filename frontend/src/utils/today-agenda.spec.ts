@@ -68,6 +68,13 @@ const planner = (
 const at = (hours: number, minutes = 0) => hours * 60 + minutes;
 
 describe("arrangeToday", () => {
+  it("keeps the manually ordered head in focus before or after its appointment", () => {
+    const early = todo({ timeOfDay: "10:00", dayPosition: 0 });
+    const late = habit({ timeOfDay: "14:30", dayPosition: 1 });
+    const day = planner([early, late, todo({ todoId: 3, dayPosition: 2 })]);
+    expect(arrangeToday(day, at(9)).focus).toBe(early);
+    expect(arrangeToday(day, at(14, 32)).focus).toBe(early);
+  });
   it("puts the head of the order into focus, whatever the clock says", () => {
     const first = todo({ todoId: 1, title: "Erstes" });
     const second = habit({ occurrenceId: 2, title: "Zweites" });

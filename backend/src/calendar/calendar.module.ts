@@ -23,6 +23,7 @@ import { GoogleCalendarClient } from './google-calendar.client';
       ExternalEventEntity,
     ]),
   ],
+  exports: [CalendarSyncService],
   controllers: [CalendarController],
   providers: [
     CalendarService,

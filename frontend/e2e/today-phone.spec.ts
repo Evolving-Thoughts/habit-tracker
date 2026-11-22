@@ -60,12 +60,13 @@ test("Heute at 375 px: focus card in one action row, the next row in view, short
   // The first viewport shows the focus card and at least the next row.
   const viewport = page.viewportSize()!;
   const tabBar = (await page.locator(".tab-bar").boundingBox())!;
+  expect(tabBar.y).toBe(0);
   expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(
-    Math.min(viewport.height, tabBar.y),
+    viewport.height,
   );
   test.info().annotations.push({
     type: "measured",
-    description: `row ${Math.round(rowBox.height)} px, its bottom at ${Math.round(rowBox.y + rowBox.height)} px of ${Math.round(Math.min(viewport.height, tabBar.y))} px`,
+    description: `row ${Math.round(rowBox.height)} px, its bottom at ${Math.round(rowBox.y + rowBox.height)} px of ${Math.round(viewport.height)} px`,
   });
 
   // No sideways scrolling and no tab label cut off, at 375 and at 360 px.

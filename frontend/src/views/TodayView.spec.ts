@@ -316,7 +316,7 @@ describe("TodayView", () => {
     expect(appointment.text()).toContain("14:00");
     // A place to drop a card next to, but it never lifts itself.
     expect(appointment.attributes("data-sort-key")).toBe("todo-3");
-    expect(appointment.attributes("data-sort-anchor")).toBeDefined();
+    expect(appointment.attributes("data-sort-anchor")).toBeUndefined();
     expect(wrapper.get(".today-view__event").text()).toContain(
       "12:00Mittagessen",
     );
@@ -403,7 +403,8 @@ describe("TodayView", () => {
     // Before the server has answered, the new order already shows.
     expect(
       wrapper.findAll(".order .planner-item h3").map((row) => row.text()),
-    ).toEqual(["Zahnarzt", "Lesen", "Bewerbung"]);
+    ).toEqual(["NestJS lernen", "Lesen", "Bewerbung"]);
+    expect(wrapper.get("#focus-title").text()).toBe("Zahnarzt");
     expect(reorderDay).toHaveBeenCalledWith([
       { type: "todo", id: 3 },
       { type: "todo", id: 1 },
@@ -1327,6 +1328,7 @@ describe("TodayView rows and focus card", () => {
       "Termin verschieben …",
       "Bearbeiten",
       "In Kampagne verschieben …",
+      "Nach oben",
       "Löschen",
     ]);
     await wrapper.get('[aria-label="Zahnarzt verschieben"]').trigger("click");
@@ -1443,12 +1445,13 @@ describe("TodayView: an appointment's turn on the focus card", () => {
       "Aktionen für Teamrunde",
     ]);
     // Not part of the order: the card does not drag.
-    expect(wrapper.get(".focus").classes()).not.toContain("card-drag");
+    expect(wrapper.get(".focus").classes()).toContain("card-drag");
     await actions.get('[aria-label="Aktionen für Teamrunde"]').trigger("click");
     expect(texts(wrapper, "[role=menuitem] .action-menu__label")).toEqual([
       "Termin verschieben …",
       "Bearbeiten",
       "In Kampagne verschieben …",
+      "Nach unten",
       "Löschen",
     ]);
   });

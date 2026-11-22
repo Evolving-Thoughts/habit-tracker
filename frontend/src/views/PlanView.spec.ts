@@ -914,8 +914,8 @@ describe("PlanView Questlog column", () => {
     expect(wrapper.get(".plan-questlog .count").text()).toBe("1");
   });
 
-  it("starts collapsed below 80rem, so the days get the room first", async () => {
-    screen(true, false);
+  it("starts collapsed when the narrow board has no space for both columns", async () => {
+    screen(false, false);
     const first = await mountPlan();
     const toggle = first.wrapper.get(".plan-questlog__toggle");
     expect(toggle.attributes("aria-expanded")).toBe("false");

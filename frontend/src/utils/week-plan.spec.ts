@@ -319,7 +319,7 @@ describe("stepDrop", () => {
   });
 
   it("leaves an appointment where its time puts it, but steps past it", () => {
-    expect(stepDrop(plan, 1, "down")).toBeNull();
+    expect(stepDrop(plan, 1, "down")).toMatchObject({ index: 1 });
     const drop = stepDrop(plan, 2, "up")!;
     expect(dropOnDay(plan, drop)!.write.order).toEqual([
       { type: "todo", id: 2 },

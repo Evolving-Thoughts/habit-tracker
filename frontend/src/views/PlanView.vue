@@ -65,6 +65,7 @@ import {
   weekdayName,
 } from "../utils/history";
 import {
+  BOARD,
   boardColumns,
   dropOnDay,
   dropRunOnDay,
@@ -176,12 +177,11 @@ function readQuestlogChoice(): string | null {
     return null;
   }
 }
-/* From 80rem the open column still leaves room for several days. */
-const roomy = useMediaQuery("(min-width: 80rem)");
+const overdueOpen = ref(true);
 /** A choice made on this device; until then the window's width decides. */
 const questlogChoice = ref<string | null>(readQuestlogChoice());
 const questlogOpen = computed(() =>
-  questlogStartsOpen(questlogChoice.value, roomy.value),
+  questlogStartsOpen(questlogChoice.value, frameWidth.value ? frameWidth.value >= BOARD.questlogOpen + BOARD.column + BOARD.gap : wide.value),
 );
 function toggleQuestlog(): void {
   const choice: QuestlogChoice = questlogOpen.value ? "closed" : "open";
@@ -199,6 +199,7 @@ function daysThatFit(overdue: boolean): number {
     ? fittingDays(frameWidth.value, {
         questlogOpen: questlogOpen.value,
         overdue,
+        overdueOpen: overdueOpen.value,
         least: wide.value ? 2 : 1,
       })
     : WITHOUT_LAYOUT_DAYS;
@@ -246,6 +247,7 @@ const columns = computed(() =>
   boardColumns({
     questlogOpen: questlogOpen.value,
     overdue: hasOverdue.value,
+    overdueOpen: overdueOpen.value,
     days: shownCount.value,
   }),
 );
@@ -1192,6 +1194,8 @@ useShortcutHandlers({
         <PlanOverdue
           v-if="hasOverdue"
           :entries="plan.overdue"
+          :open="overdueOpen"
+          @toggle="overdueOpen = !overdueOpen"
           :busy="writes.busy.value || dialogBusy"
           :menu="(entry) => entryMenu(entry, null)"
           @edit="(entry) => openEditing(entry, 'overdue')"

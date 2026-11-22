@@ -110,9 +110,9 @@ describe("DayCalendar", () => {
       }),
     });
     const lane = wrapper.get('ol[aria-label="Zeitachse"]');
-    expect(lane.findAll("li")).toHaveLength(3);
+    expect(lane.findAll("li")).toHaveLength(2);
     expect(lane.text()).toContain("Besprechung");
-    expect(lane.text()).toContain("Kapitel, erledigt um 11:00");
+    expect(lane.text()).not.toContain("Kapitel, erledigt um 11:00");
     expect(block(wrapper).attributes("aria-label")).toBe(
       "Kapitel, 10:00 bis 10:30, 30 Min., Kampagne Buch, korrigieren",
     );

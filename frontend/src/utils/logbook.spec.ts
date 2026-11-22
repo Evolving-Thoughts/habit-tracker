@@ -52,7 +52,7 @@ describe("blocks of a day", () => {
       endedAt: "2026-11-16T23:45:00.000Z",
     });
     expect(logBlocks({ minutes: 45, logs: [night] }, DAY)).toEqual([
-      { key: "log:1", log: night, start: 0, end: 45 },
+      { key: "log:1", log: night, start: 0, end: 45, minLength: 0 },
     ]);
   });
 

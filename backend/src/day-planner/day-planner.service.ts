@@ -139,7 +139,7 @@ export class DayPlannerService {
     const items = sortInDay(entries, (entry) => ({
       ...entry,
       ...entry.item,
-    })).map(({ item }) => item);
+    })).map(({ item, dayPosition }) => ({ ...item, dayPosition }));
 
     const externalEvents = await eventsOfDays(
       this.db.manager,

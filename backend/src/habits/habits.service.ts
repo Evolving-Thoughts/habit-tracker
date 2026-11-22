@@ -73,6 +73,7 @@ export class HabitsService {
       this.dataSource.manager,
       habits.map((habit) => habit.id),
       now,
+      true,
     );
     const result: HabitResponseDto[] = [];
 

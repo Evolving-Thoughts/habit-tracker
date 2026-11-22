@@ -101,7 +101,9 @@ export only, as Logbuch events (see `logbook.md`).
   when the quest has one, cleared when the day goes. Every quest form uses
   both; `utils/todo-input.ts` validates them.
 - `utils/today-agenda.ts` arranges Heute. `currentItem` is the one rule for
-  what is up now, shared by Heute's focus card and the Fokus-Modus: an
+  what is up now, shared by Heute's focus card and the Fokus-Modus. Once the day has a saved
+  order, its first pending item is the focus, including an appointment.
+  Before the day is sorted the clock decides: an
   appointment (a todo or habit with a time) from its start until its end, the
   start plus its planned duration or `DEFAULT_APPOINTMENT_MINUTES` (30) without
   one; when several overlap, the one that began last. Otherwise the head of the
@@ -124,10 +126,9 @@ export only, as Logbuch events (see `logbook.md`).
   appointments anchored in it, forecast runs (never sorted) last by title. See
   `history.md`.
 - Heute sorts by drag and drop: the focus card and the rows after it are one
-  list (`useSortable`, SortableJS), and the whole card drags. Appointments
-  and events are anchors (`data-sort-anchor`): a card drops next to them,
-  they never lift, and every write sends the whole day (`sequence`) so they
-  keep their place. A card passes another once the pointer crosses its
+  list (`useSortable`, SortableJS). Quests, stored runs and appointments drag.
+  Timed cards can cross flexible cards and stop at the adjacent appointment
+  in clock order. Google events are read-only. Every write sends the whole day. A card passes another once the pointer crosses its
   middle (`swapThreshold` 0.5), so cards of different heights do not jump. A mouse lifts
   it after 6px, a finger only after a 300ms press (`delayOnTouchOnly`), so a
   swipe still scrolls and a short tap still opens the editor; the card's own

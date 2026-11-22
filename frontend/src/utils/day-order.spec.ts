@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { anchoredOrder } from "./day-order";
+import { anchoredOrder, clockBoundIndex } from "./day-order";
 
 const entry = (title: string, timeOfDay: string | null = null) => ({
   title,
@@ -8,6 +8,12 @@ const entry = (title: string, timeOfDay: string | null = null) => ({
 const titles = (items: { title: string }[]) => items.map(({ title }) => title);
 
 describe("anchoredOrder", () => {
+  it("clamps a moved appointment without moving unrelated flexible cards", () => {
+    const ten = entry("Transporter", "10:00");
+    const later = entry("Teammeeting", "14:30");
+    expect(clockBoundIndex([entry("A"), later, entry("B")], ten, 3)).toBe(1);
+    expect(clockBoundIndex([entry("A"), ten, entry("B")], later, 0)).toBe(2);
+  });
   it("keeps the given order when the appointments follow the clock", () => {
     const day = [
       entry("A"),

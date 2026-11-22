@@ -1,4 +1,4 @@
-import { anchoredOrder } from "./day-order";
+import { anchoredOrder, clockBoundIndex } from "./day-order";
 import type { TodoResponse } from "../types/todo";
 import type {
   WeekPlanDay,
@@ -211,7 +211,7 @@ function place(
   const target = plan.days.find((day) => day.date === toDate);
   if (!target || toDate < plan.today) return null;
   const rows = openEntries(target).filter((item) => item !== entry);
-  rows.splice(Math.max(0, Math.min(index, rows.length)), 0, placed);
+  rows.splice(clockBoundIndex(rows, placed, Math.max(0, Math.min(index, rows.length))), 0, placed);
   const arranged = arrangeOpen(rows);
 
   const before = dayOrder(openEntries(target));
@@ -357,11 +357,12 @@ function stepPlace(
     return { toDate: next.date, index: openEntries(next).length };
   }
   // An appointment holds its place by the clock; others step past it.
-  if (!isSequenced(entry) || entry.timeOfDay !== null) return null;
+  if (!isSequenced(entry)) return null;
   const sequence = open.filter(isSequenced);
   const neighbour =
     sequence[sequence.indexOf(entry) + (direction === "up" ? -1 : 1)];
   if (!neighbour) return null;
+  if (entry.timeOfDay && neighbour.timeOfDay && entry.timeOfDay !== neighbour.timeOfDay) return null;
   return { toDate: day.date, index: open.indexOf(neighbour) };
 }
 
@@ -535,7 +536,7 @@ export type QuestlogChoice = "open" | "closed";
 
 /**
  * Whether the Questlog column starts open. A choice made on this device
- * wins; without one it opens only on a wide window (`roomy`, from 80rem),
+ * wins; without one it opens when the board fits the Questlog and one day,
  * so a smaller one gives its room to the days first.
  */
 export function questlogStartsOpen(
@@ -573,10 +574,10 @@ export function questlogWidth(open: boolean): number {
  */
 export function fittingDays(
   width: number,
-  board: { questlogOpen: boolean; overdue: boolean; least: number },
+  board: { questlogOpen: boolean; overdue: boolean; overdueOpen?: boolean; least: number },
 ): number {
   let room = width - questlogWidth(board.questlogOpen);
-  if (board.overdue) room -= BOARD.gap + BOARD.column;
+  if (board.overdue) room -= BOARD.gap + (board.overdueOpen === false ? BOARD.questlogRail : BOARD.column);
   const fit = Math.floor((room + 0.001) / (BOARD.gap + BOARD.column));
   return Math.max(board.least, fit);
 }
@@ -585,12 +586,13 @@ export function fittingDays(
 export function boardColumns(board: {
   questlogOpen: boolean;
   overdue: boolean;
+  overdueOpen?: boolean;
   days: number;
 }): string {
   const day = `minmax(${BOARD.column}rem, 1fr)`;
   return [
     `${questlogWidth(board.questlogOpen)}rem`,
-    ...(board.overdue ? [day] : []),
+    ...(board.overdue ? [board.overdueOpen === false ? `${BOARD.questlogRail}rem` : day] : []),
     `repeat(${board.days}, ${day})`,
   ].join(" ");
 }

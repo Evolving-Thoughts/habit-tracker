@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { getHabits, updateOccurrenceStatus } from "../api/day-planner.api";
 import { useCategoryLabels } from "../composables/useCategoryLabels";
 import { useListFocus } from "../composables/useListFocus";
+import HabitHistoryStrip from "../components/HabitHistoryStrip.vue";
 import ActionMenu from "../components/ActionMenu.vue";
 import CampaignChip from "../components/CampaignChip.vue";
 import DeleteItemDialog, {
@@ -52,11 +53,7 @@ const editorBusy = ref(false);
 const creationOpen = ref(false);
 
 /** Category names and marks for the meta line. */
-const {
-  load: loadCategories,
-  labelOf,
-  list: categories,
-} = useCategoryLabels();
+const { load: loadCategories, labelOf, list: categories } = useCategoryLabels();
 /*
  * The week as the calendar reads it, for each Daily's status this week; the
  * list stays usable without it. Read once with the list, so both agree.
@@ -500,6 +497,10 @@ async function onCreated(): Promise<void> {
                   :disabled="isBusy"
                 />
               </div>
+              <HabitHistoryStrip
+                v-if="habit.streak.recentDays"
+                :days="habit.streak.recentDays"
+              />
             </li>
           </ul>
         </section>

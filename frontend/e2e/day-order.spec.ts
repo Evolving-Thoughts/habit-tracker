@@ -63,6 +63,24 @@ test("Heute: sort the day with Nach oben in the menu; the head becomes the focus
   expect(await shownOrder(page)).toEqual(["Drittes", "Erstes", "Zweites"]);
 });
 
+test("Heute: a fixed appointment can be dragged onto the focus card and stays there after reload", async ({
+  page, request,
+}, info) => {
+  test.skip(info.project.name !== "chromium", "Mouse drag");
+  const date = await today(request);
+  await page.clock.install({ time: berlinTime(date, "08:00") });
+  for (const [title, timeOfDay] of [["Transporter", "10:00"], ["Meeting", "14:30"], ["Texte", null]]) {
+    await plan(request, { title, scheduledDate: date, timeOfDay });
+  }
+  await page.goto("/");
+  await expect(page.locator("#focus-title")).toHaveText("Texte");
+  await dragCard(page, card(page, "Transporter"), page.locator(".focus"));
+  await expect(page.locator("#focus-title")).toHaveText("Transporter");
+  await expect.poll(() => storedOrder(request)).toEqual(["Transporter", "Texte", "Meeting"]);
+  await page.reload();
+  await expect(page.locator("#focus-title")).toHaveText("Transporter");
+});
+
 test("Heute: drag a quest by its card above another one; a click opens the editor", async ({
   page,
   request,
@@ -151,7 +169,7 @@ test("Heute: appointments sit in the list by their time and stay when the rest m
   const appointment = card(page, "Zahnarzt");
   await expect(appointment).toHaveClass(/today-view__appointment/);
   await expect(appointment).toContainText("23:58");
-  await expect(appointment).toHaveAttribute("data-sort-anchor", "");
+  await expect(appointment).toHaveAttribute("data-sort-key", /todo-/);
 
   await page.getByRole("button", { name: "Auf morgen", exact: true }).click();
   const dialog = page.getByRole("dialog");
@@ -164,7 +182,7 @@ test("Heute: appointments sit in the list by their time and stay when the rest m
   // An appointment never stands in for an empty order: it waits in the list.
   await expect(page.locator("#focus-title")).toHaveCount(0);
   await expect(
-    page.locator(".order [data-sort-key]:not([data-sort-anchor])"),
+    page.locator(".order [data-sort-key]:not(.today-view__appointment):not([data-sort-anchor])"),
   ).toHaveCount(0);
   await expect(page.locator(".today-view__empty")).toContainText(
     "Nächster Termin: 23:58 Zahnarzt.",

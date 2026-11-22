@@ -13,6 +13,7 @@ export type DayPlannerGoal = {
 };
 
 type DayPlannerItemContext = {
+  dayPosition?: number | null;
   why: string | null;
   goal: DayPlannerGoal | null;
   /** The campaign the item works towards; null for a loose item. */

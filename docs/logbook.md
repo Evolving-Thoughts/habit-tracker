@@ -69,8 +69,8 @@ and other calendars are only read.
 - `logChanges` in `calendar-sync.service.ts` follows the outgoing pattern of
   todos and runs: every stretch of **at least five minutes** becomes an event
   at its real start and end; a correction, or a stopwatch block extended after a
-  short pause (same row, later `updatedAt`), patches it; a deleted stretch, or
-  one shortened below five minutes, deletes it. New stretches are exported back
+  short pause (same row, later `updatedAt`), patches it; deleting the stretch removes its event. A correction queues a sync after the
+  database commit, even when the exported stretch is shortened below five minutes. New stretches are exported back
   31 days, so connecting does not write the whole past at once.
 - The events say what they are: the stretch's title as summary and the
   description "Logbuch · gemessene Arbeitszeit", plus "Kampagne: …" when there
@@ -97,8 +97,8 @@ and other calendars are only read.
   completed appointment stays its block), and the stretches as white blocks
   with the campaign's stripe (a neutral one without campaign), title, times
   and the campaign chip. Blocks that overlap stand side by side
-  (`calendarBlocks` → `layoutLane`); a block is never smaller than a tap
-  target. On today an ink line marks now, with the time in the hour labels.
+  (`calendarBlocks` → `layoutLane`); a measured block takes its real duration. A completed entry with a log
+  on that day is represented by its measured stretches. On today an ink line marks now, with the time in the hour labels.
   Heute (beside the list from 64rem, `TodayCalendar.vue` reads the day from
   `GET /history`), the Kalender's day and each column of its week use it;
   in the week it is `compact`: no head, the hour labels and the scrolling

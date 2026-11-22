@@ -100,13 +100,13 @@ Every query is scoped to the user; occurrences through their habit.
   with open quests, see `todo-hierarchy.md`; each names its `campaign`, so
   the column draws the stripe). Its list is part of the board's SortableJS
   group in both directions. Collapsed it is a rail as wide as its toggle
-  (2.75rem) with the count. Without a choice it starts open from 80rem and
-  collapsed below (`questlogStartsOpen`); toggling stores the explicit
+  (2.75rem) with the count. Without a choice it opens when the board fits its width and one day,
+  and otherwise starts collapsed (`questlogStartsOpen`); toggling stores the explicit
   choice per device in `localStorage` (`plan:questlog` = `open` or
   `closed`), which then wins at any width. When the board has to scroll
   sideways the column is sticky at the left edge, on an opaque ground.
 - **Liegen geblieben** (`PlanOverdue.vue`), only when `overdue` has
-  entries: a column like a day's without a quick add. Its quests drag onto
+  entries. The column starts expanded and its toggle collapses it to a rail. Its quests drag onto
   a day or into the Questlog column and move through their menu (Heute,
   Morgen, Nächste Woche, Anderer Tag …); its runs drag onto a day of their
   window and move through Heute's menu. They take no arrow keys and the

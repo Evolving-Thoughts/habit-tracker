@@ -16,6 +16,7 @@ export type Streak = {
   best: number;
   /** What it counts: runs, or weeks while the rhythm is a weekly goal. */
   unit: StreakUnit;
+  recentDays?: { date: string; state: DayState }[];
 };
 export type StreakUnit = 'runs' | 'weeks';
 
@@ -28,6 +29,8 @@ type StreakOccurrence = Pick<
 
 /** What one due run (or, for a weekly goal, one week) means for the series. */
 type Outcome = 'done' | 'missed' | 'neutral';
+type DayState = 'done' | 'missed' | 'open' | 'skipped' | 'free';
+const dayPriority: DayState[] = ['free', 'skipped', 'open', 'missed', 'done'];
 type Unit = { at: string; outcome: Outcome };
 
 /**
@@ -146,9 +149,21 @@ export function habitStreak(
   versions: HabitScheduleVersionEntity[],
   occurrences: StreakOccurrence[],
   now: Date,
+  includeRecentDays = false,
 ): Streak {
   const byId = new Map(versions.map((version) => [version.id, version]));
   const units: Unit[] = [];
+  const today = dayOf(now);
+  const recent = new Map<string, DayState>();
+  if (includeRecentDays) {
+    for (let offset = -13; offset <= 0; offset++)
+      recent.set(addDays(today, offset), 'free');
+  }
+  function mark(date: string, state: DayState): void {
+    const existing = recent.get(date);
+    if (existing && dayPriority.indexOf(state) > dayPriority.indexOf(existing))
+      recent.set(date, state);
+  }
   const weekly: {
     version: HabitScheduleVersionEntity;
     occurrence: StreakOccurrence;
@@ -156,11 +171,25 @@ export function habitStreak(
   for (const occurrence of occurrences) {
     const version = byId.get(occurrence.scheduleVersionId);
     if (!version) continue;
-    if (version.type === HabitScheduleType.WEEKLY_TARGET)
+    if (version.type === HabitScheduleType.WEEKLY_TARGET) {
       weekly.push({ version, occurrence });
-    else units.push(runUnit(version, occurrence, now));
+      if (includeRecentDays && occurrence.status === Status.COMPLETED)
+        mark(occurrence.resolvedDate ?? occurrence.scheduledDate, 'done');
+    } else {
+      const unit = runUnit(version, occurrence, now);
+      units.push(unit);
+      if (includeRecentDays && occurrence.status !== Status.CANCELLED) {
+        const state =
+          unit.outcome === 'neutral'
+            ? occurrence.status === Status.PENDING
+              ? 'open'
+              : 'skipped'
+            : unit.outcome;
+        mark(unit.at, state);
+      }
+    }
   }
-  units.push(...weekUnits(weekly, dayOf(now)));
+  units.push(...weekUnits(weekly, today));
   units.sort((first, second) => first.at.localeCompare(second.at));
 
   let current = 0;
@@ -171,7 +200,13 @@ export function habitStreak(
       best = Math.max(best, current);
     } else if (outcome === 'missed') current = 0;
   }
-  return { current, best, unit: streakUnit(versions, now) };
+  const streak: Streak = { current, best, unit: streakUnit(versions, now) };
+  if (includeRecentDays)
+    streak.recentDays = Array.from(recent, ([date, state]) => ({
+      date,
+      state,
+    }));
+  return streak;
 }
 
 /** Weeks while the rhythm in force (else the first one) is a weekly goal. */
@@ -195,6 +230,7 @@ export async function loadStreaks(
   manager: EntityManager,
   habitIds: number[],
   now: Date,
+  includeRecentDays = false,
 ): Promise<Map<number, Streak>> {
   const ids = [...new Set(habitIds)];
   const result = new Map<number, Streak>();
@@ -222,6 +258,7 @@ export async function loadStreaks(
         versions.filter((version) => version.habitId === id),
         occurrences.filter((occurrence) => occurrence.habitId === id),
         now,
+        includeRecentDays,
       ),
     );
   return result;

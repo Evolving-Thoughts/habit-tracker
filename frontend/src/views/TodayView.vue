@@ -55,6 +55,7 @@ import {
   nextChangeAt,
   withDayOrder,
 } from "../utils/today-agenda";
+import { anchoredOrder, clockBoundIndex } from "../utils/day-order";
 import { tallyLine } from "../utils/day-tally";
 import { useDayClock } from "../composables/useDayClock";
 import { categoryMark } from "../utils/category-mark";
@@ -414,21 +415,11 @@ async function onMoved(): Promise<void> {
 /* The order of the day: the focus card is its head, the rows follow. */
 const order = ref<HTMLElement | null>(null);
 const orderMessage = ref("");
-/** The focus heads the queue unless an appointment is running right now. */
-const focusInQueue = computed(
-  () => !!agenda.value?.focus && agenda.value.focus === agenda.value.queue[0],
-);
-/**
- * What the sortable list holds, in its order: the focus card when it heads
- * the order, then every entry below it. Appointments and calendar events
- * are anchors: one can drop a card next to them, but they never lift.
- * A calendar event is `null`: it is not part of the stored order.
- */
 const sortables = computed<(DayPlannerItem | null)[]>(() => {
   const current = agenda.value;
   if (!current) return [];
   return [
-    ...(focusInQueue.value && current.focus ? [current.focus] : []),
+    ...(current.focus ? [current.focus] : []),
     ...current.list.map((entry) => (entry.kind === "event" ? null : entry.item)),
   ];
 });
@@ -461,8 +452,12 @@ async function moveInOrder(from: number, to: number): Promise<void> {
     : visible.slice(to, from);
   const neighbour = crossed.find((entry) => entry !== null);
   if (!neighbour) return;
-  const sequence = today.sequence.filter((entry) => entry !== item);
-  sequence.splice(sequence.indexOf(neighbour) + Number(down), 0, item);
+  const order = item === today.focus || neighbour === today.focus
+    ? visible.filter((entry): entry is DayPlannerItem => entry !== null)
+    : today.sequence;
+  const sequence = anchoredOrder(order.filter((entry) => entry !== item));
+  const index = clockBoundIndex(sequence, item, sequence.indexOf(neighbour) + Number(down));
+  sequence.splice(index, 0, item);
   // Shown at once; the reload after the write confirms it or takes it back.
   planner.value = withDayOrder(current, sequence);
   orderMessage.value = `„${item.title}“ steht jetzt an Stelle ${sequence.indexOf(item) + 1} von ${sequence.length}.`;
@@ -474,12 +469,15 @@ async function moveInOrder(from: number, to: number): Promise<void> {
 
 /** Where one step up or down lands; calendar events are stepped over. */
 function stepFrom(item: DayPlannerItem, direction: -1 | 1): number | null {
-  if (item.timeOfDay) return null;
   const list = sortables.value;
   const from = list.indexOf(item);
   if (from === -1) return null;
   for (let to = from + direction; to >= 0 && to < list.length; to += direction)
-    if (list[to]) return to;
+    if (list[to]) {
+      const time = list[to]?.timeOfDay;
+      if (item.timeOfDay && time && (direction < 0 ? time < item.timeOfDay : time > item.timeOfDay)) return null;
+      return to;
+    }
   return null;
 }
 
@@ -882,10 +880,9 @@ useShortcutHandlers(
         <div ref="order" class="order">
           <section
             v-if="agenda.focus"
-            class="focus card-target"
-            :class="{ 'card-drag': focusInQueue }"
+            class="focus card-target card-drag"
             :data-focus-key="getItemKey(agenda.focus)"
-            :data-sort-key="focusInQueue ? getItemKey(agenda.focus) : undefined"
+            :data-sort-key="getItemKey(agenda.focus)"
             aria-labelledby="focus-title"
             @click="openFocusFromCard($event, agenda.focus)"
           >
@@ -1027,7 +1024,7 @@ useShortcutHandlers(
               :class="{ 'today-view__appointment--past': entry.past }"
               :data-focus-key="getItemKey(entry.item)"
               :data-sort-key="getItemKey(entry.item)"
-              data-sort-anchor
+              sortable
               :item="entry.item"
               :time="entry.time"
               :is-updating="isUpdating(entry.item)"

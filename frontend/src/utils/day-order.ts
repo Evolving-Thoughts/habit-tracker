@@ -39,3 +39,18 @@ export function anchoredOrder<T extends { timeOfDay: string | null }>(
   while (next < anchors.length) result.push(anchors[next++]!.item);
   return result;
 }
+
+/** Clamp only the card being moved between earlier and later appointments. */
+export function clockBoundIndex<T extends { timeOfDay: string | null }>(
+  rows: readonly T[], item: T, index: number,
+): number {
+  const time = item.timeOfDay;
+  if (!time) return index;
+  let first = 0;
+  for (const [at, row] of rows.entries()) {
+    if (!row.timeOfDay) continue;
+    if (row.timeOfDay > time) return Math.min(at, Math.max(first, index));
+    if (row.timeOfDay < time) first = at + 1;
+  }
+  return Math.max(first, index);
+}

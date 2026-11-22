@@ -1,7 +1,7 @@
 # Streaks: a Daily's series (Serie)
 
 How many due runs of a habit in a row were done, and the longest such
-series ever. The UI calls it "Serie" and shows numbers only: "12 in Folge ·
+series ever. The UI calls it "Serie" and shows the series: "12 in Folge ·
 Rekord 21" in the Dailies list, "12 in Folge" on a run's row in Heute, Plan
 and the Fokus-Modus (left out while it is 0). A broken series is a number
 like any other, never a warning.
@@ -43,6 +43,8 @@ A change of rhythm keeps the series: units of every version are sorted
 together. Paused stretches are gaps without units. `unit` says what the
 numbers count: `weeks` while the rhythm in force (else the first one) is a
 weekly goal, otherwise `runs`.
+
+The category-grouped Dailies list also shows the last 14 calendar days directly on each card. Completed, missed, open and manually skipped runs have distinct marks. Days without a run stay neutral. For weekly goals the strip shows completion dates, while the series and record still count weeks.
 
 ## API
 

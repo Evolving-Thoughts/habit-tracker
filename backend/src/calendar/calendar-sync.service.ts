@@ -124,7 +124,22 @@ export class CalendarSyncService {
     for (const { userId } of connections) await this.syncUser(userId);
   }
 
+  private readonly pending = new Map<string, Promise<void>>();
+
   async syncUser(userId: string): Promise<void> {
+    // A correction made during a sync needs a fresh read after that sync ends.
+    const previous = this.pending.get(userId);
+    const run = () => this.exchange(userId);
+    const current = previous ? previous.then(run, run) : run();
+    this.pending.set(userId, current);
+    try {
+      await current;
+    } finally {
+      if (this.pending.get(userId) === current) this.pending.delete(userId);
+    }
+  }
+
+  private async exchange(userId: string): Promise<void> {
     const repository = this.db.getRepository(CalendarConnectionEntity);
     const connection = await repository.findOneBy({ userId, revoked: false });
     if (!connection) return;
@@ -379,7 +394,12 @@ export class CalendarSyncService {
       });
       const rows = events.flatMap((event) => {
         const times = eventTimes(event);
-        if (event.status === 'cancelled' || !times) return [];
+        if (
+          event.status === 'cancelled' ||
+          !times ||
+          event.extendedProperties?.private?.[MARKER]
+        )
+          return [];
         return [
           repository.create({
             userId,
@@ -566,7 +586,7 @@ export class CalendarSyncService {
       const log = known.find((item) => item.id === link.workLogId);
       if (link.suppressed) {
         if (!log) await manager.getRepository(CalendarLinkEntity).remove(link);
-      } else if (!log || !exported(log))
+      } else if (!log)
         operations.push({ type: 'delete', link });
       else if (log.updatedAt > link.syncedAt) patched.push({ link, log });
     }
@@ -595,7 +615,7 @@ export class CalendarSyncService {
   /** Named as Logbuch in Google, so it never reads as a plan. */
   private logChange(log: CampaignLog): Change {
     const description = [
-      'Logbuch · gemessene Arbeitszeit',
+      'Logbuch Â· gemessene Arbeitszeit',
       ...(log.campaign ? [`Kampagne: ${log.campaign.title}`] : []),
     ].join('\n');
     return {
