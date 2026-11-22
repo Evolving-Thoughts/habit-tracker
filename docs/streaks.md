@@ -55,6 +55,19 @@ The category-grouped Dailies list also shows the last 14 calendar days directly 
 - every habit item of `GET /day-planner/today`,
 - every habit entry of `GET /day-planner/plan` (forecast runs too).
 
+Only `GET /habits` (`HabitsService.findAll`, `loadStreaks(..., true)`) adds
+`recentDays?: { date: string; state: 'done' | 'missed' | 'open' | 'skipped' | 'free' }[]`
+to the streak: exactly 14 entries, the Berlin days from 13 days ago up to
+today, oldest first (`habitStreak` with `includeRecentDays`). A run of a
+fixed rhythm marks its scheduled day with its outcome (`done`, `missed`,
+`open` while pending and not yet missed, `skipped` when skipped by hand);
+cancelled runs mark nothing. A weekly goal marks only completions, on their
+`resolvedDate`. With several runs on one day the strongest state wins
+(`done` over `missed` over `open` over `skipped`); a day without a run stays
+`free`. The other responses leave the field out. The daily history strip
+(`frontend/src/components/HabitHistoryStrip.vue`) on each card of the
+Dailies list draws it.
+
 `loadStreaks(manager, habitIds, now)` reads the versions and the few
 occurrence columns the rule needs for all habits at once; the readers call
 it once per request. The frontend words it in `utils/streak.ts`

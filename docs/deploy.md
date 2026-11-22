@@ -2,10 +2,11 @@
 
 Ist CI für einen Push auf `main` grün, startet [deploy.yml](../.github/workflows/deploy.yml). Der Workflow meldet sich per SSH auf dem Server an und schickt nur `deploy <commit>`. Auf dem Server führt [scripts/deploy.sh](../scripts/deploy.sh) dann genau diesen Commit aus:
 
-1. `git fetch`, prüfen, dass der Commit auf `origin/main` liegt und noch nicht läuft.
-2. `git merge --ff-only` auf diesen Commit, nicht auf einen neueren, dessen CI noch läuft.
-3. `docker compose … up -d --build --wait`, danach eine Anfrage an `127.0.0.1:8080`.
-4. Startet der neue Stand nicht, setzt das Skript den Checkout auf den vorherigen Commit zurück und baut den wieder.
+1. Eine Sperre nehmen (`flock`), damit nur ein Deployment gleichzeitig läuft; ein zweites wartet bis zu 15 Minuten und bricht dann ab.
+2. `git fetch`, prüfen, dass der Commit auf `origin/main` liegt und noch nicht läuft.
+3. `git merge --ff-only` auf diesen Commit, nicht auf einen neueren, dessen CI noch läuft.
+4. `docker compose … up -d --build --wait --remove-orphans`, danach eine Anfrage an `http://127.0.0.1:${APP_PORT}/` (`APP_PORT` aus `.env.production`, Standard 8080). Klappt beides, räumt `docker image prune -f` alte Images weg.
+5. Startet der neue Stand nicht, setzt das Skript den Checkout auf den vorherigen Commit zurück und baut den wieder.
 
 Ein Lauf dauert so lange wie ein Neubau, etwa drei Minuten; die App ist dabei kurz nicht erreichbar. Ein gescheitertes Deployment ist ein roter Lauf unter Actions, und GitHub schickt dazu eine Mail. Von Hand anstoßen lässt es sich unter Actions → Deploy → „Run workflow“.
 

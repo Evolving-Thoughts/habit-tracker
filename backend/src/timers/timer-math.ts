@@ -5,7 +5,12 @@
  */
 export type Stopwatch = {
   state: 'running' | 'paused' | 'stopped';
-  /** The logged blocks, short pauses inside them included. */
+  /**
+   * The base the stopwatch counts on from, not the sum of its logs: what it
+   * started with plus each logged block (short pauses included); once a
+   * block is over it becomes the shown time instead, pauses left out and an
+   * unlogged short stretch kept (`resumeWorkSegment`).
+   */
   elapsedMilliseconds: number;
   segmentStartedAt: Date | null;
   targetMinutes: number | null;

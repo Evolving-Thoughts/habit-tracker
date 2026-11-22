@@ -243,8 +243,10 @@ function place(
 /**
  * Applies a drop to the plan at once and says what to write. Dropped on a
  * day it is not planned for (another day, or any day for a quest left
- * behind), the quest moves there; an untimed quest then takes its place in
- * that day's order. Returns null when the drop changes nothing.
+ * behind), the quest moves there and takes its place in that day's order;
+ * an appointment's place is bounded by the clock, after the appointments
+ * earlier and before those later than it (`clockBoundIndex`). Returns null
+ * when the drop changes nothing.
  *
  * `incoming` is a quest from the Questlog column: it has no day yet, so it
  * comes from no column of the board and always moves.

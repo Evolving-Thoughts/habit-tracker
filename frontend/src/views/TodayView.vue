@@ -986,7 +986,7 @@ useShortcutHandlers(
               />
             </div>
           </section>
-          <!-- Appointments wait in the list below; they never stand in for the order. -->
+          <!-- Nothing is up: only appointments are left, none running, and the day was never sorted. They wait in the list below. -->
           <section v-else-if="openAppointments" class="today-view__empty">
             <h2>In der Reihenfolge ist nichts mehr offen.</h2>
             <p>
@@ -1003,11 +1003,11 @@ useShortcutHandlers(
           </section>
 
           <!--
-            The rest of the day in one order. Appointments stand in it,
-            anchored by their time: a card can be dropped next to them, but
-            they never lift. One that is over but still open asks quietly.
-            Google events are read-only and, on wide screens, stand in the
-            day calendar instead. On a phone only the next two rows carry
+            The rest of the day in one order. Appointments stand in it with
+            their time and drag like any other card; one that is over but
+            still open asks quietly. Google events are read-only anchors: a
+            card can be dropped next to them, but they never lift. On wide
+            screens they stand in the day calendar instead. On a phone only the next two rows carry
             their Warum, so the day stays short.
           -->
           <template

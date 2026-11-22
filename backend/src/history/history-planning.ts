@@ -254,9 +254,10 @@ export function weeklyTargets(
 /**
  * Open entries sorted the way Heute and the Plan sort a day (day-order.ts):
  * what waits from an earlier day first, then the order the user sorted
- * the day into, appointments anchored in it by clock; forecast runs, never
- * sorted, come last by title. Completed and skipped entries keep their own order, the
- * time they were resolved.
+ * the day into, appointments anchored in it by clock. Forecast runs are
+ * never sorted: untimed ones come last by title, timed ones stand right
+ * after the appointment before them on the clock. Completed and skipped
+ * entries keep their own order, the time they were resolved.
  */
 export function sortedLikeToday(
   items: HistoryPlannedItem[],

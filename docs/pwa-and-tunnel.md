@@ -1,6 +1,6 @@
 # Android-PWA über einen kostenlosen HTTPS-Tunnel testen
 
-Dieser PWA-Schritt liefert eine installierbare **Online-PWA**, keinen Android-Wecker. Timer-Web-Push ist im separaten Schritt [Timer-Push](timer-push.md) beschrieben. Der bestehende servergestützte Timer berechnet nach Rückkehr seine verbleibende Zeit; bei gesperrtem Handy wird JavaScript nicht zuverlässig ausgeführt. Eine Endbenachrichtigung ist ein separater nächster Schritt.
+Dieser PWA-Schritt liefert eine installierbare **Online-PWA**, keinen Android-Wecker. Timer-Web-Push ist im separaten Schritt [Timer-Push](timer-push.md) beschrieben. Die servergestützte Stoppuhr zählt hoch und berechnet nach Rückkehr die bisher gelaufene Zeit neu; bei gesperrtem Handy wird JavaScript nicht zuverlässig ausgeführt. Ist Push eingerichtet, zeigt der Service Worker beim Ereignis `timer-target-reached` die Meldung „Du hast dein Soll erreicht“ mit „Die Stoppuhr läuft weiter.“
 
 Das Repository bleibt privat. Es wird kein Hosting-Konto, keine Domain und keine Router-Portfreigabe benötigt. Cloudflare Quick Tunnel gibt dir eine temporäre, **öffentlich erreichbare** HTTPS-Adresse. Sie ist kein Passwortschutz: Anmeldung und exakter Origin schützen die API. Nur mit Testdaten verwenden, den Tunnel danach stoppen. Das ist eine Entwicklungs-Testlösung, kein produktives Deployment.
 
@@ -87,7 +87,7 @@ npm run start:dev
 
 `FRONTEND_URL` und `TUNNEL_ORIGIN` müssen identisch sein. Prozess-Variablen überschreiben die `.env` nur in diesen Terminals; echte Zugangsdaten werden nicht committed. Bei anderer Backend-Portwahl muss `TUNNEL_API_PORT` im Gateway-Terminal denselben Port haben.
 
-HTTPS im `FRONTEND_URL` aktiviert jetzt **Secure + HttpOnly + SameSite=Strict** für Login- und Logout-Cookies, auch im Entwicklungsmodus. Der Gateway erhält den Browser-Origin unverändert; CSRF-/JSON-Prüfungen werden **nicht** deaktiviert. Fremde Forwarding-Header werden nicht vertraut. Hinter diesem kleinen Test-Gateway teilen sich Auth-Requests den lokalen Socket-IP-Limiter; für viele Nutzer braucht ein späteres Deployment eine separat abgesicherte Proxy-/Rate-Limit-Konfiguration.
+HTTPS im `FRONTEND_URL` aktiviert jetzt **Secure + HttpOnly + SameSite=Strict** für Login- und Logout-Cookies, auch im Entwicklungsmodus. Der Gateway erhält den Browser-Origin unverändert; CSRF-/JSON-Prüfungen werden **nicht** deaktiviert. Forwarding-Headern wird nur für die in `TRUST_PROXY_HOPS` konfigurierte Zahl von Proxys vertraut; Standard `0` = keinem. Hinter diesem kleinen Test-Gateway teilen sich Auth-Requests den lokalen Socket-IP-Limiter; für viele Nutzer braucht ein späteres Deployment eine separat abgesicherte Proxy-/Rate-Limit-Konfiguration.
 
 ## 5. Auf Android testen und installieren
 
@@ -96,7 +96,7 @@ HTTPS im `FRONTEND_URL` aktiviert jetzt **Secure + HttpOnly + SameSite=Strict** 
 3. Chrome-Menü öffnen und **„App installieren“** bzw. **„Zum Startbildschirm hinzufügen“** wählen. Die Bezeichnung hängt von Chrome/Android ab; ein automatisches Installations-Popup wird nicht erzwungen.
 4. App vom Startbildschirm öffnen: eigenständiges Fenster statt normalem Browser-Tab.
 5. Todo/Habit erstellen, bearbeiten, neu starten und anmelden/abmelden prüfen. Optional zweites Konto zur Datentrennung testen.
-6. Timer starten, Handy einige Zeit sperren, entsperren und App öffnen: verbleibende Zeit wird neu berechnet/synchronisiert. Ohne Einrichtung aus [Timer-Push](timer-push.md) noch keine Benachrichtigung bei Timer-Ende erwarten.
+6. Stoppuhr starten, Handy einige Zeit sperren, entsperren und App öffnen: die gelaufene Zeit wird neu berechnet/synchronisiert. Ohne Einrichtung aus [Timer-Push](timer-push.md) keine Benachrichtigung „Du hast dein Soll erreicht“ erwarten; die Stoppuhr läuft nach Erreichen des Solls weiter.
 
 Browser-Tests prüfen Manifest/Icons, Service-Worker-Steuerung, reale Anmeldung/CRUD über `/api`, Cache-Schutz und Desktop/Pixel-7-Emulation. Installation ins echte Android-System und Verhalten unter echter Displaysperre bitte zusätzlich manuell testen; Emulation ersetzt das nicht.
 
@@ -128,4 +128,4 @@ Das Frontend nutzt standardmäßig `/api`; Vite proxyt im lokalen Development zu
 
 ## Kosten / Grenzen
 
-Für diesen Quick-Tunnel-Test wird kein kostenpflichtiger Tarif eingerichtet. Der Tunnel ist temporär, ohne zugesicherte Verfügbarkeit und nicht für Dauerhosting gedacht. Dauerbetrieb auf VPS oder Raspberry Pi, stabile Domain, Backups, Produktionsmigrationen, echter SMTP-Versand und Push sind separate Schritte.
+Für diesen Quick-Tunnel-Test wird kein kostenpflichtiger Tarif eingerichtet. Der Tunnel ist temporär, ohne zugesicherte Verfügbarkeit und nicht für Dauerhosting gedacht. Für den Dauerbetrieb gibt es inzwischen Deployment (`.github/workflows/deploy.yml`, `scripts/deploy.sh`, `compose.prod.yaml`), Backups (`scripts/backup.sh`), versionierte Migrationen, SMTP-Konfiguration und Push; siehe [Betrieb](betrieb.md), [Deploy](deploy.md) und [Backup](backup.md).

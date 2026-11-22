@@ -131,12 +131,13 @@ export function formatWindow(window: AppointmentWindow): string {
 
 /**
  * What is up now: the one rule Heute's focus card and the Fokus-Modus share.
- * An appointment is up from its start until its end (start plus its planned
- * duration, or DEFAULT_APPOINTMENT_MINUTES); when several are, the one that
- * began last. Otherwise it is the head of the order: the next item one can
- * work on. Before its start and after its end an appointment stays on the
- * list of the day, anchored by its time; it never stands in for an empty
- * order.
+ * Once the day has a stored order (an open item carries a dayPosition), it
+ * is the first open item in that order, an appointment too, even one that
+ * has not started yet. Without a stored order an appointment is up from its
+ * start until its end (start plus its planned duration, or
+ * DEFAULT_APPOINTMENT_MINUTES); when several are, the one that began last.
+ * Otherwise it is the first untimed item of the order (`queue`), or nothing
+ * when only appointments are left and none is running.
  */
 export function currentItem(
   pending: readonly DayPlannerItem[],

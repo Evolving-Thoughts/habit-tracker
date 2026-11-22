@@ -1,6 +1,6 @@
 # Anmeldung und Nutzertrennung
 
-Dieser Entwicklungsblock ergänzt E-Mail/Passwort, Verifizierung, Passwort-Reset und Nutzertrennung. Keine Timer, Push-Meldungen, externe Login-Anbieter oder Übernahme alter Testdaten.
+Dieser Entwicklungsblock ergänzt E-Mail/Passwort, Verifizierung, Passwort-Reset und Nutzertrennung. Keine externen Login-Anbieter und keine Übernahme alter Testdaten. Stoppuhr und Push-Meldungen kamen in späteren Blöcken dazu (siehe [Timer-Push](timer-push.md)).
 
 ## Lokal starten (PowerShell)
 
@@ -33,7 +33,7 @@ npm ci
 npm run dev
 ```
 
-Frontend unter `http://localhost:5173`, Backend unter `http://localhost:3000`. Beide müssen denselben Hostnamen verwenden: nicht `localhost` und `127.0.0.1` mischen. `FRONTEND_URL` ist der exakte Frontend-Origin ohne abschließenden Slash. Frontend `.env`: `VITE_API_BASE_URL=http://localhost:3000`.
+Frontend unter `http://localhost:5173`, Backend unter `http://localhost:3000`. Beide müssen denselben Hostnamen verwenden: nicht `localhost` und `127.0.0.1` mischen. `FRONTEND_URL` ist der exakte Frontend-Origin ohne abschließenden Slash. `VITE_API_BASE_URL` ist standardmäßig `/api` (gleicher Origin); Vite proxyt im Development zu `127.0.0.1:3000`. Alternativ kann die Frontend-`.env` die direkte Adresse setzen: `VITE_API_BASE_URL=http://localhost:3000`.
 
 Mailpit: `http://localhost:8025`. Es fängt SMTP-E-Mails ab, verschickt aber keine echten E-Mails ins Internet. SMTP lokal: `127.0.0.1:1025`, ohne Benutzer/Passwort.
 
@@ -72,7 +72,7 @@ POST/PATCH/DELETE benötigen `Origin: http://localhost:5173` und `Content-Type: 
 - HttpOnly, SameSite=Strict; in Produktion Secure und `__Host-`-Cookie ohne Domain. Exakter Origin und JSON schützen auch den Login vor CSRF.
 - Nutzer-ID stammt ausschließlich aus der Session. Erforderliche Besitzer-Fremdschlüssel für Todos/Habits; Zeitpläne/Ausführungen werden über das Habit autorisiert. Fremde IDs liefern 404.
 - Verifizierung/Reset/Resend/Login serialisieren auf dem Nutzer; Tokenverbrauch und Session-Widerruf sind atomar. Ein Login mit dem alten Passwort kann nicht parallel zum Reset eine neue Session erzeugen.
-- PostgreSQL-basierte Limits pro Socket-IP und normalisierter E-Mail (15-Minuten-Fenster): 30 Requests je Auth-Aktion/IP, Login 10 je E-Mail, Registrierung/Resend/Forgot 3 je E-Mail. Das überlebt Neustarts. Fremde Proxy-Header werden nicht vertraut.
+- PostgreSQL-basierte Limits pro Client-IP und normalisierter E-Mail (15-Minuten-Fenster): 30 Requests je Auth-Aktion/IP für Registrierung, Login, Verifizierung, Resend, Forgot und Reset; zusätzlich Login 10 je E-Mail, Registrierung/Resend/Forgot 3 je E-Mail. Verifizierung und Reset haben nur das IP-Limit, Logout hat kein Limit. Das überlebt Neustarts. Proxy-Header werden nur für die Zahl vertrauenswürdiger Hops in `TRUST_PROXY_HOPS` ausgewertet; Standard `0` = keinem Proxy vertrauen, dann zählt die Socket-IP.
 - Forgot/Resend antworten gleich bei unbekannter Adresse oder SMTP-Ausfall. Bei fehlgeschlagenem Versand wird die Transaktion zurückgerollt; bisherige Links bleiben gültig. Nach Wiederherstellung von SMTP erneut anfordern. Versand ist synchron, keine persistente Outbox und keine automatische Zustellwiederholung. Gleichartige Antworten sind keine Garantie konstanter Antwortzeiten.
 
 ## Tests und CI
@@ -98,4 +98,4 @@ Browser-Test-Mailbox: `http://localhost:18025` (SMTP `11025`), nicht die Entwick
 
 ## Vor öffentlicher Bereitstellung
 
-Dieser PR ist ein lokal getesteter Entwicklungsstand, kein vollständiger Produktions-Rollout. Vor Deployment: PostgreSQL-Migrationen statt synchronize, HTTPS mit same-site Frontend/API (am einfachsten gemeinsamer Origin mit Reverse Proxy), tatsächlicher SMTP-Anbieter und gültiger Absender, Zustellbarkeit/SPF/DKIM sowie Betrieb/Monitoring und Aufräumen abgelaufener Auth-Datensätze. Proxy-IP-Vertrauen nur explizit für die konkrete Infrastruktur konfigurieren. Mailpit-Ports bleiben lokal gebunden und dürfen nicht öffentlich freigegeben werden.
+Dieser PR ist ein lokal getesteter Entwicklungsstand, kein vollständiger Produktions-Rollout. Das Schema entsteht inzwischen ausschließlich aus versionierten Migrationen (`backend/src/database/migrations/`, beim Start ausgeführt; kein `synchronize`). Vor Deployment: HTTPS mit same-site Frontend/API (am einfachsten gemeinsamer Origin mit Reverse Proxy), tatsächlicher SMTP-Anbieter und gültiger Absender, Zustellbarkeit/SPF/DKIM sowie Betrieb/Monitoring und Aufräumen abgelaufener Auth-Datensätze. Proxy-IP-Vertrauen nur explizit für die konkrete Infrastruktur konfigurieren (`TRUST_PROXY_HOPS`). Mailpit-Ports bleiben lokal gebunden und dürfen nicht öffentlich freigegeben werden.

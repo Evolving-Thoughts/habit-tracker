@@ -33,7 +33,7 @@ export type WeekReviewAnswers = {
 
 /**
  * Where a campaign stood: its quests done against all of them, the campaign
- * itself included, as in the burn-up. `source` says where the numbers come
+ * itself not counted, as in the burn-up. `source` says where the numbers come
  * from: a stored snapshot, the live todos, or creation and completion times
  * read back when no snapshot covers the moment.
  */

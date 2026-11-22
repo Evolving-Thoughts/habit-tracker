@@ -45,11 +45,15 @@ export function effectiveDuration(
 }
 
 /**
- * A pause shorter than this is part of the work: resuming within it
- * continues the block before the pause, and the pause counts as worked.
+ * A pause shorter than this is part of the block: resuming within it
+ * continues the block before the pause, and its log counts the pause as
+ * worked (the shown time leaves it out, `idleMilliseconds`).
  */
 export const BLOCK_GAP_MS = 60_000;
-/** A block shorter than this is not logged, and its time does not count. */
+/**
+ * A block shorter than this is not logged; the stopwatch still shows its time
+ * (`unloggedBlock`), and keeps it once the block is over.
+ */
 export const MIN_BLOCK_MS = 60_000;
 
 /**
@@ -111,8 +115,8 @@ export async function closeWorkSegment(
 /**
  * Starts the next stretch of a paused stopwatch at `now`. Within
  * `BLOCK_GAP_MS` of the pause it continues the block before it: the stretch
- * starts where that block started, so the pause counts as worked and the
- * block's log is extended when it ends. Otherwise a new block begins. The
+ * starts where that block started, so the block's log counts the pause as
+ * worked and is extended when it ends; the shown time leaves the pause out. Otherwise a new block begins. The
  * caller sets the target moment.
  */
 export function resumeWorkSegment(timer: TimerEntity, now: Date): void {

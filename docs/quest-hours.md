@@ -165,9 +165,10 @@ resolves both from one read of the user's categories.
   `CategorySettings.vue` (also when creating one).
 - Icons are drawn in `AppIcon.vue` in the app's stroke family.
 - `CampaignFields.vue` edits colour (`MarkPicker`), icon (radio group) and "Wochenziel" in
-  hours (halves allowed, empty is none). `PlannerItemEditor.vue` offers it for
-  a todo without parent, behind the disclosure "Kampagne", which starts open
-  once one of the three is set; `CreateTodoForm.vue` shows it open when the
+  hours (halves allowed, empty is none). `PlannerItemEditor.vue` shows it
+  inline, without a disclosure, when the todo already is a campaign; for a
+  loose top-level quest it sits behind the disclosure "Kampagne", which starts
+  open once one of the three is set; `CreateTodoForm.vue` shows it open when the
   Kampagnen view creates a new campaign. Hours become minutes in `utils/quest-hours.ts`.
 - `CampaignsView.vue` starts with a strip of four figures
   (`CampaignStats.vue`: Kampagnen-Stunden this week, `questMinutes`, and

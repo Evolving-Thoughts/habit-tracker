@@ -21,7 +21,7 @@ type SortableOptions = {
   sort?: boolean;
   /**
    * Selector of items that hold their place: a card can be dropped next to
-   * them, but they never lift (an appointment anchored by its time). They
+   * them, but they never lift (a read-only calendar event on Heute). They
    * still count in `onMove`'s places.
    */
   anchor?: string;

@@ -100,13 +100,19 @@ Every query is scoped to the user; occurrences through their habit.
   with open quests, see `todo-hierarchy.md`; each names its `campaign`, so
   the column draws the stripe). Its list is part of the board's SortableJS
   group in both directions. Collapsed it is a rail as wide as its toggle
-  (2.75rem) with the count. Without a choice it opens when the board fits its width and one day,
-  and otherwise starts collapsed (`questlogStartsOpen`); toggling stores the explicit
+  (2.75rem) with the count. Without a choice it opens when the board's
+  frame fits the open column and one day (at least 12 + 0.5 + 14 = 26.5rem;
+  before the frame is measured, from 56rem), and otherwise starts collapsed
+  (`questlogStartsOpen`); toggling stores the explicit
   choice per device in `localStorage` (`plan:questlog` = `open` or
   `closed`), which then wins at any width. When the board has to scroll
   sideways the column is sticky at the left edge, on an opaque ground.
 - **Liegen geblieben** (`PlanOverdue.vue`), only when `overdue` has
-  entries. The column starts expanded and its toggle collapses it to a rail. Its quests drag onto
+  entries. Open it is a day column of 14rem; its chevron toggle
+  ("Liegen geblieben ausblenden" / "einblenden") folds it to a 2.75rem rail
+  with the title running vertically. Open by default; the choice is stored
+  per device in `localStorage` (`plan:overdue` = `open` or `closed`), like
+  the Questlog's. Its quests drag onto
   a day or into the Questlog column and move through their menu (Heute,
   Morgen, Nächste Woche, Anderer Tag …); its runs drag onto a day of their
   window and move through Heute's menu. They take no arrow keys and the
@@ -119,7 +125,8 @@ Every query is scoped to the user; occurrences through their habit.
 The view measures its frame with a `ResizeObserver` and counts how many day
 columns of at least 14rem fit beside the Questlog column (12rem open,
 2.75rem as a rail) and, when there is one, the column of what was left
-behind, with 0.5rem gaps (`utils/week-plan.ts` `fittingDays`, `BOARD`). The
+behind (14rem open, 2.75rem folded, so folding it frees room for days),
+with 0.5rem gaps (`utils/week-plan.ts` `fittingDays`, `BOARD`). The
 columns share the rest of the width (`boardColumns`: `minmax(14rem, 1fr)`).
 At least one day shows, from 56rem at least two; where even that does not
 fit, the board scrolls sideways inside itself (never the page) and opens so
@@ -150,7 +157,8 @@ redirected by the router to the first day of that week still ahead
   quest's card (its title button), the arrow keys move it like dragging:
   ArrowUp / ArrowDown one place in the day's order, ArrowLeft / ArrowRight
   to the end of the day before or after among the days shown (never into
-  the past); the focus stays on the card and the move is announced in the
+  the past; an appointment goes to the end only as far as the clock allows,
+  before the first appointment later than it, `clockBoundIndex`); the focus stays on the card and the move is announced in the
   live region. A daily's run is a card like a quest's: a tap opens the
   daily's editor with the notes of this run (`EditItemDialog` with
   `occurrenceId`), a stored open run drags and takes the arrow keys within
@@ -211,5 +219,8 @@ redirected by the router to the first day of that week still ahead
   quiet reload). A failed write puts the old plan (and column) back at once,
   shows the error and reloads quietly to show what the server kept.
 - `useSortable` takes an optional `group` (and `accepts`, and `sort: false`
-  for a list whose items only leave it) so lists trade items; it reports the
+  for a list whose items only leave it) so lists trade items, and an
+  optional `anchor` selector for items that hold their place (a card can be
+  dropped next to them, but they never lift; Heute uses it for Google
+  events); it reports the
   drop's target list and its index among all children.
