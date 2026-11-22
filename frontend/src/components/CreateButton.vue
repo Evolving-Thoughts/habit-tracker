@@ -65,7 +65,7 @@ const emit = defineEmits<{ click: [] }>();
   outline: 3px solid var(--color-action-strong);
   outline-offset: 3px;
 }
-@media (min-width: 56rem) {
+@media (min-width: 56rem), (hover: hover) and (pointer: fine) {
   /* Docked beside the page column instead of drifting to the window edge. */
   .create-button {
     right: max(1rem, calc(50vw - (var(--page-width) / 2) - 4.5rem));

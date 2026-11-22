@@ -75,7 +75,7 @@ const emit = defineEmits<{ undo: [] }>();
   }
 }
 
-@media (min-width: 56rem) {
+@media (min-width: 56rem), (hover: hover) and (pointer: fine) {
   .undo-toast {
     bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
   }

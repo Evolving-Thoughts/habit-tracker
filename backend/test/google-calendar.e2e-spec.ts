@@ -579,7 +579,7 @@ describe('Google calendar sync (e2e)', () => {
         start: { dateTime: '2026-10-30T05:00:00.000Z' },
         end: { dateTime: '2026-10-30T05:30:00.000Z' },
       });
-      expect(description(event)).toBe('Logbuch Â· gemessene Arbeitszeit');
+      expect(description(event)).toBe('Logbuch · gemessene Arbeitszeit');
     });
 
     it('names the campaign of the stretch in the event', async () => {
@@ -593,7 +593,7 @@ describe('Google calendar sync (e2e)', () => {
       await sync();
 
       expect(description(google.events(OWN)[0])).toBe(
-        'Logbuch Â· gemessene Arbeitszeit\nKampagne: Buch',
+        'Logbuch · gemessene Arbeitszeit\nKampagne: Buch',
       );
     });
 

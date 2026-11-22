@@ -112,10 +112,8 @@ watch(
 
 .settings-view__sections > .card {
   padding: var(--space-5);
-  /* A section opened by address stops a little below the fixed top bar. */
-  scroll-margin-top: calc(
-    var(--tab-bar-height) + env(safe-area-inset-top, 0px) + var(--space-4)
-  );
+  /* A section opened by address stops a little below the page's top. */
+  scroll-margin-top: calc(env(safe-area-inset-top, 0px) + var(--space-4));
 }
 
 .settings-view .section-title {
@@ -153,7 +151,7 @@ watch(
 }
 
 @media (min-width: 56rem), (hover: hover) and (pointer: fine) {
-  /* Clear of the slimmer top bar of wide screens. */
+  /* Clear of the top bar of wide screens and mouse windows. */
   .settings-view__sections > .card {
     scroll-margin-top: calc(
       3.5rem + env(safe-area-inset-top, 0px) + var(--space-4)

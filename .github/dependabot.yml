@@ -1,8 +1,9 @@
-# Wöchentliche, gebündelte Update-PRs. Sicherheitsupdates kommen davon unabhängig,
-# sobald "Dependabot security updates" in den Repo-Einstellungen an ist.
+# Wöchentliche, gebündelte Update-PRs, montags. Sicherheitsupdates kommen davon
+# unabhängig, sobald "Dependabot security updates" in den Repo-Einstellungen an ist.
 # Jeder Merge wird nach grünem CI automatisch deployt (docs/deploy.md).
 version: 2
 updates:
+  # Pakete von Backend und Frontend.
   - package-ecosystem: npm
     directories: [/backend, /frontend]
     schedule:
@@ -12,6 +13,8 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+
+  # Basis-Images der beiden Dockerfiles (node, nginx).
   - package-ecosystem: docker
     directories: [/backend, /frontend]
     schedule:
@@ -20,10 +23,28 @@ updates:
     groups:
       base-images:
         patterns: ["*"]
+
+  # Images der Compose-Dateien (PostgreSQL, Mailpit). Ein neues
+  # PostgreSQL-Hauptrelease braucht ein Upgrade der Daten (pg_upgrade oder
+  # Dump und Restore), deshalb schlägt Dependabot es nicht von selbst vor.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    ignore:
+      - dependency-name: postgres
+        update-types: [version-update:semver-major]
+    groups:
+      compose-images:
+        patterns: ["*"]
+
+  # Versionen der GitHub Actions in den Workflows.
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: monthly
+      interval: weekly
+      day: monday
     groups:
       actions:
         patterns: ["*"]

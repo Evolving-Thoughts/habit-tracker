@@ -290,12 +290,16 @@ main:focus {
 
 /* Keep page content clear of the fixed tab bar. */
 body:has(.tab-bar) {
-  padding-top: calc(var(--tab-bar-height) + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(
+    var(--tab-bar-height) + env(safe-area-inset-bottom, 0px)
+  );
 }
 
+/* Wide screens and mouse windows: the bar sits at the top instead. */
 @media (min-width: 56rem), (hover: hover) and (pointer: fine) {
   body:has(.tab-bar) {
     padding-top: calc(3.5rem + env(safe-area-inset-top, 0px));
+    padding-bottom: 0;
   }
 }
 

@@ -133,7 +133,7 @@ test("the old address of Kategorien opens its section in Einstellungen, and Back
   const title = page.getByRole("heading", { name: "Kategorien", level: 2 });
   await expect(title).toBeFocused();
   await expect(title).toBeInViewport();
-  // Not under the fixed bar at the top, on phones and wide screens alike.
+  // Not under the fixed bar at the top of wide screens.
   const titleTop = await title.evaluate(
     (element) => element.getBoundingClientRect().top,
   );

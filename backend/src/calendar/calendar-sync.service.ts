@@ -554,8 +554,9 @@ export class CalendarSyncService {
 
   /**
    * The Logbuch only goes out: every finished stretch of five minutes or more
-   * becomes an event at its real times. A corrected log moves its event, a
-   * deleted or shortened one loses it. An event deleted in Google stays
+   * becomes an event at its real times. A corrected log (moved, lengthened
+   * or shortened) patches its event; only a deleted log loses it. An event
+   * deleted in Google stays
    * deleted: its link is kept suppressed until the log itself goes.
    */
   private async logChanges(
@@ -586,8 +587,7 @@ export class CalendarSyncService {
       const log = known.find((item) => item.id === link.workLogId);
       if (link.suppressed) {
         if (!log) await manager.getRepository(CalendarLinkEntity).remove(link);
-      } else if (!log)
-        operations.push({ type: 'delete', link });
+      } else if (!log) operations.push({ type: 'delete', link });
       else if (log.updatedAt > link.syncedAt) patched.push({ link, log });
     }
     if (!patched.length && !fresh.length) return operations;
@@ -615,7 +615,7 @@ export class CalendarSyncService {
   /** Named as Logbuch in Google, so it never reads as a plan. */
   private logChange(log: CampaignLog): Change {
     const description = [
-      'Logbuch Â· gemessene Arbeitszeit',
+      'Logbuch · gemessene Arbeitszeit',
       ...(log.campaign ? [`Kampagne: ${log.campaign.title}`] : []),
     ].join('\n');
     return {

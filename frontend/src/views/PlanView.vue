@@ -177,7 +177,24 @@ function readQuestlogChoice(): string | null {
     return null;
   }
 }
-const overdueOpen = ref(true);
+/** "Liegen geblieben" stays as it was left on this device; open by default. */
+const OVERDUE_KEY = "plan:overdue";
+function readOverdueOpen(): boolean {
+  try {
+    return localStorage.getItem(OVERDUE_KEY) !== "closed";
+  } catch {
+    return true;
+  }
+}
+const overdueOpen = ref(readOverdueOpen());
+function toggleOverdue(): void {
+  overdueOpen.value = !overdueOpen.value;
+  try {
+    localStorage.setItem(OVERDUE_KEY, overdueOpen.value ? "open" : "closed");
+  } catch {
+    // Without storage the choice lasts until the page is left.
+  }
+}
 /** A choice made on this device; until then the window's width decides. */
 const questlogChoice = ref<string | null>(readQuestlogChoice());
 const questlogOpen = computed(() =>
@@ -1195,7 +1212,7 @@ useShortcutHandlers({
           v-if="hasOverdue"
           :entries="plan.overdue"
           :open="overdueOpen"
-          @toggle="overdueOpen = !overdueOpen"
+          @toggle="toggleOverdue"
           :busy="writes.busy.value || dialogBusy"
           :menu="(entry) => entryMenu(entry, null)"
           @edit="(entry) => openEditing(entry, 'overdue')"
