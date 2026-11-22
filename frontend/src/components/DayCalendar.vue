@@ -93,7 +93,11 @@ const logs = computed(() =>
 const holdsBack = computed(() =>
   (props.day.work.logs ?? []).some((log) => props.hiddenLogs?.has(log.id)),
 );
-const plan = computed(() => planBlocks(props.day));
+// Without the held-back stretches, so an entry measured only by them shows
+// as done (or as its appointment) instead of vanishing until the undo ends.
+const plan = computed(() =>
+  planBlocks({ ...props.day, work: { ...props.day.work, logs: logs.value } }),
+);
 const stretches = computed(() =>
   isPastOrToday.value
     ? logBlocks({ ...props.day.work, logs: logs.value }, props.day.date)

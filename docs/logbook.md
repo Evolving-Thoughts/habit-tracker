@@ -13,7 +13,8 @@ Every closed stretch of work is a row in `work_logs`
 (pause, end, completion, see `timers-and-completion.md`); a running stretch has
 no row yet. It works in blocks: a stretch resumed within a minute of its pause
 extends the row of the block before it (`endedAt` moves on, the short pause is
-work), and a block shorter than a minute gets no row at all, so quick pause and
+work), and a block shorter than a minute gets a row only once work resumes
+after a minute or more; ended right away it gets none, so quick pause and
 play never leaves 0-minute stretches. Rows are added, corrected and deleted by
 hand through `POST /work-logs`, `PATCH /work-logs/:id` and
 `DELETE /work-logs/:id`.
@@ -159,6 +160,9 @@ the view is left (unmount) or the page closes (`pagehide`; the request uses
   rule below. Holding the delete back changes nothing on the server until it
   is final, so undo is exact and Google never sees a step that was taken
   back.
+- While a delete is held back, the entry it measured shows as if it had no
+  stretch: its completion mark, or its appointment, stands in the column
+  (`planBlocks` gets the day without the held-back stretches).
 - While a delete is held back, the head shows "Logbuch" without its total:
   the server's figure still counts the stretch, and a figure that is about to
   be wrong is not shown.

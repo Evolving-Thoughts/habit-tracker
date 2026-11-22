@@ -27,10 +27,10 @@ is the one sorting rule:
    after the appointment before it on the clock, or at the head of the day.
    Any change of a todo's time resets its place: a new time anchors it
    anew right after the appointment before it on the clock, a cleared time
-   sends it to the end of its day. Changing a daily's time does not touch
-   the places of its runs. Migration `1796200000000-AnchoredAppointments`
-   cleared the places timed todos carried from before, when they meant
-   nothing; habit runs kept theirs.
+   sends it to the end of its day. A daily's new time does the same for its
+   open runs (`HabitsService.update` clears their `dayPosition`). Migration
+   `1796200000000-AnchoredAppointments` cleared the places timed todos
+   carried from before, when they meant nothing; habit runs kept theirs.
 
 The time-based replanner ("Neu planen"), the day-end setting and the per-calendar
 "blocks planning" switch are gone: there are no time slots to redistribute.

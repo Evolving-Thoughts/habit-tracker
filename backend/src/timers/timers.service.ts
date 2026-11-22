@@ -316,7 +316,7 @@ export class TimersService {
       if (action === 'pause' && timer.state === 'running')
         await this.pause(manager, timer, now);
       else if (action === 'resume' && timer.state === 'paused') {
-        resumeWorkSegment(timer, now);
+        await resumeWorkSegment(manager, timer, now);
         // A block continued past its target stays reached; nothing is due again.
         timer.targetReachesAt = timer.targetReachedAt
           ? null

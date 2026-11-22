@@ -101,7 +101,9 @@ The stopwatch logs **blocks**, not every stretch (`closeWorkSegment` and
   the pause as worked. When it ends, the block's work log (`timers.workLogId`) gets the
   new `endedAt` instead of a second row; Google sync patches its event.
 - **A block shorter than 60 seconds** that continues nothing gets no work
-  log (a stretch of seconds after a mis-tap never reaches the log). Several
+  log while it may still be a mis-tap. Ended or completed right away, it never
+  reaches the log. Resumed after a minute or more, it was work: it gets a log
+  of its own (`resumeWorkSegment`), and the new stretch starts a block. Several
   short stretches with short pauses between them form one block and are
   logged once they reach a minute together.
 - While paused, the timer row keeps `blockStartedAt`, `pausedAt` and
@@ -118,8 +120,8 @@ The stopwatch logs **blocks**, not every stretch (`closeWorkSegment` and
   and a stretch under a minute that has no log yet stays in view while
   paused (`unloggedBlock`). So the time neither jumps back on a pause nor
   ahead on resume. When a block is over (resumed after a minute or more),
-  `elapsedMilliseconds` becomes the shown time, its pauses left out and an
-  unlogged short stretch kept, and `idleMilliseconds` goes back to 0
+  `elapsedMilliseconds` becomes the shown time, its pauses left out (a short
+  block gets its log at that moment), and `idleMilliseconds` goes back to 0
   (migration `1796300000000-StopwatchIdle`). So `elapsedMilliseconds` is the
   base the stopwatch counts on from, not the sum of its logged blocks.
 - The twelve-hour cap applies per block (it is measured from
@@ -131,8 +133,9 @@ The stopwatch logs **blocks**, not every stretch (`closeWorkSegment` and
 target, all sources, overlaps counted once (`loggedMilliseconds`, using
 `coveredMilliseconds` of `work-logs/work-time.ts`): a reopened quest, or a
 daily run started again later, counts on from what it already has. As the
-log joins short pauses and leaves out stretches under a minute, this can
-differ slightly from what an earlier stopwatch on the target showed. The Soll
+log counts short pauses inside a block as work and leaves out a last stretch
+under a minute, this can differ slightly from what an earlier stopwatch on
+the target showed. The Soll
 compares against this total. When it is already passed at the start, the
 stopwatch is marked reached right away (`targetReachedAt` and `pushHandledAt`
 set to the start), so nothing announces it.

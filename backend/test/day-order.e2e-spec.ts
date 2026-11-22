@@ -156,6 +156,37 @@ describe('Order of a day (e2e)', () => {
     ]);
   });
 
+  it('anchors a daily anew when its time changes, like a quest', async () => {
+    const habit = (
+      await request(server)
+        .post('/habits')
+        .send({
+          title: 'Laufen',
+          timeOfDay: '18:00',
+          schedule: { type: 'interval', intervalDays: 1 },
+        })
+        .expect(201)
+    ).body as { id: number };
+    const first = await todo('Vorher');
+    const dentist = await todo('Zahnarzt', { timeOfDay: '14:00' });
+    const middle = await todo('Mitte');
+    const run = (await items()).find((item) => item.type === 'habit')!;
+    await sort([
+      { type: 'todo', id: first },
+      { type: 'todo', id: dentist },
+      { type: 'todo', id: middle },
+      { type: 'habit', id: run.occurrenceId! },
+    ]).expect(204);
+    expect(await titles()).toEqual(['Vorher', 'Zahnarzt', 'Mitte', 'Laufen']);
+
+    // Earlier now: it stands right after the appointment before it.
+    await request(server)
+      .patch(`/habits/${habit.id}`)
+      .send({ timeOfDay: '15:00' })
+      .expect(200);
+    expect(await titles()).toEqual(['Vorher', 'Zahnarzt', 'Laufen', 'Mitte']);
+  });
+
   it('names the campaign an item works towards', async () => {
     const campaign = await todo('Buch schreiben', { scheduledDate: null });
     const series = await todo('Teil 1', {

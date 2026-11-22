@@ -121,6 +121,13 @@ describe("DayCalendar", () => {
     expect(wrapper.get(".day-calendar__now-time").text()).toBe("14:00");
   });
 
+  it("shows the completion while the delete of its only stretch is held back", () => {
+    const wrapper = render({ hiddenLogs: new Set([1]) });
+    const lane = wrapper.get('ol[aria-label="Zeitachse"]');
+    expect(wrapper.find("button.log-block").exists()).toBe(false);
+    expect(lane.text()).toContain("Kapitel, erledigt um 11:00");
+  });
+
   it("shows no Jetzt line on another day and only appointments on a coming one", () => {
     const wrapper = render({ day: day({ date: "2026-10-09", items: [] }) });
     expect(wrapper.find(".day-calendar__now").exists()).toBe(false);
