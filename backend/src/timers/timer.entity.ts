@@ -73,7 +73,7 @@ export class TimerEntity {
   /**
    * Start of the running stretch; closed into a work log when it ends. A
    * stretch resumed within a minute of its pause starts where the block
-   * before it started (`resumeWorkSegment`).
+   * before it started (`transition` in `timer-transition.ts`).
    */
   @Column({ type: 'timestamptz', nullable: true })
   segmentStartedAt!: Date | null;

@@ -398,6 +398,78 @@ describe('Google calendar sync (e2e)', () => {
     expect(stored.movedToDate).toBeNull();
   });
 
+  it('does not move a run of a paused habit from Google', async () => {
+    await connect();
+    const { id: habitId } = (
+      await request(server)
+        .post('/habits')
+        .send({
+          title: 'Laufen',
+          timeOfDay: '09:00',
+          schedule: {
+            type: 'interval',
+            intervalDays: 7,
+            missedOccurrencePolicy: 'carry_over',
+          },
+        })
+        .expect(201)
+    ).body as { id: number };
+    await request(server).get('/day-planner/today').expect(200);
+    await sync();
+    const [occurrence] = await db.getRepository(HabitOccurrenceEntity).find();
+    await request(server)
+      .patch(`/habits/${habitId}`)
+      .send({ isActive: false })
+      .expect(200);
+    // The same move through the app is refused.
+    await request(server)
+      .post(`/habit-occurrences/${occurrence.id}/reschedule`)
+      .send({ date: '2026-10-31' })
+      .expect(409);
+
+    Object.assign(google.events(OWN)[0], {
+      ...timed('2026-10-31T08:00:00.000Z', '2026-10-31T08:20:00.000Z'),
+      updated: google.stamp(),
+    });
+    await sync();
+
+    const stored = await db
+      .getRepository(HabitOccurrenceEntity)
+      .findOneByOrFail({ id: occurrence.id });
+    expect(stored.movedToDate).toBeNull();
+  });
+
+  it('takes a quest moved in Google out of the Questlog', async () => {
+    await connect();
+    const id = await scheduledTodo();
+    await sync();
+    // Back into the Questlog in the app; Google moves it later.
+    await request(server)
+      .patch(`/todos/${id}`)
+      .send({ scheduledDate: null })
+      .expect(200);
+    const unplanned = await db
+      .getRepository(TodoEntity)
+      .findOneByOrFail({ id });
+    expect(unplanned.backlogPosition).not.toBeNull();
+    Object.assign(google.events(OWN)[0], {
+      ...timed('2026-10-31T09:00:00.000Z', '2026-10-31T09:30:00.000Z'),
+      updated: google.stamp(),
+    });
+    await sync();
+
+    const moved = await db.getRepository(TodoEntity).findOneByOrFail({ id });
+    expect(moved).toMatchObject({
+      scheduledDate: '2026-10-31',
+      timeOfDay: '10:00',
+      backlogPosition: null,
+      dayPosition: null,
+    });
+    const backlog = (await request(server).get('/todos/backlog').expect(200))
+      .body as { id: number }[];
+    expect(backlog.map((todo) => todo.id)).not.toContain(id);
+  });
+
   it('deletes the event when the todo is deleted in the app', async () => {
     await connect();
     const id = await scheduledTodo();

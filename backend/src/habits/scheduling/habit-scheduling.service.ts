@@ -13,12 +13,9 @@ import { dayOf } from '../../common/date/local-day';
 import { Clock } from '../../common/clock';
 import { lockUser, UserUnitOfWork } from '../../common/user-unit-of-work';
 import { ownedOccurrences } from '../../habit-occurrences/owned-occurrences';
+import { hasOpenTimer, releaseTimers } from '../../timers/timer-target';
 import {
   effectiveDuration,
-  hasOpenTimer,
-  releaseTimers,
-} from '../../timers/timer-target';
-import {
   HabitOccurrenceEntity,
   occurrenceDueDate,
 } from '../../habit-occurrences/entities/habit-occurrence.entity';
@@ -45,6 +42,14 @@ import {
   lifecycleChanges,
 } from './occurrence-lifecycle';
 import { loadStreaks, NO_STREAK, Streak } from '../streaks';
+
+/** A run opened for a change (`HabitSchedulingService.openRun`). */
+export type OpenRun = {
+  habit: HabitEntity;
+  occurrence: HabitOccurrenceEntity;
+  /** The schedule version active at the moment the run was opened. */
+  active: HabitScheduleVersionEntity | undefined;
+};
 
 @Injectable()
 export class HabitSchedulingService {
@@ -230,19 +235,26 @@ export class HabitSchedulingService {
     });
   }
 
+  /**
+   * Stores what has to change so the habit's runs match `now` (resolving
+   * runs that ran out, creating due ones) and ends the stopwatch of every
+   * run it resolves. Returns the habit's schedule versions it read; the
+   * caller must hold the habit's lock (`lockHabit`).
+   */
   async reconcile(
     manager: EntityManager,
     habit: HabitEntity,
     now: Date,
-  ): Promise<void> {
+  ): Promise<HabitScheduleVersionEntity[]> {
     const repository = manager.getRepository(HabitOccurrenceEntity);
     const occurrences = await repository.find({
       where: { habitId: habit.id },
       order: { scheduledDate: 'ASC', id: 'ASC' },
     });
+    const versions = await this.getVersions(manager, habit.id);
     const { resolve, create } = lifecycleChanges(
       habit,
-      await this.getVersions(manager, habit.id),
+      versions,
       occurrences,
       now,
     );
@@ -261,12 +273,101 @@ export class HabitSchedulingService {
       await repository.save(
         repository.create({ habitId: habit.id, ...occurrence }),
       );
+    return versions;
+  }
+
+  /**
+   * Opens one of the user's habits: locks it (after the user row) and brings
+   * its runs up to `now`. Returns the habit and its schedule versions.
+   */
+  async openHabit(
+    manager: EntityManager,
+    userId: string,
+    habitId: number,
+    now: Date,
+  ): Promise<{ habit: HabitEntity; versions: HabitScheduleVersionEntity[] }> {
+    const habit = await this.lockHabit(userId, manager, habitId);
+    const versions = await this.reconcile(manager, habit, now);
+    return { habit, versions };
+  }
+
+  /**
+   * Stores a habit changed under its lock. A paused habit ends the stopwatch
+   * of its runs; then its runs are brought up to `now`.
+   */
+  async saveHabit(
+    manager: EntityManager,
+    habit: HabitEntity,
+    now: Date,
+  ): Promise<void> {
+    await manager.getRepository(HabitEntity).save(habit);
+    if (!habit.isActive)
+      await releaseTimers(manager, habit.userId, { habitId: habit.id }, now);
+    await this.reconcile(manager, habit, now);
+  }
+
+  /** Deletes a habit (softly, its runs stay) and ends the stopwatch of its runs. */
+  async removeHabit(
+    manager: EntityManager,
+    userId: string,
+    habitId: number,
+    now: Date,
+  ): Promise<void> {
+    const habit = await this.lockHabit(userId, manager, habitId);
+    await manager.getRepository(HabitEntity).softRemove(habit);
+    await releaseTimers(manager, userId, { habitId: habit.id }, now);
+  }
+
+  /**
+   * Opens one of the user's runs for a change: locks its habit (after the
+   * user row, the one lock order), brings the habit's runs up to `now` and
+   * reads the run as it is then, with its habit and the schedule version
+   * active at `now`. Throws `NotFoundException` for a run the user does not
+   * own. Call it inside the per-user unit of work.
+   */
+  async openRun(
+    manager: EntityManager,
+    userId: string,
+    id: number,
+    now: Date,
+  ): Promise<OpenRun> {
+    const initial = await ownedOccurrences(manager, userId)
+      .andWhere('occurrence.id = :id', { id })
+      .getOne();
+    if (!initial)
+      throw new NotFoundException(
+        `Habit occurrence with ID ${id} was not found`,
+      );
+    const habit = await this.lockHabit(userId, manager, initial.habitId);
+    const versions = await this.reconcile(manager, habit, now);
+    const occurrence = await manager
+      .getRepository(HabitOccurrenceEntity)
+      .findOneByOrFail({ id });
+    return { habit, occurrence, active: activeVersion(versions, now) };
   }
 
   async changeStatus(
     userId: string,
     id: number,
     targetStatus: HabitOccurrenceStatus,
+  ): Promise<HabitOccurrenceEntity> {
+    return this.unitOfWork.run(userId, (manager) =>
+      this.setRunStatus(manager, userId, id, targetStatus, this.clock.now()),
+    );
+  }
+
+  /**
+   * Completes, skips or reopens a run (`openRun` first). Only a run of the
+   * active version that is due and not run out can change; resolving it
+   * ends its stopwatch, reopening needs it to be the habit's only open or
+   * completed-today run. Positions in the day's order stay.
+   */
+  async setRunStatus(
+    manager: EntityManager,
+    userId: string,
+    id: number,
+    targetStatus: HabitOccurrenceStatus,
+    now: Date,
   ): Promise<HabitOccurrenceEntity> {
     if (
       ![
@@ -278,89 +379,73 @@ export class HabitSchedulingService {
       throw new BadRequestException('Invalid manual status');
     }
 
-    const initial = await ownedOccurrences(this.dataSource.manager, userId)
-      .andWhere('occurrence.id = :id', { id })
-      .getOne();
+    const { habit, occurrence, active } = await this.openRun(
+      manager,
+      userId,
+      id,
+      now,
+    );
+    const today = dayOf(now);
+    const repository = manager.getRepository(HabitOccurrenceEntity);
 
-    if (!initial) {
-      throw new NotFoundException(
-        `Habit occurrence with ID ${id} was not found`,
+    if (occurrence.status === targetStatus) {
+      return occurrence;
+    }
+
+    if (occurrence.status === HabitOccurrenceStatus.CANCELLED) {
+      throw new ConflictException('Cancelled occurrences cannot be changed');
+    }
+
+    if (
+      !habit.isActive ||
+      !active ||
+      occurrence.scheduleVersionId !== active.id ||
+      occurrenceDueDate(occurrence) > today ||
+      expiresAt(active, occurrence.scheduledDate) <= now
+    ) {
+      throw new ConflictException('This occurrence is no longer actionable');
+    }
+
+    if (
+      occurrence.status !== HabitOccurrenceStatus.PENDING &&
+      targetStatus !== HabitOccurrenceStatus.PENDING
+    ) {
+      throw new ConflictException(
+        'Reopen an occurrence before changing its resolved status',
       );
     }
 
-    return this.unitOfWork.run(userId, async (manager) => {
-      const habit = await this.lockHabit(userId, manager, initial.habitId);
-      const now = this.clock.now();
-      const today = dayOf(now);
-
-      await this.reconcile(manager, habit, now);
-
-      const repository = manager.getRepository(HabitOccurrenceEntity);
-      const occurrence = await repository.findOneByOrFail({ id });
-
-      if (occurrence.status === targetStatus) {
-        return occurrence;
-      }
-
-      if (occurrence.status === HabitOccurrenceStatus.CANCELLED) {
-        throw new ConflictException('Cancelled occurrences cannot be changed');
-      }
-
-      const active = activeVersion(
-        await this.getVersions(manager, habit.id),
-        now,
-      );
+    if (targetStatus === HabitOccurrenceStatus.PENDING) {
+      const others = await repository.find({
+        where: { habitId: habit.id },
+      });
 
       if (
-        !habit.isActive ||
-        !active ||
-        occurrence.scheduleVersionId !== active.id ||
-        occurrenceDueDate(occurrence) > today ||
-        expiresAt(active, occurrence.scheduledDate) <= now
-      ) {
-        throw new ConflictException('This occurrence is no longer actionable');
-      }
-
-      if (
-        occurrence.status !== HabitOccurrenceStatus.PENDING &&
-        targetStatus !== HabitOccurrenceStatus.PENDING
+        others.some(
+          (item) =>
+            item.id !== occurrence.id &&
+            (item.status === HabitOccurrenceStatus.PENDING ||
+              isCompletedOn(item, today)),
+        )
       ) {
         throw new ConflictException(
-          'Reopen an occurrence before changing its resolved status',
+          'Another pending or completed-today occurrence exists',
         );
       }
+    }
 
-      if (targetStatus === HabitOccurrenceStatus.PENDING) {
-        const others = await repository.find({
-          where: { habitId: habit.id },
-        });
+    occurrence.status = targetStatus;
+    occurrence.resolvedDate =
+      targetStatus === HabitOccurrenceStatus.PENDING ? null : today;
+    occurrence.resolvedAt =
+      targetStatus === HabitOccurrenceStatus.COMPLETED ? now : null;
+    occurrence.cancellationReason = null;
 
-        if (
-          others.some(
-            (item) =>
-              item.id !== occurrence.id &&
-              (item.status === HabitOccurrenceStatus.PENDING ||
-                isCompletedOn(item, today)),
-          )
-        ) {
-          throw new ConflictException(
-            'Another pending or completed-today occurrence exists',
-          );
-        }
-      }
-
-      occurrence.status = targetStatus;
-      occurrence.resolvedDate =
-        targetStatus === HabitOccurrenceStatus.PENDING ? null : today;
-      occurrence.resolvedAt =
-        targetStatus === HabitOccurrenceStatus.COMPLETED ? now : null;
-      occurrence.cancellationReason = null;
-
-      const saved = await repository.save(occurrence);
-      if (targetStatus !== HabitOccurrenceStatus.PENDING)
-        await releaseTimers(manager, userId, { occurrenceIds: [id] }, now);
-      return saved;
-    });
+    const saved = await repository.save(occurrence);
+    // A resolved run is no stopwatch target any more.
+    if (targetStatus !== HabitOccurrenceStatus.PENDING)
+      await releaseTimers(manager, userId, { occurrenceIds: [id] }, now);
+    return saved;
   }
 
   /**
@@ -373,58 +458,57 @@ export class HabitSchedulingService {
     date: string,
   ): Promise<HabitOccurrenceEntity> {
     assertDateOnly(date);
+    return this.unitOfWork.run(userId, (manager) =>
+      this.moveRun(manager, userId, id, date, this.clock.now()),
+    );
+  }
 
-    const initial = await ownedOccurrences(this.dataSource.manager, userId)
-      .andWhere('occurrence.id = :id', { id })
-      .getOne();
+  /**
+   * Moves an open run of the active version of an active habit to `date`
+   * within its window (`openRun` first), never while a stopwatch runs on it.
+   * Throws `ConflictException` when it may not move. Its place in the day's
+   * order stays, as before.
+   */
+  async moveRun(
+    manager: EntityManager,
+    userId: string,
+    id: number,
+    date: string,
+    now: Date,
+  ): Promise<HabitOccurrenceEntity> {
+    const { habit, occurrence, active } = await this.openRun(
+      manager,
+      userId,
+      id,
+      now,
+    );
 
-    if (!initial) {
-      throw new NotFoundException(
-        `Habit occurrence with ID ${id} was not found`,
+    if (
+      !habit.isActive ||
+      !active ||
+      occurrence.status !== HabitOccurrenceStatus.PENDING ||
+      occurrence.scheduleVersionId !== active.id
+    ) {
+      throw new ConflictException(
+        'Diese Ausführung kann nicht mehr verschoben werden.',
       );
     }
 
-    return this.unitOfWork.run(userId, async (manager) => {
-      const habit = await this.lockHabit(userId, manager, initial.habitId);
-      const now = this.clock.now();
-      const today = dayOf(now);
-
-      await this.reconcile(manager, habit, now);
-
-      const repository = manager.getRepository(HabitOccurrenceEntity);
-      const occurrence = await repository.findOneByOrFail({ id });
-      const active = activeVersion(
-        await this.getVersions(manager, habit.id),
-        now,
+    if (!isInMoveWindow(active, occurrence.scheduledDate, date, dayOf(now))) {
+      throw new ConflictException(
+        'Der Tag liegt außerhalb des Terminfensters.',
       );
+    }
 
-      if (
-        !habit.isActive ||
-        !active ||
-        occurrence.status !== HabitOccurrenceStatus.PENDING ||
-        occurrence.scheduleVersionId !== active.id
-      ) {
-        throw new ConflictException(
-          'Diese Ausführung kann nicht mehr verschoben werden.',
-        );
-      }
+    if (await hasOpenTimer(manager, userId, { occurrenceId: id })) {
+      throw new ConflictException(
+        'Beende zuerst die Stoppuhr, bevor du das Daily verschiebst.',
+      );
+    }
 
-      if (!isInMoveWindow(active, occurrence.scheduledDate, date, today)) {
-        throw new ConflictException(
-          'Der Tag liegt außerhalb des Terminfensters.',
-        );
-      }
+    occurrence.movedToDate = date === occurrence.scheduledDate ? null : date;
 
-      if (await hasOpenTimer(manager, userId, { occurrenceId: id })) {
-        throw new ConflictException(
-          'Beende zuerst die Stoppuhr, bevor du das Daily verschiebst.',
-        );
-      }
-
-      occurrence.movedToDate = date === occurrence.scheduledDate ? null : date;
-
-      return repository.save(occurrence);
-    });
+    return manager.getRepository(HabitOccurrenceEntity).save(occurrence);
   }
 
   async history(

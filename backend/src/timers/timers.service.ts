@@ -5,23 +5,23 @@ import {
 } from '@nestjs/common';
 import { EntityManager, In } from 'typeorm';
 import { TodoEntity } from '../todos/entities/todo.entity';
-import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
+import {
+  effectiveDuration,
+  HabitOccurrenceEntity,
+} from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
 import { dayOf } from '../common/date/local-day';
 import { TimerEntity } from './timer.entity';
 import { StartTimerDto } from './timer.dto';
 import {
-  closeWorkSegment,
-  effectiveDuration,
   isOccurrenceTimerEligible,
   isTodoTimerEligible,
   loggedMilliseconds,
-  resumeWorkSegment,
+  recordTransition,
   stopTimer,
 } from './timer-target';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
-import { ownedOccurrences } from '../habit-occurrences/owned-occurrences';
 import {
   elapsedAt,
   forgottenSince,
@@ -95,19 +95,13 @@ export class TimersService {
         throw new ConflictException('Erledigte Quests zuerst wieder öffnen.');
       return todo;
     }
-    const first = await ownedOccurrences(manager, userId)
-      .andWhere('occurrence.id = :id', { id })
-      .getOne();
-    if (!first) throw new NotFoundException('Daily-Ausführung nicht gefunden.');
-    const habit = await this.scheduling.lockHabit(
-      userId,
-      manager,
-      first.habitId,
-    );
-    await this.scheduling.reconcile(manager, habit, now);
-    const occurrence = await manager.findOneByOrFail(HabitOccurrenceEntity, {
-      id,
-    });
+    const { habit, occurrence } = await this.scheduling
+      .openRun(manager, userId, id, now)
+      .catch((error: unknown) => {
+        if (error instanceof NotFoundException)
+          throw new NotFoundException('Daily-Ausführung nicht gefunden.');
+        throw error;
+      });
     if (!isOccurrenceTimerEligible(occurrence, habit, dayOf(now)))
       throw new ConflictException('Keine offene fällige Daily-Ausführung.');
     occurrence.habit = habit;
@@ -133,8 +127,7 @@ export class TimersService {
     timer: TimerEntity,
     at: Date,
   ): Promise<void> {
-    await closeWorkSegment(manager, timer, at);
-    timer.state = 'paused';
+    await recordTransition(manager, timer, 'pause', at);
     timer.targetReachesAt = null;
   }
   /**
@@ -316,7 +309,7 @@ export class TimersService {
       if (action === 'pause' && timer.state === 'running')
         await this.pause(manager, timer, now);
       else if (action === 'resume' && timer.state === 'paused') {
-        await resumeWorkSegment(manager, timer, now);
+        await recordTransition(manager, timer, 'resume', now);
         // A block continued past its target stays reached; nothing is due again.
         timer.targetReachesAt = timer.targetReachedAt
           ? null

@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
-import {
-  getBacklogTodos,
-  reorderBacklog,
-  updateTodoCompletion,
-} from "../api/day-planner.api";
+import { getBacklogTodos, reorderBacklog } from "../api/day-planner.api";
 import { planQuest } from "../api/questlog.api";
 import { useListFocus } from "../composables/useListFocus";
 import { useSortable } from "../composables/useSortable";
@@ -14,7 +10,7 @@ import ItemRow from "../components/ItemRow.vue";
 import { useCategoryLabels } from "../composables/useCategoryLabels";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
-import { useUndo } from "../composables/useUndo";
+import { useTicks } from "../composables/useTicks";
 import { useShortcutHandlers } from "../composables/useShortcuts";
 import { toggleTimer, useTimer } from "../composables/useTimer";
 import { addDays, getCurrentDateInTimeZone, weekStart } from "../utils/date";
@@ -102,7 +98,9 @@ function forgetDone(id: number): void {
   doneHere.value = doneHere.value.filter((item) => item.id !== id);
 }
 
-const { undo, offer, take: takeUndo } = useUndo<TodoResponse>();
+/* Rings and the undo toast: `useTicks`. */
+const ticks = useTicks(write);
+const { undo, undoLast } = ticks;
 
 const categoryOf = (todo: TodoResponse) => labelOf(todo.categoryId);
 /** A campaign's own quest wears its stripe but does not repeat its name. */
@@ -122,27 +120,20 @@ async function toggleTodo(todo: TodoResponse): Promise<void> {
   }
 
   successMessage.value = null;
-  const completing = !todo.completed;
-  const written = await write(() => updateTodoCompletion(todo.id, completing), {
-    fallbackError: "Die Quest konnte nicht aktualisiert werden.",
+  const target = { kind: "todo", id: todo.id, title: todo.title } as const;
+  const fallbackError = "Die Quest konnte nicht aktualisiert werden.";
+  if (todo.completed) {
+    if (await ticks.reopen(target, { fallbackError })) forgetDone(todo.id);
+    return;
+  }
+  // The Questlog lists no campaigns, so nothing asks here.
+  const written = await ticks.complete(target, {
+    fallbackError,
+    onUndone: () => forgetDone(todo.id),
   });
   if (!written) return;
   forgetDone(todo.id);
-  if (completing) {
-    doneHere.value = [{ ...todo, completed: true }, ...doneHere.value];
-    offer(todo, `„${todo.title}“ erledigt`);
-  }
-}
-
-async function undoLast(): Promise<void> {
-  const todo = takeUndo();
-  if (!todo) return;
-  if (
-    await write(() => updateTodoCompletion(todo.id, false), {
-      fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
-    })
-  )
-    forgetDone(todo.id);
+  doneHere.value = [{ ...todo, completed: true }, ...doneHere.value];
 }
 
 function openDialog(

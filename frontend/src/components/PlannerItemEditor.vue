@@ -14,10 +14,7 @@ import KindSwitch from "./KindSwitch.vue";
 import ParentPicker from "./ParentPicker.vue";
 import AppIcon from "./AppIcon.vue";
 
-import {
-  TIMER_DURATION_MESSAGE,
-  TIMER_MAX_MINUTES,
-} from "../utils/timer-duration";
+import { TIMER_MAX_MINUTES } from "../utils/timer-duration";
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import type { CategoryResponse } from "../types/category";
 import {
@@ -33,30 +30,27 @@ import type {
   HabitResponse,
   HabitScheduleRule,
   ScheduleVersionResponse,
-  UpdateHabitInput,
 } from "../types/habit";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
 import { formatHabitSchedule, WEEKDAY_OPTIONS } from "../utils/habit";
-import type {
-  CampaignInput,
-  InheritedWhy,
-  TodoGoalInput,
-  TodoResponse,
-  UpdateTodoInput,
-} from "../types/todo";
-import { buildTodoInput } from "../utils/todo-input";
+import type { InheritedWhy, TodoResponse } from "../types/todo";
+import {
+  habitChanges,
+  todoChanges,
+  type HabitFields,
+  type TodoFields,
+} from "../utils/editor-changes";
 import type { CampaignColor, CampaignIcon } from "../types/campaign";
 import {
   campaignChoices,
   isCampaignColor,
   isCampaignIcon,
 } from "../utils/campaign-style";
-import { hoursToMinutes, minutesToHours } from "../utils/quest-hours";
+import { minutesToHours } from "../utils/quest-hours";
 import { categoryOfChoice, type ParentChoice } from "../utils/parent-choice";
 import { whyBelow } from "../utils/why";
 import {
   emptyScheduleDraft,
-  positiveInteger,
   scheduleDraftOf,
   scheduleRuleOf,
 } from "../utils/habit-schedule";
@@ -127,8 +121,6 @@ const title = ref("");
 const categories = ref<CategoryResponse[]>([]);
 const categoryId = ref<number | null>(null);
 const why = ref("");
-const originalCategoryId = ref<number | null>(null);
-const originalWhy = ref("");
 const inheritedWhy = ref<InheritedWhy | null>(null);
 /** What the server said is inherited, before another place was chosen. */
 const loadedInheritedWhy = ref<InheritedWhy | null>(null);
@@ -226,7 +218,6 @@ const habitDraft = computed<HabitDraft>(() => ({
 const isActive = ref(true);
 const loadedHabit = ref<HabitResponse | null>(null);
 const campaignId = ref<number | null>(null);
-const originalCampaignId = ref<number | null>(null);
 const changeSchedule = ref(false);
 const effectiveFrom = ref(getCurrentDateInTimeZone());
 const today = computed(() => getCurrentDateInTimeZone());
@@ -241,23 +232,9 @@ function fillAssignment(entity: {
   why?: string | null;
   inheritedWhy?: InheritedWhy | null;
 }): void {
-  categoryId.value = originalCategoryId.value = entity.categoryId ?? null;
-  why.value = originalWhy.value = entity.why ?? "";
+  categoryId.value = entity.categoryId ?? null;
+  why.value = entity.why ?? "";
   inheritedWhy.value = loadedInheritedWhy.value = entity.inheritedWhy ?? null;
-}
-
-/** Only what changed, so a plain edit never overwrites these fields. */
-function assignmentChanges(): {
-  categoryId?: number | null;
-  why?: string | null;
-} {
-  const value = why.value.trim();
-  return {
-    ...(categoryId.value !== originalCategoryId.value
-      ? { categoryId: categoryId.value }
-      : {}),
-    ...(value !== originalWhy.value ? { why: value || null } : {}),
-  };
 }
 
 /** The category a new place brings, unless the entry has one already. */
@@ -287,10 +264,11 @@ function readParents(choices: ParentChoice[], todos: HierarchyTodo[]): void {
  * applies when the daily named no campaign before.
  */
 function chooseCampaign(choice: ParentChoice | null): void {
+  const originalCampaignId = loadedHabit.value?.campaignId ?? null;
   const fallback =
-    originalCampaignId.value === null ? loadedInheritedWhy.value : null;
+    originalCampaignId === null ? loadedInheritedWhy.value : null;
   inheritedWhy.value =
-    campaignId.value === originalCampaignId.value
+    campaignId.value === originalCampaignId
       ? loadedInheritedWhy.value
       : ((choice ? whyBelow(choice.todo) : null) ?? fallback);
   takeCategory(choice);
@@ -327,7 +305,7 @@ async function loadEntity(): Promise<void> {
       title.value = habit.title;
       isActive.value = habit.isActive;
       loadedHabit.value = habit;
-      campaignId.value = originalCampaignId.value = habit.campaignId ?? null;
+      campaignId.value = habit.campaignId ?? null;
       duration.value = habit.plannedDurationMinutes ?? "";
       timeOfDay.value = habit.timeOfDay ?? "";
       const version = habit.currentSchedule ?? habit.upcomingSchedule;
@@ -345,74 +323,36 @@ async function loadEntity(): Promise<void> {
   }
 }
 
-function validatedTitle(): string {
-  const value = title.value.trim();
-
-  if (!value || value.length > 200) {
-    throw new Error("Der Titel muss 1 bis 200 Zeichen enthalten.");
-  }
-
-  return value;
-}
-
-/** Only what changed, so a plain edit leaves period and goal alone. */
-function goalChanges(): TodoGoalInput {
-  const todo = loadedTodo.value;
-  const target =
-    goalHabitId.value === null
-      ? null
-      : positiveInteger(
-          goalTarget.value,
-          "Die Sollmenge muss eine ganze Zahl ab 1 sein.",
-        );
-  const next: TodoGoalInput = {
-    periodStart: periodStart.value || null,
-    periodEnd: periodEnd.value || null,
+/** The form as it stands, for `todoChanges`. */
+function todoFields(): TodoFields {
+  return {
+    title: title.value,
+    date: todoDate.value,
+    time: todoTime.value,
+    duration: duration.value,
+    parentId: parentId.value,
+    categoryId: categoryId.value,
+    why: why.value,
+    periodStart: periodStart.value,
+    periodEnd: periodEnd.value,
     goalHabitId: goalHabitId.value,
-    goalTarget: target,
-  };
-  const keys = Object.keys(next) as (keyof TodoGoalInput)[];
-  return Object.fromEntries(
-    keys
-      .filter((key) => next[key] !== (todo?.[key] ?? null))
-      .map((key) => [key, next[key]]),
-  );
-}
-
-/**
- * Only what changed, and only at the top: below another quest it carries
- * none of these (the server clears them when a campaign moves below).
- */
-function campaignChanges(): CampaignInput {
-  const todo = loadedTodo.value;
-  if (!todo || !isTopLevel.value) return {};
-  const next = {
-    weeklyTargetMinutes: hoursToMinutes(weeklyTarget.value),
+    goalTarget: goalTarget.value,
+    weeklyTarget: weeklyTarget.value,
     color: campaignColor.value,
     icon: campaignIcon.value,
   };
-  const keys = Object.keys(next) as (keyof typeof next)[];
-  return Object.fromEntries(
-    keys
-      .filter((key) => next[key] !== (todo[key] ?? null))
-      .map((key) => [key, next[key]]),
-  );
 }
 
-function todoInput(): UpdateTodoInput {
+/** The form as it stands, for `habitChanges`. */
+function habitFields(): HabitFields {
   return {
-    ...buildTodoInput({
-      title: title.value,
-      date: todoDate.value,
-      time: todoTime.value,
-      duration: duration.value,
-    }),
-    ...(parentId.value !== loadedTodo.value?.parentId
-      ? { parentId: parentId.value }
-      : {}),
-    ...assignmentChanges(),
-    ...goalChanges(),
-    ...campaignChanges(),
+    title: title.value,
+    isActive: isActive.value,
+    campaignId: campaignId.value,
+    duration: duration.value,
+    timeOfDay: timeOfDay.value,
+    categoryId: categoryId.value,
+    why: why.value,
   };
 }
 
@@ -430,24 +370,6 @@ function editUpcomingSchedule(): void {
   fillSchedule(version.schedule);
   effectiveFrom.value = version.effectiveFrom;
   changeSchedule.value = true;
-}
-
-function buildHabitInput(): UpdateHabitInput {
-  const input: UpdateHabitInput = assignmentChanges();
-  const value = validatedTitle();
-  if (value !== loadedHabit.value?.title) input.title = value;
-  if (isActive.value !== loadedHabit.value?.isActive)
-    input.isActive = isActive.value;
-  if (campaignId.value !== originalCampaignId.value)
-    input.campaignId = campaignId.value;
-  const minutes = String(duration.value).trim()
-    ? positiveInteger(duration.value, TIMER_DURATION_MESSAGE, TIMER_MAX_MINUTES)
-    : null;
-  if (minutes !== (loadedHabit.value?.plannedDurationMinutes ?? null))
-    input.plannedDurationMinutes = minutes;
-  const time = timeOfDay.value || null;
-  if (time !== (loadedHabit.value?.timeOfDay ?? null)) input.timeOfDay = time;
-  return input;
 }
 
 function buildScheduleChange(): ChangeHabitScheduleInput {
@@ -474,10 +396,13 @@ async function save(): Promise<void> {
 
   try {
     if (props.kind === "todo") {
-      await updateTodo(props.entityId, todoInput());
+      await updateTodo(
+        props.entityId,
+        todoChanges(todoFields(), loadedTodo.value!),
+      );
     } else {
       // Validate both requests before persisting either of them.
-      const metadata = buildHabitInput();
+      const metadata = habitChanges(habitFields(), loadedHabit.value!);
       const scheduleInput = changeSchedule.value ? buildScheduleChange() : null;
       let metadataSaved = false;
       if (Object.keys(metadata).length > 0) {

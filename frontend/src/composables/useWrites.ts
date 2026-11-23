@@ -9,6 +9,15 @@ type WriteOptions = {
   notify?: (() => void) | null;
 };
 
+type ShownOptions = WriteOptions & {
+  /**
+   * Reload after a failure, for a write of several steps that may have
+   * landed in part. A single step needs only the take-back, which also
+   * keeps its error in sight (a reload clears the shared error).
+   */
+  reloadOnFailure?: boolean;
+};
+
 /**
  * The one order every view writes in: guard against a double start, clear the
  * error, write, tell the others, reload quietly, then report the outcome.
@@ -51,5 +60,23 @@ export function useWrites(
     }
   }
 
-  return { write, applied, busy, isWriting };
+  /**
+   * A write shown before it is sent: `show` puts the new state on screen
+   * and returns how to take it back. A failure takes it back at once, then
+   * a quiet reload shows what the server kept.
+   */
+  async function writeShown(
+    show: () => () => void,
+    action: () => Promise<unknown>,
+    { reloadOnFailure = true, ...options }: ShownOptions,
+  ): Promise<boolean> {
+    const takeBack = show();
+    const done = await write(action, options);
+    if (done) return true;
+    takeBack();
+    if (reloadOnFailure) void reload(false);
+    return false;
+  }
+
+  return { write, writeShown, applied, busy, isWriting };
 }

@@ -1,19 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { eventsOfDays } from '../calendar/day-events';
-import { CategoryEntity } from '../categories/category.entity';
-import { categoryLabels } from '../categories/category-lookup';
 import { dayOf, weekRange } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { ownedOccurrences } from '../habit-occurrences/owned-occurrences';
 import {
-  effectiveDuration,
   isOccurrenceTimerEligible,
   isTodoTimerEligible,
 } from '../timers/timer-target';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
 import {
+  effectiveDuration,
   HabitOccurrenceEntity,
   occurrenceDueDate,
 } from '../habit-occurrences/entities/habit-occurrence.entity';
@@ -36,6 +34,7 @@ import { loadHabitForecast } from '../history/habit-forecast';
 import { openTargetRuns, plannedHabits } from '../history/history-planning';
 import { weeklyQuestTarget } from '../quest-hours/weekly-target';
 import { questSoFar } from '../quest-hours/quest-time';
+import { loadAgendaContext } from './agenda-context';
 import { sortInDay } from './day-order';
 import {
   DayPlannerGoalDto,
@@ -75,16 +74,16 @@ export class DayPlannerService {
   async getToday(userId: string): Promise<DayPlannerResponseDto> {
     const today = this.clock.today();
 
-    const [todos, occurrences, categories] = await Promise.all([
+    const [todos, occurrences, context] = await Promise.all([
       this.findTodosForToday(userId, today),
       this.scheduling.getToday(userId),
-      this.db.getRepository(CategoryEntity).findBy({ userId }),
+      loadAgendaContext(this.db.manager, userId, today),
     ]);
-    const category = categoryLabels(categories);
+    const { ancestry } = context;
 
     // The week's stretches: today's work and the week's quest hours.
     const { startDate, endDate } = weekRange(today);
-    const [parents, habitGoalsByHabit, logs, ancestry, questTarget, streaks] =
+    const [parents, habitGoalsByHabit, logs, questTarget, streaks] =
       await Promise.all([
         this.parentsOf(userId, todos),
         this.habitGoalsFor(
@@ -93,7 +92,6 @@ export class DayPlannerService {
           today,
         ),
         logsOfDays(this.db.manager, userId, startDate, endDate),
-        loadTodoAncestry(this.db.manager, userId, today),
         weeklyQuestTarget(this.db.manager, userId, startDate),
         loadStreaks(
           this.db.manager,
@@ -113,12 +111,10 @@ export class DayPlannerService {
           todo.parentId === null ? undefined : parents.get(todo.parentId);
         const item: DayPlannerItemDto = {
           ...this.mapTodo(todo, today),
-          ...category(todo.categoryId),
-          why: ancestry.todoWhy(todo),
+          ...context.todo(todo),
           goal: parent
             ? { title: parent, completed: null, target: null, periodEnd: null }
             : null,
-          campaign: ancestry.campaignOf(todo),
           workedMinutes: workedOn('todoId', todo.id),
         };
         return { item, id: todo.id, dayPosition: todo.dayPosition };
@@ -126,10 +122,8 @@ export class DayPlannerService {
       ...occurrences.map((occurrence) => {
         const item: DayPlannerItemDto = {
           ...this.mapOccurrence(occurrence, today),
-          ...category(occurrence.habit.categoryId),
-          why: ancestry.habitWhy(occurrence.habit),
+          ...context.habit(occurrence.habit),
           goal: habitGoalsByHabit.get(occurrence.habitId) ?? null,
-          campaign: ancestry.habitCampaign(occurrence.habitId),
           workedMinutes: workedOn('occurrenceId', occurrence.id),
           streak: streaks.get(occurrence.habitId) ?? NO_STREAK,
         };

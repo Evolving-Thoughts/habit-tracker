@@ -50,7 +50,9 @@ stopwatch runs on. Nothing is completed automatically.
   that Habit occurrence**, never on the Habit default.
 - Completing/deleting the linked Todo, pausing/deleting the Habit, or resolving its
   occurrence ends the stopwatch in the same transaction (`releaseTimers` in
-  `backend/src/timers/timer-target.ts`).
+  `backend/src/timers/timer-target.ts`, called by `saveQuest` in
+  `todos/quest-commands.ts` and by the run and habit commands of
+  `HabitSchedulingService`).
 - **Fokus-Modus** (`#/fokus`, `FocusView.vue`): one quest in view with its campaign,
   its why and the stopwatch large; no navigation and no timer bar. What the
   stopwatch runs on stays in view; otherwise `currentItem` decides, the rule of
@@ -92,9 +94,13 @@ into work that never happened.
 
 ### Blocks: short pauses and short stretches
 
-The stopwatch logs **blocks**, not every stretch (`closeWorkSegment` and
-`resumeWorkSegment` in `backend/src/timers/timer-target.ts`, constants
-`BLOCK_GAP_MS` and `MIN_BLOCK_MS`, both 60 seconds):
+The stopwatch logs **blocks**, not every stretch. The rules are one pure
+function, `transition(state, event, now) → { state, logOps }` in
+`backend/src/timers/timer-transition.ts` (events `pause`, `stop`, `resume`;
+constants `BLOCK_GAP_MS` and `MIN_BLOCK_MS`, both 60 seconds), tested in
+`timer-transition.spec.ts`. `recordTransition` in `timer-target.ts` is its
+adapter: it reads the block's log (locked), runs the log operations
+(`extend` or `insert`) and puts the next state on the timer row.
 
 - **Resumed within 60 seconds** of a pause, the stretch continues the block
   before it: `segmentStartedAt` becomes the block's start, so the log counts
@@ -103,7 +109,7 @@ The stopwatch logs **blocks**, not every stretch (`closeWorkSegment` and
 - **A block shorter than 60 seconds** that continues nothing gets no work
   log while it may still be a mis-tap. Ended or completed right away, it never
   reaches the log. Resumed after a minute or more, it was work: it gets a log
-  of its own (`resumeWorkSegment`), and the new stretch starts a block. Several
+  of its own (on `resume`), and the new stretch starts a block. Several
   short stretches with short pauses between them form one block and are
   logged once they reach a minute together.
 - While paused, the timer row keeps `blockStartedAt`, `pausedAt` and

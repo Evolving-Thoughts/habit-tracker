@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource, EntityManager, In, MoreThanOrEqual } from 'typeorm';
 import { Clock } from '../common/clock';
 import { DEFAULT_TIME_ZONE } from '../common/date/date-only.utils';
@@ -12,13 +17,14 @@ import {
 } from '../common/date/local-day';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import {
+  effectiveDuration,
   HabitOccurrenceEntity,
   occurrenceDueDate,
 } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
-import { isInMoveWindow } from '../habits/scheduling/schedule-rules';
-import { effectiveDuration, hasOpenTimer } from '../timers/timer-target';
+import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
 import { TodoEntity } from '../todos/entities/todo.entity';
+import { saveQuest } from '../todos/quest-commands';
 import { loadTodoAncestry } from '../todos/todo-ancestry';
 import { CampaignLog, withCampaigns } from '../work-logs/day-logs';
 import { WorkLogEntity } from '../work-logs/work-log.entity';
@@ -115,6 +121,7 @@ export class CalendarSyncService {
     private readonly client: GoogleCalendarClient,
     private readonly clock: Clock,
     private readonly unitOfWork: UserUnitOfWork,
+    private readonly scheduling: HabitSchedulingService,
   ) {}
 
   async syncAll(): Promise<void> {
@@ -173,7 +180,7 @@ export class CalendarSyncService {
         })),
       );
       const operations = await this.unitOfWork.run(userId, async (manager) => {
-        await this.applyIncoming(manager, userId, own, today);
+        await this.applyIncoming(manager, userId, own);
         await this.replaceExternal(manager, userId, read, needsConsent);
         return this.outgoing(manager, userId, today);
       });
@@ -226,7 +233,6 @@ export class CalendarSyncService {
     manager: EntityManager,
     userId: string,
     events: GoogleEvent[],
-    today: string,
   ): Promise<void> {
     const links = manager.getRepository(CalendarLinkEntity);
     const known = new Map(
@@ -243,7 +249,7 @@ export class CalendarSyncService {
       else if (new Date(event.updated) > link.remoteUpdatedAt) {
         if (link.todoId !== null)
           await this.applyToTodo(manager, userId, link, event);
-        else await this.applyToOccurrence(manager, link, event, today);
+        else await this.applyToOccurrence(manager, link, event);
       }
     }
   }
@@ -285,6 +291,9 @@ export class CalendarSyncService {
   /**
    * Nothing is lost: a todo only loses its plan, a run or a work log only
    * its event. Their link stays, suppressed, so the event is not written again.
+   * The todo goes back to the Questlog through `saveQuest`, but without a
+   * place there (`backlogPlace: 'none'`, see `day-order.md`): it follows the
+   * quests the user sorted.
    */
   private async applyDeletion(
     manager: EntityManager,
@@ -297,15 +306,29 @@ export class CalendarSyncService {
       await links.save(link);
       return;
     }
-    await manager
-      .getRepository(TodoEntity)
-      .update(
-        { id: link.todoId, userId: link.userId },
-        { scheduledDate: null, timeOfDay: null, dayPosition: null },
+    const todo = await manager.getRepository(TodoEntity).findOne({
+      where: { id: link.todoId, userId: link.userId },
+      withDeleted: true,
+    });
+    if (todo)
+      await saveQuest(
+        manager,
+        todo,
+        { scheduledDate: null },
+        this.clock.now(),
+        { backlogPlace: 'none' },
       );
     await links.remove(link);
   }
 
+  /**
+   * The newer side wins. A change from Google moves the quest like any other
+   * move (`saveQuest`): a new day or time resets its place in the order of
+   * the day and drops its place in the Questlog. Unlike
+   * `POST /todos/:id/reschedule` it is not refused for a past day, an
+   * appointment or an open stopwatch: Google already shows the new time, as
+   * after `PATCH /todos/:id`. A completed quest is left alone.
+   */
   private async applyToTodo(
     manager: EntityManager,
     userId: string,
@@ -324,49 +347,52 @@ export class CalendarSyncService {
     link.remoteUpdatedAt = remote;
     if (todo && times && !todo.completedAt && !localWins) {
       todo.title = (event.summary?.trim() || todo.title).slice(0, 200);
-      const day = dayOf(times.start);
-      const time = timeOfDayOf(times.start);
-      if (day !== todo.scheduledDate || time !== todo.timeOfDay)
-        todo.dayPosition = null;
-      todo.scheduledDate = day;
-      todo.timeOfDay = time;
       todo.plannedDurationMinutes = times.minutes;
-      link.syncedAt = (await repository.save(todo)).updatedAt;
+      const saved = await saveQuest(
+        manager,
+        todo,
+        {
+          scheduledDate: dayOf(times.start),
+          timeOfDay: timeOfDayOf(times.start),
+        },
+        this.clock.now(),
+      );
+      link.syncedAt = saved.updatedAt;
     }
     await manager.getRepository(CalendarLinkEntity).save(link);
   }
 
   /**
-   * A run takes over the new day if it lies in its window. Its time belongs
-   * to the habit, so the next outgoing phase writes the event back to it.
+   * A run takes over the new day if it may move there, by the rules of
+   * `POST /habit-occurrences/:id/reschedule` (`moveRun`: an open run of the
+   * active version of an active habit, within its window, no open
+   * stopwatch); otherwise the move is not taken. Its time belongs to the
+   * habit, so the next outgoing phase writes the event back to it.
    */
   private async applyToOccurrence(
     manager: EntityManager,
     link: CalendarLinkEntity,
     event: GoogleEvent,
-    today: string,
   ): Promise<void> {
-    const repository = manager.getRepository(HabitOccurrenceEntity);
-    const occurrence = await repository.findOne({
-      where: { id: link.occurrenceId! },
-      relations: { scheduleVersion: true },
-    });
     const times = eventTimes(event);
     link.remoteUpdatedAt = new Date(event.updated);
     link.syncedAt = new Date(0);
-    if (occurrence?.status === HabitOccurrenceStatus.PENDING && times) {
-      const day = dayOf(times.start);
-      const { scheduledDate, scheduleVersion } = occurrence;
-      if (
-        isInMoveWindow(scheduleVersion, scheduledDate, day, today) &&
-        !(await hasOpenTimer(manager, link.userId, {
-          occurrenceId: occurrence.id,
-        }))
-      ) {
-        occurrence.movedToDate = day === scheduledDate ? null : day;
-        await repository.save(occurrence);
+    if (times)
+      try {
+        await this.scheduling.moveRun(
+          manager,
+          link.userId,
+          link.occurrenceId!,
+          dayOf(times.start),
+          this.clock.now(),
+        );
+      } catch (error) {
+        if (!(
+          error instanceof ConflictException ||
+          error instanceof NotFoundException
+        ))
+          throw error;
       }
-    }
     await manager.getRepository(CalendarLinkEntity).save(link);
   }
 

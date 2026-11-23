@@ -4,8 +4,9 @@ import {
   getToday,
   reorderDay,
   updateOccurrenceStatus,
-  updateTodoCompletion,
 } from "../api/day-planner.api";
+import { writeDone } from "../composables/useTicks";
+import { postponedToEnd } from "../utils/today-order";
 import AppIcon from "../components/AppIcon.vue";
 import QuestNotes from "../components/QuestNotes.vue";
 import { notifyDataChanged } from "../composables/data-sync";
@@ -176,8 +177,12 @@ function complete(): Promise<void> {
   const item = current.value;
   if (!item) return Promise.resolve();
   return act(async () => {
-    if (item.type === "todo") await updateTodoCompletion(item.todoId, true);
-    else await updateOccurrenceStatus(item.occurrenceId, "completed");
+    await writeDone(
+      item.type === "todo"
+        ? { kind: "todo", id: item.todoId, title: item.title }
+        : { kind: "occurrence", id: item.occurrenceId, title: item.title },
+      true,
+    );
     notifyDataChanged();
     await Promise.all([reload(false), timer?.refresh()]);
   }, "Das Erledigen hat nicht geklappt.");
@@ -201,14 +206,7 @@ function postpone(): Promise<void> {
   return act(async () => {
     if (timed.value) await timer?.action("stop");
     // Appointments keep their place; only this one goes to the end.
-    const order = [...sequence.filter((entry) => entry !== item), item];
-    await reorderDay(
-      order.map((entry) =>
-        entry.type === "todo"
-          ? { type: "todo" as const, id: entry.todoId }
-          : { type: "habit" as const, id: entry.occurrenceId },
-      ),
-    );
+    await reorderDay(postponedToEnd(sequence, item));
     notifyDataChanged();
     await reload(false);
   }, "Das Verschieben hat nicht geklappt.");

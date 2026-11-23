@@ -9,10 +9,7 @@ import {
 import { computed, onMounted, onUnmounted, provide, ref, watch } from "vue";
 import { createTimerController, timerKey } from "../composables/useTimer";
 import { useTargetNotice } from "../composables/useTargetNotice";
-import {
-  updateTodoCompletion,
-  updateOccurrenceStatus,
-} from "../api/day-planner.api";
+import { writeDone } from "../composables/useTicks";
 import { formatStopwatch } from "../utils/stopwatch";
 import type { MenuEntry } from "../utils/row-actions";
 import ActionMenu from "./ActionMenu.vue";
@@ -69,9 +66,10 @@ async function complete(): Promise<void> {
   if (!target || completing.value || busy.value) return;
   completing.value = true;
   try {
-    if (target.kind === "todo")
-      await updateTodoCompletion(target.targetId, true);
-    else await updateOccurrenceStatus(target.targetId, "completed");
+    await writeDone(
+      { kind: target.kind, id: target.targetId, title: target.title },
+      true,
+    );
     notifyDataChanged();
     await controller.refresh();
   } catch (cause) {

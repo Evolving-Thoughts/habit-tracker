@@ -11,10 +11,7 @@ import { initialScheduleInstant } from '../common/date/date-only.utils';
 import { dayOf } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
-import {
-  isOccurrenceTimerEligible,
-  releaseTimers,
-} from '../timers/timer-target';
+import { isOccurrenceTimerEligible } from '../timers/timer-target';
 import { CreateHabitDto } from './dto/create-habit.dto';
 import { UpdateHabitDto } from './dto/update-habit.dto';
 import { ChangeHabitScheduleDto } from './dto/change-habit-schedule.dto';
@@ -101,9 +98,13 @@ export class HabitsService {
     // Reconcile and read one owned Habit under the same Habit lock and reference time.
     // Opening its editor must not generate occurrences for every other Habit.
     return this.unitOfWork.run(userId, async (manager) => {
-      const habit = await this.scheduling.lockHabit(userId, manager, id);
       const now = this.clock.now();
-      await this.scheduling.reconcile(manager, habit, now);
+      const { habit, versions } = await this.scheduling.openHabit(
+        manager,
+        userId,
+        id,
+        now,
+      );
 
       const pending = (
         await manager
@@ -113,7 +114,7 @@ export class HabitsService {
 
       return this.scheduling.habitResponse(
         habit,
-        await this.scheduling.getVersions(manager, id),
+        versions,
         await loadTodoAncestry(manager, userId, dayOf(now)),
         now,
         pending,
@@ -236,12 +237,8 @@ export class HabitsService {
         habit.isActive = dto.isActive;
       }
 
-      await manager.getRepository(HabitEntity).save(habit);
       const now = this.clock.now();
-      if (!habit.isActive)
-        await releaseTimers(manager, userId, { habitId: habit.id }, now);
-
-      await this.scheduling.reconcile(manager, habit, now);
+      await this.scheduling.saveHabit(manager, habit, now);
 
       return this.scheduling.habitResponse(
         habit,
@@ -263,16 +260,8 @@ export class HabitsService {
   }
 
   async remove(userId: string, id: number): Promise<void> {
-    await this.unitOfWork.run(userId, async (manager) => {
-      const habit = await this.scheduling.lockHabit(userId, manager, id);
-
-      await manager.getRepository(HabitEntity).softRemove(habit);
-      await releaseTimers(
-        manager,
-        userId,
-        { habitId: habit.id },
-        this.clock.now(),
-      );
-    });
+    await this.unitOfWork.run(userId, (manager) =>
+      this.scheduling.removeHabit(manager, userId, id, this.clock.now()),
+    );
   }
 }

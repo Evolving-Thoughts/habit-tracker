@@ -14,7 +14,6 @@ import { TodosService } from './todos.service';
 jest.mock('./todo-hierarchy.queries');
 jest.mock('../timers/timer-target', () => ({
   ...jest.requireActual<typeof timerTarget>('../timers/timer-target'),
-  releaseTimers: jest.fn(),
   timersOfTodos: jest.fn().mockResolvedValue([]),
   discardTimersOfTodos: jest.fn(),
 }));
@@ -73,6 +72,7 @@ describe('TodosService', () => {
           return chain;
         },
         execute: () => Promise.resolve(),
+        getMany: () => Promise.resolve([]),
         // MIN or MAX, whichever is asked: the edge of the Questlog's order.
         getRawOne: () => Promise.resolve({ edge: lastBacklog }),
       };
@@ -218,89 +218,27 @@ describe('TodosService', () => {
         NotFoundException,
       );
     });
-    it('plans a todo for a day and puts it back into the backlog', async () => {
-      const planned = await service.update(USER, 1, {
-        scheduledDate: '2026-10-02',
-        plannedDurationMinutes: 15,
-      });
-      expect(planned).toMatchObject({
-        scheduledDate: '2026-10-02',
-        timeOfDay: null,
-      });
-      const cleared = await service.update(USER, 1, {
-        scheduledDate: null,
-        plannedDurationMinutes: null,
-      });
-      expect(cleared).toMatchObject({
-        scheduledDate: null,
-        plannedDurationMinutes: null,
-      });
-    });
-    it('drops the time of an appointment that goes back into the backlog', async () => {
-      rows = [
-        Object.assign(todo(), {
-          scheduledDate: '2026-10-02',
-          timeOfDay: '10:00',
-          dayPosition: 3,
-        }),
-      ];
-      expect(
-        await service.update(USER, 1, { scheduledDate: null }),
-      ).toMatchObject({
-        scheduledDate: null,
-        timeOfDay: null,
-        dayPosition: null,
-      });
-    });
-    it('joins the end of the Questlog without a day and leaves it with one', async () => {
-      rows = [Object.assign(todo(), { scheduledDate: '2026-10-02' })];
+    it('plans a todo and completes it through saveQuest', async () => {
+      // The rules of a plan and a completion are tested in quest-commands.spec.ts.
       lastBacklog = 6;
       expect(
-        await service.update(USER, 1, { scheduledDate: null }),
-      ).toMatchObject({ scheduledDate: null, backlogPosition: 7 });
-      expect(
-        await service.update(USER, 1, { scheduledDate: '2026-10-05' }),
-      ).toMatchObject({ scheduledDate: '2026-10-05', backlogPosition: null });
-    });
-    it('rejects a time of day without a day', async () => {
+        await service.update(USER, 1, {
+          title: 'Neu',
+          scheduledDate: '2026-10-02',
+          timeOfDay: '10:00',
+          plannedDurationMinutes: 15,
+          completed: true,
+        }),
+      ).toMatchObject({
+        title: 'Neu',
+        scheduledDate: '2026-10-02',
+        timeOfDay: '10:00',
+        plannedDurationMinutes: 15,
+        completedAt: NOW,
+      });
       await expect(
-        service.update(USER, 1, { timeOfDay: '10:00' }),
+        service.update(USER, 1, { scheduledDate: null, timeOfDay: '10:00' }),
       ).rejects.toThrow(BadRequestException);
-      expect(repository.save).not.toHaveBeenCalled();
-    });
-    it('joins another day at the end of its order, but keeps its place otherwise', async () => {
-      rows = [
-        Object.assign(todo(), { scheduledDate: '2026-10-02', dayPosition: 2 }),
-      ];
-      expect(
-        await service.update(USER, 1, { scheduledDate: '2026-10-02' }),
-      ).toMatchObject({ dayPosition: 2 });
-      expect(
-        await service.update(USER, 1, { scheduledDate: '2026-10-03' }),
-      ).toMatchObject({ scheduledDate: '2026-10-03', dayPosition: null });
-    });
-    it('stamps completion with the clock and keeps it on repeat', async () => {
-      await service.update(USER, 1, { completed: true });
-      expect(rows[0].completedAt).toEqual(NOW);
-      rows[0].completedAt = new Date('2026-01-01');
-      await service.update(USER, 1, { completed: true });
-      expect(rows[0].completedAt).toEqual(new Date('2026-01-01'));
-    });
-    it('clears completedAt when reopening', async () => {
-      rows = [todo(1, null, true)];
-      await service.update(USER, 1, { completed: false });
-      expect(rows[0]).toMatchObject({ completed: false, completedAt: null });
-    });
-    it('releases timers when completing, not when editing', async () => {
-      await service.update(USER, 1, { title: 'Neu' });
-      expect(timerTarget.releaseTimers).not.toHaveBeenCalled();
-      await service.update(USER, 1, { completed: true });
-      expect(timerTarget.releaseTimers).toHaveBeenCalledWith(
-        manager,
-        USER,
-        { todoIds: [1] },
-        NOW,
-      );
     });
     it('keeps parent and child completion independent', async () => {
       rows = [todo(1, null, true), todo(2, 1, true)];

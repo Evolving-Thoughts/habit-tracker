@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import { getQuestHours } from "../api/quest-hours.api";
-import { updateTodo, updateTodoCompletion } from "../api/day-planner.api";
+import { updateTodo } from "../api/day-planner.api";
 import type { HierarchyTodo, TodoProgress } from "../types/todo-hierarchy";
 import type { TodoResponse } from "../types/todo";
 import {
@@ -33,8 +33,7 @@ import QuestTrend from "../components/QuestTrend.vue";
 import { useListFocus } from "../composables/useListFocus";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
-import { useUndo } from "../composables/useUndo";
-import { useCampaignCompletion } from "../composables/useCampaignCompletion";
+import { useTicks } from "../composables/useTicks";
 import { useTimer } from "../composables/useTimer";
 import { useShortcutHandlers } from "../composables/useShortcuts";
 import { campaignMark } from "../utils/category-mark";
@@ -66,11 +65,13 @@ const timer = useTimer();
 const dragged = ref<number | null>(null),
   dropTarget = ref<number | null | undefined>(undefined);
 const busy = computed(() => formBusy.value || writing.value);
-const campaignCompletion = useCampaignCompletion();
+/* Rings, the campaign question and the undo toast: `useTicks`. */
+const ticks = useTicks((action, { fallbackError }) =>
+  run(action, "", { fallbackError }),
+);
+const { undo, undoLast } = ticks;
 const quiet = () =>
-  !busy.value &&
-  action.value === null &&
-  campaignCompletion.question.value === null;
+  !busy.value && action.value === null && ticks.campaignQuestion.value === null;
 // Refreshes after timer and other views' changes, unless a dialog is open.
 const {
   data: todos,
@@ -290,35 +291,33 @@ function checked(todo: HierarchyTodo) {
   return pendingCompletion.value.get(todo.id) ?? todo.completed;
 }
 /* A completion can be taken back in the toast, as on Heute. */
-const { undo, offer: offerUndo, take: takeUndo } = useUndo<HierarchyTodo>();
 async function toggleCompletion(todo: HierarchyTodo) {
   if (busy.value) return;
   const next = !checked(todo);
-  // A campaign with open quests asks first; they stay open either way.
-  const open = next && todo.parentId === null ? openBelow(todo.progress) : 0;
-  if (!(await campaignCompletion.confirm(todo.title, open))) return;
-  pendingCompletion.value = new Map(pendingCompletion.value).set(todo.id, next);
+  const target = { kind: "todo", id: todo.id, title: todo.title } as const;
+  const fallbackError = "Die Quest konnte nicht aktualisiert werden.";
+  const fill = () =>
+    (pendingCompletion.value = new Map(pendingCompletion.value).set(
+      todo.id,
+      next,
+    ));
   try {
-    const done = await run(() => updateTodoCompletion(todo.id, next), "", {
-      fallbackError: "Die Quest konnte nicht aktualisiert werden.",
-    });
-    if (done && next)
-      offerUndo(
-        todo,
-        open > 0 ? `„${todo.title}“ abgeschlossen` : `„${todo.title}“ erledigt`,
-      );
+    if (next)
+      // A campaign with open quests asks first; they stay open either way.
+      await ticks.complete(target, {
+        fallbackError,
+        campaign: todo.parentId === null ? openBelow(todo.progress) : undefined,
+        onConfirmed: fill,
+      });
+    else {
+      fill();
+      await ticks.reopen(target, { fallbackError });
+    }
   } finally {
     const rest = new Map(pendingCompletion.value);
     rest.delete(todo.id);
     pendingCompletion.value = rest;
   }
-}
-async function undoLast() {
-  const todo = takeUndo();
-  if (!todo) return;
-  await run(() => updateTodoCompletion(todo.id, false), "", {
-    fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
-  });
 }
 function toggleCollapse(id: number) {
   const next = new Set(collapsed.value);
@@ -776,11 +775,11 @@ useShortcutHandlers({
       @close="close"
     />
     <CampaignCompletionDialog
-      v-if="campaignCompletion.question.value"
-      :title="campaignCompletion.question.value.title"
-      :open="campaignCompletion.question.value.open"
-      @confirm="campaignCompletion.reply(true)"
-      @cancel="campaignCompletion.reply(false)"
+      v-if="ticks.campaignQuestion.value"
+      :title="ticks.campaignQuestion.value.title"
+      :open="ticks.campaignQuestion.value.open"
+      @confirm="ticks.answerCampaign(true)"
+      @cancel="ticks.answerCampaign(false)"
     />
     <UndoToast :label="undo?.label ?? null" @undo="undoLast" />
     <!-- After the content in reading order; fixed in place, it looks the same. -->

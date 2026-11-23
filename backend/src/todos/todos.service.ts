@@ -15,7 +15,6 @@ import { UserUnitOfWork } from '../common/user-unit-of-work';
 import {
   discardTimersOfTodos,
   hasOpenTimer,
-  releaseTimers,
   timersOfTodos,
 } from '../timers/timer-target';
 import { TimerEntity } from '../timers/timer.entity';
@@ -39,6 +38,12 @@ import {
 } from './todo-hierarchy';
 import { ancestorChain, subtree } from './todo-hierarchy.queries';
 import { loadTodoAncestry, TodoAncestry } from './todo-ancestry';
+import {
+  assertQuestPlan,
+  firstBacklogPosition,
+  nextBacklogPosition,
+  saveQuest,
+} from './quest-commands';
 
 type DeletionSnapshot = {
   todos: TodoEntity[];
@@ -161,7 +166,7 @@ export class TodosService {
   async create(userId: string, dto: CreateTodoDto): Promise<TodoEntity> {
     const scheduledDate = dto.scheduledDate ?? null;
     const timeOfDay = dto.timeOfDay ?? null;
-    this.validatePlan(scheduledDate, timeOfDay);
+    assertQuestPlan(scheduledDate, timeOfDay);
     const parentId = dto.parentId ?? null;
     const campaign = {
       weeklyTargetMinutes: dto.weeklyTargetMinutes ?? null,
@@ -191,8 +196,8 @@ export class TodosService {
           backlogPosition:
             scheduledDate === null
               ? dto.backlogPlace === 'top'
-                ? await this.firstBacklogPosition(manager, userId)
-                : await this.nextBacklogPosition(manager, userId)
+                ? await firstBacklogPosition(manager, userId)
+                : await nextBacklogPosition(manager, userId)
               : null,
           plannedDurationMinutes: dto.plannedDurationMinutes ?? null,
           ...campaign,
@@ -241,35 +246,18 @@ export class TodosService {
       });
       await assertGoalAvailable(manager, userId, todo);
       if (dto.title !== undefined) todo.title = dto.title;
-      if (
-        dto.scheduledDate !== undefined &&
-        dto.scheduledDate !== todo.scheduledDate
-      )
-        await this.moveToDay(manager, todo, dto.scheduledDate);
-      if (dto.timeOfDay !== undefined && dto.timeOfDay !== todo.timeOfDay) {
-        // A new time anchors it anew: right after the appointment before it.
-        todo.timeOfDay = dto.timeOfDay;
-        todo.dayPosition = null;
-      }
       if (dto.plannedDurationMinutes !== undefined)
         todo.plannedDurationMinutes = dto.plannedDurationMinutes;
-      if (dto.completed !== undefined) {
-        todo.completed = dto.completed;
-        // A repeated completion keeps the original timestamp.
-        if (dto.completed) todo.completedAt ??= this.clock.now();
-        else todo.completedAt = null;
-      }
-      this.validatePlan(todo.scheduledDate, todo.timeOfDay);
-      const saved = await repository.save(todo);
-      // A completed todo is no timer target any more.
-      if (todo.completed)
-        await releaseTimers(
-          manager,
-          userId,
-          { todoIds: [id] },
-          this.clock.now(),
-        );
-      return saved;
+      return saveQuest(
+        manager,
+        todo,
+        {
+          scheduledDate: dto.scheduledDate,
+          timeOfDay: dto.timeOfDay,
+          completed: dto.completed,
+        },
+        this.clock.now(),
+      );
     });
   }
 
@@ -303,9 +291,12 @@ export class TodosService {
         throw new ConflictException(
           'Beende zuerst die Stoppuhr, bevor du die Quest verschiebst.',
         );
-      if (todo.scheduledDate !== dto.date)
-        await this.moveToDay(manager, todo, dto.date);
-      return repository.save(todo);
+      return saveQuest(
+        manager,
+        todo,
+        { scheduledDate: dto.date },
+        this.clock.now(),
+      );
     });
   }
 
@@ -428,69 +419,5 @@ export class TodosService {
         throw new InternalServerErrorException(error.message);
       throw error;
     }
-  }
-
-  /**
-   * Another day has its own order, so the todo joins it at the end. Back in
-   * the backlog there is no day an appointment could be on, and the todo
-   * joins the end of the Questlog's order; with a day it has no place there.
-   */
-  private async moveToDay(
-    manager: EntityManager,
-    todo: TodoEntity,
-    date: string | null,
-  ): Promise<void> {
-    todo.scheduledDate = date;
-    todo.dayPosition = null;
-    todo.backlogPosition =
-      date === null
-        ? await this.nextBacklogPosition(manager, todo.userId)
-        : null;
-    if (date === null) todo.timeOfDay = null;
-  }
-
-  /** The place after every quest of the user that has no day. */
-  private async nextBacklogPosition(
-    manager: EntityManager,
-    userId: string,
-  ): Promise<number> {
-    const last = await this.backlogEdge(manager, userId, 'MAX');
-    return last === null ? 0 : last + 1;
-  }
-
-  /**
-   * The place before every quest of the user that has no day, in the same
-   * transaction as the insert; positions may go below zero.
-   */
-  private async firstBacklogPosition(
-    manager: EntityManager,
-    userId: string,
-  ): Promise<number> {
-    const first = await this.backlogEdge(manager, userId, 'MIN');
-    return first === null ? 0 : first - 1;
-  }
-
-  private async backlogEdge(
-    manager: EntityManager,
-    userId: string,
-    edge: 'MIN' | 'MAX',
-  ): Promise<number | null> {
-    const result = await manager
-      .getRepository(TodoEntity)
-      .createQueryBuilder('todo')
-      .select(`${edge}("todo"."backlogPosition")`, 'edge')
-      .where('"todo"."userId" = :userId', { userId })
-      .andWhere('"todo"."scheduledDate" IS NULL')
-      .getRawOne<{ edge: number | null }>();
-    return result?.edge == null ? null : Number(result.edge);
-  }
-
-  private validatePlan(
-    scheduledDate: string | null,
-    timeOfDay: string | null,
-  ): void {
-    if (scheduledDate !== null) assertDateOnly(scheduledDate);
-    else if (timeOfDay !== null)
-      throw new BadRequestException('An appointment needs a day');
   }
 }

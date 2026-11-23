@@ -67,4 +67,54 @@ describe("useWrites", () => {
     await write(() => Promise.resolve(), { fallbackError: "x", notify: null });
     expect(steps).toEqual(["reload"]);
   });
+
+  it("shows a write at once and keeps it when it went through", async () => {
+    const { steps, writeShown, stop } = harness();
+    cleanup = stop;
+    const takeBack = vi.fn();
+    const done = await writeShown(
+      () => {
+        steps.push("show");
+        return takeBack;
+      },
+      async () => {
+        steps.push("write");
+      },
+      { fallbackError: "x" },
+    );
+    expect(done).toBe(true);
+    expect(steps).toEqual(["show", "write", "notify", "reload"]);
+    expect(takeBack).not.toHaveBeenCalled();
+  });
+
+  it("takes a shown write back and reloads quietly when it failed", async () => {
+    const { reload, errorMessage, writeShown, stop } = harness();
+    cleanup = stop;
+    const takeBack = vi.fn();
+    const done = await writeShown(
+      () => takeBack,
+      () => Promise.reject(new Error("weg")),
+      { fallbackError: "x" },
+    );
+    expect(done).toBe(false);
+    expect(takeBack).toHaveBeenCalledTimes(1);
+    expect(reload).toHaveBeenCalledWith(false);
+    expect(errorMessage.value).toBe("weg");
+  });
+
+  it("takes back a single-step write without a reload when asked", async () => {
+    const { reload, writeShown, stop } = harness();
+    cleanup = stop;
+    const takeBack = vi.fn();
+    await writeShown(
+      () => takeBack,
+      () => Promise.reject(new Error("weg")),
+      {
+        fallbackError: "x",
+        reloadOnFailure: false,
+      },
+    );
+    expect(takeBack).toHaveBeenCalledTimes(1);
+    expect(reload).not.toHaveBeenCalled();
+  });
 });
