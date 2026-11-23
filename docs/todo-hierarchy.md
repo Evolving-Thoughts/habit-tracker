@@ -80,7 +80,8 @@ when a top-level todo with open todos below it is completed by its ring (or
 X): "Kampagne abschließen?", "3 Quests in „Buch“ sind noch offen. Sie bleiben
 offen; die Kampagne steht danach unter „Abgeschlossen“." The count is the
 server's (`todoCount - doneCount` of its progress); without open todos below
-nothing asks. `useCampaignCompletion` and `CampaignCompletionDialog` do this in
+nothing asks. `useCampaignCompletion` and `CampaignCompletionDialog` do this,
+through `useTicks` (the one place for ring, undo toast and this question), in
 the Kampagnen view (the tree is at hand: "Abschließen" on a campaign's tile
 and on its detail card, and "Kampagne abschließen" in the card's "…"), Heute
 and the Plan's X (they read `GET /todos/hierarchy` once, only for a row that
