@@ -23,10 +23,8 @@ import { resolvedOccurrences } from '../habit-occurrences/resolved-occurrences';
 import { historyRange } from './history-range';
 import { eventsOfDays } from '../calendar/day-events';
 import { CategoryEntity } from '../categories/category.entity';
-import {
-  categoryLabels,
-  type CategoryLabel,
-} from '../categories/category-lookup';
+import { categoryLabels } from '../categories/category-lookup';
+import { AgendaContext } from '../day-planner/agenda-context';
 import { perfectWeekOf } from './perfect-week';
 import { loadWeekQuota } from './week-quota';
 import {
@@ -36,7 +34,7 @@ import {
   HistoryPlannedItem,
   HistoryWeeklyTarget,
 } from './history.dto';
-import { loadTodoAncestry, TodoAncestry } from '../todos/todo-ancestry';
+import { loadTodoAncestry } from '../todos/todo-ancestry';
 import { logsOfDays, withCampaigns } from '../work-logs/day-logs';
 import { dayWork } from './history-work';
 
@@ -58,8 +56,11 @@ export class HistoryService {
       const categories = await manager
         .getRepository(CategoryEntity)
         .find({ where: { userId }, order: { name: 'ASC' } });
-      const ancestry = await loadTodoAncestry(manager, userId, today);
-      const category = categoryLabels(categories);
+      const context = new AgendaContext(
+        categoryLabels(categories),
+        await loadTodoAncestry(manager, userId, today),
+      );
+      const { ancestry } = context;
       const todos =
         filter === 'habits'
           ? []
@@ -82,9 +83,7 @@ export class HistoryService {
           id: todo.id,
           habitId: null,
           title: todo.title,
-          ...category(todo.categoryId),
-          why: ancestry.todoWhy(todo),
-          campaign: ancestry.campaignOf(todo),
+          ...context.todo(todo),
           status: 'completed' as const,
           date: dayOf(todo.completedAt!),
           scheduledDate: todo.scheduledDate ?? null,
@@ -98,9 +97,7 @@ export class HistoryService {
           id: occurrence.id,
           habitId: occurrence.habitId,
           title: occurrence.habit.title,
-          ...category(occurrence.habit.categoryId),
-          why: ancestry.habitWhy(occurrence.habit),
-          campaign: ancestry.habitCampaign(occurrence.habitId),
+          ...context.habit(occurrence.habit),
           status: occurrence.status as 'completed' | 'skipped',
           date:
             occurrence.status === HabitOccurrenceStatus.COMPLETED
@@ -130,8 +127,7 @@ export class HistoryService {
         dates,
         today,
         now,
-        category,
-        ancestry,
+        context,
       );
       // Every view shows the read Google calendars: the week as blocks too.
       const external = await eventsOfDays(
@@ -195,8 +191,7 @@ export class HistoryService {
     dates: string[],
     today: string,
     now: Date,
-    category: (id: number | null) => CategoryLabel,
-    ancestry: TodoAncestry,
+    context: AgendaContext,
   ): Promise<{ items: HistoryPlannedItem[]; targets: HistoryWeeklyTarget[] }> {
     const items: HistoryPlannedItem[] = [];
     if (dates[dates.length - 1] < today) return { items, targets: [] };
@@ -218,9 +213,7 @@ export class HistoryService {
             id: todo.id,
             habitId: null,
             title: todo.title,
-            ...category(todo.categoryId),
-            why: ancestry.todoWhy(todo),
-            campaign: ancestry.campaignOf(todo),
+            ...context.todo(todo),
             date,
             scheduledDate,
             isOverdue,
@@ -243,15 +236,11 @@ export class HistoryService {
       return { items: sortedLikeToday(items, positions), targets: [] };
     // Target progress is scoped to the selected calendar week even in day view.
     const { startDate: weekStart, endDate: weekEnd } = weekRange(dates[0]);
-    const context = (habit: HabitEntity): PlannedContext => ({
-      ...category(habit.categoryId),
-      why: ancestry.habitWhy(habit),
-      campaign: ancestry.habitCampaign(habit.id),
-    });
+    const labels = (habit: HabitEntity): PlannedContext => context.habit(habit);
     items.push(
-      ...plannedHabits(habits, slots, occurrences, today, context),
+      ...plannedHabits(habits, slots, occurrences, today, labels),
       ...(dates.includes(today)
-        ? openTargetRuns(habits, versions, occurrences, today, context)
+        ? openTargetRuns(habits, versions, occurrences, today, labels)
         : []),
     );
     const stored = new Map(

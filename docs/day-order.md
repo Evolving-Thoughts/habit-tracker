@@ -60,7 +60,9 @@ The time-based replanner ("Neu planen"), the day-end setting and the per-calenda
   `timeOfDay` (`HH:mm` or null) replace `scheduledAt` and `isFixed`.
 - `TodoResponseDto`, day planner and history items carry `scheduledDate` and
   `timeOfDay`. Day planner items also carry `campaign: { id, title } | null`,
-  the topmost todo above the item (see `todo-ancestry.ts`).
+  the topmost todo above the item (see `todo-ancestry.ts`). Heute and the Kalender label their
+  entries (category, effective reason, campaign) through one module,
+  `day-planner/agenda-context.ts`.
 - `PUT /day-planner/order` with `{ items: [{ type: "todo" | "habit", id }] }`
   stores an order: each item takes its index as position. A habit's `id` is its
   occurrence id. All items must be the caller's own, otherwise 404 and nothing
