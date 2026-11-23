@@ -30,7 +30,7 @@
     "vue-router": "^4.6.5"
   },
   "devDependencies": {
-    "@capacitor/android": "^7.6.10",
+    "@capacitor/android": "^8.6.2",
     "@capacitor/cli": "^7.6.10",
     "@capacitor/core": "^7.6.10",
     "@playwright/test": "1.65.0",
