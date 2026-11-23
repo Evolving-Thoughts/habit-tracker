@@ -34,7 +34,7 @@
     "@capacitor/cli": "^7.6.10",
     "@capacitor/core": "^7.6.10",
     "@playwright/test": "1.63.0",
-    "@types/node": "^24.13.3",
+    "@types/node": "^26.6.6",
     "@types/sortablejs": "^1.15.9",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/test-utils": "^2.5.1",
