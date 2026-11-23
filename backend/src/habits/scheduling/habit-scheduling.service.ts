@@ -13,12 +13,9 @@ import { dayOf } from '../../common/date/local-day';
 import { Clock } from '../../common/clock';
 import { lockUser, UserUnitOfWork } from '../../common/user-unit-of-work';
 import { ownedOccurrences } from '../../habit-occurrences/owned-occurrences';
+import { hasOpenTimer, releaseTimers } from '../../timers/timer-target';
 import {
   effectiveDuration,
-  hasOpenTimer,
-  releaseTimers,
-} from '../../timers/timer-target';
-import {
   HabitOccurrenceEntity,
   occurrenceDueDate,
 } from '../../habit-occurrences/entities/habit-occurrence.entity';

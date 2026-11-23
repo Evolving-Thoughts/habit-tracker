@@ -9,7 +9,7 @@ export type Stopwatch = {
    * The base the stopwatch counts on from, not the sum of its logs: what it
    * started with plus each logged block (short pauses included); once a
    * block is over it becomes the shown time instead, pauses left out and an
-   * unlogged short stretch kept (`resumeWorkSegment`).
+   * unlogged short stretch kept (`transition` in `timer-transition.ts`).
    */
   elapsedMilliseconds: number;
   segmentStartedAt: Date | null;
@@ -21,6 +21,9 @@ export type Stopwatch = {
   pausedAt?: Date | null;
   workLogId?: number | null;
 };
+
+/** What the shown time is derived from; the target plays no part in it. */
+export type StopwatchTime = Omit<Stopwatch, 'targetMinutes'>;
 
 const MINUTE_MS = 60_000;
 
@@ -35,9 +38,9 @@ export const MAX_SEGMENT_MS = 12 * 60 * MINUTE_MS;
  * never counts and a short stretch never vanishes from view, so the shown
  * time neither jumps ahead on resume nor back on pause, even though the
  * work log joins short pauses into one block and leaves out a block under a
- * minute (`timer-target.ts`).
+ * minute (`timer-transition.ts`).
  */
-export function elapsedAt(timer: Stopwatch, now: Date): number {
+export function elapsedAt(timer: StopwatchTime, now: Date): number {
   const idle = timer.idleMilliseconds ?? 0;
   if (timer.state === 'running' && timer.segmentStartedAt)
     return Math.max(
@@ -52,7 +55,7 @@ export function elapsedAt(timer: Stopwatch, now: Date): number {
 }
 
 /** While paused: the last block when it is too short to be logged yet. */
-export function unloggedBlock(timer: Stopwatch): number {
+export function unloggedBlock(timer: StopwatchTime): number {
   const { blockStartedAt, pausedAt, workLogId } = timer;
   if (workLogId != null || !blockStartedAt || !pausedAt) return 0;
   return Math.max(0, pausedAt.getTime() - blockStartedAt.getTime());

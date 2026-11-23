@@ -8,12 +8,12 @@ import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { ownedOccurrences } from '../habit-occurrences/owned-occurrences';
 import {
-  effectiveDuration,
   isOccurrenceTimerEligible,
   isTodoTimerEligible,
 } from '../timers/timer-target';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
 import {
+  effectiveDuration,
   HabitOccurrenceEntity,
   occurrenceDueDate,
 } from '../habit-occurrences/entities/habit-occurrence.entity';

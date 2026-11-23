@@ -5,18 +5,19 @@ import {
 } from '@nestjs/common';
 import { EntityManager, In } from 'typeorm';
 import { TodoEntity } from '../todos/entities/todo.entity';
-import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
+import {
+  effectiveDuration,
+  HabitOccurrenceEntity,
+} from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
 import { dayOf } from '../common/date/local-day';
 import { TimerEntity } from './timer.entity';
 import { StartTimerDto } from './timer.dto';
 import {
-  closeWorkSegment,
-  effectiveDuration,
   isOccurrenceTimerEligible,
   isTodoTimerEligible,
   loggedMilliseconds,
-  resumeWorkSegment,
+  recordTransition,
   stopTimer,
 } from './timer-target';
 import { Clock } from '../common/clock';
@@ -126,8 +127,7 @@ export class TimersService {
     timer: TimerEntity,
     at: Date,
   ): Promise<void> {
-    await closeWorkSegment(manager, timer, at);
-    timer.state = 'paused';
+    await recordTransition(manager, timer, 'pause', at);
     timer.targetReachesAt = null;
   }
   /**
@@ -309,7 +309,7 @@ export class TimersService {
       if (action === 'pause' && timer.state === 'running')
         await this.pause(manager, timer, now);
       else if (action === 'resume' && timer.state === 'paused') {
-        await resumeWorkSegment(manager, timer, now);
+        await recordTransition(manager, timer, 'resume', now);
         // A block continued past its target stays reached; nothing is due again.
         timer.targetReachesAt = timer.targetReachedAt
           ? null

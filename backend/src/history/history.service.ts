@@ -12,7 +12,7 @@ import { HabitEntity } from '../habits/entities/habit.entity';
 import { DEFAULT_TIME_ZONE } from '../common/date/date-only.utils';
 import { dayOf, weekRange } from '../common/date/local-day';
 import { Clock } from '../common/clock';
-import { effectiveDuration } from '../timers/timer-target';
+import { effectiveDuration } from '../habit-occurrences/entities/habit-occurrence.entity';
 import {
   completedTodos,
   openScheduledTodos,

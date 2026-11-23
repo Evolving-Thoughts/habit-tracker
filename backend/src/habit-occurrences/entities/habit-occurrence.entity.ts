@@ -24,6 +24,14 @@ export function occurrenceDueDate(occurrence: {
   return occurrence.movedToDate ?? occurrence.scheduledDate;
 }
 
+/** Planned minutes of an occurrence, falling back to its habit's default. */
+export function effectiveDuration(
+  occurrence: { plannedDurationMinutes: number | null },
+  habit: { plannedDurationMinutes: number | null },
+): number | null {
+  return occurrence.plannedDurationMinutes ?? habit.plannedDurationMinutes;
+}
+
 @Entity({ name: 'habit_occurrences' })
 @Index(['scheduleVersionId', 'scheduledDate'], { unique: true })
 @Index('UQ_habit_occurrences_pending', ['habitId'], {

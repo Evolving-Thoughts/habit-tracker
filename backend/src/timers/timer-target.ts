@@ -1,15 +1,17 @@
-import { Brackets, EntityManager, LessThan } from 'typeorm';
+import { Brackets, EntityManager } from 'typeorm';
 import { occurrenceDueDate } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { WorkLogEntity } from '../work-logs/work-log.entity';
 import { coveredMilliseconds } from '../work-logs/work-time';
-import { elapsedAt, MAX_SEGMENT_MS } from './timer-math';
 import { TimerEntity } from './timer.entity';
+import { StopwatchEvent, StopwatchState, transition } from './timer-transition';
 
 /**
- * Timer targets: which todo or habit occurrence may carry a stopwatch, what
- * its planned minutes are, and what happens to a stopwatch when its target
- * stops being eligible. Pure rules plus one write; no Nest dependencies, so todos,
- * habits, day planner and history can all use it without module cycles.
+ * Timer targets: which todo or habit occurrence may carry a stopwatch, the
+ * adapter that stores a stopwatch event with its Logbuch writes
+ * (`recordTransition`, the rules are in `timer-transition.ts`), and what
+ * happens to a stopwatch when its target stops being eligible. No Nest
+ * dependencies, so todos, habits, the calendar sync and the timers service
+ * can all use it without module cycles.
  */
 export const TIMER_MIN_MINUTES = 1;
 export const TIMER_MAX_MINUTES = 10080;
@@ -36,134 +38,68 @@ export function isOccurrenceTimerEligible(
   );
 }
 
-/** Planned minutes of an occurrence, falling back to its habit's default. */
-export function effectiveDuration(
-  occurrence: { plannedDurationMinutes: number | null },
-  habit: { plannedDurationMinutes: number | null },
-): number | null {
-  return occurrence.plannedDurationMinutes ?? habit.plannedDurationMinutes;
-}
-
 /**
- * A pause shorter than this is part of the block: resuming within it
- * continues the block before the pause, and its log counts the pause as
- * worked (the shown time leaves it out, `idleMilliseconds`).
+ * Runs one stopwatch event through `transition` (`timer-transition.ts`):
+ * loads what it needs, writes its log operations and puts the next state on
+ * the timer; the caller saves the timer. The block's log is read locked, so
+ * a correction or deletion of it either happened before or waits until this
+ * transaction ends.
  */
-export const BLOCK_GAP_MS = 60_000;
-/**
- * A block shorter than this is not logged while it may still be a mis-tap:
- * the stopwatch shows its time (`unloggedBlock`), and the block gets its log
- * once work resumes after the gap (`resumeWorkSegment`). Ended right away,
- * it stays unlogged.
- */
-export const MIN_BLOCK_MS = 60_000;
-
-/**
- * Ends the running stretch of a stopwatch at `end`. The work log of its
- * block is extended when the stretch continues one, else a block of at
- * least `MIN_BLOCK_MS` becomes a new work log and a shorter one is dropped.
- * The time of a logged block joins what was worked before. The caller sets
- * the new state.
- */
-export async function closeWorkSegment(
+export async function recordTransition(
   manager: EntityManager,
   timer: TimerEntity,
-  end: Date,
+  type: 'pause' | 'stop' | 'resume',
+  at: Date,
 ): Promise<void> {
-  const startedAt = timer.segmentStartedAt;
-  timer.segmentStartedAt = null;
-  if (!startedAt) return;
-  // A stretch nobody ended never counts for more than its limit.
-  const endedAt = new Date(
-    Math.max(
-      startedAt.getTime(),
-      Math.min(end.getTime(), startedAt.getTime() + MAX_SEGMENT_MS),
-    ),
-  );
-  const length = endedAt.getTime() - startedAt.getTime();
-  timer.blockStartedAt = startedAt;
-  timer.pausedAt = endedAt;
-  if (timer.workLogId !== null) {
-    // The log may have been corrected or deleted meanwhile: then start anew.
-    const { affected } = await manager.update(
-      WorkLogEntity,
-      {
-        id: timer.workLogId,
-        userId: timer.userId,
-        startedAt: LessThan(endedAt),
-      },
-      { endedAt },
-    );
-    if (affected) {
-      timer.elapsedMilliseconds += length;
-      return;
+  const event: StopwatchEvent =
+    type === 'resume'
+      ? { type }
+      : {
+          type,
+          blockLog:
+            timer.workLogId !== null && timer.segmentStartedAt
+              ? await manager.findOne(WorkLogEntity, {
+                  select: { id: true, startedAt: true },
+                  where: { id: timer.workLogId, userId: timer.userId },
+                  lock: { mode: 'pessimistic_write' },
+                })
+              : null,
+        };
+  const { state, logOps } = transition(stopwatchState(timer), event, at);
+  for (const operation of logOps) {
+    if (operation.type === 'extend') {
+      await manager.update(
+        WorkLogEntity,
+        { id: operation.id, userId: timer.userId },
+        { endedAt: operation.endedAt },
+      );
+      continue;
     }
-    timer.workLogId = null;
+    const { identifiers } = await manager.insert(WorkLogEntity, {
+      userId: timer.userId,
+      todoId: timer.todoId,
+      occurrenceId: timer.occurrenceId,
+      title: timer.title,
+      startedAt: operation.startedAt,
+      endedAt: operation.endedAt,
+      source: 'timer',
+    });
+    if (operation.isBlockLog)
+      state.workLogId = (identifiers[0] as { id: number }).id;
   }
-  if (length < MIN_BLOCK_MS) return;
-  const { identifiers } = await manager.insert(WorkLogEntity, {
-    userId: timer.userId,
-    todoId: timer.todoId,
-    occurrenceId: timer.occurrenceId,
-    title: timer.title,
-    startedAt,
-    endedAt,
-    source: 'timer',
-  });
-  timer.workLogId = (identifiers[0] as { id: number }).id;
-  timer.elapsedMilliseconds += length;
+  Object.assign(timer, state);
 }
 
-/**
- * Starts the next stretch of a paused stopwatch at `now`. Within
- * `BLOCK_GAP_MS` of the pause it continues the block before it: the stretch
- * starts where that block started, so the block's log counts the pause as
- * worked and is extended when it ends; the shown time leaves the pause out.
- * Otherwise a new block begins, and a block before it that was too short
- * for a log gets one now: work resumed later was work, not a mis-tap. The
- * caller sets the target moment.
- */
-export async function resumeWorkSegment(
-  manager: EntityManager,
-  timer: TimerEntity,
-  now: Date,
-): Promise<void> {
-  const { blockStartedAt, pausedAt } = timer;
-  const gap = pausedAt ? now.getTime() - pausedAt.getTime() : Infinity;
-  if (blockStartedAt && pausedAt && gap >= 0 && gap < BLOCK_GAP_MS) {
-    // The block is counted again, whole, when this stretch ends.
-    if (timer.workLogId !== null)
-      timer.elapsedMilliseconds -=
-        pausedAt.getTime() - blockStartedAt.getTime();
-    // The log counts the pause; the stopwatch does not show it.
-    timer.idleMilliseconds = (timer.idleMilliseconds ?? 0) + gap;
-    timer.segmentStartedAt = blockStartedAt;
-  } else {
-    // The block before is over: from here on it counts as it was shown,
-    // its pauses left out.
-    timer.elapsedMilliseconds = elapsedAt(timer, now);
-    if (
-      timer.workLogId === null &&
-      blockStartedAt &&
-      pausedAt &&
-      pausedAt > blockStartedAt
-    )
-      await manager.insert(WorkLogEntity, {
-        userId: timer.userId,
-        todoId: timer.todoId,
-        occurrenceId: timer.occurrenceId,
-        title: timer.title,
-        startedAt: blockStartedAt,
-        endedAt: pausedAt,
-        source: 'timer',
-      });
-    timer.idleMilliseconds = 0;
-    timer.workLogId = null;
-    timer.segmentStartedAt = now;
-  }
-  timer.blockStartedAt = null;
-  timer.pausedAt = null;
-  timer.state = 'running';
+function stopwatchState(timer: TimerEntity): StopwatchState {
+  return {
+    state: timer.state,
+    elapsedMilliseconds: timer.elapsedMilliseconds,
+    idleMilliseconds: timer.idleMilliseconds ?? 0,
+    segmentStartedAt: timer.segmentStartedAt,
+    blockStartedAt: timer.blockStartedAt,
+    pausedAt: timer.pausedAt,
+    workLogId: timer.workLogId,
+  };
 }
 
 /**
@@ -188,8 +124,7 @@ export async function stopTimer(
   timer: TimerEntity,
   at: Date,
 ): Promise<TimerEntity> {
-  await closeWorkSegment(manager, timer, at);
-  timer.state = 'stopped';
+  await recordTransition(manager, timer, 'stop', at);
   timer.targetReachesAt = null;
   return manager.save(TimerEntity, timer);
 }

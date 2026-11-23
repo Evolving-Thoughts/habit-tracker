@@ -17,12 +17,12 @@ import {
 } from '../common/date/local-day';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import {
+  effectiveDuration,
   HabitOccurrenceEntity,
   occurrenceDueDate,
 } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
-import { effectiveDuration } from '../timers/timer-target';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { saveQuest } from '../todos/quest-commands';
 import { loadTodoAncestry } from '../todos/todo-ancestry';

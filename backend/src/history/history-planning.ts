@@ -3,7 +3,10 @@ import { endOfDay } from '../common/date/local-day';
 import { HabitEntity } from '../habits/entities/habit.entity';
 import { HabitScheduleVersionEntity } from '../habits/entities/habit-schedule-version.entity';
 import { HabitScheduleType } from '../habits/enums/habit-schedule-type.enum';
-import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
+import {
+  effectiveDuration,
+  HabitOccurrenceEntity,
+} from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus as Status } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import {
   expiresAt,
@@ -17,7 +20,6 @@ import {
   isCompletedOn,
 } from '../habits/scheduling/occurrence-lifecycle';
 import { HistoryPlannedItem, HistoryWeeklyTarget } from './history.dto';
-import { effectiveDuration } from '../timers/timer-target';
 import { sortInDay } from '../day-planner/day-order';
 
 /** What a planned run shows beside its own fields, resolved by the caller. */
