@@ -89,7 +89,13 @@ describe('Monats-Challenge (e2e)', () => {
 
   it('needs a session', async () => {
     await anonymous(server).get('/month-challenges').expect(401);
-    await anonymous(server).post('/month-challenges').send({}).expect(401);
+    // From the app's own origin, so the origin check lets it through to
+    // the session check.
+    await anonymous(server)
+      .post('/month-challenges')
+      .set('Origin', process.env.FRONTEND_URL!)
+      .send({})
+      .expect(401);
   });
 
   it('starts on a Daily mid-month, counts strictly and shows in Heute and the Dailies', async () => {
