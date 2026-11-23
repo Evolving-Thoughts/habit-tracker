@@ -45,6 +45,8 @@ export type DayPlannerTodoItem = {
   plannedDurationMinutes: number | null;
   isOverdue: boolean;
   timerEligible: boolean;
+  /** Fokus-Sperre: the quest's own choice (see focus-block.ts). */
+  focusBlock?: "default" | "always" | "never";
 } & DayPlannerItemContext;
 
 export type DayPlannerHabitItem = {
@@ -67,6 +69,8 @@ export type DayPlannerHabitItem = {
   streak: { current: number; best: number; unit: "runs" | "weeks" };
   /** The Daily carries the running Monats-Challenge (the row's marker). */
   monthChallenge?: boolean;
+  /** Fokus-Sperre: the daily's own choice (see focus-block.ts). */
+  focusBlock?: "default" | "always" | "never";
 } & DayPlannerItemContext;
 
 export type DayPlannerItem = DayPlannerTodoItem | DayPlannerHabitItem;

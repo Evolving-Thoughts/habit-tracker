@@ -1,4 +1,8 @@
 import {
+  FOCUS_BLOCK_OVERRIDES,
+  type FocusBlockOverride,
+} from '../../focus-blocks/focus-block-rules';
+import {
   IsBoolean,
   IsNotEmpty,
   IsString,
@@ -9,6 +13,7 @@ import {
   Max,
   MaxLength,
   ValidateIf,
+  IsIn,
 } from 'class-validator';
 
 export class UpdateHabitDto {
@@ -47,4 +52,9 @@ export class UpdateHabitDto {
   @ValidateIf((_object, value: unknown) => value !== undefined)
   @IsBoolean()
   readonly isActive?: boolean;
+
+  /** Fokus-Sperre for this entry: the default rule, always or never. */
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsIn(FOCUS_BLOCK_OVERRIDES)
+  readonly focusBlock?: FocusBlockOverride;
 }

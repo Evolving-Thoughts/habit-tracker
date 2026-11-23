@@ -9,7 +9,11 @@ import {
 } from '@nestjs/common';
 import { CurrentUser } from '../auth/auth.guard';
 import type { AuthUser } from '../auth/auth.dto';
-import { ChangeTimerDurationDto, StartTimerDto } from './timer.dto';
+import {
+  ChangeTimerDurationDto,
+  ResumeTimerDto,
+  StartTimerDto,
+} from './timer.dto';
 import { TimersService, TimerResponse } from './timers.service';
 @Controller('timers')
 export class TimersController {
@@ -34,8 +38,9 @@ export class TimersController {
   @Post(':id/resume') resume(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResumeTimerDto,
   ): Promise<TimerResponse> {
-    return this.service.action(user.id, id, 'resume');
+    return this.service.action(user.id, id, 'resume', dto.focusBlock);
   }
   @Post(':id/stop') stop(
     @CurrentUser() user: AuthUser,

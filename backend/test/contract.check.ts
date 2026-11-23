@@ -12,6 +12,12 @@ import type {
   SaveDayBestSettingsDto,
 } from '../src/day-bests/day-best.dto';
 import type { DayPlannerResponseDto } from '../src/day-planner/dto/day-planner-response.dto';
+import type {
+  AddFocusEntryDto,
+  FocusBlockRequestDto,
+  FocusBlockStateResponse,
+  SaveFocusSettingsDto,
+} from '../src/focus-blocks/focus-block.dto';
 import type { WeekPlanResponseDto } from '../src/day-planner/dto/week-plan.dto';
 import type { HabitOccurrenceResponseDto } from '../src/habit-occurrences/dto/habit-occurrence-response.dto';
 import type { CreateHabitDto } from '../src/habits/dto/create-habit.dto';
@@ -63,6 +69,12 @@ import type {
   DayBestRange,
   DayBestSettings,
 } from '../../frontend/src/types/day-best';
+import type {
+  AddFocusEntryInput,
+  FocusBlockRequest,
+  FocusBlockState,
+  FocusSettings,
+} from '../../frontend/src/types/focus-block';
 import type { HistoryResponse } from '../../frontend/src/types/history';
 import type {
   CreateMonthChallengeInput,
@@ -137,6 +149,10 @@ export type Contract = [
   Assert<Reads<MonthChallengesResponse, MonthChallenges>>,
   Assert<Sends<CreateMonthChallengeInput, CreateMonthChallengeDto>>,
   Assert<Sends<UpdateMonthChallengeInput, UpdateMonthChallengeDto>>,
+  Assert<Reads<FocusBlockStateResponse, FocusBlockState>>,
+  Assert<Sends<Partial<FocusSettings>, SaveFocusSettingsDto>>,
+  Assert<Sends<AddFocusEntryInput, AddFocusEntryDto>>,
+  Assert<Sends<FocusBlockRequest, FocusBlockRequestDto>>,
   Assert<Same<typeof BACKEND_COLORS, typeof CAMPAIGN_COLORS>>,
   Assert<Same<typeof BACKEND_ICONS, typeof CAMPAIGN_ICONS>>,
   Assert<Sends<CreateTodoInput, CreateTodoDto>>,

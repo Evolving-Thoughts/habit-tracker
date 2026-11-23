@@ -4,6 +4,7 @@ import { WorkLogEntity } from '../work-logs/work-log.entity';
 import { coveredMilliseconds } from '../work-logs/work-time';
 import { TimerEntity } from './timer.entity';
 import { StopwatchEvent, StopwatchState, transition } from './timer-transition';
+import { endSoftFocusBlocks } from '../focus-blocks/focus-block-store';
 
 /**
  * Timer targets: which todo or habit occurrence may carry a stopwatch, the
@@ -118,7 +119,10 @@ export async function loggedMilliseconds(
   return coveredMilliseconds(logs);
 }
 
-/** Ends a stopwatch for good: its work stays on record, its row stops counting. */
+/**
+ * Ends a stopwatch for good: its work stays on record, its row stops
+ * counting, and a Soft Fokus-Sperre ends with it.
+ */
 export async function stopTimer(
   manager: EntityManager,
   timer: TimerEntity,
@@ -126,6 +130,7 @@ export async function stopTimer(
 ): Promise<TimerEntity> {
   await recordTransition(manager, timer, 'stop', at);
   timer.targetReachesAt = null;
+  await endSoftFocusBlocks(manager, timer.userId, at);
   return manager.save(TimerEntity, timer);
 }
 

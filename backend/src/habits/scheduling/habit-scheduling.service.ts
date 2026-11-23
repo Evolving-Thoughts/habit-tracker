@@ -14,6 +14,7 @@ import { Clock } from '../../common/clock';
 import { lockUser, UserUnitOfWork } from '../../common/user-unit-of-work';
 import { ownedOccurrences } from '../../habit-occurrences/owned-occurrences';
 import { hasOpenTimer, releaseTimers } from '../../timers/timer-target';
+import { endFocusBlocksOfDone } from '../../focus-blocks/focus-block-store';
 import {
   effectiveDuration,
   HabitOccurrenceEntity,
@@ -153,6 +154,7 @@ export class HabitSchedulingService {
       isActive: habit.isActive,
       plannedDurationMinutes: habit.plannedDurationMinutes,
       timeOfDay: habit.timeOfDay ?? null,
+      focusBlock: habit.focusBlock ?? 'default',
       timerOccurrenceId: pending?.id ?? null,
       timerDurationMinutes: pending ? effectiveDuration(pending, habit) : null,
       currentSchedule: active ? this.versionResponse(active) : null,
@@ -465,9 +467,12 @@ export class HabitSchedulingService {
     occurrence.cancellationReason = null;
 
     const saved = await repository.save(occurrence);
-    // A resolved run is no stopwatch target any more.
+    // A resolved run is no stopwatch target any more; a done one also ends
+    // its Fokus-Sperre, Hardcore included.
     if (targetStatus !== HabitOccurrenceStatus.PENDING)
       await releaseTimers(manager, userId, { occurrenceIds: [id] }, now);
+    if (targetStatus === HabitOccurrenceStatus.COMPLETED)
+      await endFocusBlocksOfDone(manager, userId, { occurrenceIds: [id] }, now);
     return saved;
   }
 

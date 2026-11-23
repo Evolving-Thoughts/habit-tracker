@@ -1,3 +1,7 @@
+import {
+  FOCUS_BLOCK_OVERRIDES,
+  type FocusBlockOverride,
+} from '../../focus-blocks/focus-block-rules';
 import { Type } from 'class-transformer';
 import {
   IsDateString,
@@ -12,6 +16,7 @@ import {
   MaxLength,
   ValidateIf,
   ValidateNested,
+  IsIn,
 } from 'class-validator';
 import { ScheduleDto } from './schedule.dto';
 
@@ -56,4 +61,9 @@ export class CreateHabitDto {
   @ValidateNested()
   @Type(() => ScheduleDto)
   readonly schedule!: ScheduleDto;
+
+  /** Fokus-Sperre for this entry: the default rule, always or never. */
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsIn(FOCUS_BLOCK_OVERRIDES)
+  readonly focusBlock?: FocusBlockOverride;
 }

@@ -429,6 +429,7 @@ export class DayPlannerService {
       plannedDurationMinutes: todo.plannedDurationMinutes,
       isOverdue: placement?.isOverdue ?? false,
       timerEligible: isTodoTimerEligible(todo),
+      focusBlock: todo.focusBlock ?? 'default',
     };
   }
 
@@ -462,6 +463,7 @@ export class DayPlannerService {
         occurrence.habit,
         today,
       ),
+      focusBlock: occurrence.habit.focusBlock ?? 'default',
     };
   }
 }

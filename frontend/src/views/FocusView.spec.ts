@@ -12,6 +12,11 @@ import {
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { createTimerController, timerKey } from "../composables/useTimer";
+import {
+  createFocusBlockController,
+  focusBlockKey,
+} from "../composables/useFocusBlock";
+import type { FocusBlockState } from "../types/focus-block";
 import type {
   DayPlannerHabitItem,
   DayPlannerResponse,
@@ -469,5 +474,146 @@ describe("FocusView: appointments by the rule of Heute's focus card", () => {
     const { wrapper } = await mountView();
     expect(wrapper.get("h1").text()).toBe("Nichts in der Reihenfolge");
     expect(wrapper.text()).toContain("Nächster Termin: 15:00 Teamrunde.");
+  });
+});
+
+describe("FocusView › Fokus-Sperre", () => {
+  const settings = {
+    enabled: true,
+    thresholdMinutes: 15,
+    mode: "soft" as const,
+    listMode: "blocklist" as const,
+  };
+  const focusState = (block: FocusBlockState["block"] = null) => ({
+    version: "v",
+    serverNow: new Date().toISOString(),
+    settings,
+    block,
+    lists: { block: [], allow: [] },
+    fixedDomains: [],
+  });
+
+  async function mountWithFocus(
+    block: FocusBlockState["block"] = null,
+    running: Timer | null = null,
+  ) {
+    const controller = createTimerController();
+    controller.timer.value = running;
+    const start = vi.spyOn(controller, "start").mockResolvedValue();
+    vi.spyOn(controller, "refresh").mockResolvedValue();
+    const focus = createFocusBlockController(null);
+    focus.state.value = focusState(block);
+    const end = vi.spyOn(focus, "end").mockResolvedValue(true);
+    const startBlock = vi.spyOn(focus, "start").mockResolvedValue(true);
+    const wrapper = mount(FocusView, {
+      attachTo: document.body,
+      global: {
+        provide: {
+          [timerKey as symbol]: controller,
+          [focusBlockKey as symbol]: focus,
+        },
+      },
+    });
+    await flushPromises();
+    const button = (label: string) =>
+      wrapper.findAll("button").filter((entry) => entry.text() === label);
+    return { wrapper, start, end, startBlock, button };
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("offers Soft or Hardcore before a start that blocks and sends the choice along", async () => {
+    vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+    const { wrapper, start, button } = await mountWithFocus();
+    const choice = wrapper.get("[data-test='focus-block-choice']");
+    expect(choice.get("[aria-pressed='true']").text()).toBe("Soft");
+    await button("Hardcore")[0]!.trigger("click");
+    expect(choice.text()).toContain(
+      "Die Sperre hält, bis die Quest erledigt oder das Soll erreicht ist.",
+    );
+    await button("Starten")[0]!.trigger("click");
+    expect(start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "todo",
+        targetId: 1,
+        focusBlock: { mode: "hardcore" },
+      }),
+    );
+  });
+
+  it("offers nothing for a quest set to Nie or below the threshold", async () => {
+    vi.mocked(getToday).mockResolvedValue(
+      planner([todo({ focusBlock: "never" })]),
+    );
+    const first = await mountWithFocus();
+    expect(first.wrapper.find("[data-test='focus-block-choice']").exists()).toBe(
+      false,
+    );
+    first.wrapper.unmount();
+    vi.mocked(getToday).mockResolvedValue(
+      planner([todo({ plannedDurationMinutes: 10 })]),
+    );
+    const second = await mountWithFocus();
+    expect(
+      second.wrapper.find("[data-test='focus-block-choice']").exists(),
+    ).toBe(false);
+  });
+
+  it("shows a Soft block and lifts it only after asking", async () => {
+    vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+    const { wrapper, end, button } = await mountWithFocus(
+      {
+        id: "b",
+        title: "Kapitel schreiben",
+        todoId: 1,
+        occurrenceId: null,
+        mode: "soft",
+        listMode: "blocklist",
+        startedAt: new Date().toISOString(),
+        endsAt: null,
+      },
+      stopwatch(),
+    );
+    expect(wrapper.get("[data-test='focus-block-state'] [role='status']").text()).toBe(
+      "Sperre aktiv · Soft",
+    );
+    await button("Sperre aufheben")[0]!.trigger("click");
+    expect(end).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("Sperre aufheben?");
+    await button("Sperre aufheben")[1]!.trigger("click");
+    expect(end).toHaveBeenCalledOnce();
+  });
+
+  it("shows the time left of a Hardcore block and offers no way to lift it", async () => {
+    vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+    const { wrapper, button } = await mountWithFocus(
+      {
+        id: "b",
+        title: "Kapitel schreiben",
+        todoId: 1,
+        occurrenceId: null,
+        mode: "hardcore",
+        listMode: "blocklist",
+        startedAt: new Date().toISOString(),
+        endsAt: new Date(Date.now() + 12 * 60_000).toISOString(),
+      },
+      stopwatch(),
+    );
+    expect(wrapper.get("[data-test='focus-block-state'] [role='status']").text()).toBe(
+      "Sperre aktiv · Hardcore · noch 12 Min.",
+    );
+    expect(button("Sperre aufheben")).toHaveLength(0);
+  });
+
+  it("starts a block by hand for a stopwatch started elsewhere", async () => {
+    vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+    const { startBlock, button } = await mountWithFocus(null, stopwatch());
+    await button("Sperre starten")[0]!.trigger("click");
+    expect(startBlock).toHaveBeenCalledWith("soft");
   });
 });

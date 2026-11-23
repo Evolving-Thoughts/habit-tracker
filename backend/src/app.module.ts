@@ -2,6 +2,7 @@ import { HistoryModule } from './history/history.module';
 import { ReflectionsModule } from './reflections/reflections.module';
 import { DayBestsModule } from './day-bests/day-bests.module';
 import { MonthChallengesModule } from './month-challenges/month-challenges.module';
+import { FocusBlocksModule } from './focus-blocks/focus-blocks.module';
 import { WorkLogsModule } from './work-logs/work-logs.module';
 import { QuestHoursModule } from './quest-hours/quest-hours.module';
 import { WeekReviewModule } from './week-review/week-review.module';
@@ -47,6 +48,7 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
     ReflectionsModule,
     DayBestsModule,
     MonthChallengesModule,
+    FocusBlocksModule,
     WorkLogsModule,
     QuestHoursModule,
     WeekReviewModule,

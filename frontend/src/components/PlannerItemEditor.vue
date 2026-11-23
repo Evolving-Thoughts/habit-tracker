@@ -10,6 +10,9 @@ import CampaignFields from "./CampaignFields.vue";
 import CategoryPicker from "./CategoryPicker.vue";
 import CreateHabitForm, { type HabitDraft } from "./CreateHabitForm.vue";
 import FormDisclosure from "./FormDisclosure.vue";
+import FocusBlockOverride from "./FocusBlockOverride.vue";
+import type { FocusBlockOverride as FocusBlockChoice } from "../types/focus-block";
+import { OVERRIDE_LABELS } from "../utils/focus-block";
 import KindSwitch from "./KindSwitch.vue";
 import ParentPicker from "./ParentPicker.vue";
 import AppIcon from "./AppIcon.vue";
@@ -135,6 +138,13 @@ const todoDate = ref("");
 const todoTime = ref("");
 const duration = ref<string | number>("");
 const timeOfDay = ref("");
+/** Fokus-Sperre: Standard, Immer or Nie; quests and dailies alike. */
+const focusBlockChoice = ref<FocusBlockChoice>("default");
+const focusBlockSummary = computed(() =>
+  focusBlockChoice.value === "default"
+    ? ""
+    : OVERRIDE_LABELS[focusBlockChoice.value],
+);
 /** "Gehört zu": the quest it sits below; null at the top. */
 const parentId = ref<number | null>(null);
 /** The places "Gehört zu" offers, once loaded. */
@@ -293,6 +303,7 @@ async function loadEntity(): Promise<void> {
       goalTarget.value = todo.goalTarget ?? "";
       title.value = todo.title;
       duration.value = todo.plannedDurationMinutes ?? "";
+      focusBlockChoice.value = todo.focusBlock ?? "default";
       todoDate.value = todo.scheduledDate ?? "";
       todoTime.value = todo.timeOfDay ?? "";
       campaignColor.value = isCampaignColor(todo.color) ? todo.color : null;
@@ -308,6 +319,7 @@ async function loadEntity(): Promise<void> {
       campaignId.value = habit.campaignId ?? null;
       duration.value = habit.plannedDurationMinutes ?? "";
       timeOfDay.value = habit.timeOfDay ?? "";
+      focusBlockChoice.value = habit.focusBlock ?? "default";
       const version = habit.currentSchedule ?? habit.upcomingSchedule;
       if (version) fillSchedule(version.schedule);
     }
@@ -340,6 +352,7 @@ function todoFields(): TodoFields {
     weeklyTarget: weeklyTarget.value,
     color: campaignColor.value,
     icon: campaignIcon.value,
+    focusBlock: focusBlockChoice.value,
   };
 }
 
@@ -353,6 +366,7 @@ function habitFields(): HabitFields {
     timeOfDay: timeOfDay.value,
     categoryId: categoryId.value,
     why: why.value,
+    focusBlock: focusBlockChoice.value,
   };
 }
 
@@ -650,6 +664,15 @@ onMounted(loadEntity);
                 />
               </div>
             </FormDisclosure>
+
+            <FormDisclosure
+              v-if="!isCampaign"
+              label="Fokus-Sperre"
+              :summary="focusBlockSummary"
+              :start-open="focusBlockChoice !== 'default'"
+            >
+              <FocusBlockOverride v-model="focusBlockChoice" kind="todo" />
+            </FormDisclosure>
           </div>
 
           <QuestNotes :target="{ kind: 'todo', id: entityId }" />
@@ -851,6 +874,14 @@ onMounted(loadEntity);
               >
             </div>
           </div>
+
+          <FormDisclosure
+            label="Fokus-Sperre"
+            :summary="focusBlockSummary"
+            :start-open="focusBlockChoice !== 'default'"
+          >
+            <FocusBlockOverride v-model="focusBlockChoice" kind="habit" />
+          </FormDisclosure>
 
           <label class="item-editor__checkbox">
             <input v-model="isActive" name="isActive" type="checkbox" />

@@ -13,6 +13,8 @@ import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.se
 import { dayOf } from '../common/date/local-day';
 import { TimerEntity } from './timer.entity';
 import { StartTimerDto } from './timer.dto';
+import type { FocusBlockRequestDto } from '../focus-blocks/focus-block.dto';
+import { startFocusBlock } from '../focus-blocks/focus-block-store';
 import {
   isOccurrenceTimerEligible,
   isTodoTimerEligible,
@@ -193,6 +195,39 @@ export class TimersService {
     if (current?.id !== id) return null;
     return this.reconcile(manager, userId, current, now);
   }
+  /**
+   * The Fokus-Modus started or resumed this stopwatch: a Fokus-Sperre
+   * starts with it when its quest or daily calls for one (an open block
+   * stays as it is). Runs in the stopwatch's own transaction.
+   */
+  private async startFocus(
+    manager: EntityManager,
+    timer: TimerEntity,
+    target: TodoEntity | HabitOccurrenceEntity,
+    request: FocusBlockRequestDto | undefined,
+    now: Date,
+  ): Promise<void> {
+    if (!request) return;
+    await startFocusBlock(
+      manager,
+      timer.userId,
+      {
+        target:
+          timer.todoId !== null
+            ? { todoId: timer.todoId }
+            : { occurrenceId: timer.occurrenceId! },
+        title: timer.title,
+        override:
+          (target instanceof TodoEntity
+            ? target.focusBlock
+            : target.habit.focusBlock) ?? 'default',
+        targetMinutes: timer.targetMinutes,
+        elapsedMilliseconds: elapsedAt(timer, now),
+        mode: request.mode,
+      },
+      now,
+    );
+  }
   async current(userId: string): Promise<TimerResponse> {
     return this.transaction(userId, async (manager) => {
       const timer = await this.findCurrent(manager, userId);
@@ -238,7 +273,10 @@ export class TimersService {
         const same =
           (dto.kind === 'todo' ? active.todoId : active.occurrenceId) ===
           dto.targetId;
-        if (same && !dto.replaceTimerId) return this.response(active, now);
+        if (same && !dto.replaceTimerId) {
+          await this.startFocus(manager, active, target, dto.focusBlock, now);
+          return this.response(active, now);
+        }
         if (dto.replaceTimerId !== active.id)
           throw new ConflictException({
             message: 'Eine andere Stoppuhr läuft bereits.',
@@ -280,13 +318,16 @@ export class TimersService {
         timer.targetReachedAt = now;
         timer.pushHandledAt = now;
       }
-      return this.response(await manager.save(TimerEntity, timer), now);
+      const saved = await manager.save(TimerEntity, timer);
+      await this.startFocus(manager, saved, target, dto.focusBlock, now);
+      return this.response(saved, now);
     });
   }
   async action(
     userId: string,
     id: string,
     action: 'pause' | 'resume' | 'stop',
+    focusBlock?: FocusBlockRequestDto,
   ): Promise<TimerResponse> {
     return this.transaction(userId, async (manager) => {
       const stored = await manager.findOneBy(TimerEntity, { id, userId });
@@ -315,7 +356,16 @@ export class TimersService {
           ? null
           : targetReachesAt(timer);
       }
-      return this.response(await manager.save(timer), now);
+      const saved = await manager.save(timer);
+      if (action === 'resume' && focusBlock)
+        await this.startFocus(
+          manager,
+          saved,
+          await this.targetOf(manager, userId, saved, now),
+          focusBlock,
+          now,
+        );
+      return this.response(saved, now);
     });
   }
   /**

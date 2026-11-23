@@ -76,7 +76,9 @@ stopwatch runs on. Nothing is completed automatically.
   own campaign or its goal's and its effective Warum. A quest shows its notes
   below the actions, a daily run the notes of that run (see `quest-notes.md`);
   while typing there, Space writes a space and the first Escape only leaves
-  the text.
+  the text. Starting or resuming the stopwatch here may start a Fokus-Sperre
+  (Soft or Hardcore, picked before the start); leaving the view asks before
+  a Soft block is lifted (see `focus-block.md`).
 
 ## Time, devices and forgotten stopwatches
 
@@ -156,10 +158,13 @@ Protected endpoints, ownership taken exclusively from the session:
 - `GET /timers/current` -> `{ serverNow, timer }`, `timer: null` without a running
   or paused stopwatch. `timer` carries `state`, `elapsedMilliseconds` (as of
   `serverNow`), `targetMinutes` and `targetReachedAt`.
-- `POST /timers` -> `{ kind: "todo" | "occurrence", targetId, replaceTimerId? }`.
-  The target minutes come from the target. A conflicting active stopwatch returns
-  HTTP 409 with `code: ACTIVE_TIMER_EXISTS`.
-- `POST /timers/:id/pause`, `/resume`, `/stop` with JSON `{}`.
+- `POST /timers` -> `{ kind: "todo" | "occurrence", targetId, replaceTimerId?,
+  focusBlock? }`. The target minutes come from the target. A conflicting active
+  stopwatch returns HTTP 409 with `code: ACTIVE_TIMER_EXISTS`. `focusBlock:
+  { mode? }` comes from the Fokus-Modus only and starts a Fokus-Sperre in the
+  same transaction when the target calls for one (`focus-block.md`).
+- `POST /timers/:id/pause`, `/resume`, `/stop` with JSON `{}`; `/resume` also
+  takes `focusBlock`. Stopping ends a Soft Fokus-Sperre.
 - `PATCH /timers/:id/duration` with `{ durationMinutes }` sets the target.
 
 Foreign target/timer IDs return 404. Per-user row locks serialize transitions

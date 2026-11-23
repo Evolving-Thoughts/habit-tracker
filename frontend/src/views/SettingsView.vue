@@ -5,6 +5,7 @@ import AppIcon from "../components/AppIcon.vue";
 import CalendarConnection from "../components/CalendarConnection.vue";
 import CategorySettings from "../components/CategorySettings.vue";
 import DayBestSetting from "../components/DayBestSetting.vue";
+import FocusBlockSettings from "../components/FocusBlockSettings.vue";
 import PushSettings from "../components/PushSettings.vue";
 import QuestTargetSetting from "../components/QuestTargetSetting.vue";
 import ShortcutSettings from "../components/ShortcutSettings.vue";
@@ -75,6 +76,15 @@ watch(
           Das Beste des Tages
         </h2>
         <DayBestSetting />
+      </section>
+
+      <section
+        :id="sectionId('fokus-sperre')"
+        class="card"
+        aria-labelledby="settings-focus-block"
+      >
+        <h2 id="settings-focus-block" class="section-title">Fokus-Sperre</h2>
+        <FocusBlockSettings />
       </section>
 
       <section class="card" aria-labelledby="settings-push">

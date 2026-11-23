@@ -20,6 +20,9 @@ import { buildTodoInput } from "./todo-input";
 /** Category and reason, as both editors hold them. */
 export type AssignmentFields = { categoryId: number | null; why: string };
 
+/** Fokus-Sperre of a quest or daily: the default rule, always or never. */
+type FocusBlockChoice = "default" | "always" | "never";
+
 export type TodoFields = AssignmentFields & {
   title: string;
   /** YYYY-MM-DD or "". */
@@ -36,6 +39,7 @@ export type TodoFields = AssignmentFields & {
   weeklyTarget: string | number;
   color: string | null;
   icon: string | null;
+  focusBlock?: FocusBlockChoice;
 };
 
 export type HabitFields = AssignmentFields & {
@@ -45,7 +49,18 @@ export type HabitFields = AssignmentFields & {
   duration: string | number;
   /** HH:mm or "". */
   timeOfDay: string;
+  focusBlock?: FocusBlockChoice;
 };
+
+/** The Fokus-Sperre choice, only when it changed (missing reads as default). */
+function focusBlockChange(
+  choice: FocusBlockChoice | undefined,
+  loaded: { focusBlock?: FocusBlockChoice },
+): { focusBlock?: FocusBlockChoice } {
+  return choice !== undefined && choice !== (loaded.focusBlock ?? "default")
+    ? { focusBlock: choice }
+    : {};
+}
 
 /** Only the changed keys of `next` against `before` (missing counts as null). */
 function changed<T extends object>(
@@ -127,6 +142,7 @@ export function todoChanges(
     ...assignmentChanges(fields, loaded),
     ...goalChanges(fields, loaded),
     ...campaignChanges(fields, loaded),
+    ...focusBlockChange(fields.focusBlock, loaded),
   };
 }
 
@@ -154,5 +170,6 @@ export function habitChanges(
     input.plannedDurationMinutes = minutes;
   const time = fields.timeOfDay || null;
   if (time !== (loaded.timeOfDay ?? null)) input.timeOfDay = time;
+  Object.assign(input, focusBlockChange(fields.focusBlock, loaded));
   return input;
 }

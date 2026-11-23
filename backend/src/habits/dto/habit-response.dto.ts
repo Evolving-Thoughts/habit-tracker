@@ -1,6 +1,7 @@
 import type { Campaign } from '../../todos/todo-ancestry';
 import type { InheritedWhy } from '../../todos/todo-hierarchy';
 import type { Streak } from '../streaks';
+import type { FocusBlockOverride } from '../../focus-blocks/focus-block-rules';
 import { HabitScheduleType } from '../enums/habit-schedule-type.enum';
 import { MissedOccurrencePolicy } from '../enums/missed-occurrence-policy.enum';
 import { Weekday } from '../enums/weekday.enum';
@@ -34,6 +35,8 @@ export type ScheduleVersionResponse = {
 export type HabitResponseDto = {
   plannedDurationMinutes: number | null;
   timeOfDay: string | null;
+  /** Fokus-Sperre: the default rule, always or never. */
+  focusBlock: FocusBlockOverride;
   timerOccurrenceId: number | null;
   timerDurationMinutes: number | null;
   id: number;

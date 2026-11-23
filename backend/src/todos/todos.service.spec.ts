@@ -65,6 +65,9 @@ describe('TodosService', () => {
     createQueryBuilder: () => {
       const chain = {
         softDelete: () => chain,
+        // Ending a Fokus-Sperre with the quest it belongs to.
+        update: () => chain,
+        set: () => chain,
         select: () => chain,
         where: () => chain,
         andWhere: (_: string, params?: object) => {

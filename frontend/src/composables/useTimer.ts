@@ -10,6 +10,7 @@ import {
   type TimerResponse,
 } from "../api/timers.api";
 import { notifyDataChanged, notifyViewsChanged } from "./data-sync";
+import type { FocusBlockRequest } from "../types/focus-block";
 export function createTimerController() {
   const timer = ref<Timer | null>(null);
   const error = ref("");
@@ -121,6 +122,7 @@ export function createTimerController() {
   async function action(
     kind: "pause" | "resume" | "stop",
     expectedId?: string,
+    focusBlock?: FocusBlockRequest,
   ): Promise<boolean> {
     const current = timer.value;
     if (!current) return false;
@@ -129,7 +131,11 @@ export function createTimerController() {
       return false;
     }
     try {
-      return await mutate(() => timerAction(current.id, kind));
+      return await mutate(() =>
+        kind === "resume" && focusBlock
+          ? timerAction(current.id, kind, focusBlock)
+          : timerAction(current.id, kind),
+      );
     } catch {
       return false;
     }
@@ -176,6 +182,7 @@ export type TimerController = ReturnType<typeof createTimerController>;
  * What the play button and the pause and resume buttons do, as one step:
  * pauses or resumes the target's own stopwatch, otherwise starts one for it
  * (which asks first when another stopwatch runs). False when it cannot.
+ * A target with `focusBlock` (the Fokus-Modus) sends it on start and resume.
  */
 export function toggleTimer(
   controller: TimerController | null,
@@ -185,7 +192,10 @@ export function toggleTimer(
   if (!controller || controller.busy.value) return false;
   const current = controller.timer.value;
   if (current?.kind === target.kind && current.targetId === target.targetId) {
-    void controller.action(current.state === "running" ? "pause" : "resume");
+    if (current.state === "running") void controller.action("pause");
+    else if (target.focusBlock)
+      void controller.action("resume", undefined, target.focusBlock);
+    else void controller.action("resume");
     return true;
   }
   if (!eligible) return false;

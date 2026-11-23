@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { onBeforeRouteLeave, type RouteLocationNormalized } from "vue-router";
 import {
   getToday,
   reorderDay,
@@ -8,6 +9,10 @@ import {
 import { writeDone } from "../composables/useTicks";
 import { postponedToEnd } from "../utils/today-order";
 import AppIcon from "../components/AppIcon.vue";
+import ModalDialog from "../components/ModalDialog.vue";
+import { useFocusBlock } from "../composables/useFocusBlock";
+import type { FocusBlockMode } from "../types/focus-block";
+import { blockApplies, blockStatusLine } from "../utils/focus-block";
 import QuestNotes from "../components/QuestNotes.vue";
 import { notifyDataChanged } from "../composables/data-sync";
 import { useDayClock } from "../composables/useDayClock";
@@ -160,15 +165,80 @@ async function act(work: () => Promise<unknown>, fallback: string) {
   }
 }
 
+/*
+ * Fokus-Sperre: starting (or resuming) the stopwatch here starts a block
+ * when the quest or daily calls for one; Soft or Hardcore is picked with
+ * one tap beforehand. The server applies the rule; the screen shows it.
+ */
+const focusBlock = useFocusBlock();
+const activeBlock = computed(() => focusBlock?.block.value ?? null);
+const pickedMode = ref<FocusBlockMode | null>(null);
+const blockMode = computed<FocusBlockMode>(
+  () => pickedMode.value ?? focusBlock?.state.value?.settings.mode ?? "soft",
+);
+const blockWanted = computed(() => {
+  const item = current.value;
+  const settings = focusBlock?.state.value?.settings;
+  return (
+    !!item &&
+    !!settings &&
+    blockApplies(settings, item.focusBlock, item.plannedDurationMinutes)
+  );
+});
+const blockLine = computed(() =>
+  activeBlock.value && focusBlock
+    ? blockStatusLine(activeBlock.value, focusBlock.serverNow())
+    : "",
+);
+/** Asked before a Soft block is lifted; `leaveTo` when leaving the view. */
+const confirmLift = ref(false);
+let leaveTo: RouteLocationNormalized | null = null;
+let leaving = false;
+
+async function liftBlock(): Promise<void> {
+  if (!(await focusBlock?.end())) return;
+  confirmLift.value = false;
+  const target = leaveTo;
+  leaveTo = null;
+  if (target) {
+    leaving = true;
+    window.location.hash = `#${target.fullPath}`;
+  }
+}
+function keepBlock(): void {
+  confirmLift.value = false;
+  leaveTo = null;
+}
+/* Leaving the Fokus-Modus asks first while a Soft block holds. */
+onBeforeRouteLeave((to) => {
+  if (leaving || activeBlock.value?.mode !== "soft") return true;
+  leaveTo = to;
+  confirmLift.value = true;
+  return false;
+});
+
 /** False when there is nothing to start, like the disabled button. */
 function toggleStopwatch(): boolean {
   const item = current.value;
   if (!item || busy.value) return false;
+  // Without the Fokus-Sperre (no provider) the stopwatch starts as anywhere.
+  const focus =
+    !focusBlock || activeBlock.value ? undefined : { mode: blockMode.value };
   return toggleTimer(
     timer,
     item.type === "todo"
-      ? { kind: "todo", targetId: item.todoId, title: item.title }
-      : { kind: "occurrence", targetId: item.occurrenceId, title: item.title },
+      ? {
+          kind: "todo",
+          targetId: item.todoId,
+          title: item.title,
+          focusBlock: focus,
+        }
+      : {
+          kind: "occurrence",
+          targetId: item.occurrenceId,
+          title: item.title,
+          focusBlock: focus,
+        },
     item.timerEligible,
   );
 }
@@ -283,6 +353,80 @@ useShortcutHandlers({
         <span>{{ comingUp }}</span>
       </p>
 
+      <div
+        v-if="activeBlock"
+        class="focus-view__block"
+        data-test="focus-block-state"
+      >
+        <p class="focus-view__block-line" role="status">{{ blockLine }}</p>
+        <p
+          v-if="activeBlock.mode === 'hardcore'"
+          class="focus-view__block-hint"
+        >
+          Endet mit dem Soll oder wenn die Quest erledigt ist. Pausieren hebt
+          sie nicht auf.
+        </p>
+        <p v-if="!focusBlock?.native" class="focus-view__block-hint">
+          Gesperrt wird auf dem Handy in der Android-App.
+        </p>
+        <button
+          v-if="activeBlock.mode === 'soft'"
+          class="btn btn--quiet"
+          type="button"
+          :disabled="focusBlock?.busy.value"
+          @click="confirmLift = true"
+        >
+          Sperre aufheben
+        </button>
+      </div>
+      <div
+        v-else-if="blockWanted"
+        class="focus-view__block"
+        data-test="focus-block-choice"
+      >
+        <div class="segmented" role="group" aria-label="Art der Fokus-Sperre">
+          <button
+            type="button"
+            :aria-pressed="blockMode === 'soft'"
+            @click="pickedMode = 'soft'"
+          >
+            Soft
+          </button>
+          <button
+            type="button"
+            :aria-pressed="blockMode === 'hardcore'"
+            @click="pickedMode = 'hardcore'"
+          >
+            Hardcore
+          </button>
+        </div>
+        <p class="focus-view__block-hint">
+          {{
+            blockMode === "soft"
+              ? "Die Sperre beginnt mit der Stoppuhr und endet mit ihr."
+              : current.plannedDurationMinutes === null
+                ? "Ohne Soll läuft die Sperre als Soft."
+                : "Die Sperre hält, bis die Quest erledigt oder das Soll erreicht ist."
+          }}
+        </p>
+        <button
+          v-if="timed"
+          class="btn btn--quiet"
+          type="button"
+          :disabled="focusBlock?.busy.value"
+          @click="focusBlock?.start(blockMode)"
+        >
+          Sperre starten
+        </button>
+      </div>
+      <p
+        v-if="focusBlock?.error.value && (activeBlock || blockWanted)"
+        class="focus-view__block-hint"
+        role="alert"
+      >
+        {{ focusBlock.error.value }}
+      </p>
+
       <div class="focus-view__actions">
         <button
           class="btn btn--primary focus-view__primary"
@@ -369,6 +513,32 @@ useShortcutHandlers({
       </p>
       <a class="btn btn--primary" :href="hrefOf('today')">Zurück zu Heute</a>
     </section>
+
+    <ModalDialog
+      v-if="confirmLift"
+      title="Sperre aufheben?"
+      :busy="focusBlock?.busy.value"
+      focus-selector="[data-test='keep-block']"
+      @close="keepBlock"
+    >
+      <p class="focus-view__dialog-text">
+        Apps und Websites der Liste sind dann wieder frei. Die Stoppuhr läuft
+        weiter.
+      </p>
+      <div class="focus-view__dialog-actions">
+        <button class="btn btn--primary" type="button" @click="liftBlock">
+          Sperre aufheben
+        </button>
+        <button
+          class="btn"
+          type="button"
+          data-test="keep-block"
+          @click="keepBlock"
+        >
+          Weiter sperren
+        </button>
+      </div>
+    </ModalDialog>
   </main>
 </template>
 
@@ -519,6 +689,39 @@ useShortcutHandlers({
 .focus-view__notes {
   width: 100%;
   margin-top: var(--space-5);
+}
+
+/* Fokus-Sperre: one calm line, and the choice before the start. */
+.focus-view__block {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+}
+
+.focus-view__block-line {
+  margin: 0;
+  color: var(--color-ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.focus-view__block-hint {
+  max-width: 34ch;
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  text-wrap: pretty;
+}
+
+.focus-view__dialog-text {
+  margin: 0 0 var(--space-4);
+  color: var(--color-ink-muted);
+}
+
+.focus-view__dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
 }
 
 /* An appointment about to begin: named calmly, in ink, never as a warning. */
