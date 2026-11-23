@@ -8,6 +8,9 @@ Die ursprüngliche Testgrundlage änderte keine Produkt-API. Der anschließende 
 
 - Backend-Jest-Tests: isolierte Regeln, Services und Controller.
 - Backend-Supertest-E2E: Nest mit echtem PostgreSQL (`habit_tracker_test`).
+  Nest 12 und web-push 4 sind reine ES-Module. Die Jest-Skripte starten Node
+  deshalb mit `--experimental-vm-modules`; damit lädt Jest sie per `require(esm)`
+  (ab Node 24.9). Direkt aufgerufenes `npx jest` scheitert daran.
 - Frontend-Vitest: Komponenten und Zustandsübergänge.
 - Playwright: echte Vue-Oberfläche → echtes Nest-Backend → echtes PostgreSQL,
   ohne API-Mocks. API-Aufrufe werden nur zum Anlegen großer Listen und zur
@@ -18,7 +21,7 @@ Emulation) aus. Das ersetzt keinen Test auf einem echten Android-Gerät.
 
 ## Lokal starten (PowerShell, ab Repository-Wurzel)
 
-Voraussetzungen: Node **24.20.0** (siehe `.node-version`), npm und Docker Compose.
+Voraussetzungen: Node **26.13.1** (siehe `.node-version`), npm und Docker Compose.
 Die Node-Version erfüllt auch die Anforderungen der vorhandenen Frontend-Abhängigkeiten.
 
 ```powershell

@@ -630,7 +630,11 @@ const splitWords = (page: Page) =>
     return split;
   });
 
-/** Quick-add placeholders wider than the room their field gives them. */
+/**
+ * Quick-add placeholders wider than the room their field gives them: the
+ * border box less borders and padding (an input's clientWidth leaves the
+ * padding out in Chromium 158 and keeps it in older ones).
+ */
 const cutPlaceholders = (page: Page) =>
   page.evaluate(() => {
     const context = document.createElement("canvas").getContext("2d")!;
@@ -639,7 +643,9 @@ const cutPlaceholders = (page: Page) =>
         const style = getComputedStyle(input);
         context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
         const room =
-          input.clientWidth -
+          input.offsetWidth -
+          parseFloat(style.borderLeftWidth) -
+          parseFloat(style.borderRightWidth) -
           parseFloat(style.paddingLeft) -
           parseFloat(style.paddingRight);
         return context.measureText(input.placeholder).width > room;
