@@ -893,6 +893,27 @@ describe("PlanView Questlog column", () => {
     expect(openTitles(wrapper, WEDNESDAY)).toEqual(["Quest 2"]);
   });
 
+  it("keeps Liegen geblieben folded once it was folded on this device", async () => {
+    layoutWidth(1248);
+    screen(true);
+    vi.mocked(getPlan).mockResolvedValue(
+      board(TODAY, { [TODAY]: [quest(1)] }, [
+        quest(5, { isOverdue: true, scheduledDate: MONDAY }),
+      ]),
+    );
+    const first = await mountPlan();
+    await first.wrapper
+      .get('[aria-label="Liegen geblieben ausblenden"]')
+      .trigger("click");
+    expect(localStorage.getItem("plan:overdue")).toBe("closed");
+    first.wrapper.unmount();
+
+    const again = await mountPlan();
+    expect(
+      again.wrapper.find('[aria-label="Liegen geblieben einblenden"]').exists(),
+    ).toBe(true);
+  });
+
   it("remembers a collapsed column on this device", async () => {
     const first = await mountPlan();
     const toggle = first.wrapper.get(".plan-questlog__toggle");
@@ -914,8 +935,8 @@ describe("PlanView Questlog column", () => {
     expect(wrapper.get(".plan-questlog .count").text()).toBe("1");
   });
 
-  it("starts collapsed below 80rem, so the days get the room first", async () => {
-    screen(true, false);
+  it("starts collapsed when the narrow board has no space for both columns", async () => {
+    screen(false, false);
     const first = await mountPlan();
     const toggle = first.wrapper.get(".plan-questlog__toggle");
     expect(toggle.attributes("aria-expanded")).toBe("false");

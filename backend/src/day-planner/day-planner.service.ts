@@ -36,7 +36,7 @@ import { loadHabitForecast } from '../history/habit-forecast';
 import { openTargetRuns, plannedHabits } from '../history/history-planning';
 import { weeklyQuestTarget } from '../quest-hours/weekly-target';
 import { questSoFar } from '../quest-hours/quest-time';
-import { compareInDay } from './day-order';
+import { sortInDay } from './day-order';
 import {
   DayPlannerGoalDto,
   DayPlannerHabitItemDto,
@@ -136,14 +136,10 @@ export class DayPlannerService {
         return { item, id: occurrence.id, dayPosition: occurrence.dayPosition };
       }),
     ];
-    const items = entries
-      .sort((first, second) =>
-        compareInDay(
-          { ...first, ...first.item },
-          { ...second, ...second.item },
-        ),
-      )
-      .map(({ item }) => item);
+    const items = sortInDay(entries, (entry) => ({
+      ...entry,
+      ...entry.item,
+    })).map(({ item, dayPosition }) => ({ ...item, dayPosition }));
 
     const externalEvents = await eventsOfDays(
       this.db.manager,

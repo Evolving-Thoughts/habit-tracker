@@ -13,7 +13,8 @@ Every closed stretch of work is a row in `work_logs`
 (pause, end, completion, see `timers-and-completion.md`); a running stretch has
 no row yet. It works in blocks: a stretch resumed within a minute of its pause
 extends the row of the block before it (`endedAt` moves on, the short pause is
-work), and a block shorter than a minute gets no row at all, so quick pause and
+work), and a block shorter than a minute gets a row only once work resumes
+after a minute or more; ended right away it gets none, so quick pause and
 play never leaves 0-minute stretches. Rows are added, corrected and deleted by
 hand through `POST /work-logs`, `PATCH /work-logs/:id` and
 `DELETE /work-logs/:id`.
@@ -69,8 +70,8 @@ and other calendars are only read.
 - `logChanges` in `calendar-sync.service.ts` follows the outgoing pattern of
   todos and runs: every stretch of **at least five minutes** becomes an event
   at its real start and end; a correction, or a stopwatch block extended after a
-  short pause (same row, later `updatedAt`), patches it; a deleted stretch, or
-  one shortened below five minutes, deletes it. New stretches are exported back
+  short pause (same row, later `updatedAt`), patches it; deleting the stretch removes its event. A correction queues a sync after the
+  database commit, even when the exported stretch is shortened below five minutes. New stretches are exported back
   31 days, so connecting does not write the whole past at once.
 - The events say what they are: the stretch's title as summary and the
   description "Logbuch · gemessene Arbeitszeit", plus "Kampagne: …" when there
@@ -97,8 +98,8 @@ and other calendars are only read.
   completed appointment stays its block), and the stretches as white blocks
   with the campaign's stripe (a neutral one without campaign), title, times
   and the campaign chip. Blocks that overlap stand side by side
-  (`calendarBlocks` → `layoutLane`); a block is never smaller than a tap
-  target. On today an ink line marks now, with the time in the hour labels.
+  (`calendarBlocks` → `layoutLane`); a measured block takes its real duration. A completed entry with a log
+  on that day is represented by its measured stretches. On today an ink line marks now, with the time in the hour labels.
   Heute (beside the list from 64rem, `TodayCalendar.vue` reads the day from
   `GET /history`), the Kalender's day and each column of its week use it;
   in the week it is `compact`: no head, the hour labels and the scrolling
@@ -159,6 +160,9 @@ the view is left (unmount) or the page closes (`pagehide`; the request uses
   rule below. Holding the delete back changes nothing on the server until it
   is final, so undo is exact and Google never sees a step that was taken
   back.
+- While a delete is held back, the entry it measured shows as if it had no
+  stretch: its completion mark, or its appointment, stands in the column
+  (`planBlocks` gets the day without the held-back stretches).
 - While a delete is held back, the head shows "Logbuch" without its total:
   the server's figure still counts the stretch, and a figure that is about to
   be wrong is not shown.

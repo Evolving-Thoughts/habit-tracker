@@ -1,4 +1,5 @@
 import type { DayPlannerItem, DayPlannerResponse } from "../types/day-planner";
+import { anchoredOrder } from "./day-order";
 import { tallyOfPlanner, type DayTally } from "./day-tally";
 
 export type ExternalEvent = DayPlannerResponse["externalEvents"][number];
@@ -23,6 +24,12 @@ export type AppointmentEntry =
       event: ExternalEvent;
     };
 
+/**
+ * One entry of Heute's list below the focus card: an item that only has its
+ * day, or an appointment anchored by its time (`AppointmentEntry`).
+ */
+export type DayEntry = { kind: "row"; item: DayPlannerItem } | AppointmentEntry;
+
 export type TodayAgenda = {
   /** The one thing that is up now (`currentItem`), shown large with its why. */
   focus: DayPlannerItem | null;
@@ -35,6 +42,17 @@ export type TodayAgenda = {
    * the focus. Heute lists them in the order of the day, anchored by time.
    */
   appointments: AppointmentEntry[];
+  /**
+   * The rest of the day in one sequence, without the focus: the order of
+   * the day with the appointments anchored in it (`day-order.ts`), and the
+   * calendar's events by clock among the appointments.
+   */
+  list: DayEntry[];
+  /**
+   * Every open item of today in the order of the day, the focus included:
+   * what a new order is written from, so appointments keep their place.
+   */
+  sequence: DayPlannerItem[];
   /** The first of `appointments` that has not begun yet. */
   nextAppointment: AppointmentEntry | null;
   /**
@@ -113,18 +131,20 @@ export function formatWindow(window: AppointmentWindow): string {
 
 /**
  * What is up now: the one rule Heute's focus card and the Fokus-Modus share.
- * An appointment is up from its start until its end (start plus its planned
- * duration, or DEFAULT_APPOINTMENT_MINUTES); when several are, the one that
- * began last. Otherwise it is the head of the order: the next item one can
- * work on. Before its start and after its end an appointment stays on the
- * list of the day, anchored by its time; it never stands in for an empty
- * order.
+ * Once the day has a stored order (an open item carries a dayPosition), it
+ * is the first open item in that order, an appointment too, even one that
+ * has not started yet. Without a stored order an appointment is up from its
+ * start until its end (start plus its planned duration, or
+ * DEFAULT_APPOINTMENT_MINUTES); when several are, the one that began last.
+ * Otherwise it is the first untimed item of the order (`queue`), or nothing
+ * when only appointments are left and none is running.
  */
 export function currentItem(
   pending: readonly DayPlannerItem[],
   queue: readonly DayPlannerItem[],
   now: number,
 ): DayPlannerItem | null {
+  if (pending.some((item) => item.dayPosition != null)) return pending[0] ?? null;
   let running: { item: DayPlannerItem; start: number } | null = null;
   for (const item of pending) {
     const window = appointmentWindow(item);
@@ -216,11 +236,36 @@ export function arrangeToday(
     (first, second) => first.minutes - second.minutes,
   );
 
+  // The server sends the day in its order: appointments already anchored.
+  const list: DayEntry[] = pending
+    .filter((item) => item !== focus)
+    .map(
+      (item) =>
+        items.find((entry) => entry.kind === "item" && entry.item === item) ?? {
+          kind: "row",
+          item,
+        },
+    );
+  for (const event of [...events].sort((a, b) => a.minutes - b.minutes)) {
+    const timed = list.flatMap((entry, index) =>
+      entry.kind === "row" ? [] : [{ entry, index }],
+    );
+    const later = timed.find(({ entry }) => entry.minutes > event.minutes);
+    const at = later
+      ? later.index
+      : timed.length
+        ? timed[timed.length - 1]!.index + 1
+        : 0;
+    list.splice(at, 0, event);
+  }
+
   return {
     focus,
     focusWindow: focus ? appointmentWindow(focus) : null,
     carriedOver,
     appointments,
+    list,
+    sequence: pending,
     nextAppointment:
       appointments.find((entry) => entry.minutes >= now) ?? null,
     queue,
@@ -259,6 +304,18 @@ export function moved<T>(list: readonly T[], from: number, to: number): T[] {
   const [entry] = result.splice(from, 1);
   result.splice(to, 0, entry!);
   return result;
+}
+
+/**
+ * The planner with today's open items in the order `sequence` gives,
+ * appointments kept on the clock. Everything else keeps its place, so the
+ * result reads like the server's answer.
+ */
+export function withDayOrder(
+  planner: DayPlannerResponse,
+  sequence: readonly DayPlannerItem[],
+): DayPlannerResponse {
+  return withQueueOrder(planner, anchoredOrder(sequence).map((item, dayPosition) => ({ ...item, dayPosition })));
 }
 
 /**

@@ -258,6 +258,12 @@ describe('Google calendar sync (e2e)', () => {
   it('applies the newer change on both sides', async () => {
     await connect();
     const id = await scheduledTodo();
+    await request(server)
+      .put('/day-planner/order')
+      .send({ items: [{ type: 'todo', id }] })
+      .expect(204);
+    const before = await db.getRepository(TodoEntity).findOneByOrFail({ id });
+    expect(before.dayPosition).toBe(0);
     await sync();
 
     const [event] = google.events(OWN);
@@ -270,6 +276,7 @@ describe('Google calendar sync (e2e)', () => {
     expect(moved).toMatchObject({
       scheduledDate: '2026-10-30',
       timeOfDay: '15:00',
+      dayPosition: null,
     });
     expect(moved.plannedDurationMinutes).toBe(30);
 
@@ -611,20 +618,28 @@ describe('Google calendar sync (e2e)', () => {
         '2026-10-30T05:10:00.000Z',
         '2026-10-30T05:50:00.000Z',
       );
-      // Under five minutes it no longer belongs in the calendar.
+      // An already exported event keeps following the corrected times.
       await correct(
         short,
         '2026-10-30T04:00:00.000Z',
         '2026-10-30T04:03:00.000Z',
       );
       await sync();
-      expect(live()).toHaveLength(1);
-      expect(live()[0]).toMatchObject({
+      expect(live()).toHaveLength(2);
+      expect(live().map((event) => event.end?.dateTime)).toContain(
+        '2026-10-30T04:03:00.000Z',
+      );
+      expect(
+        live().find(
+          (event) => event.end?.dateTime === '2026-10-30T05:50:00.000Z',
+        ),
+      ).toMatchObject({
         start: { dateTime: '2026-10-30T05:10:00.000Z' },
         end: { dateTime: '2026-10-30T05:50:00.000Z' },
       });
 
       await request(server).delete(`/work-logs/${log}`).expect(204);
+      await request(server).delete(`/work-logs/${short}`).expect(204);
       await sync();
       expect(live()).toEqual([]);
       expect(await db.getRepository(CalendarLinkEntity).count()).toBe(0);

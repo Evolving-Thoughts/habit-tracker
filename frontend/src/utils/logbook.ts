@@ -72,6 +72,7 @@ type PlannedDay = {
   date: string;
   items: HistoryItem[];
   planned?: HistoryPlannedItem[];
+  work?: HistoryDayWork;
   external?: { id: number; title: string; start: string; end: string }[];
 };
 
@@ -132,8 +133,12 @@ export function planBlocks(day: PlannedDay): PlanBlock[] {
       end: Math.min(DAY_MINUTES, start + (minutes ?? DEFAULT_APPOINTMENT_MINUTES)),
     };
   };
+  const measured = new Set((day.work?.logs ?? []).map((log) =>
+    log.todoId !== null ? `todo-${log.todoId}` : `habit-${log.occurrenceId}`,
+  ));
+  const items = day.items.filter((item) => !measured.has(`${item.type}-${item.id}`));
   return [
-    ...day.items.flatMap((item) =>
+    ...items.flatMap((item) =>
       item.timeOfDay && item.status === "completed"
         ? [
             timed(
@@ -165,7 +170,7 @@ export function planBlocks(day: PlannedDay): PlanBlock[] {
       start: minuteOfDay(event.start, day.date),
       end: minuteOfDay(event.end, day.date),
     })),
-    ...doneMarks(day),
+    ...doneMarks({ ...day, items }),
   ];
 }
 
@@ -204,7 +209,7 @@ export function logBlocks(work: HistoryDayWork, date: string): LogBlock[] {
     const start = minuteOfDay(log.startedAt, date);
     // The repeated hour in autumn can make the wall clock run backwards.
     const end = Math.max(start, minuteOfDay(log.endedAt, date));
-    return { key: `log:${log.id}`, log, start, end };
+    return { key: `log:${log.id}`, log, start, end, minLength: 0 };
   });
 }
 

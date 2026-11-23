@@ -2,7 +2,7 @@ import { Brackets, EntityManager, LessThan } from 'typeorm';
 import { occurrenceDueDate } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { WorkLogEntity } from '../work-logs/work-log.entity';
 import { coveredMilliseconds } from '../work-logs/work-time';
-import { MAX_SEGMENT_MS } from './timer-math';
+import { elapsedAt, MAX_SEGMENT_MS } from './timer-math';
 import { TimerEntity } from './timer.entity';
 
 /**
@@ -45,11 +45,17 @@ export function effectiveDuration(
 }
 
 /**
- * A pause shorter than this is part of the work: resuming within it
- * continues the block before the pause, and the pause counts as worked.
+ * A pause shorter than this is part of the block: resuming within it
+ * continues the block before the pause, and its log counts the pause as
+ * worked (the shown time leaves it out, `idleMilliseconds`).
  */
 export const BLOCK_GAP_MS = 60_000;
-/** A block shorter than this is not logged, and its time does not count. */
+/**
+ * A block shorter than this is not logged while it may still be a mis-tap:
+ * the stopwatch shows its time (`unloggedBlock`), and the block gets its log
+ * once work resumes after the gap (`resumeWorkSegment`). Ended right away,
+ * it stays unlogged.
+ */
 export const MIN_BLOCK_MS = 60_000;
 
 /**
@@ -111,11 +117,17 @@ export async function closeWorkSegment(
 /**
  * Starts the next stretch of a paused stopwatch at `now`. Within
  * `BLOCK_GAP_MS` of the pause it continues the block before it: the stretch
- * starts where that block started, so the pause counts as worked and the
- * block's log is extended when it ends. Otherwise a new block begins. The
+ * starts where that block started, so the block's log counts the pause as
+ * worked and is extended when it ends; the shown time leaves the pause out.
+ * Otherwise a new block begins, and a block before it that was too short
+ * for a log gets one now: work resumed later was work, not a mis-tap. The
  * caller sets the target moment.
  */
-export function resumeWorkSegment(timer: TimerEntity, now: Date): void {
+export async function resumeWorkSegment(
+  manager: EntityManager,
+  timer: TimerEntity,
+  now: Date,
+): Promise<void> {
   const { blockStartedAt, pausedAt } = timer;
   const gap = pausedAt ? now.getTime() - pausedAt.getTime() : Infinity;
   if (blockStartedAt && pausedAt && gap >= 0 && gap < BLOCK_GAP_MS) {
@@ -123,8 +135,29 @@ export function resumeWorkSegment(timer: TimerEntity, now: Date): void {
     if (timer.workLogId !== null)
       timer.elapsedMilliseconds -=
         pausedAt.getTime() - blockStartedAt.getTime();
+    // The log counts the pause; the stopwatch does not show it.
+    timer.idleMilliseconds = (timer.idleMilliseconds ?? 0) + gap;
     timer.segmentStartedAt = blockStartedAt;
   } else {
+    // The block before is over: from here on it counts as it was shown,
+    // its pauses left out.
+    timer.elapsedMilliseconds = elapsedAt(timer, now);
+    if (
+      timer.workLogId === null &&
+      blockStartedAt &&
+      pausedAt &&
+      pausedAt > blockStartedAt
+    )
+      await manager.insert(WorkLogEntity, {
+        userId: timer.userId,
+        todoId: timer.todoId,
+        occurrenceId: timer.occurrenceId,
+        title: timer.title,
+        startedAt: blockStartedAt,
+        endedAt: pausedAt,
+        source: 'timer',
+      });
+    timer.idleMilliseconds = 0;
     timer.workLogId = null;
     timer.segmentStartedAt = now;
   }

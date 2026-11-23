@@ -70,8 +70,8 @@ test("Logbuch: time added by hand shows in the day, the week and the month; a st
   const stretch = lane.getByRole("button", { name: /^Mails, / });
   await expect(stretch).toHaveCount(1);
   await expect(stretch).toHaveAccessibleName(/ohne Kampagne, korrigieren$/);
-  // A stretch of a minute is still drawn large enough to tap.
-  expect((await stretch.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  // One minute occupies its actual share of the 64 px hour.
+  expect((await stretch.boundingBox())!.height).toBeLessThanOrEqual(2);
   await stretch.click();
   const dialog = page.getByRole("dialog", { name: "Abschnitt korrigieren" });
   await expect(dialog).toContainText("Nachtrag");

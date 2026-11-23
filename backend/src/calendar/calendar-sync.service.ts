@@ -124,7 +124,22 @@ export class CalendarSyncService {
     for (const { userId } of connections) await this.syncUser(userId);
   }
 
+  private readonly pending = new Map<string, Promise<void>>();
+
   async syncUser(userId: string): Promise<void> {
+    // A correction made during a sync needs a fresh read after that sync ends.
+    const previous = this.pending.get(userId);
+    const run = () => this.exchange(userId);
+    const current = previous ? previous.then(run, run) : run();
+    this.pending.set(userId, current);
+    try {
+      await current;
+    } finally {
+      if (this.pending.get(userId) === current) this.pending.delete(userId);
+    }
+  }
+
+  private async exchange(userId: string): Promise<void> {
     const repository = this.db.getRepository(CalendarConnectionEntity);
     const connection = await repository.findOneBy({ userId, revoked: false });
     if (!connection) return;
@@ -310,9 +325,11 @@ export class CalendarSyncService {
     if (todo && times && !todo.completedAt && !localWins) {
       todo.title = (event.summary?.trim() || todo.title).slice(0, 200);
       const day = dayOf(times.start);
-      if (day !== todo.scheduledDate) todo.dayPosition = null;
+      const time = timeOfDayOf(times.start);
+      if (day !== todo.scheduledDate || time !== todo.timeOfDay)
+        todo.dayPosition = null;
       todo.scheduledDate = day;
-      todo.timeOfDay = timeOfDayOf(times.start);
+      todo.timeOfDay = time;
       todo.plannedDurationMinutes = times.minutes;
       link.syncedAt = (await repository.save(todo)).updatedAt;
     }
@@ -377,7 +394,12 @@ export class CalendarSyncService {
       });
       const rows = events.flatMap((event) => {
         const times = eventTimes(event);
-        if (event.status === 'cancelled' || !times) return [];
+        if (
+          event.status === 'cancelled' ||
+          !times ||
+          event.extendedProperties?.private?.[MARKER]
+        )
+          return [];
         return [
           repository.create({
             userId,
@@ -532,8 +554,9 @@ export class CalendarSyncService {
 
   /**
    * The Logbuch only goes out: every finished stretch of five minutes or more
-   * becomes an event at its real times. A corrected log moves its event, a
-   * deleted or shortened one loses it. An event deleted in Google stays
+   * becomes an event at its real times. A corrected log (moved, lengthened
+   * or shortened) patches its event; only a deleted log loses it. An event
+   * deleted in Google stays
    * deleted: its link is kept suppressed until the log itself goes.
    */
   private async logChanges(
@@ -564,8 +587,7 @@ export class CalendarSyncService {
       const log = known.find((item) => item.id === link.workLogId);
       if (link.suppressed) {
         if (!log) await manager.getRepository(CalendarLinkEntity).remove(link);
-      } else if (!log || !exported(log))
-        operations.push({ type: 'delete', link });
+      } else if (!log) operations.push({ type: 'delete', link });
       else if (log.updatedAt > link.syncedAt) patched.push({ link, log });
     }
     if (!patched.length && !fresh.length) return operations;

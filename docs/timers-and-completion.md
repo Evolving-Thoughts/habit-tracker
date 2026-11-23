@@ -97,19 +97,33 @@ The stopwatch logs **blocks**, not every stretch (`closeWorkSegment` and
 `BLOCK_GAP_MS` and `MIN_BLOCK_MS`, both 60 seconds):
 
 - **Resumed within 60 seconds** of a pause, the stretch continues the block
-  before it: `segmentStartedAt` becomes the block's start, so the pause counts
-  as worked. When it ends, the block's work log (`timers.workLogId`) gets the
+  before it: `segmentStartedAt` becomes the block's start, so the log counts
+  the pause as worked. When it ends, the block's work log (`timers.workLogId`) gets the
   new `endedAt` instead of a second row; Google sync patches its event.
-- **A block shorter than 60 seconds** that continues nothing is not logged and
-  adds nothing to `elapsedMilliseconds` (a stretch of seconds after a mis-tap
-  disappears). Several short stretches with short pauses between them form one
-  block and are logged once they reach a minute together.
+- **A block shorter than 60 seconds** that continues nothing gets no work
+  log while it may still be a mis-tap. Ended or completed right away, it never
+  reaches the log. Resumed after a minute or more, it was work: it gets a log
+  of its own (`resumeWorkSegment`), and the new stretch starts a block. Several
+  short stretches with short pauses between them form one block and are
+  logged once they reach a minute together.
 - While paused, the timer row keeps `blockStartedAt`, `pausedAt` and
-  `workLogId` (migration `1795900000000-StopwatchBlocks`). `elapsedMilliseconds`
-  holds the logged blocks; resuming into a block takes that block's length off
-  again, and closing it adds the whole block back, so the total is exact. If the
-  block's log was deleted or corrected meanwhile so it cannot be extended, the
-  block is logged anew.
+  `workLogId` (migration `1795900000000-StopwatchBlocks`). Within a block,
+  resuming takes the logged block's length off `elapsedMilliseconds` again
+  and closing it adds the whole block back, so the block counts once. When
+  the block's log can still be found (same id, its start before the new
+  end), it is extended to the new end, even if it was corrected meanwhile;
+  only a log that was deleted, or whose start was moved to or past the new
+  end, makes the block logged anew (or dropped, if under a minute).
+- **What the stopwatch shows is only the time it ran** (`elapsedAt` in
+  `timer-math.ts`): a short pause inside a block is counted by the block's
+  log but kept in `timers.idleMilliseconds` and left out of the shown time,
+  and a stretch under a minute that has no log yet stays in view while
+  paused (`unloggedBlock`). So the time neither jumps back on a pause nor
+  ahead on resume. When a block is over (resumed after a minute or more),
+  `elapsedMilliseconds` becomes the shown time, its pauses left out (a short
+  block gets its log at that moment), and `idleMilliseconds` goes back to 0
+  (migration `1796300000000-StopwatchIdle`). So `elapsedMilliseconds` is the
+  base the stopwatch counts on from, not the sum of its logged blocks.
 - The twelve-hour cap applies per block (it is measured from
   `segmentStartedAt`); a cut stretch pauses long ago, so it never continues.
 
@@ -118,7 +132,10 @@ The stopwatch logs **blocks**, not every stretch (`closeWorkSegment` and
 `POST /timers` starts `elapsedMilliseconds` at the time already logged for the
 target, all sources, overlaps counted once (`loggedMilliseconds`, using
 `coveredMilliseconds` of `work-logs/work-time.ts`): a reopened quest, or a
-daily run started again later, counts on from what it already has. The Soll
+daily run started again later, counts on from what it already has. As the
+log counts short pauses inside a block as work and leaves out a last stretch
+under a minute, this can differ slightly from what an earlier stopwatch on
+the target showed. The Soll
 compares against this total. When it is already passed at the start, the
 stopwatch is marked reached right away (`targetReachedAt` and `pushHandledAt`
 set to the start), so nothing announces it.

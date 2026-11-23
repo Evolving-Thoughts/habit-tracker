@@ -25,6 +25,10 @@ main() {
   flock -w 900 9 || { echo "Ein anderes Deployment läuft noch." >&2; exit 1; }
 
   local compose=(docker compose -f compose.prod.yaml --env-file .env.production)
+  # Der Port, auf dem compose.prod.yaml die App veröffentlicht (APP_PORT, sonst 8080).
+  local port
+  port="$(sed -n 's/^APP_PORT=//p' .env.production 2>/dev/null | tail -n 1 | tr -d "\"'\r")"
+  port="${port:-8080}"
 
   git fetch --quiet origin main
   if ! git merge-base --is-ancestor "$sha" origin/main 2>/dev/null; then
@@ -45,7 +49,7 @@ main() {
     exit 1
   fi
 
-  if "${compose[@]}" up -d --build --wait --remove-orphans && curl -fsS -o /dev/null -m 10 http://127.0.0.1:8080/; then
+  if "${compose[@]}" up -d --build --wait --remove-orphans && curl -fsS -o /dev/null -m 10 "http://127.0.0.1:${port}/"; then
     docker image prune -f >/dev/null
     echo "Läuft: $(git log -1 --format='%h %s')"
     return 0

@@ -73,12 +73,12 @@ test("Fokus-Modus: one quest in view, stopwatch on from the logged time, done br
 
   await page.getByRole("button", { name: "Pausieren", exact: true }).click();
   await expect(page.getByText("Pausiert", { exact: true })).toBeVisible();
-  // Paused within seconds: a stretch under a minute adds nothing.
-  expect(await timer(request)).toMatchObject({
-    state: "paused",
-    elapsedMilliseconds: logged,
-  });
-  await expect(stopwatch).toHaveText("20:00");
+  // Paused within seconds: the stretch stays in view, it does not jump back.
+  const paused = await timer(request);
+  expect(paused).toMatchObject({ state: "paused" });
+  expect(paused!.elapsedMilliseconds).toBeGreaterThan(logged);
+  expect(paused!.elapsedMilliseconds).toBeLessThan(logged + 60_000);
+  await expect(stopwatch).toHaveText(/^20:\d\d$/);
 
   await page
     .getByRole("button", { name: "Kapitel schreiben erledigen", exact: true })

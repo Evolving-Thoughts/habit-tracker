@@ -73,6 +73,7 @@ export class HabitsService {
       this.dataSource.manager,
       habits.map((habit) => habit.id),
       now,
+      true,
     );
     const result: HabitResponseDto[] = [];
 
@@ -215,7 +216,18 @@ export class HabitsService {
       if (dto.why !== undefined) habit.why = normalizeWhy(dto.why);
       if (dto.plannedDurationMinutes !== undefined)
         habit.plannedDurationMinutes = dto.plannedDurationMinutes;
+      const timeChanged =
+        dto.timeOfDay !== undefined && dto.timeOfDay !== habit.timeOfDay;
       if (dto.timeOfDay !== undefined) habit.timeOfDay = dto.timeOfDay;
+      if (timeChanged)
+        // Like a quest with a new time: its open runs take their place anew,
+        // right after the appointment before them on the clock (day-order.ts).
+        await manager
+          .getRepository(HabitOccurrenceEntity)
+          .update(
+            { habitId: habit.id, status: HabitOccurrenceStatus.PENDING },
+            { dayPosition: null },
+          );
       if (dto.title !== undefined) {
         habit.title = this.validTitle(dto.title);
       }

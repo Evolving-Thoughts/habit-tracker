@@ -308,19 +308,36 @@ describe("TodayView", () => {
     const wrapper = mount(TodayView);
     await flushPromises();
     expect(wrapper.get("#focus-title").text()).toBe("NestJS lernen");
-    // By clock first, the rest of the order after them.
+    // In the order the server sends: appointments stand where they are anchored.
     expect(
       wrapper.findAll(".order .planner-item h3").map((row) => row.text()),
     ).toEqual(["Zahnarzt", "Bewerbung", "Lesen"]);
     const appointment = wrapper.get(".today-view__appointment");
     expect(appointment.text()).toContain("14:00");
-    // Not part of the sortable order: it does not drag.
-    expect(appointment.attributes("data-sort-key")).toBeUndefined();
+    // A place to drop a card next to, but it never lifts itself.
+    expect(appointment.attributes("data-sort-key")).toBe("todo-3");
+    expect(appointment.attributes("data-sort-anchor")).toBeUndefined();
     expect(wrapper.get(".today-view__event").text()).toContain(
       "12:00Mittagessen",
     );
     expect(wrapper.find(".timeline").exists()).toBe(false);
     expect(wrapper.text()).not.toContain("Termine");
+  });
+
+  it("keeps an item the server placed between two appointments there", async () => {
+    getTodayMock.mockResolvedValueOnce(
+      makePlanner([
+        makeTodo(),
+        makeTodo({ todoId: 3, title: "Standup", timeOfDay: "13:00" }),
+        makeTodo({ todoId: 2, title: "Bewerbung" }),
+        makeTodo({ todoId: 4, title: "Zahnarzt", timeOfDay: "15:00" }),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(
+      wrapper.findAll(".order .planner-item h3").map((row) => row.text()),
+    ).toEqual(["Standup", "Bewerbung", "Zahnarzt"]);
   });
 
   it("asks quietly about an appointment that is over and still open", async () => {
@@ -364,12 +381,13 @@ describe("TodayView", () => {
   });
 
   it("sorts with Nach oben in the menu, shows it at once and stores it", async () => {
+    const anchor = makeTodo({ todoId: 3, title: "Zahnarzt", timeOfDay: "14:00" });
     const first = makeTodo();
     const second = makeTodo({ todoId: 2, title: "Bewerbung" });
     const third = makeHabit({ title: "Lesen" });
     getTodayMock
-      .mockResolvedValueOnce(makePlanner([first, second, third]))
-      .mockResolvedValue(makePlanner([first, third, second]));
+      .mockResolvedValueOnce(makePlanner([anchor, first, second, third]))
+      .mockResolvedValue(makePlanner([anchor, first, third, second]));
     let stored = (): void => undefined;
     vi.mocked(reorderDay).mockReturnValueOnce(
       new Promise<void>((resolve) => (stored = resolve)),
@@ -385,14 +403,16 @@ describe("TodayView", () => {
     // Before the server has answered, the new order already shows.
     expect(
       wrapper.findAll(".order .planner-item h3").map((row) => row.text()),
-    ).toEqual(["Lesen", "Bewerbung"]);
+    ).toEqual(["NestJS lernen", "Lesen", "Bewerbung"]);
+    expect(wrapper.get("#focus-title").text()).toBe("Zahnarzt");
     expect(reorderDay).toHaveBeenCalledWith([
+      { type: "todo", id: 3 },
       { type: "todo", id: 1 },
       { type: "habit", id: 20 },
       { type: "todo", id: 2 },
     ]);
     expect(wrapper.get('[role="status"].visually-hidden').text()).toBe(
-      "„Lesen“ steht jetzt an Stelle 2 von 3.",
+      "„Lesen“ steht jetzt an Stelle 3 von 4.",
     );
 
     stored();
@@ -1308,6 +1328,7 @@ describe("TodayView rows and focus card", () => {
       "Termin verschieben …",
       "Bearbeiten",
       "In Kampagne verschieben …",
+      "Nach oben",
       "Löschen",
     ]);
     await wrapper.get('[aria-label="Zahnarzt verschieben"]').trigger("click");
@@ -1424,12 +1445,13 @@ describe("TodayView: an appointment's turn on the focus card", () => {
       "Aktionen für Teamrunde",
     ]);
     // Not part of the order: the card does not drag.
-    expect(wrapper.get(".focus").classes()).not.toContain("card-drag");
+    expect(wrapper.get(".focus").classes()).toContain("card-drag");
     await actions.get('[aria-label="Aktionen für Teamrunde"]').trigger("click");
     expect(texts(wrapper, "[role=menuitem] .action-menu__label")).toEqual([
       "Termin verschieben …",
       "Bearbeiten",
       "In Kampagne verschieben …",
+      "Nach unten",
       "Löschen",
     ]);
   });

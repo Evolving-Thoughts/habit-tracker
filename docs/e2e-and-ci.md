@@ -2,7 +2,7 @@
 
 **Authentifizierung:** Die Browser-Tests erstellen und verifizieren nun Testnutzer über eine separate Mailpit-Mailbox. Details und Einrichtung: [Anmeldung und Nutzertrennung](auth-and-ownership.md).
 
-Die ursprüngliche Testgrundlage änderte keine Produkt-API. Der anschließende Auth-Block ergänzt nun Anmeldung und Besitzer-Fremdschlüssel; siehe die verlinkte Anleitung. Timer sind weiterhin nicht enthalten.
+Die ursprüngliche Testgrundlage änderte keine Produkt-API. Der anschließende Auth-Block ergänzt nun Anmeldung und Besitzer-Fremdschlüssel; siehe die verlinkte Anleitung. Stoppuhr, Push und PWA sind inzwischen ebenfalls enthalten und haben eigene Browser-Specs (`timers`, `push`, `pwa` in `frontend/e2e/`).
 
 ## Testebenen
 
@@ -63,9 +63,9 @@ Unter Linux benötigt der Playwright-Browser außerdem Systembibliotheken;
 - Das separate Compose-Projekt nutzt einen eigenen Container mit flüchtigem
   Datenverzeichnis. Seine Beispiel-Zugangsdaten sind ausschließlich lokale Testwerte.
 - Der Server-Launcher prüft Testmodus, Kennzeichnung, DB-Namen, Loopback-Host und
-  Testports, **bevor** Nest eine Verbindung öffnet oder sein Schema synchronisiert.
+  Testports, **bevor** Nest eine Verbindung öffnet oder seine Migrationen ausführt.
 - Das Reset-Skript prüft dieselben Werte und zusätzlich `current_database()`.
-  Es leert alle vier FK-verknüpften Tabellen gemeinsam, ohne `CASCADE` und ohne
+  Es leert alle 22 Anwendungstabellen in einem einzigen `TRUNCATE`, ohne `CASCADE` und ohne
   einen HTTP-Reset-Endpunkt in der Anwendung.
 - Jede Testausführung einschließlich Retry beginnt/endet mit sauberen Daten.
   Ein Worker verarbeitet Tests und beide Projekte nacheinander. Kein paralleler
@@ -117,13 +117,17 @@ bleiben zusätzlich durch die bestehenden Backend-Tests abgedeckt.
 
 `.github/workflows/ci.yml` läuft bei Pull Requests und Pushes auf `main`:
 
-1. **Backend tests and build**: `npm ci`, Schutzprüfungen, Jest, Build, Supertest
-   mit eigener PostgreSQL-Serviceinstanz.
-2. **Frontend tests and build**: `npm ci`, Vitest, Gateway-Tests (`npm run test:tunnel`), E2E-Typecheck, vue-tsc/Vite.
-3. **Browser E2E**: eigene PostgreSQL-Serviceinstanz, Backend-Build, Playwright-
-   Chromium installieren und beide Browserprojekte ausführen.
+1. **Backend tests and build**: `npm ci`, `npm run lint`, `npm run check:contract`,
+   Schutzprüfungen, Jest, Build, Supertest mit eigener PostgreSQL-Serviceinstanz.
+2. **Frontend tests and build**: `npm ci`, Vitest, Gateway-Tests (`npm run test:tunnel`),
+   Push-Worker-Tests (`npm run test:push-worker`), E2E-Typecheck, vue-tsc/Vite.
+3. **Browser E2E (desktop and mobile Chromium)**: eigene PostgreSQL-Serviceinstanz
+   und Mailpit-Service (SMTP `11025`, Weboberfläche `18025`), Backend-Build,
+   Playwright-Chromium installieren und beide Browserprojekte ausführen.
 
-Die Jobs teilen keine Datenbank und brauchen keine Repository-Secrets.
+Die Jobs teilen keine Datenbank, und `ci.yml` braucht keine Repository-Secrets.
+Secrets nutzt nur der separate Workflow `.github/workflows/deploy.yml`
+(`DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST`); siehe [Deploy](deploy.md).
 Es wird `pull_request`, nicht `pull_request_target`, verwendet; Berechtigung ist
 nur `contents: read`. Neuere Läufe desselben PRs ersetzen ältere.
 
@@ -134,12 +138,14 @@ den Trace prüfen, statt instabile Tests als erfolgreich zu akzeptieren.
 
 GitHub kann den ersten Lauf abhängig von den Actions-/Organisationsrichtlinien
 zur Freigabe anhalten. Branch-Protection wird nicht automatisch verändert:
-Nach einem grünen Lauf kannst du die drei Jobnamen als erforderliche Checks
-für `main` konfigurieren.
+Nach einem grünen Lauf kannst du die drei Jobnamen exakt wie in `ci.yml`
+(`Backend tests and build`, `Frontend tests and build`,
+`Browser E2E (desktop and mobile Chromium)`) als erforderliche Checks für `main`
+konfigurieren.
 
 ## Grenzen dieses Blocks
 
-Anmeldung und Nutzertrennung sind inzwischen integriert. Weiterhin kein Timer und keine PWA/Push-Meldungen.
-Firefox/WebKit, echte Mobilgeräte und Deployment sind nicht Teil dieses ersten
-Sicherheitsnetzes. Die vorhandene pg/TypeORM-Deprecation-Warnung kann in den
+Anmeldung, Nutzertrennung, Stoppuhr, PWA und Push sind inzwischen integriert.
+Firefox/WebKit und echte Mobilgeräte sind nicht Teil dieses Sicherheitsnetzes;
+das Deployment läuft getrennt über `deploy.yml` ([Deploy](deploy.md)). Die vorhandene pg/TypeORM-Deprecation-Warnung kann in den
 Backend-E2E-Tests weiterhin auftreten; sie wird hier nicht unterdrückt.

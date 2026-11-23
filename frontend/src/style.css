@@ -295,9 +295,10 @@ body:has(.tab-bar) {
   );
 }
 
-@media (min-width: 56rem) {
+/* Wide screens and mouse windows: the bar sits at the top instead. */
+@media (min-width: 56rem), (hover: hover) and (pointer: fine) {
   body:has(.tab-bar) {
-    padding-top: 3.5rem;
+    padding-top: calc(3.5rem + env(safe-area-inset-top, 0px));
     padding-bottom: 0;
   }
 }

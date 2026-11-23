@@ -42,6 +42,7 @@ function running(from: string): TimerEntity {
     blockStartedAt: null,
     pausedAt: null,
     workLogId: null,
+    idleMilliseconds: 0,
   } as TimerEntity;
 }
 
@@ -60,24 +61,59 @@ const spans = (logs: Log[]) =>
     endedAt.toISOString().slice(11, 19),
   ]);
 
+describe('The time a stopwatch shows', () => {
+  it('keeps a stretch under a minute in view while paused', async () => {
+    const { manager, logs } = fakeManager();
+    const timer = running('10:00:00');
+    await pause(manager, timer, '10:00:40');
+    expect(logs).toEqual([]);
+    expect(elapsedAt(timer, at('10:00:50'))).toBe(40_000);
+    // Resumed within the minute, it counts on from there.
+    await resumeWorkSegment(manager, timer, at('10:00:55'));
+    expect(elapsedAt(timer, at('10:00:55'))).toBe(40_000);
+    expect(elapsedAt(timer, at('10:01:05'))).toBe(50_000);
+  });
+
+  it('never jumps on resume, whatever the pause', async () => {
+    const { manager } = fakeManager();
+    const timer = running('10:00:00');
+    timer.elapsedMilliseconds = 30 * 60_000;
+    // A short stretch, a long pause, then on again.
+    await pause(manager, timer, '10:00:20');
+    expect(elapsedAt(timer, at('10:05:00'))).toBe(30 * 60_000 + 20_000);
+    await resumeWorkSegment(manager, timer, at('10:05:00'));
+    expect(elapsedAt(timer, at('10:05:00'))).toBe(30 * 60_000 + 20_000);
+    // A long stretch, a short pause, a long pause.
+    await pause(manager, timer, '10:10:00');
+    await resumeWorkSegment(manager, timer, at('10:10:30'));
+    await pause(manager, timer, '10:12:00');
+    const shown = 30 * 60_000 + 20_000 + 5 * 60_000 + 90_000;
+    expect(elapsedAt(timer, at('10:12:30'))).toBe(shown);
+    await resumeWorkSegment(manager, timer, at('10:20:00'));
+    expect(elapsedAt(timer, at('10:20:00'))).toBe(shown);
+    expect(elapsedAt(timer, at('10:21:00'))).toBe(shown + 60_000);
+  });
+});
+
 describe('Work blocks of a stopwatch', () => {
   it('continues one log when resumed within a minute of the pause', async () => {
     const { manager, logs } = fakeManager();
     const timer = running('10:00:00');
     await pause(manager, timer, '10:05:00');
-    resumeWorkSegment(timer, at('10:05:40'));
-    // The pause counts: the stretch runs on from where the block started.
-    expect(elapsedAt(timer, at('10:06:00'))).toBe(6 * 60_000);
+    await resumeWorkSegment(manager, timer, at('10:05:40'));
+    // The log counts the pause, the stopwatch does not: it runs on from 5:00.
+    expect(elapsedAt(timer, at('10:05:40'))).toBe(5 * 60_000);
+    expect(elapsedAt(timer, at('10:06:00'))).toBe(5 * 60_000 + 20_000);
     await pause(manager, timer, '10:08:00');
     expect(spans(logs)).toEqual([['10:00:00', '10:08:00']]);
-    expect(timer.elapsedMilliseconds).toBe(8 * 60_000);
+    expect(elapsedAt(timer, at('10:09:00'))).toBe(7 * 60_000 + 20_000);
   });
 
   it('starts a second log after a pause of a minute or more', async () => {
     const { manager, logs } = fakeManager();
     const timer = running('10:00:00');
     await pause(manager, timer, '10:05:00');
-    resumeWorkSegment(timer, at('10:06:00'));
+    await resumeWorkSegment(manager, timer, at('10:06:00'));
     await pause(manager, timer, '10:09:00');
     expect(spans(logs)).toEqual([
       ['10:00:00', '10:05:00'],
@@ -86,24 +122,29 @@ describe('Work blocks of a stopwatch', () => {
     expect(timer.elapsedMilliseconds).toBe(8 * 60_000);
   });
 
-  it('logs nothing for a stretch under a minute on its own', async () => {
+  it('logs a stretch under a minute only once work resumes after the gap', async () => {
     const { manager, logs } = fakeManager();
     const timer = running('10:00:00');
     timer.elapsedMilliseconds = 30 * 60_000;
     await pause(manager, timer, '10:00:20');
+    // Maybe a mis-tap: no log yet.
     expect(logs).toEqual([]);
     expect(timer.elapsedMilliseconds).toBe(30 * 60_000);
-    // Resumed later, it is still a stretch of its own: nothing to continue.
-    resumeWorkSegment(timer, at('10:02:00'));
+    // Resumed later, it was work: it gets its own log, the new stretch
+    // starts a block of its own.
+    await resumeWorkSegment(manager, timer, at('10:02:00'));
+    expect(spans(logs)).toEqual([['10:00:00', '10:00:20']]);
+    expect(elapsedAt(timer, at('10:02:00'))).toBe(30 * 60_000 + 20_000);
+    // A short stretch that is the last one stays unlogged.
     await pause(manager, timer, '10:02:20');
-    expect(logs).toEqual([]);
+    expect(spans(logs)).toEqual([['10:00:00', '10:00:20']]);
   });
 
   it('extends the previous log by a short stretch resumed within a minute', async () => {
     const { manager, logs } = fakeManager();
     const timer = running('10:00:00');
     await pause(manager, timer, '10:10:00');
-    resumeWorkSegment(timer, at('10:10:30'));
+    await resumeWorkSegment(manager, timer, at('10:10:30'));
     await pause(manager, timer, '10:10:50');
     expect(spans(logs)).toEqual([['10:00:00', '10:10:50']]);
     expect(timer.elapsedMilliseconds).toBe(10 * 60_000 + 50_000);
@@ -113,7 +154,7 @@ describe('Work blocks of a stopwatch', () => {
     const { manager, logs } = fakeManager();
     const timer = running('10:00:00');
     await pause(manager, timer, '10:00:30');
-    resumeWorkSegment(timer, at('10:00:40'));
+    await resumeWorkSegment(manager, timer, at('10:00:40'));
     await pause(manager, timer, '10:01:10');
     expect(spans(logs)).toEqual([['10:00:00', '10:01:10']]);
     expect(timer.elapsedMilliseconds).toBe(70_000);
@@ -124,7 +165,7 @@ describe('Work blocks of a stopwatch', () => {
     const timer = running('10:00:00');
     await pause(manager, timer, '10:05:00');
     logs.splice(0);
-    resumeWorkSegment(timer, at('10:05:10'));
+    await resumeWorkSegment(manager, timer, at('10:05:10'));
     await pause(manager, timer, '10:07:00');
     expect(spans(logs)).toEqual([['10:00:00', '10:07:00']]);
   });

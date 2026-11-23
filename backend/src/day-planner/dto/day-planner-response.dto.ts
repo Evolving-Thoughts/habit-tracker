@@ -18,6 +18,7 @@ export type DayPlannerGoalDto = {
 
 /** What every planned item carries beside its own fields. */
 type DayPlannerItemContext = {
+  dayPosition?: number | null;
   /** The reason to show: the item's own, else the inherited one. */
   why: string | null;
   goal: DayPlannerGoalDto | null;

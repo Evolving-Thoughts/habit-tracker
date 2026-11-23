@@ -141,7 +141,7 @@ describe("entryKey", () => {
 });
 
 describe("dayOrder", () => {
-  it("names what the day's stored order holds: no times, no forecast", () => {
+  it("names what the day's stored order holds: appointments too, no forecast", () => {
     expect(
       dayOrder([
         quest(2, { timeOfDay: "09:00" }),
@@ -150,6 +150,7 @@ describe("dayOrder", () => {
         daily(null),
       ]),
     ).toEqual([
+      { type: "todo", id: 2 },
       { type: "todo", id: 3 },
       { type: "habit", id: 7 },
     ]);
@@ -157,7 +158,18 @@ describe("dayOrder", () => {
 });
 
 describe("arrangeOpen", () => {
-  it("sorts like the server: the clock, the order, then forecasts", () => {
+  it("anchors forecast appointments by clock while sending only stored positions", () => {
+    const early = daily(null, { timeOfDay: "09:00" });
+    const late = daily(null, { timeOfDay: "16:00" });
+    const noon = quest(2, { timeOfDay: "12:00" });
+    const first = quest(1);
+    const last = quest(3);
+    const arranged = arrangeOpen([first, noon, last, late, early]);
+    expect(arranged).toEqual([early, first, noon, late, last]);
+    expect(dayOrder(arranged)).toEqual(dayOrder([first, noon, last]));
+  });
+
+  it("sorts like the server: the order with appointments on the clock, then forecasts", () => {
     expect(
       arrangeOpen([
         daily(null, { title: "Vorhersage" }),
@@ -166,7 +178,7 @@ describe("arrangeOpen", () => {
         quest(4, { timeOfDay: "08:00" }),
         quest(5),
       ]).map(({ title }) => title),
-    ).toEqual(["Quest 4", "Quest 2", "Quest 1", "Quest 5", "Vorhersage"]);
+    ).toEqual(["Quest 1", "Quest 4", "Quest 2", "Quest 5", "Vorhersage"]);
   });
 });
 
@@ -207,19 +219,22 @@ describe("dropOnDay", () => {
     });
   });
 
-  it("keeps an appointment on its time and only moves its day", () => {
+  it("keeps an appointment on its time and puts it where it was dropped", () => {
     const plan = week({
       [TODAY]: [quest(1, { timeOfDay: "10:00" })],
       [WEDNESDAY]: [quest(2, { scheduledDate: WEDNESDAY })],
     });
     const result = dropOnDay(plan, { todoId: 1, toDate: WEDNESDAY, index: 1 })!;
 
-    expect(titles(result.plan, WEDNESDAY)).toEqual(["Quest 1", "Quest 2"]);
+    expect(titles(result.plan, WEDNESDAY)).toEqual(["Quest 2", "Quest 1"]);
     expect(result.write).toEqual({
       todoId: 1,
       moveTo: WEDNESDAY,
       confirmFixed: true,
-      order: null,
+      order: [
+        { type: "todo", id: 2 },
+        { type: "todo", id: 1 },
+      ],
     });
     expect(
       dropOnDay(plan, { todoId: 1, toDate: TODAY, index: 0 }),
@@ -296,15 +311,21 @@ describe("stepDrop", () => {
   it("steps over rows that are not part of the order", () => {
     const drop = stepDrop(plan, 3, "up")!;
     expect(dropOnDay(plan, drop)!.write.order).toEqual([
+      { type: "todo", id: 1 },
       { type: "todo", id: 3 },
       { type: "todo", id: 2 },
     ]);
-    expect(stepDrop(plan, 2, "up")).toBeNull();
     expect(stepDrop(plan, 3, "down")).toBeNull();
   });
 
-  it("leaves an appointment where its time puts it", () => {
-    expect(stepDrop(plan, 1, "down")).toBeNull();
+  it("leaves an appointment where its time puts it, but steps past it", () => {
+    expect(stepDrop(plan, 1, "down")).toMatchObject({ index: 1 });
+    const drop = stepDrop(plan, 2, "up")!;
+    expect(dropOnDay(plan, drop)!.write.order).toEqual([
+      { type: "todo", id: 2 },
+      { type: "todo", id: 1 },
+      { type: "todo", id: 3 },
+    ]);
   });
 
   it("goes to the end of the next day with an arrow key, but never into the past", () => {

@@ -78,7 +78,7 @@ const emit = defineEmits<{ close: [] }>();
   }
 }
 
-@media (min-width: 56rem) {
+@media (min-width: 56rem), (hover: hover) and (pointer: fine) {
   .notice-toast {
     bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
   }

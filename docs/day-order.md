@@ -18,9 +18,19 @@ overdue, completed-on-a-day and backlog; `backend/src/day-planner/day-order.ts`
 is the one sorting rule:
 
 1. Earlier day first (carried-over items).
-2. Appointments and timed habits by clock.
-3. Everything else by `dayPosition`; what was never sorted comes last, oldest
-   first, so a new item joins at the end.
+2. Within a day one sequence by `dayPosition` (`sortInDay`); what was never
+   sorted comes last, oldest first, so a new item joins at the end.
+3. Appointments and timed habits are **anchors** in that sequence: they
+   stand at their stored place, so an item can be sorted between two of
+   them, but among each other they always follow the clock (one stored
+   before an earlier one moves down to it). One never sorted stands right
+   after the appointment before it on the clock, or at the head of the day.
+   Any change of a todo's time resets its place: a new time anchors it
+   anew right after the appointment before it on the clock, a cleared time
+   sends it to the end of its day. A daily's new time does the same for its
+   open runs (`HabitsService.update` clears their `dayPosition`). Migration
+   `1796200000000-AnchoredAppointments` cleared the places timed todos
+   carried from before, when they meant nothing; habit runs kept theirs.
 
 The time-based replanner ("Neu planen"), the day-end setting and the per-calendar
 "blocks planning" switch are gone: there are no time slots to redistribute.
@@ -28,10 +38,12 @@ The time-based replanner ("Neu planen"), the day-end setting and the per-calenda
 ## Rules
 
 - Moving a todo to another day (PATCH `scheduledDate`, `POST /todos/:id/reschedule`,
-  or an edit in Google) resets `dayPosition`: it joins the new day at the end.
+  or an edit in Google) resets `dayPosition`: a todo without a time joins
+  the new day at the end, an appointment stands right after the appointment
+  before it on the clock.
 - Putting a todo back into the backlog (`scheduledDate: null`) also drops its
   time and puts it at the end of the Questlog's order (below). Clearing only
-  the time turns an appointment into a todo of its day.
+  the time turns an appointment into a todo of its day, at the end of it.
 - An appointment only moves with `confirmFixed`, as before, and keeps its time.
 - Completing or skipping does not touch positions.
 
@@ -94,15 +106,19 @@ export only, as Logbuch events (see `logbook.md`).
   when the quest has one, cleared when the day goes. Every quest form uses
   both; `utils/todo-input.ts` validates them.
 - `utils/today-agenda.ts` arranges Heute. `currentItem` is the one rule for
-  what is up now, shared by Heute's focus card and the Fokus-Modus: an
+  what is up now, shared by Heute's focus card and the Fokus-Modus. Once the
+  day has a saved order (an open item carries a `dayPosition`), its first
+  open item in that order is the focus, an appointment too, even one that
+  has not started yet. Before the day is sorted the clock decides: an
   appointment (a todo or habit with a time) from its start until its end, the
   start plus its planned duration or `DEFAULT_APPOINTMENT_MINUTES` (30) without
-  one; when several overlap, the one that began last. Otherwise the head of the
-  order. Before its start and after its end an appointment sits in Heute's
-  list with its time (`appointments`, by clock, before the rest of the order
-  and never part of its sorting), with the calendar's events on a phone; it
-  never stands in for an empty order (Heute then says "In der Reihenfolge ist
-  nichts mehr offen." and names the next appointment). One that is over and
+  one; when several overlap, the one that began last. Otherwise the first
+  item without a time in the order. Every other appointment sits in Heute's
+  list with its time, anchored in the order of the day (`list`, the server's
+  order, with the calendar's events by clock among the appointments on a
+  phone). When nothing is up (only appointments are left, none running, and
+  the day was never sorted) Heute says "In der Reihenfolge ist nichts mehr
+  offen." and names the next appointment. One that is over and
   still open (`past`) asks quietly "Vorbei – erledigt?" with its ring and
   "Anderer Tag …". `nextChangeAt` names the next minute at which this can
   change (a start, an end), and `composables/useDayClock.ts` sets one
@@ -111,12 +127,17 @@ export only, as Logbuch events (see `logbook.md`).
   (`DayCalendar.vue`, see `logbook.md`) stands beside the list and shows
   the events there instead.
 - The Kalender lists a day's open entries in the same order: `GET /history`
-  sorts `days[].planned` with `compareInDay` (`sortedLikeToday` in
-  `history-planning.ts`): carried-over first, appointments by clock, then the
-  stored `dayPosition`, forecast runs (never sorted) last by title. See
+  sorts `days[].planned` with `sortInDay` (`sortedLikeToday` in
+  `history-planning.ts`): carried-over first, then the stored order with the
+  appointments anchored in it; forecast runs are never sorted, so untimed
+  ones come last by title and timed ones stand right after the appointment
+  before them on the clock. See
   `history.md`.
 - Heute sorts by drag and drop: the focus card and the rows after it are one
-  list (`useSortable`, SortableJS), and the whole card drags. A mouse lifts
+  list (`useSortable`, SortableJS). Quests, stored runs and appointments drag.
+  Timed cards can cross flexible cards and stop at the adjacent appointment
+  in clock order. Google events are read-only. Every write sends the whole day. A card passes another once the pointer crosses its
+  middle (`swapThreshold` 0.5), so cards of different heights do not jump. A mouse lifts
   it after 6px, a finger only after a 300ms press (`delayOnTouchOnly`), so a
   swipe still scrolls and a short tap still opens the editor; the card's own
   controls never start a drag. The keyboard sorts with "Nach oben" and "Nach

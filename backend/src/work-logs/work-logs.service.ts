@@ -1,10 +1,12 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
+import { CalendarSyncService } from '../calendar/calendar-sync.service';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { ownedOccurrences } from '../habit-occurrences/owned-occurrences';
@@ -22,6 +24,7 @@ export class WorkLogsService {
   constructor(
     @InjectRepository(WorkLogEntity)
     private readonly logs: Repository<WorkLogEntity>,
+    private readonly calendar: CalendarSyncService,
     private readonly clock: Clock,
     private readonly unitOfWork: UserUnitOfWork,
   ) {}
@@ -45,19 +48,27 @@ export class WorkLogsService {
     });
   }
 
-  update(
+  async update(
     userId: string,
     id: number,
     dto: WorkLogTimesDto,
   ): Promise<WorkLogResponse> {
     const range = this.range(dto);
-    return this.unitOfWork.run(userId, async (manager) => {
+    const result = await this.unitOfWork.run(userId, async (manager) => {
       const repository = manager.getRepository(WorkLogEntity);
       const log = await repository.findOneBy({ id, userId });
       if (!log)
         throw new NotFoundException(`Work log with ID ${id} was not found`);
       return this.response(await repository.save({ ...log, ...range }));
     });
+    void this.calendar
+      .syncUser(userId)
+      .catch(() =>
+        new Logger(WorkLogsService.name).warn(
+          'Kalenderkorrektur wird beim nächsten Abgleich wiederholt.',
+        ),
+      );
+    return result;
   }
 
   async remove(userId: string, id: number): Promise<void> {

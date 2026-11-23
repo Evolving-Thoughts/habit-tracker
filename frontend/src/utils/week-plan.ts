@@ -1,3 +1,4 @@
+import { anchoredOrder, clockBoundIndex } from "./day-order";
 import type { TodoResponse } from "../types/todo";
 import type {
   WeekPlanDay,
@@ -137,11 +138,11 @@ export function doneEntries(day: WeekPlanDay): WeekPlanEntry[] {
 }
 
 /**
- * Whether an entry takes part in the day's stored order: not anchored by
- * the clock and stored on the server.
+ * Whether an entry takes part in the day's stored order: open and stored on
+ * the server. Appointments take part as anchors, held on the clock.
  */
 function isSequenced(entry: WeekPlanEntry): boolean {
-  if (entry.status !== "pending" || entry.timeOfDay !== null) return false;
+  if (entry.status !== "pending") return false;
   return entry.type === "todo" || entry.occurrenceId !== null;
 }
 
@@ -156,18 +157,11 @@ export function dayOrder(open: readonly WeekPlanEntry[]): OrderRef[] {
 
 /**
  * The open rows of a day the way the server sorts them (day-order.ts), with
- * the sequenced ones in the order given: the clock first, then the order of
- * the day, then forecast dailies, which have none.
+ * the sequenced ones in the order given and the appointments among them
+ * held on the clock. An untimed forecast follows the stored entries.
  */
 export function arrangeOpen(open: readonly WeekPlanEntry[]): WeekPlanEntry[] {
-  const timed = open
-    .filter((entry) => entry.timeOfDay !== null)
-    .sort((first, second) => first.timeOfDay!.localeCompare(second.timeOfDay!));
-  const sequenced = open.filter(isSequenced);
-  const rest = open.filter(
-    (entry) => !timed.includes(entry) && !isSequenced(entry),
-  );
-  return [...timed, ...sequenced, ...rest];
+  return anchoredOrder(open, isSequenced);
 }
 
 const withOpen = (day: WeekPlanDay, open: WeekPlanEntry[]): WeekPlanDay => ({
@@ -217,14 +211,13 @@ function place(
   const target = plan.days.find((day) => day.date === toDate);
   if (!target || toDate < plan.today) return null;
   const rows = openEntries(target).filter((item) => item !== entry);
-  rows.splice(Math.max(0, Math.min(index, rows.length)), 0, placed);
+  rows.splice(clockBoundIndex(rows, placed, Math.max(0, Math.min(index, rows.length))), 0, placed);
   const arranged = arrangeOpen(rows);
 
   const before = dayOrder(openEntries(target));
   const after = dayOrder(arranged);
   const sorted =
-    placed.timeOfDay === null &&
-    (from.moves || JSON.stringify(before) !== JSON.stringify(after));
+    from.moves || JSON.stringify(before) !== JSON.stringify(after);
   if (!from.moves && !sorted) return null;
 
   return {
@@ -250,8 +243,10 @@ function place(
 /**
  * Applies a drop to the plan at once and says what to write. Dropped on a
  * day it is not planned for (another day, or any day for a quest left
- * behind), the quest moves there; an untimed quest then takes its place in
- * that day's order. Returns null when the drop changes nothing.
+ * behind), the quest moves there and takes its place in that day's order;
+ * an appointment's place is bounded by the clock, after the appointments
+ * earlier and before those later than it (`clockBoundIndex`). Returns null
+ * when the drop changes nothing.
  *
  * `incoming` is a quest from the Questlog column: it has no day yet, so it
  * comes from no column of the board and always moves.
@@ -363,11 +358,13 @@ function stepPlace(
     if (!next || next.date < plan.today) return null;
     return { toDate: next.date, index: openEntries(next).length };
   }
+  // An appointment holds its place by the clock; others step past it.
   if (!isSequenced(entry)) return null;
   const sequence = open.filter(isSequenced);
   const neighbour =
     sequence[sequence.indexOf(entry) + (direction === "up" ? -1 : 1)];
   if (!neighbour) return null;
+  if (entry.timeOfDay && neighbour.timeOfDay && entry.timeOfDay !== neighbour.timeOfDay) return null;
   return { toDate: day.date, index: open.indexOf(neighbour) };
 }
 
@@ -541,7 +538,7 @@ export type QuestlogChoice = "open" | "closed";
 
 /**
  * Whether the Questlog column starts open. A choice made on this device
- * wins; without one it opens only on a wide window (`roomy`, from 80rem),
+ * wins; without one it opens when the board fits the Questlog and one day,
  * so a smaller one gives its room to the days first.
  */
 export function questlogStartsOpen(
@@ -579,10 +576,10 @@ export function questlogWidth(open: boolean): number {
  */
 export function fittingDays(
   width: number,
-  board: { questlogOpen: boolean; overdue: boolean; least: number },
+  board: { questlogOpen: boolean; overdue: boolean; overdueOpen?: boolean; least: number },
 ): number {
   let room = width - questlogWidth(board.questlogOpen);
-  if (board.overdue) room -= BOARD.gap + BOARD.column;
+  if (board.overdue) room -= BOARD.gap + (board.overdueOpen === false ? BOARD.questlogRail : BOARD.column);
   const fit = Math.floor((room + 0.001) / (BOARD.gap + BOARD.column));
   return Math.max(board.least, fit);
 }
@@ -591,12 +588,13 @@ export function fittingDays(
 export function boardColumns(board: {
   questlogOpen: boolean;
   overdue: boolean;
+  overdueOpen?: boolean;
   days: number;
 }): string {
   const day = `minmax(${BOARD.column}rem, 1fr)`;
   return [
     `${questlogWidth(board.questlogOpen)}rem`,
-    ...(board.overdue ? [day] : []),
+    ...(board.overdue ? [board.overdueOpen === false ? `${BOARD.questlogRail}rem` : day] : []),
     `repeat(${board.days}, ${day})`,
   ].join(" ");
 }

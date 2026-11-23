@@ -2,14 +2,15 @@
 
 ## Scope and UI decision
 
-The selected UI is **A: an expandable tree list** in the new **Aufgabenbaum** view.
-The Today, Todo-Dump, Habits and History views remain available. Every Todo,
+The selected UI is **A: an expandable tree list**; it now lives in the
+**Kampagnen** view (`CampaignsView.vue`). The other views are Heute, Fokus,
+Kalender, Plan, Questlog, Dailies, Wochenrückblick and Einstellungen. Every Todo,
 including a parent, retains its own completion checkbox, schedule, duration,
 optional time of day (see `day-order.md`) and timer eligibility. There is no separate Goal entity.
 
 T2 delivers hierarchy creation, progress, independent completion, atomic moves,
 root moves and timer/planner integration. T3 adds editing and confirmed subtree
-soft-deletion. Existing Today/Dump editors use the same deletion-preview contract.
+soft-deletion. The other quest editors use the same deletion-preview contract.
 No sibling sorting, archive/restore, Habit contribution or new time-accounting
 rules are introduced. The existing one-active-timer-per-user rule remains in place.
 
@@ -31,7 +32,7 @@ rules are introduced. The existing one-active-timer-per-user rule remains in pla
 The complete runnable reference is the repository source, not the disposable UI
 prototype. The main files are the Todo entity/DTOs, `TodosService`,
 `todo-hierarchy.ts` (pure tree rules), `todo-hierarchy.queries.ts` (recursive
-ancestor/subtree reads), `TodoHierarchyView.vue`, `useTodoDeletion.ts`,
+ancestor/subtree reads), `CampaignsView.vue`, `useTodoDeletion.ts`,
 `TodoDeletionSummary.vue` and their tests.
 
 ## Architecture and invariants
@@ -120,16 +121,24 @@ root row with the same progress bar. The card takes the campaign's actions
 ("Bearbeiten", "Abschließen" and "…") and accepts drops; a row dropped on
 another row goes below it. Every row there has a parent, so the row menu
 has no "Fortschritt anzeigen"; the campaign's burnup stands on its card. Moving a quest to
-the top says what it becomes: "Eigene Kampagne" when it has quests below it
-(or already is one), otherwise "Keine Kampagne (Questlog oder ihr Tag)", and
-it then leaves the tree. A new top-level quest that is no campaign yet is
+the top says what it becomes. In the picker (`CampaignMoveDialog.vue`,
+`PlannerItemEditor.vue`) the top-level choice reads "Keine (eigene Kampagne)"
+when the quest has quests below it, otherwise "Keine (lose Quest)"; only
+children are checked. While dragging in the tree, the drop zone reads "Hier
+ablegen, um daraus eine eigene Kampagne zu machen." when the quest has quests
+below it or already is a campaign, otherwise "Hier ablegen, um die Quest aus
+der Kampagne zu lösen. Sie steht dann im Questlog oder an ihrem Tag." A loose
+quest then leaves the tree. A new top-level quest that is no campaign yet is
 announced as such ("… sobald sie Unter-Quests, eine Farbe, ein Symbol oder ein
 Wochenziel hat").
 
 ### Progress and deep trees
 
-`GET /todos/hierarchy` reads one owner-scoped snapshot, then computes progress
-bottom-up in O(n) time and space. A Todo whose parent is missing counts as a root,
+`GET /todos/hierarchy` reads the owner's live todos in one query and computes
+progress from that list bottom-up in O(n) time and space. Campaign, inherited
+why and habit goals come from separate queries afterwards (`TodoAncestry`,
+`habitGoals`), without a shared transaction, so a concurrent change can show
+up in one part and not yet in another. A Todo whose parent is missing counts as a root,
 so one bad row cannot hide the whole tree; a stored cycle is reported as a 500.
 Create, move and delete do not load the whole tree: they read only the parent's
 ancestor chain or the affected subtree with recursive queries on the parent index.
@@ -231,9 +240,9 @@ Known limit: an entry below a reasoned ancestor cannot have "no reason at all".
 
 ## Database schema
 
-The app is not in real use yet, so there are no migrations. Development schema
-synchronization creates `parentId`, its index and the restrictive FK. Versioned
-migrations follow before the first deployment with data worth keeping.
+The schema comes only from versioned migrations in
+`backend/src/database/migrations/`, which run at startup (`migrationsRun`; no
+`synchronize`). They create `parentId`, its index and the restrictive FK.
 
 ## API additions
 

@@ -5,10 +5,10 @@ Die App läuft mit Docker Compose. Der Betrieb hängt an keinem bestimmten Rechn
 ## Aufbau
 
 ```
-Browser ─HTTPS─> Caddy (Host, Port 443) ─> nginx im Container web (127.0.0.1:8080) ─> backend ─> postgres
+Browser ─HTTPS─> Caddy (Host, Port 443) ─> nginx im Container web (127.0.0.1:APP_PORT) ─> backend ─> postgres
 ```
 
-- **Caddy** auf dem Host holt und erneuert das Zertifikat selbst und leitet an `127.0.0.1:8080` weiter. Weitere Projekte bekommen dort eigene Subdomains.
+- **Caddy** auf dem Host holt und erneuert das Zertifikat selbst und leitet an `127.0.0.1:8080` weiter. Der Port ist `APP_PORT` aus `.env.production` (Standard 8080); belegt ihn auf dem Host schon etwas anderes, dort einen anderen eintragen und Caddy darauf zeigen lassen. Weitere Projekte bekommen dort eigene Subdomains.
 - **nginx** im Container `web` liefert das Frontend aus und leitet `/api/` an das Backend. HTTP/2 ist dort bewusst nicht aktiv.
 - Nur `web` hat einen Port, und nur auf `127.0.0.1`. Backend und Datenbank sind ausschließlich im Compose-Netz.
 - Mails gehen über einen SMTP-Dienst mit TLS (derzeit Resend, Sende-Domain `send.evolving-thoughts.com`).
@@ -41,6 +41,8 @@ In `.env.production` mindestens eintragen:
 - `TRUST_PROXY_HOPS=2`: Caddy und nginx stehen vor dem Backend. Mit 1 hielte das Backend die Adresse von Caddy für die des Browsers, und die Login-Begrenzung würde für alle Nutzer gemeinsam zählen.
 - die `SMTP_*`-Werte und `MAIL_FROM`
 
+Optional: `APP_PORT` (Standard 8080, siehe Aufbau) und `PUSH_WORKER_ENABLED` (Standard an, außer bei `NODE_ENV=test`; `false` schaltet den Versand von Timer-Push ab, siehe unten).
+
 Die Datei bleibt außerhalb von Git und liegt im Repo-Ordner, nicht im Home-Verzeichnis: Compose liest sie relativ zum aktuellen Ordner.
 
 ```bash
@@ -54,6 +56,8 @@ plan.evolving-thoughts.com {
     reverse_proxy 127.0.0.1:8080
 }
 ```
+
+`8080` durch den Wert von `APP_PORT` ersetzen, falls er gesetzt ist.
 
 ```bash
 sudo systemctl reload caddy
@@ -76,6 +80,8 @@ Ohne Schlüssel zeigt Einstellungen › Benachrichtigungen den Hinweis „Auf de
 | `VAPID_PUBLIC_KEY` | öffentlicher Schlüssel; der Browser bekommt ihn über `GET /push/config` |
 | `VAPID_PRIVATE_KEY` | privater Schlüssel, geheim |
 | `VAPID_SUBJECT` | Kontakt-Adresse (`mailto:…` oder `https://…`); leer gilt `FRONTEND_URL` |
+
+Optional schaltet `PUSH_WORKER_ENABLED=false` den Hintergrund-Versand ab; ohne die Variable läuft er, sobald die Schlüssel gesetzt sind (außer bei `NODE_ENV=test`).
 
 Beide Schlüssel gehören zusammen: nur einer gesetzt oder ein ungültiges Paar, und das Backend startet nicht. Erzeugen lassen sie sich überall, wo Node läuft, mit `npx web-push generate-vapid-keys` (oder `npm run push:keys` in `backend`); die Ausgabe gehört in die Umgebung des Backends, nie in Git oder einen Chat. Auf dem Server einmal im laufenden Backend, ohne sie anzuzeigen:
 
@@ -133,7 +139,7 @@ git pull
 docker compose -f compose.prod.yaml --env-file .env.production up -d --build --wait
 ```
 
-Updates von Paketen, Basis-Images und Actions schlägt Dependabot jede Woche gebündelt als PR vor ([dependabot.yml](../.github/dependabot.yml)). Mit grünem CI gemergt, landen sie wie jeder andere Merge auf dem Server. `npm audit --omit=dev` in `backend` und `frontend` zeigt, ob etwas, das ausgeliefert wird, eine bekannte Lücke hat.
+Updates schlägt Dependabot jeden Montag gebündelt als PRs vor ([dependabot.yml](../.github/dependabot.yml)): npm-Pakete von `backend` und `frontend` (Minor/Patch in einer Gruppe), die Basis-Images der Dockerfiles, die Images der Compose-Dateien (ohne neue PostgreSQL-Hauptversionen, die ein Daten-Upgrade brauchen) und die GitHub Actions. Sicherheitsupdates kommen unabhängig davon, wenn „Dependabot security updates“ in den Repo-Einstellungen an ist. Mit grünem CI gemergt, landen sie wie jeder andere Merge auf dem Server. `npm audit --omit=dev` in `backend` und `frontend` zeigt, ob etwas, das ausgeliefert wird, eine bekannte Lücke hat.
 
 Eine geänderte `.env.production` übernimmt ein Container erst, wenn er neu angelegt wird:
 

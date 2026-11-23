@@ -281,7 +281,7 @@ onUnmounted(() => {
   background: var(--color-surface);
   box-shadow: var(--shadow-card);
 }
-@media (min-width: 56rem) {
+@media (min-width: 56rem), (hover: hover) and (pointer: fine) {
   .timer-bar {
     top: calc(3.5rem + 0.5rem);
   }

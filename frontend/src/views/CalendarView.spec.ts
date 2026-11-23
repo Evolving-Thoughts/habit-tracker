@@ -450,6 +450,13 @@ describe("CalendarView month", () => {
     ).toContain("Artikel");
   });
 
+  it("opens the double-clicked date from the month grid", async () => {
+    const wrapper = await render();
+    await wrapper.get('[data-date="2026-10-05"]').trigger("dblclick");
+    await flushPromises();
+    expect(mock).toHaveBeenLastCalledWith("2026-10-05", "day", "all", expect.anything());
+  });
+
   it("opens the selected day in Tag mode", async () => {
     const wrapper = await render();
     await wrapper

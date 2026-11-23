@@ -110,15 +110,22 @@ describe("DayCalendar", () => {
       }),
     });
     const lane = wrapper.get('ol[aria-label="Zeitachse"]');
-    expect(lane.findAll("li")).toHaveLength(3);
+    expect(lane.findAll("li")).toHaveLength(2);
     expect(lane.text()).toContain("Besprechung");
-    expect(lane.text()).toContain("Kapitel, erledigt um 11:00");
+    expect(lane.text()).not.toContain("Kapitel, erledigt um 11:00");
     expect(block(wrapper).attributes("aria-label")).toBe(
       "Kapitel, 10:00 bis 10:30, 30 Min., Kampagne Buch, korrigieren",
     );
     expect(wrapper.get("h2").text()).toBe("Logbuch 30 Min.");
     expect(wrapper.find(".day-calendar__now").exists()).toBe(true);
     expect(wrapper.get(".day-calendar__now-time").text()).toBe("14:00");
+  });
+
+  it("shows the completion while the delete of its only stretch is held back", () => {
+    const wrapper = render({ hiddenLogs: new Set([1]) });
+    const lane = wrapper.get('ol[aria-label="Zeitachse"]');
+    expect(wrapper.find("button.log-block").exists()).toBe(false);
+    expect(lane.text()).toContain("Kapitel, erledigt um 11:00");
   });
 
   it("shows no Jetzt line on another day and only appointments on a coming one", () => {

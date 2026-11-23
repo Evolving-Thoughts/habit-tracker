@@ -59,7 +59,9 @@ test("Heute at 375 px: focus card in one action row, the next row in view, short
 
   // The first viewport shows the focus card and at least the next row.
   const viewport = page.viewportSize()!;
+  // On a phone the tab bar sits at the bottom; the row must end above it.
   const tabBar = (await page.locator(".tab-bar").boundingBox())!;
+  expect(tabBar.y + tabBar.height).toBeCloseTo(viewport.height, 0);
   expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(
     Math.min(viewport.height, tabBar.y),
   );

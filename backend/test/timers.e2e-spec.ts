@@ -210,8 +210,8 @@ describe('Synced timers and Dump completion (e2e)', () => {
     later(30_000);
     await action(timer.id, 'resume');
     later(2 * MINUTE);
-    // The short pause counts as worked.
-    expect((await read()).timer?.elapsedMilliseconds).toBe(7.5 * MINUTE);
+    // The log counts the short pause; the stopwatch shows only its run.
+    expect((await read()).timer?.elapsedMilliseconds).toBe(7 * MINUTE);
     await action(timer.id, 'pause');
     later(5 * MINUTE);
     await action(timer.id, 'resume');

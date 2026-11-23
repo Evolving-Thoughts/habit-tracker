@@ -52,10 +52,10 @@ import {
   formatDuration,
   formatWindow,
   itemKey,
-  moved,
   nextChangeAt,
-  withQueueOrder,
+  withDayOrder,
 } from "../utils/today-agenda";
+import { anchoredOrder, clockBoundIndex } from "../utils/day-order";
 import { tallyLine } from "../utils/day-tally";
 import { useDayClock } from "../composables/useDayClock";
 import { categoryMark } from "../utils/category-mark";
@@ -415,14 +415,14 @@ async function onMoved(): Promise<void> {
 /* The order of the day: the focus card is its head, the rows follow. */
 const order = ref<HTMLElement | null>(null);
 const orderMessage = ref("");
-/** The focus heads the queue unless an appointment is running right now. */
-const focusInQueue = computed(
-  () => !!agenda.value?.focus && agenda.value.focus === agenda.value.queue[0],
-);
-const rows = computed(
-  () =>
-    agenda.value?.queue.filter((item) => item !== agenda.value?.focus) ?? [],
-);
+const sortables = computed<(DayPlannerItem | null)[]>(() => {
+  const current = agenda.value;
+  if (!current) return [];
+  return [
+    ...(current.focus ? [current.focus] : []),
+    ...current.list.map((entry) => (entry.kind === "event" ? null : entry.item)),
+  ];
+});
 
 /** How the server names an item of the order. */
 function orderRef(item: DayPlannerItem): {
@@ -433,34 +433,66 @@ function orderRef(item: DayPlannerItem): {
     ? { type: "todo", id: item.todoId }
     : { type: "habit", id: item.occurrenceId };
 }
-const orderRefs = computed(() => (agenda.value?.queue ?? []).map(orderRef));
+const orderRefs = computed(() =>
+  (agenda.value?.sequence ?? []).map(orderRef),
+);
 
 async function moveInOrder(from: number, to: number): Promise<void> {
   const current = planner.value;
-  if (!current || !agenda.value || writes.isWriting("order")) return;
-  const queue = moved(agenda.value.queue, from, to);
-  const item = queue[to];
-  if (!item || queue[from] === item) return;
+  const today = agenda.value;
+  if (!current || !today || from === to || writes.isWriting("order")) return;
+  const visible = sortables.value;
+  const item = visible[from];
+  if (!item) return;
+  // Only move past stored entries crossed on screen. The focus card is
+  // displayed separately from its stored position; Google events have none.
+  const down = from < to;
+  const crossed = down
+    ? visible.slice(from + 1, to + 1).reverse()
+    : visible.slice(to, from);
+  const neighbour = crossed.find((entry) => entry !== null);
+  if (!neighbour) return;
+  const order = item === today.focus || neighbour === today.focus
+    ? visible.filter((entry): entry is DayPlannerItem => entry !== null)
+    : today.sequence;
+  const sequence = anchoredOrder(order.filter((entry) => entry !== item));
+  const index = clockBoundIndex(sequence, item, sequence.indexOf(neighbour) + Number(down));
+  sequence.splice(index, 0, item);
   // Shown at once; the reload after the write confirms it or takes it back.
-  planner.value = withQueueOrder(current, queue);
-  orderMessage.value = `„${item.title}“ steht jetzt an Stelle ${to + 1} von ${queue.length}.`;
-  await writes.write(() => reorderDay(queue.map(orderRef)), {
+  planner.value = withDayOrder(current, sequence);
+  orderMessage.value = `„${item.title}“ steht jetzt an Stelle ${sequence.indexOf(item) + 1} von ${sequence.length}.`;
+  await writes.write(() => reorderDay(sequence.map(orderRef)), {
     key: "order",
     fallbackError: "Die Reihenfolge konnte nicht gespeichert werden.",
   });
 }
 
+/** Where one step up or down lands; calendar events are stepped over. */
+function stepFrom(item: DayPlannerItem, direction: -1 | 1): number | null {
+  const list = sortables.value;
+  const from = list.indexOf(item);
+  if (from === -1) return null;
+  for (let to = from + direction; to >= 0 && to < list.length; to += direction)
+    if (list[to]) {
+      const time = list[to]?.timeOfDay;
+      if (item.timeOfDay && time && (direction < 0 ? time < item.timeOfDay : time > item.timeOfDay)) return null;
+      return to;
+    }
+  return null;
+}
+
 /**
  * "Nach oben" and "Nach unten" in the menu: the keyboard's way to sort.
- * The focus stays on the moved card's menu button.
+ * An appointment counts as one step. The focus stays on the moved card's
+ * menu button.
  */
 async function shiftInOrder(
   item: DayPlannerItem,
   direction: -1 | 1,
 ): Promise<void> {
-  const from = agenda.value?.queue.indexOf(item) ?? -1;
-  if (from === -1) return;
-  await moveInOrder(from, from + direction);
+  const to = stepFrom(item, direction);
+  if (to === null) return;
+  await moveInOrder(sortables.value.indexOf(item), to);
   await nextTick();
   page.value
     ?.querySelector<HTMLElement>(
@@ -472,6 +504,7 @@ async function shiftInOrder(
 /* The whole card drags: the focus card and every row of the order. */
 useSortable(order, {
   item: "[data-sort-key]",
+  anchor: "[data-sort-anchor]",
   onMove: (from, to) => void moveInOrder(from, to),
 });
 
@@ -563,8 +596,6 @@ function rowMenu(item: DayPlannerItem): MenuEntry[] {
     timeOfDay: item.type === "todo" ? item.timeOfDay : null,
     moveUntil: item.type === "habit" ? item.moveUntil : undefined,
   });
-  const queue = agenda.value?.queue ?? [];
-  const place = queue.indexOf(item);
   const isFocus = item === agenda.value?.focus;
   return cardMenu(
     item.title,
@@ -592,9 +623,12 @@ function rowMenu(item: DayPlannerItem): MenuEntry[] {
         item.type === "todo"
           ? () => openMenuDialog(item, "move")
           : undefined,
-      up: place > 0 ? () => void shiftInOrder(item, -1) : undefined,
+      up:
+        stepFrom(item, -1) !== null
+          ? () => void shiftInOrder(item, -1)
+          : undefined,
       down:
-        place !== -1 && place < queue.length - 1
+        stepFrom(item, 1) !== null
           ? () => void shiftInOrder(item, 1)
           : undefined,
       remove: {
@@ -846,10 +880,9 @@ useShortcutHandlers(
         <div ref="order" class="order">
           <section
             v-if="agenda.focus"
-            class="focus card-target"
-            :class="{ 'card-drag': focusInQueue }"
+            class="focus card-target card-drag"
             :data-focus-key="getItemKey(agenda.focus)"
-            :data-sort-key="focusInQueue ? getItemKey(agenda.focus) : undefined"
+            :data-sort-key="getItemKey(agenda.focus)"
             aria-labelledby="focus-title"
             @click="openFocusFromCard($event, agenda.focus)"
           >
@@ -953,7 +986,7 @@ useShortcutHandlers(
               />
             </div>
           </section>
-          <!-- Appointments wait in the list below; they never stand in for the order. -->
+          <!-- Nothing is up: only appointments are left, none running, and the day was never sorted. They wait in the list below. -->
           <section v-else-if="openAppointments" class="today-view__empty">
             <h2>In der Reihenfolge ist nichts mehr offen.</h2>
             <p>
@@ -970,17 +1003,19 @@ useShortcutHandlers(
           </section>
 
           <!--
-            Appointments sit in the list, anchored by their time: by clock
-            before the rest of the order. One that is over but still open asks
-            quietly. Google events are read-only and, on wide screens, stand
-            in the day calendar instead.
+            The rest of the day in one order. Appointments stand in it with
+            their time and drag like any other card; one that is over but
+            still open asks quietly. Google events are read-only anchors: a
+            card can be dropped next to them, but they never lift. On wide
+            screens they stand in the day calendar instead. On a phone only the next two rows carry
+            their Warum, so the day stays short.
           -->
           <template
-            v-for="entry in agenda.appointments"
+            v-for="(entry, index) in agenda.list"
             :key="
-              entry.kind === 'item'
-                ? getItemKey(entry.item)
-                : `event-${entry.event.id}`
+              entry.kind === 'event'
+                ? `event-${entry.event.id}`
+                : getItemKey(entry.item)
             "
           >
             <PlannerItem
@@ -988,6 +1023,8 @@ useShortcutHandlers(
               class="today-view__appointment"
               :class="{ 'today-view__appointment--past': entry.past }"
               :data-focus-key="getItemKey(entry.item)"
+              :data-sort-key="getItemKey(entry.item)"
+              sortable
               :item="entry.item"
               :time="entry.time"
               :is-updating="isUpdating(entry.item)"
@@ -1000,29 +1037,29 @@ useShortcutHandlers(
               @move="openMoving"
             />
             <div
-              v-else
+              v-else-if="entry.kind === 'event'"
               class="today-view__event"
               :class="{ 'today-view__event--past': entry.past }"
+              :data-sort-key="`event-${entry.event.id}`"
+              data-sort-anchor
             >
               <span class="today-view__event-time">{{ entry.time }}</span>
               <span class="today-view__event-title">{{ entry.event.title }}</span>
               <span class="today-view__event-source">Google Kalender</span>
             </div>
+            <PlannerItem
+              v-else
+              :data-focus-key="getItemKey(entry.item)"
+              :data-sort-key="getItemKey(entry.item)"
+              :item="entry.item"
+              :is-updating="isUpdating(entry.item)"
+              :menu="rowMenu(entry.item)"
+              :why-wide-only="index >= 2"
+              sortable
+              @toggle="toggleItem"
+              @edit="openEditing"
+            />
           </template>
-          <!-- On a phone only the next two rows carry their Warum, so the day stays short. -->
-          <PlannerItem
-            v-for="(item, index) in rows"
-            :key="getItemKey(item)"
-            :data-focus-key="getItemKey(item)"
-            :data-sort-key="getItemKey(item)"
-            :item="item"
-            :is-updating="isUpdating(item)"
-            :menu="rowMenu(item)"
-            :why-wide-only="index >= 2"
-            sortable
-            @toggle="toggleItem"
-            @edit="openEditing"
-          />
         </div>
 
         <section

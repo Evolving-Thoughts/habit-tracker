@@ -1,8 +1,8 @@
 # Datenbank-Sicherung
 
-[scripts/backup.sh](../scripts/backup.sh) sichert die Datenbank jede Nacht. Der Dump wird komprimiert und mit `age` verschlüsselt, bevor er auf die Platte kommt. Lokal bleiben die letzten 14 Tage. Jede neue Sicherung wird auf den 1blu-Backup-Server (`backup.1blu.de`) hochgeladen, über FTP mit erzwungenem TLS, damit auch das Passwort nicht im Klartext übertragen wird.
+[scripts/backup.sh](../scripts/backup.sh) sichert die Datenbank jede Nacht. Der Dump wird komprimiert und mit `age` verschlüsselt, bevor er auf die Platte kommt. Lokal löscht das Skript Sicherungen erst, wenn sie mehr als `KEEP_DAYS` ganze Tage alt sind (`find -mtime +$KEEP_DAYS`); mit dem Standard 14 bleiben sie also bis zu etwa 15 Tage liegen. Jede neue Sicherung wird auf den 1blu-Backup-Server (`backup.1blu.de`) hochgeladen, über FTP mit erzwungenem TLS, damit auch das Passwort nicht im Klartext übertragen wird.
 
-Dort wird nichts gespiegelt und nichts nach dem lokalen Ordner gelöscht: Auf einem frisch aufgesetzten Server mit leerem Ordner würde ein Spiegeln sonst alle älteren Sicherungen auf dem Backup-Server entfernen, also genau im Ernstfall. Stattdessen räumt das Skript dort nach dem Datum im Dateinamen auf: Sicherungen älter als 14 Tage gehen, die neuesten sieben bleiben in jedem Fall liegen.
+Dort wird nichts gespiegelt und nichts nach dem lokalen Ordner gelöscht: Auf einem frisch aufgesetzten Server mit leerem Ordner würde ein Spiegeln sonst alle älteren Sicherungen auf dem Backup-Server entfernen, also genau im Ernstfall. Stattdessen räumt das Skript dort nach dem Datum im Dateinamen auf: Sicherungen, deren Datum im Dateinamen mehr als 14 Tage vor heute liegt, gehen (der Stichtag selbst bleibt, also ebenfalls rund 15 Tage); die neuesten sieben bleiben in jedem Fall liegen.
 
 Der private Schlüssel zum Entschlüsseln liegt nur im Passwortmanager, nicht auf dem Server. Wer den Server übernimmt, kann die Sicherungen also nicht lesen. Wer den Schlüssel verliert, kann sie auch selbst nicht mehr lesen.
 
@@ -47,7 +47,7 @@ NOTIFY_EMAIL=du@example.org
 
 `FTP_USER` ist der Benutzername aus dem Kundencenter (`bu…`); er gehört nicht in dieses öffentliche Repo. Das Passwort in einfache Anführungszeichen setzen, weil die Datei als Shell gelesen wird und 1blu Sonderzeichen wie `%` verlangt.
 
-Optional: `BACKUP_DIR` (Standard `~/backups`), `KEEP_DAYS` (Standard 14), `KEEP_MIN` (Standard 7, so viele Sicherungen bleiben auf dem Backup-Server immer liegen), `REMOTE_DIR` (Standard `habit-tracker`), `FTP_TLS` (Standard `force`; siehe Testlauf), `HEALTHCHECK_URL` (siehe Benachrichtigung).
+Optional: `BACKUP_DIR` (Standard `~/backups`), `KEEP_DAYS` (Standard 14; lokal bleiben Dateien bis zu `KEEP_DAYS`+1 Tage, auf dem Backup-Server alle mit einem Datum ab heute minus `KEEP_DAYS`), `KEEP_MIN` (Standard 7, so viele Sicherungen bleiben auf dem Backup-Server immer liegen), `REMOTE_DIR` (Standard `habit-tracker`), `FTP_TLS` (Standard `force`; siehe Testlauf), `HEALTHCHECK_URL` (siehe Benachrichtigung).
 
 ## Benachrichtigung
 

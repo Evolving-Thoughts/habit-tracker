@@ -672,12 +672,9 @@ test("Plan: at common desktop widths the days fit without scrolling and titles w
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/#/plan");
     await loaded(page);
-    // Below 80rem the Questlog column starts as a rail, from there it is open.
+    // With room for it beside a day, the Questlog column starts open.
     await expect(
-      page.getByRole("button", {
-        name: width < 1280 ? "Questlog einblenden" : "Questlog ausblenden",
-        exact: true,
-      }),
+      page.getByRole("button", { name: "Questlog ausblenden", exact: true }),
     ).toBeVisible();
     // Judge the widths alone: where a German dictionary exists the browser
     // may hyphenate, and the board must not depend on that.

@@ -28,6 +28,7 @@ export type TimerState = 'running' | 'paused' | 'stopped';
   '"targetMinutes" IS NULL OR "targetMinutes" BETWEEN 1 AND 10080',
 )
 @Check('CHK_timer_elapsed', '"elapsedMilliseconds" >= 0')
+@Check('CHK_timer_idle', '"idleMilliseconds" >= 0')
 @Check(
   'CHK_timer_segment',
   `("state" = 'running') = ("segmentStartedAt" IS NOT NULL)`,
@@ -82,6 +83,12 @@ export class TimerEntity {
   /** While paused: when the last stretch ended. */
   @Column({ type: 'timestamptz', nullable: true })
   pausedAt!: Date | null;
+  /**
+   * The short pauses inside the current block. The block's log counts them
+   * as worked; the stopwatch shows only the time it ran (`elapsedAt`).
+   */
+  @Column({ type: 'integer', default: 0 })
+  idleMilliseconds!: number;
   /** The work log of the current block, once it is long enough to be one. */
   @Column({ type: 'integer', nullable: true })
   workLogId!: number | null;

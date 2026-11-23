@@ -7,7 +7,8 @@ import { VIEWS } from "../router";
 import { ariaKeys, keyCaps, shortcutById } from "../utils/shortcuts";
 
 /**
- * The views as tabs: at the bottom on a phone, at the top from 56rem.
+ * The views as tabs: at the bottom on a phone, at the top from 56rem or
+ * with a mouse.
  *
  * On a phone four views are tabs and "Mehr", a disclosure (a button that
  * shows or hides a list of links, walked with Tab), holds the rest. From
@@ -250,11 +251,12 @@ onUnmounted(() => {
 }
 
 /*
- * Wide screens: the bar moves to the top and every view is a labelled tab.
+ * Wide screens, and any window used with a mouse: the bar moves to the
+ * top and every view is a labelled tab.
  * The eight names with the command button and the gear take about 49rem;
  * with an icon in each tab about 64rem, so the icons join at 70rem.
  */
-@media (min-width: 56rem) {
+@media (min-width: 56rem), (hover: hover) and (pointer: fine) {
   .tab-bar {
     inset: 0 0 auto;
     padding: 0 var(--space-4);
@@ -263,6 +265,8 @@ onUnmounted(() => {
 
   .tab-bar__inner {
     max-width: 80rem;
+    overflow-x: auto;
+    scrollbar-width: thin;
     gap: var(--space-1);
   }
 
