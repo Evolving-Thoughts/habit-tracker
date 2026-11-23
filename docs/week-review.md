@@ -162,7 +162,11 @@ Monday that has begun; a week ahead is 400. The answer is the stored
      Narrower, the days with entries stack. On a phone it starts closed with
      its count and "Liste zeigen"; on a wide screen (56rem, decided when it
      appears) it is open up to eight entries and closed beyond.
-  6. `ReviewAnswers`: three text areas (side by side from 56rem), explicit
+  6. `ReviewDayBests`: the week's lines of "Das Beste des Tages"
+     (`GET /day-bests?from=<Monday>&to=<Sunday>`, its own read), Monday to
+     Sunday, each day linking to its line in `#/das-beste?tag=…`; no card
+     for a week without lines (`day-best.md`).
+  7. `ReviewAnswers`: three text areas (side by side from 56rem), explicit
      "Speichern", a quiet "Gespeichert", errors in place, typing never
      overwritten by a refresh.
 - Both reads load with `useLoader`. While either loads, bones in the

@@ -1,5 +1,7 @@
 # Timer-Push auf Android testen
 
+Dieselbe Push-Strecke (Geräte-Opt-in, Sessions, Lieferungen, Service Worker) trägt auch die abendliche Erinnerung an „Das Beste des Tages“; ihre Regel und ihre Lieferungen (`push_deliveries.kind = 'day-best'`) beschreibt [day-best.md](day-best.md).
+
 Das Erreichen des Solls einer Stoppuhr kann auch bei geschlossener PWA oder gesperrtem Bildschirm gemeldet werden. Eine Stoppuhr ohne geplante Dauer meldet nichts. **Web Push ist kein präziser Android-Wecker**: Netzwerk, Doze, Chrome, Android-Benachrichtigungseinstellungen und der Push-Anbieter können die Zustellung verzögern oder verhindern. Wenige Sekunden sind ein Testziel, keine Zusicherung.
 
 ## Verhalten

@@ -185,3 +185,42 @@ test("shows one notification per timer even when the push arrives twice", async 
   assert.equal(result.shown.length, 1);
   assert.equal(result.shown[0][1].tag, `habit-timer-${id}`);
 });
+
+test("shows the evening reminder of the day's best with its fixed words, once", async () => {
+  const result = await setup();
+  const reminder = {
+    type: "day-best-reminder",
+    deliveryId: id,
+    subscriptionId: id,
+    expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+    text: "Never expose this either",
+  };
+  await result.push(reminder);
+  await result.push(reminder);
+  assert.equal(result.shown.length, 1);
+  assert.equal(result.shown[0][0], "Was war heute das Beste?");
+  assert.equal(result.shown[0][1].tag, "habit-day-best");
+  assert.equal(result.shown[0][1].data.url, "/#/heute");
+  assert.ok(!JSON.stringify(result.shown).includes("Never expose"));
+  assert.equal(result.requests[0][0], `/api/push/deliveries/${id}`);
+});
+test("leaves the reminder out once the day has its line", async () => {
+  const result = await setup(undefined, "granted", false);
+  await result.push({
+    type: "day-best-reminder",
+    deliveryId: id,
+    subscriptionId: id,
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  });
+  assert.equal(result.shown.length, 0);
+});
+test("a click on the reminder opens Heute when no window is open", async () => {
+  const result = await setup();
+  await new Promise((resolve, reject) =>
+    result.events.notificationclick({
+      notification: { close() {}, data: { url: "/#/heute" } },
+      waitUntil: (promise) => promise.then(resolve, reject),
+    }),
+  );
+  assert.deepEqual(result.opened, ["https://example.invalid/#/heute"]);
+});

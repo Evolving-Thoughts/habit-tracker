@@ -34,6 +34,10 @@ vi.mock("../api/work-logs.api", () => ({
   updateWorkLog: vi.fn(),
   deleteWorkLog: vi.fn(),
 }));
+vi.mock("../api/day-bests.api", () => ({
+  getDayBest: vi.fn().mockResolvedValue({ date: "", text: "" }),
+  saveDayBest: vi.fn(),
+}));
 vi.mock("../api/reflections.api", () => ({
   getReflection: vi.fn().mockResolvedValue({ date: "", text: "" }),
   saveReflection: vi.fn(),

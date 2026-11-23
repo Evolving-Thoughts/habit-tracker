@@ -126,7 +126,7 @@ describe("AppShortcuts: search results and new entries", () => {
     return menu;
   }
 
-  it("leads a found campaign, reflection and weekly review to their view", async () => {
+  it("leads a found campaign, reflection, day best and weekly review to their view", async () => {
     vi.mocked(search).mockResolvedValue({
       query: "buch",
       titles: [
@@ -151,6 +151,15 @@ describe("AppShortcuts: search results and new entries", () => {
           habitId: null,
         },
         {
+          kind: "day-best",
+          id: 4,
+          label: "Das Beste vom 19. Nov.",
+          snippet: "Ein Buch geschenkt bekommen",
+          highlight: { start: 4, end: 8 },
+          date: "2026-11-19",
+          habitId: null,
+        },
+        {
           kind: "week-review",
           id: 2,
           label: "Wochenrückblick 16.–22. Nov. · Was lief gut?",
@@ -167,6 +176,9 @@ describe("AppShortcuts: search results and new entries", () => {
     expect(overlay.value).toBeNull();
     expect(await path("Reflexion vom 18. Nov.")).toBe(
       "/kalender?tag=2026-11-18",
+    );
+    expect(await path("Das Beste vom 19. Nov.")).toBe(
+      "/das-beste?tag=2026-11-19",
     );
     expect(await path("Wochenrückblick")).toBe("/rueckblick?woche=2026-11-16");
   });

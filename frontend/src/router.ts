@@ -8,6 +8,7 @@ import {
 } from "vue-router";
 import CalendarView from "./views/CalendarView.vue";
 import CampaignsView from "./views/CampaignsView.vue";
+import DayBestView from "./views/DayBestView.vue";
 import FocusView from "./views/FocusView.vue";
 import HabitsView from "./views/HabitsView.vue";
 import PlanView from "./views/PlanView.vue";
@@ -38,7 +39,7 @@ export type AppView = {
 /**
  * Every view of the app, in navigation order, grouped by intent: the day
  * (Heute, Fokus), planning (Kalender, Plan, Questlog), the long run
- * (Kampagnen, Dailies), looking back (Wochenrückblick). Einstellungen is
+ * (Kampagnen, Dailies), looking back (Wochenrückblick, Das Beste). Einstellungen is
  * last; the top bar shows it as a gear at the far right.
  */
 export const VIEWS: readonly AppView[] = [
@@ -101,6 +102,13 @@ export const VIEWS: readonly AppView[] = [
     component: WeekReviewView,
     primary: false,
     groupStart: true,
+  },
+  {
+    name: "best",
+    path: PATHS.best,
+    label: "Das Beste",
+    component: DayBestView,
+    primary: false,
   },
   {
     name: "settings",

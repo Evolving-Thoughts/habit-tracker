@@ -49,12 +49,13 @@ todos and dailies and the runs of a deleted daily are left out.
   a word first, open before done, then campaign, quest, daily.
 - **texts** (at most 8, newest first): `quest-notes` (`id` is the todo),
   `run-notes` (`id` the occurrence, `habitId` its daily, `date` the run's
-  day: resolved, else moved, else scheduled), `reflection` (`date` the day)
-  and `week-review` (`date` the Monday; the label names the answer that
+  day: resolved, else moved, else scheduled), `reflection` (`date` the day),
+  `day-best` (a line of "Das Beste des Tages", `date` the day; see
+  `day-best.md`) and `week-review` (`date` the Monday; the label names the answer that
   holds the match). `snippet` is about 80 characters around the match, cut
   at word boundaries with "…"; `highlight` is the match inside it (null when
   it cannot be placed, e.g. a match that only exists across two blocks).
-- `label` is ready to show ("Reflexion vom 18. Nov.", "Wochenrückblick
+- `label` is ready to show ("Reflexion vom 18. Nov.", "Das Beste vom 18. Nov.", "Wochenrückblick
   16.–22. Nov. · Was ändere ich?"); a date outside the current year carries
   its year. `highlight` offsets are UTF-16 offsets, as JavaScript counts.
 

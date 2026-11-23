@@ -37,6 +37,7 @@ test("Tastenkürzel: view letters open the views, ? the overview, and a field ke
     ["c", /#\/kampagnen$/, "Kampagnen"],
     ["k", /#\/kalender$/, null],
     ["r", /#\/rueckblick/, "Wochenrückblick"],
+    ["b", /#\/das-beste$/, "Das Beste"],
     ["a", /#\/dailies$/, "Dailies"],
     [",", /#\/einstellungen$/, "Einstellungen"],
     ["p", /#\/plan/, null],

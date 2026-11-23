@@ -54,6 +54,7 @@ test.describe("wide navigation", () => {
       "Kampagnen",
       "Dailies",
       "Wochenrückblick",
+      "Das Beste",
       "Befehle",
       "Einstellungen",
     ]);
@@ -72,17 +73,17 @@ test.describe("wide navigation", () => {
     await expect(gear).toHaveAttribute("aria-current", "page");
   });
 
-  test("the bar never overflows; the tabs get their icons from 70rem", async ({
+  test("the bar never overflows; the tabs get their icons from 75rem", async ({
     page,
   }) => {
     await page.goto("/");
     const navigation = page.getByRole("navigation", { name: "Ansichten" });
-    for (const width of [896, 1024, 1119, 1120, 1280, 1440]) {
+    for (const width of [896, 1024, 1199, 1200, 1280, 1440]) {
       await page.setViewportSize({ width, height: 800 });
       await expect(
         navigation.getByRole("button", { name: "Mehr", exact: true }),
       ).toBeHidden();
-      for (const name of ["Wochenrückblick", "Einstellungen"])
+      for (const name of ["Wochenrückblick", "Das Beste", "Einstellungen"])
         await expect(
           navigation.getByRole("link", { name, exact: true }),
         ).toBeVisible();
@@ -91,7 +92,7 @@ test.describe("wide navigation", () => {
       ).toBeVisible();
       await expect(
         navigation.getByRole("link", { name: "Heute" }).locator("svg"),
-      ).toBeVisible({ visible: width >= 1120 });
+      ).toBeVisible({ visible: width >= 1200 });
       const fit = await page.evaluate(() => {
         const inner = document.querySelector<HTMLElement>(".tab-bar__inner")!;
         const box = inner.getBoundingClientRect();

@@ -66,6 +66,7 @@ describe("the shortcut registry", () => {
       "c Kampagnen",
       "a Dailies",
       "r Wochenrückblick",
+      "b Das Beste",
       ", Einstellungen",
     ]);
   });

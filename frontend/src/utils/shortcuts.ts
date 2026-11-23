@@ -20,6 +20,7 @@ export type ShortcutId =
   | "view.campaigns"
   | "view.dailies"
   | "view.review"
+  | "view.best"
   | "view.settings"
   | "quest.new"
   | "row.timer"
@@ -64,6 +65,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
     group: "Ansichten",
     label: "Wochenrückblick",
   },
+  // B for "Das Beste"; D moves a row to tomorrow.
+  { id: "view.best", key: "b", group: "Ansichten", label: "Das Beste" },
   {
     id: "view.settings",
     key: ",",

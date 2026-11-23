@@ -1,4 +1,4 @@
-import { dayOf } from '../src/common/date/local-day';
+import { atWallClockMinutes, dayOf } from '../src/common/date/local-day';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import type { Server } from 'node:http';
@@ -95,7 +95,7 @@ describe('Session-scoped timer Push (e2e)', () => {
   });
   beforeEach(async () => {
     await db.query(
-      'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, categories, reflections, week_reviews, work_logs, goal_snapshots, auth_tokens, auth_sessions, auth_rate_limits, weekly_quest_targets, users RESTART IDENTITY',
+      'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, categories, reflections, week_reviews, day_bests, day_best_settings, work_logs, goal_snapshots, auth_tokens, auth_sessions, auth_rate_limits, weekly_quest_targets, users RESTART IDENTITY',
     );
     await seedAuth(app);
     now = new Date();
@@ -451,6 +451,135 @@ describe('Session-scoped timer Push (e2e)', () => {
     await action(started.id, 'stop');
     expect(await push.confirm(TEST_USER, sessionHash, receipt.id)).toEqual({
       allowed: false,
+    });
+  });
+  describe('evening reminder of Das Beste des Tages', () => {
+    const today = () => dayOf(now);
+    /** Berlin wall clock of the current test day. */
+    const at = (minutes: number) => {
+      now = atWallClockMinutes(today(), minutes);
+    };
+    const reminders = async () =>
+      (await deliveries()).filter((row) => row.kind === 'day-best');
+    // The tests move the clock to the evening: the sessions must outlast it.
+    beforeEach(() =>
+      db.query('UPDATE auth_sessions SET "expiresAt" = $1', [
+        new Date(Date.now() + 2 * 86_400_000),
+      ]),
+    );
+
+    it('comes once, an hour after the card time, while the day has no line', async () => {
+      await sub();
+      await sub('device-two', secondHash);
+      at(20 * 60 + 59);
+      await push.enqueueDayBestReminders();
+      expect(await reminders()).toHaveLength(0);
+      at(21 * 60);
+      await Promise.all([
+        push.enqueueDayBestReminders(),
+        push.enqueueDayBestReminders(),
+      ]);
+      const queued = await reminders();
+      expect(queued).toHaveLength(2);
+      expect(queued[0]).toMatchObject({
+        day: today(),
+        timerId: null,
+        state: 'pending',
+      });
+      // At most once a day, also on later passes.
+      now = new Date(now.getTime() + 60_000);
+      await push.enqueueDayBestReminders();
+      expect(await reminders()).toHaveLength(2);
+
+      await push.sendPending();
+      expect(transport.send).toHaveBeenCalledTimes(2);
+      for (const call of transport.send.mock.calls) {
+        const payload = call[1] as { type: string; expiresAt: string };
+        expect(payload.type).toBe('day-best-reminder');
+        expect(Object.keys(payload).sort()).toEqual([
+          'deliveryId',
+          'expiresAt',
+          'subscriptionId',
+          'type',
+        ]);
+        expect(call[2]).toBeGreaterThan(30);
+        expect(call[2]).toBeLessThanOrEqual(3600);
+      }
+      const receipt = (await reminders())[0];
+      const hash =
+        receipt.subscriptionId ===
+        (
+          await db
+            .getRepository(PushSubscriptionEntity)
+            .findOneByOrFail({ sessionHash })
+        ).id
+          ? sessionHash
+          : secondHash;
+      expect(await push.confirm(TEST_USER, hash, receipt.id)).toEqual({
+        allowed: true,
+      });
+      // The line arrives: a notification still on its way stays hidden.
+      await client()
+        .put(`/day-bests/${today()}`)
+        .send({ text: 'Abendlicht am Fluss' })
+        .expect(200);
+      expect(await push.confirm(TEST_USER, hash, receipt.id)).toEqual({
+        allowed: false,
+      });
+    });
+
+    it('stays away when the day has its line, it is off, or the card time is late', async () => {
+      await sub();
+      at(21 * 60 + 10);
+      await client()
+        .put(`/day-bests/${today()}`)
+        .send({ text: 'Schon geschrieben' })
+        .expect(200);
+      await push.enqueueDayBestReminders();
+      expect(await reminders()).toHaveLength(0);
+
+      await client().delete(`/day-bests/${today()}`).expect(204);
+      await client()
+        .put('/day-best-settings')
+        .send({ reminderEnabled: false })
+        .expect(200);
+      await push.enqueueDayBestReminders();
+      expect(await reminders()).toHaveLength(0);
+
+      // A later card time moves the reminder with it.
+      await client()
+        .put('/day-best-settings')
+        .send({ reminderEnabled: true, cardTime: '21:00' })
+        .expect(200);
+      await push.enqueueDayBestReminders();
+      expect(await reminders()).toHaveLength(0);
+      at(22 * 60);
+      await push.enqueueDayBestReminders();
+      expect(await reminders()).toHaveLength(1);
+    });
+
+    it('is cancelled before sending when the line came first, and never caught up late', async () => {
+      await sub();
+      at(21 * 60 + 5);
+      await push.enqueueDayBestReminders();
+      expect(await reminders()).toHaveLength(1);
+      await client()
+        .put(`/day-bests/${today()}`)
+        .send({ text: 'Rechtzeitig' })
+        .expect(200);
+      await push.sendPending();
+      expect(transport.send).not.toHaveBeenCalled();
+      expect((await reminders())[0].state).toBe('cancelled');
+
+      // A server that was down through the whole window sends nothing.
+      await db.query('TRUNCATE day_bests, day_best_settings');
+      await db.query(`DELETE FROM push_deliveries WHERE kind = 'day-best'`);
+      at(22 * 60 + 1);
+      await push.enqueueDayBestReminders();
+      expect(await reminders()).toHaveLength(0);
+      at(22 * 60 + 30);
+      await push.enqueueDayBestReminders();
+      expect(await reminders()).toHaveLength(0);
     });
   });
 });

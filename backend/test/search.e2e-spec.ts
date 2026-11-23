@@ -67,7 +67,7 @@ describe('Search (e2e)', () => {
   });
   beforeEach(() =>
     db.query(
-      'TRUNCATE week_reviews, reflections, work_logs, timers, habit_occurrences, habit_schedule_versions, habits, todos CASCADE',
+      'TRUNCATE week_reviews, reflections, day_bests, work_logs, timers, habit_occurrences, habit_schedule_versions, habits, todos CASCADE',
     ),
   );
   afterAll(() => app.close());
@@ -136,7 +136,7 @@ describe('Search (e2e)', () => {
     ]);
   });
 
-  it('finds the plain text of notes, reflections and weekly reviews with a snippet', async () => {
+  it('finds the plain text of notes, reflections, day bests and weekly reviews with a snippet', async () => {
     const chapter = await todo({ title: 'Kapitel 2 überarbeiten' });
     await request(server)
       .put(`/todos/${chapter}/notes`)
@@ -159,6 +159,10 @@ describe('Search (e2e)', () => {
       .put(`/reflections/${today}`)
       .send({ text: 'Viel über Drachen gelesen.' })
       .expect(200);
+    await request(server)
+      .put(`/day-bests/${today}`)
+      .send({ text: 'Zwei Drachen aus Wolken über dem Feld' })
+      .expect(200);
     const week = weekRange(today);
     await request(server)
       .put(`/week-review/${week.startDate}`)
@@ -171,6 +175,7 @@ describe('Search (e2e)', () => {
       found.texts.map((hit) => [hit.kind, hit]),
     );
     expect(Object.keys(byKind).sort()).toEqual([
+      'day-best',
       'quest-notes',
       'reflection',
       'run-notes',
@@ -194,6 +199,13 @@ describe('Search (e2e)', () => {
       snippet: 'Viel über Drachen gelesen.',
       highlight: { start: 10, end: 17 },
     });
+    expect(byKind['day-best']).toMatchObject({
+      date: today,
+      label: `Das Beste vom ${shortDate(today, today)}`,
+      snippet: 'Zwei Drachen aus Wolken über dem Feld',
+      highlight: { start: 5, end: 12 },
+      habitId: null,
+    });
     expect(byKind['week-review']).toMatchObject({
       date: week.startDate,
       label: `Wochenrückblick ${weekSpan(week.startDate, week.endDate, today)} · Was ändere ich?`,
@@ -210,6 +222,10 @@ describe('Search (e2e)', () => {
     );
     await db.query(
       `INSERT INTO reflections ("userId", date, text) VALUES ($1, $2, 'Geheimplan')`,
+      [OTHER_USER, today],
+    );
+    await db.query(
+      `INSERT INTO day_bests ("userId", date, text) VALUES ($1, $2, 'Geheimplan')`,
       [OTHER_USER, today],
     );
     const found = await search('geheimplan');

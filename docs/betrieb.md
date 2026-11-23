@@ -41,7 +41,7 @@ In `.env.production` mindestens eintragen:
 - `TRUST_PROXY_HOPS=2`: Caddy und nginx stehen vor dem Backend. Mit 1 hielte das Backend die Adresse von Caddy für die des Browsers, und die Login-Begrenzung würde für alle Nutzer gemeinsam zählen.
 - die `SMTP_*`-Werte und `MAIL_FROM`
 
-Optional: `APP_PORT` (Standard 8080, siehe Aufbau) und `PUSH_WORKER_ENABLED` (Standard an, außer bei `NODE_ENV=test`; `false` schaltet den Versand von Timer-Push ab, siehe unten).
+Optional: `APP_PORT` (Standard 8080, siehe Aufbau) und `PUSH_WORKER_ENABLED` (Standard an, außer bei `NODE_ENV=test`; `false` schaltet den Versand von Timer-Push und der Erinnerung an das Beste des Tages ab, siehe unten).
 
 Die Datei bleibt außerhalb von Git und liegt im Repo-Ordner, nicht im Home-Verzeichnis: Compose liest sie relativ zum aktuellen Ordner.
 

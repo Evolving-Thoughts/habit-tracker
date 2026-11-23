@@ -25,10 +25,11 @@ export type SearchTitleHit = {
 /**
  * A note or answer that contains the query. `id` is the todo (quest notes),
  * the run (run notes, with `habitId` and its `date`), the reflection (its
- * `date`) or the weekly review (`date` is its Monday).
+ * `date`), the day's best (its `date`) or the weekly review (`date` is its
+ * Monday).
  */
 export type SearchTextHit = {
-  kind: "quest-notes" | "run-notes" | "reflection" | "week-review";
+  kind: "quest-notes" | "run-notes" | "reflection" | "day-best" | "week-review";
   id: number;
   label: string;
   snippet: string;

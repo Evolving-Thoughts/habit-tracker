@@ -14,7 +14,7 @@ import { ariaKeys, keyCaps, shortcutById } from "../utils/shortcuts";
  * shows or hides a list of links, walked with Tab), holds the rest. From
  * 56rem every view is a labelled tab, in groups by intent, and the bar ends
  * on the right with the command button and Einstellungen, both as icons.
- * Below 70rem the tabs leave out their icons, so the names fit.
+ * Below 75rem the tabs leave out their icons, so the names fit.
  */
 const route = useRoute();
 
@@ -253,8 +253,10 @@ onUnmounted(() => {
 /*
  * Wide screens, and any window used with a mouse: the bar moves to the
  * top and every view is a labelled tab.
- * The eight names with the command button and the gear take about 49rem;
- * with an icon in each tab about 64rem, so the icons join at 70rem.
+ * The nine names with the command button and the gear take about 52rem
+ * with the narrow padding of this tier (measured in Nunito 700: 835px,
+ * against 54rem free at 56rem less a scrollbar); with an icon in each tab
+ * and the full padding about 71.5rem, so the icons join at 75rem.
  */
 @media (min-width: 56rem), (hover: hover) and (pointer: fine) {
   .tab-bar {
@@ -274,8 +276,10 @@ onUnmounted(() => {
     flex: 0 0 auto;
     flex-direction: row;
     gap: 0.375rem;
+    min-width: var(--tap);
     min-height: 3.5rem;
-    padding: 0 var(--space-2);
+    /* Names only: a narrower padding, so nine of them fit from 56rem. */
+    padding: 0 0.375rem;
     font-size: 0.9375rem;
     letter-spacing: normal;
   }
@@ -311,7 +315,15 @@ onUnmounted(() => {
   }
 }
 
-@media (min-width: 70rem) {
+@media (min-width: 75rem) {
+  .tab-bar__tab {
+    padding: 0 var(--space-2);
+  }
+
+  .tab-bar__icon {
+    padding: 0;
+  }
+
   .tab-bar__view :deep(svg) {
     display: block;
   }

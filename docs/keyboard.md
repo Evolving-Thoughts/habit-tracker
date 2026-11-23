@@ -14,7 +14,8 @@ cannot drift apart.
 
 The view keys follow the order of the top bar and use the view's initial
 where it is free: D already moves a row to tomorrow, so Dailies takes A
-("dAilies"), and Einstellungen takes the comma, the usual key for settings.
+("dAilies") and Das Beste takes B ("Beste"), and Einstellungen takes the
+comma, the usual key for settings.
 
 | Key | Group | What it does |
 |---|---|---|
@@ -26,6 +27,7 @@ where it is free: D already moves a row to tomorrow, so Dailies takes A
 | C | Ansichten | Kampagnen |
 | A | Ansichten | Dailies |
 | R | Ansichten | Wochenrückblick |
+| B | Ansichten | Das Beste (the timeline of "Das Beste des Tages", `day-best.md`) |
 | , | Ansichten | Einstellungen |
 | N | Quests | Neue Quest (see below) |
 | Space | Quests | Start or pause the row's stopwatch |
@@ -181,11 +183,12 @@ the matching commands (then headed "Ansichten und Aktionen") come two groups:
   and "Zur Kampagne". They are ordinary options, reached with the arrow
   keys like any other, so no key is taken from the text field.
 - "In Notizen und Texten": where the text is ("Notiz zu …", "Reflexion vom
-  18. Nov.", "Wochenrückblick 16.–22. Nov. · Was ändere ich?") and a snippet
-  with the match marked. Quest notes and a run's notes open their editor
-  scrolled to the notes, a reflection opens its day in the Kalender
-  (`#/kalender?tag=…`, which the Kalender reads once and drops), a weekly
-  review its week (`#/rueckblick?woche=…`).
+  18. Nov.", "Das Beste vom 18. Nov.", "Wochenrückblick 16.–22. Nov. · Was
+  ändere ich?") and a snippet with the match marked. Quest notes and a run's
+  notes open their editor scrolled to the notes, a reflection opens its day
+  in the Kalender (`#/kalender?tag=…`, which the Kalender reads once and
+  drops), a day's best the timeline at that day (`#/das-beste?tag=…`, its
+  line focused), a weekly review its week (`#/rueckblick?woche=…`).
 
 Editors and dialogs opened from the menu live in `AppShortcuts.vue`, over
 whatever view is shown; a write there calls `notifyDataChanged()`, so the

@@ -14,6 +14,7 @@ describe('Push polling lifecycle', () => {
     const push = {
       config: () => ({ configured: true }),
       enqueueDue: jest.fn(() => gate),
+      enqueueDayBestReminders: jest.fn(async () => {}),
       sendPending: jest.fn(async () => {
         await Promise.resolve();
       }),
@@ -39,6 +40,7 @@ describe('Push polling lifecycle', () => {
     const push = {
       config: () => ({ configured: true }),
       enqueueDue: jest.fn(),
+      enqueueDayBestReminders: jest.fn(),
       sendPending: jest.fn(),
     };
     const worker = new PushWorker(push as unknown as PushService);

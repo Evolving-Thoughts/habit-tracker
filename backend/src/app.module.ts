@@ -1,5 +1,6 @@
 import { HistoryModule } from './history/history.module';
 import { ReflectionsModule } from './reflections/reflections.module';
+import { DayBestsModule } from './day-bests/day-bests.module';
 import { WorkLogsModule } from './work-logs/work-logs.module';
 import { QuestHoursModule } from './quest-hours/quest-hours.module';
 import { WeekReviewModule } from './week-review/week-review.module';
@@ -43,6 +44,7 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
     DayPlannerModule,
     HistoryModule,
     ReflectionsModule,
+    DayBestsModule,
     WorkLogsModule,
     QuestHoursModule,
     WeekReviewModule,

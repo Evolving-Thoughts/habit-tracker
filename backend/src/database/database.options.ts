@@ -16,6 +16,7 @@ import { WeeklyQuestTargets1796000000000 } from './migrations/1796000000000-Week
 import { SearchUnaccent1796100000000 } from './migrations/1796100000000-SearchUnaccent';
 import { AnchoredAppointments1796200000000 } from './migrations/1796200000000-AnchoredAppointments';
 import { StopwatchIdle1796300000000 } from './migrations/1796300000000-StopwatchIdle';
+import { DayBests1796400000000 } from './migrations/1796400000000-DayBests';
 
 type PostgresOptions = Extract<DataSourceOptions, { type: 'postgres' }>;
 
@@ -54,6 +55,7 @@ export function databaseOptions(
       SearchUnaccent1796100000000,
       AnchoredAppointments1796200000000,
       StopwatchIdle1796300000000,
+      DayBests1796400000000,
     ],
   };
 }

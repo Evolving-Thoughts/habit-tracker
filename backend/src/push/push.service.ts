@@ -19,7 +19,22 @@ import {
   DELIVERY_WINDOW_MS,
   PushTransport,
   validSubscription,
+  type SendOptions,
 } from './push.transport';
+import { dayOf } from '../common/date/local-day';
+import { DEFAULT_CARD_MINUTES } from '../day-bests/day-best.entities';
+import { reminderDecision } from '../day-bests/day-best-rules';
+import {
+  loadReminderState,
+  markReminded,
+  reminderStillWanted,
+} from '../day-bests/day-best-reminder';
+
+/** The longest a reminder may wait at the push provider, in seconds. */
+const REMINDER_MAX_TTL_SECONDS = 3600;
+
+/** What one delivery sends: its payload and how the provider should treat it. */
+type Message = { payload: object; ttl: number; options?: SendOptions };
 
 @Injectable()
 export class PushService {
@@ -182,6 +197,130 @@ export class PushService {
         }
       });
   }
+  /**
+   * The evening reminder of "Das Beste des Tages": an hour after the card
+   * time, for everyone with a push device whose day still has no line, at
+   * most once a day (`remindedOn`). The rule is `reminderDecision`; a
+   * reminder whose window passed unsent is marked handled, not caught up.
+   */
+  async enqueueDayBestReminders(): Promise<void> {
+    const now = this.clock.now();
+    const today = dayOf(now);
+    // Cheap first pass without locks; the decision is taken again inside.
+    const candidates = await this.db.query<
+      {
+        userId: string;
+        cardMinutes: number | null;
+        remindedOn: string | null;
+      }[]
+    >(
+      `SELECT u.id AS "userId", s."cardMinutes",
+              s."remindedOn"::text AS "remindedOn"
+       FROM users u
+       LEFT JOIN day_best_settings s ON s."userId" = u.id
+       WHERE EXISTS (SELECT 1 FROM push_subscriptions p WHERE p."userId" = u.id)
+         AND COALESCE(s."reminderEnabled", true)
+         AND (s."remindedOn" IS NULL OR s."remindedOn" < $1)
+         AND NOT EXISTS (
+           SELECT 1 FROM day_bests b WHERE b."userId" = u.id AND b.date = $1
+         )
+       ORDER BY u.id`,
+      [today],
+    );
+    for (const candidate of candidates) {
+      const first = reminderDecision(now, {
+        cardMinutes: candidate.cardMinutes ?? DEFAULT_CARD_MINUTES,
+        reminderEnabled: true,
+        remindedOn: candidate.remindedOn,
+        hasEntry: false,
+      });
+      if (first.kind === 'none' || first.kind === 'wait') continue;
+      await this.locked(candidate.userId, async (manager) => {
+        const at = this.clock.now();
+        const decision = reminderDecision(
+          at,
+          await loadReminderState(manager, candidate.userId, dayOf(at)),
+        );
+        if (decision.kind === 'none' || decision.kind === 'wait') return;
+        await markReminded(manager, candidate.userId, decision.day);
+        if (decision.kind === 'missed') return;
+        for (const subscription of await this.subscriptions(
+          manager,
+          candidate.userId,
+          at,
+        ))
+          await manager.save(
+            PushDeliveryEntity,
+            manager.create(PushDeliveryEntity, {
+              userId: candidate.userId,
+              kind: 'day-best',
+              timerId: null,
+              day: decision.day,
+              subscriptionId: subscription.id,
+              state: 'pending',
+              attempts: 0,
+              expiresAt: decision.expiresAt,
+              retryAt: at,
+            }),
+          );
+      });
+    }
+  }
+  /**
+   * The message of a delivery, or null when it should no longer go out: the
+   * stopwatch no longer stands at its Soll, or the day got its line (or the
+   * reminder was switched off) in the meantime.
+   */
+  private async message(
+    manager: EntityManager,
+    delivery: PushDeliveryEntity,
+    subscriptionId: string,
+    now: Date,
+  ): Promise<Message | null> {
+    const seconds = Math.ceil(
+      (delivery.expiresAt.getTime() - now.getTime()) / 1000,
+    );
+    if (delivery.kind === 'day-best') {
+      if (
+        !delivery.day ||
+        !(await reminderStillWanted(
+          manager,
+          delivery.userId,
+          delivery.day,
+          now,
+        ))
+      )
+        return null;
+      return {
+        payload: {
+          type: 'day-best-reminder',
+          deliveryId: delivery.id,
+          subscriptionId,
+          expiresAt: delivery.expiresAt.toISOString(),
+        },
+        ttl: Math.max(1, Math.min(REMINDER_MAX_TTL_SECONDS, seconds)),
+        options: { urgency: 'normal' },
+      };
+    }
+    if (!delivery.timerId) return null;
+    const timer = await this.timers.notificationTimer(
+      manager,
+      delivery.userId,
+      delivery.timerId,
+      now,
+    );
+    if (!timer?.targetReachedAt) return null;
+    return {
+      payload: {
+        type: 'timer-target-reached',
+        timerId: timer.id,
+        deliveryId: delivery.id,
+        subscriptionId,
+        expiresAt: delivery.expiresAt.toISOString(),
+      },
+      ttl: Math.max(1, Math.min(30, seconds)),
+    };
+  }
   async sendPending(): Promise<void> {
     const candidates = await this.db.getRepository(PushDeliveryEntity).find({
       where: { state: 'pending', retryAt: LessThanOrEqual(this.clock.now()) },
@@ -206,43 +345,30 @@ export class PushService {
             { id: delivery.subscriptionId, userId: delivery.userId, now },
           )
           .getOne();
-        const timer = await this.timers.notificationTimer(
-          manager,
-          delivery.userId,
-          delivery.timerId,
-          now,
-        );
-        if (
-          !subscription ||
-          !timer?.targetReachedAt ||
-          delivery.expiresAt <= now
-        ) {
+        const message =
+          subscription && delivery.expiresAt > now
+            ? await this.message(manager, delivery, subscription.id, now)
+            : null;
+        if (!subscription || !message) {
           delivery.state = 'cancelled';
           await manager.save(delivery);
           return;
         }
         delivery.attempts += 1;
         // The bounded network request remains under the SAME user lock as timer transitions/logout.
-        const result = await this.transport.send(
-          {
-            endpoint: subscription.endpoint,
-            keys: { p256dh: subscription.p256dh, auth: subscription.auth },
-          },
-          {
-            type: 'timer-target-reached',
-            timerId: timer.id,
-            deliveryId: delivery.id,
-            subscriptionId: subscription.id,
-            expiresAt: delivery.expiresAt.toISOString(),
-          },
-          Math.max(
-            1,
-            Math.min(
-              30,
-              Math.ceil((delivery.expiresAt.getTime() - now.getTime()) / 1000),
-            ),
-          ),
-        );
+        const target = {
+          endpoint: subscription.endpoint,
+          keys: { p256dh: subscription.p256dh, auth: subscription.auth },
+        };
+        // Timer messages keep their three-argument call (high urgency).
+        const result = await (message.options
+          ? this.transport.send(
+              target,
+              message.payload,
+              message.ttl,
+              message.options,
+            )
+          : this.transport.send(target, message.payload, message.ttl));
         if (result === 'gone') {
           await manager.delete(PushSubscriptionEntity, subscription.id);
           return;
@@ -281,6 +407,13 @@ export class PushService {
         sessionHash,
       });
       if (!subscription) return { allowed: false };
+      if (delivery.kind === 'day-best')
+        return {
+          allowed:
+            !!delivery.day &&
+            (await reminderStillWanted(manager, userId, delivery.day, now)),
+        };
+      if (!delivery.timerId) return { allowed: false };
       const timer = await this.timers.notificationTimer(
         manager,
         userId,

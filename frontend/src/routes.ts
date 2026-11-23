@@ -11,6 +11,7 @@ export const PATHS = {
   campaigns: "/kampagnen",
   dailies: "/dailies",
   review: "/rueckblick",
+  best: "/das-beste",
   settings: "/einstellungen",
 } as const;
 
@@ -31,5 +32,11 @@ export function sectionId(name: string): string {
   return `abschnitt-${name}`;
 }
 
-/** `#/kalender?tag=YYYY-MM-DD` opens the Kalender on that day. */
+/**
+ * `#/kalender?tag=YYYY-MM-DD` opens the Kalender on that day; on
+ * `#/das-beste` it opens the timeline at that day.
+ */
 export const DAY_QUERY = "tag";
+
+/** `#/das-beste?monat=YYYY-MM` starts the timeline at that month. */
+export const MONTH_QUERY = "monat";
