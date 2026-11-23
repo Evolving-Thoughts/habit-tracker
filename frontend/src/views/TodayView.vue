@@ -1,19 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
-import {
-  getToday,
-  reorderDay,
-  rescheduleOccurrence,
-  rescheduleTodo,
-  updateOccurrenceStatus,
-  updateTodoCompletion,
-} from "../api/day-planner.api";
+import { getToday, reorderDay } from "../api/day-planner.api";
 import { useListFocus } from "../composables/useListFocus";
 import { useSortable } from "../composables/useSortable";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
-import { useUndo } from "../composables/useUndo";
-import { useCampaignCompletion } from "../composables/useCampaignCompletion";
+import { useTicks, type TickTarget } from "../composables/useTicks";
 import { useLogRemoval } from "../composables/useLogRemoval";
 import { useMediaQuery } from "../composables/useMediaQuery";
 import { timerStateOf, toggleTimer, useTimer } from "../composables/useTimer";
@@ -53,9 +45,13 @@ import {
   formatWindow,
   itemKey,
   nextChangeAt,
-  withDayOrder,
 } from "../utils/today-agenda";
-import { anchoredOrder, clockBoundIndex } from "../utils/day-order";
+import {
+  dropInDay,
+  orderRef,
+  sortableRows,
+  stepInDay,
+} from "../utils/today-order";
 import { tallyLine } from "../utils/day-tally";
 import { useDayClock } from "../composables/useDayClock";
 import { categoryMark } from "../utils/category-mark";
@@ -109,7 +105,7 @@ const {
     !deleting.value &&
     !postponeOpen.value &&
     !creationOpen.value &&
-    !campaignCompletion.question.value &&
+    !ticks.campaignQuestion.value &&
     !writes.busy.value,
 });
 const writes = useWrites(loadToday, errorMessage);
@@ -219,22 +215,19 @@ const focusMeta = computed(() => {
   return parts;
 });
 
-/** A tick to take back, or a Logbuch stretch whose delete is held back. */
-type Undoable =
-  | { kind: "item"; item: DayPlannerItem }
-  | { kind: "log"; id: number };
-const {
-  undo,
-  offer: offerUndo,
-  take: takeUndo,
-  flush: flushUndo,
-} = useUndo<Undoable>();
+/*
+ * Ticks, skips and quick moves go through `useTicks`; its toast also holds
+ * back a Logbuch delete (`useLogRemoval`).
+ */
+const ticks = useTicks(writes.write, {
+  onOtherUndo: (held) => restoreLog(held.id),
+});
+const { undo, undoLast, flushUndo } = ticks;
 /* Closing or reloading the page sends a held delete on its way. */
 onMounted(() => window.addEventListener("pagehide", flushUndo));
 onBeforeUnmount(() => window.removeEventListener("pagehide", flushUndo));
-const campaignCompletion = useCampaignCompletion();
 const { hiddenLogs, removeLog, restoreLog } = useLogRemoval(
-  offerUndo,
+  ticks.offerUndo,
   writes.write,
 );
 
@@ -244,67 +237,37 @@ function isUpdating(item: DayPlannerItem): boolean {
   return editorBusy.value || writes.isWriting(getItemKey(item));
 }
 
+function tickTarget(item: DayPlannerItem): TickTarget {
+  return item.type === "todo"
+    ? { kind: "todo", id: item.todoId, title: item.title }
+    : { kind: "occurrence", id: item.occurrenceId, title: item.title };
+}
+
 async function toggleItem(item: DayPlannerItem): Promise<void> {
   if (isUpdating(item)) {
     return;
   }
-
-  const completing = item.status === "pending";
+  const options = {
+    key: getItemKey(item),
+    fallbackError: "Der Eintrag konnte nicht aktualisiert werden.",
+  };
+  if (item.status !== "pending") {
+    await ticks.reopen(tickTarget(item), options);
+    return;
+  }
   // A campaign planned for today with open quests asks first.
-  const open =
-    completing && item.type === "todo" && item.campaign?.id === item.todoId
-      ? await campaignCompletion.openQuestsBelow(item.todoId)
-      : 0;
-  if (!(await campaignCompletion.confirm(item.title, open))) return;
-  const done = await writes.write(
-    () =>
-      item.type === "todo"
-        ? updateTodoCompletion(item.todoId, item.status !== "completed")
-        : updateOccurrenceStatus(
-            item.occurrenceId,
-            item.status === "pending" ? "completed" : "pending",
-          ),
-    {
-      key: getItemKey(item),
-      fallbackError: "Der Eintrag konnte nicht aktualisiert werden.",
-    },
-  );
-  if (done && completing)
-    offerUndo(
-      { kind: "item", item },
-      open > 0 ? `„${item.title}“ abgeschlossen` : `„${item.title}“ erledigt`,
-    );
-}
-
-async function undoLast(): Promise<void> {
-  const target = takeUndo();
-  if (!target) return;
-  if (target.kind === "log") return restoreLog(target.id);
-  const { item } = target;
-  await writes.write(
-    () =>
-      item.type === "todo"
-        ? updateTodoCompletion(item.todoId, false)
-        : updateOccurrenceStatus(item.occurrenceId, "pending"),
-    {
-      key: getItemKey(item),
-      fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
-    },
-  );
+  const campaign =
+    item.type === "todo" && item.campaign?.id === item.todoId
+      ? ("lookup" as const)
+      : undefined;
+  await ticks.complete(tickTarget(item), { ...options, campaign });
 }
 
 async function skipHabit(item: DayPlannerHabitItem): Promise<void> {
   if (isUpdating(item)) {
     return;
   }
-
-  await writes.write(
-    () => updateOccurrenceStatus(item.occurrenceId, "skipped"),
-    {
-      key: getItemKey(item),
-      fallbackError: "Das Daily konnte nicht übersprungen werden.",
-    },
-  );
+  await ticks.skip(tickTarget(item), getItemKey(item));
 }
 
 /** Movable to `date` without a dialog; appointments and habit limits ask. */
@@ -314,16 +277,10 @@ function quickMovable(item: DayPlannerItem, date: string): boolean {
 }
 
 function moveTo(item: DayPlannerItem, date: string): Promise<boolean> {
-  return writes.write(
-    () =>
-      item.type === "todo"
-        ? rescheduleTodo(item.todoId, date, false)
-        : rescheduleOccurrence(item.occurrenceId, date),
-    {
-      key: getItemKey(item),
-      fallbackError: "Der Eintrag konnte nicht verschoben werden.",
-    },
-  );
+  return ticks.move(tickTarget(item), date, {
+    key: getItemKey(item),
+    fallbackError: "Der Eintrag konnte nicht verschoben werden.",
+  });
 }
 
 const quickToday = computed(() => {
@@ -415,70 +372,38 @@ async function onMoved(): Promise<void> {
 /* The order of the day: the focus card is its head, the rows follow. */
 const order = ref<HTMLElement | null>(null);
 const orderMessage = ref("");
-const sortables = computed<(DayPlannerItem | null)[]>(() => {
-  const current = agenda.value;
-  if (!current) return [];
-  return [
-    ...(current.focus ? [current.focus] : []),
-    ...current.list.map((entry) => (entry.kind === "event" ? null : entry.item)),
-  ];
-});
-
-/** How the server names an item of the order. */
-function orderRef(item: DayPlannerItem): {
-  type: "todo" | "habit";
-  id: number;
-} {
-  return item.type === "todo"
-    ? { type: "todo", id: item.todoId }
-    : { type: "habit", id: item.occurrenceId };
-}
-const orderRefs = computed(() =>
-  (agenda.value?.sequence ?? []).map(orderRef),
+const sortables = computed(() =>
+  agenda.value ? sortableRows(agenda.value) : [],
 );
+const orderRefs = computed(() => (agenda.value?.sequence ?? []).map(orderRef));
 
 async function moveInOrder(from: number, to: number): Promise<void> {
-  const current = planner.value;
-  const today = agenda.value;
-  if (!current || !today || from === to || writes.isWriting("order")) return;
-  const visible = sortables.value;
-  const item = visible[from];
-  if (!item) return;
-  // Only move past stored entries crossed on screen. The focus card is
-  // displayed separately from its stored position; Google events have none.
-  const down = from < to;
-  const crossed = down
-    ? visible.slice(from + 1, to + 1).reverse()
-    : visible.slice(to, from);
-  const neighbour = crossed.find((entry) => entry !== null);
-  if (!neighbour) return;
-  const order = item === today.focus || neighbour === today.focus
-    ? visible.filter((entry): entry is DayPlannerItem => entry !== null)
-    : today.sequence;
-  const sequence = anchoredOrder(order.filter((entry) => entry !== item));
-  const index = clockBoundIndex(sequence, item, sequence.indexOf(neighbour) + Number(down));
-  sequence.splice(index, 0, item);
-  // Shown at once; the reload after the write confirms it or takes it back.
-  planner.value = withDayOrder(current, sequence);
-  orderMessage.value = `„${item.title}“ steht jetzt an Stelle ${sequence.indexOf(item) + 1} von ${sequence.length}.`;
-  await writes.write(() => reorderDay(sequence.map(orderRef)), {
-    key: "order",
-    fallbackError: "Die Reihenfolge konnte nicht gespeichert werden.",
-  });
+  if (!planner.value || !agenda.value || writes.isWriting("order")) return;
+  const move = dropInDay(planner.value, agenda.value, from, to);
+  if (!move) return;
+  // Shown at once; a failure takes it back to the stored order.
+  const before = planner.value;
+  await writes.writeShown(
+    () => {
+      planner.value = move.planner;
+      orderMessage.value = move.message;
+      return () => {
+        planner.value = before;
+        orderMessage.value = "";
+      };
+    },
+    () => reorderDay(move.order),
+    {
+      key: "order",
+      fallbackError: "Die Reihenfolge konnte nicht gespeichert werden.",
+      reloadOnFailure: false,
+    },
+  );
 }
 
 /** Where one step up or down lands; calendar events are stepped over. */
 function stepFrom(item: DayPlannerItem, direction: -1 | 1): number | null {
-  const list = sortables.value;
-  const from = list.indexOf(item);
-  if (from === -1) return null;
-  for (let to = from + direction; to >= 0 && to < list.length; to += direction)
-    if (list[to]) {
-      const time = list[to]?.timeOfDay;
-      if (item.timeOfDay && time && (direction < 0 ? time < item.timeOfDay : time > item.timeOfDay)) return null;
-      return to;
-    }
-  return null;
+  return agenda.value ? stepInDay(agenda.value, item, direction) : null;
 }
 
 /**
@@ -620,9 +545,7 @@ function rowMenu(item: DayPlannerItem): MenuEntry[] {
           ? () => void router.push({ name: "focus" })
           : undefined,
       reparent:
-        item.type === "todo"
-          ? () => openMenuDialog(item, "move")
-          : undefined,
+        item.type === "todo" ? () => openMenuDialog(item, "move") : undefined,
       up:
         stepFrom(item, -1) !== null
           ? () => void shiftInOrder(item, -1)
@@ -997,7 +920,10 @@ useShortcutHandlers(
               }}
             </p>
           </section>
-          <section v-else-if="!agenda.carriedOver.length" class="today-view__empty">
+          <section
+            v-else-if="!agenda.carriedOver.length"
+            class="today-view__empty"
+          >
             <h2>Alles für heute erledigt.</h2>
             <p>Der Rest des Tages gehört dir.</p>
           </section>
@@ -1044,7 +970,9 @@ useShortcutHandlers(
               data-sort-anchor
             >
               <span class="today-view__event-time">{{ entry.time }}</span>
-              <span class="today-view__event-title">{{ entry.event.title }}</span>
+              <span class="today-view__event-title">{{
+                entry.event.title
+              }}</span>
               <span class="today-view__event-source">Google Kalender</span>
             </div>
             <PlannerItem
@@ -1128,9 +1056,7 @@ useShortcutHandlers(
                 Morgen
               </button>
               <button
-                v-if="
-                  item.type === 'todo' || !!item.moveUntil
-                "
+                v-if="item.type === 'todo' || !!item.moveUntil"
                 class="catch-up__chip"
                 type="button"
                 data-move-button
@@ -1200,11 +1126,11 @@ useShortcutHandlers(
       @click="openCreation"
     />
     <CampaignCompletionDialog
-      v-if="campaignCompletion.question.value"
-      :title="campaignCompletion.question.value.title"
-      :open="campaignCompletion.question.value.open"
-      @confirm="campaignCompletion.reply(true)"
-      @cancel="campaignCompletion.reply(false)"
+      v-if="ticks.campaignQuestion.value"
+      :title="ticks.campaignQuestion.value.title"
+      :open="ticks.campaignQuestion.value.open"
+      @confirm="ticks.answerCampaign(true)"
+      @cancel="ticks.answerCampaign(false)"
     />
     <UndoToast
       class="today-view__toast"
@@ -1547,7 +1473,6 @@ useShortcutHandlers(
 .order > .focus {
   margin-bottom: var(--space-1);
 }
-
 
 .postpone__lead {
   margin: 0 0 var(--space-4);

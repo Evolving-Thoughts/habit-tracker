@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import { getQuestHours } from "../api/quest-hours.api";
-import { updateTodo, updateTodoCompletion } from "../api/day-planner.api";
+import { updateTodo } from "../api/day-planner.api";
 import type { HierarchyTodo, TodoProgress } from "../types/todo-hierarchy";
 import type { TodoResponse } from "../types/todo";
 import {
@@ -33,8 +33,7 @@ import QuestTrend from "../components/QuestTrend.vue";
 import { useListFocus } from "../composables/useListFocus";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
-import { useUndo } from "../composables/useUndo";
-import { useCampaignCompletion } from "../composables/useCampaignCompletion";
+import { useTicks } from "../composables/useTicks";
 import { useTimer } from "../composables/useTimer";
 import { useShortcutHandlers } from "../composables/useShortcuts";
 import { campaignMark } from "../utils/category-mark";
@@ -66,11 +65,13 @@ const timer = useTimer();
 const dragged = ref<number | null>(null),
   dropTarget = ref<number | null | undefined>(undefined);
 const busy = computed(() => formBusy.value || writing.value);
-const campaignCompletion = useCampaignCompletion();
+/* Rings, the campaign question and the undo toast: `useTicks`. */
+const ticks = useTicks((action, { fallbackError }) =>
+  run(action, "", { fallbackError }),
+);
+const { undo, undoLast } = ticks;
 const quiet = () =>
-  !busy.value &&
-  action.value === null &&
-  campaignCompletion.question.value === null;
+  !busy.value && action.value === null && ticks.campaignQuestion.value === null;
 // Refreshes after timer and other views' changes, unless a dialog is open.
 const {
   data: todos,
@@ -92,12 +93,13 @@ const { data: questHours, reload: loadQuestHours } =
       refreshOnChange: quiet,
     },
   );
-const { write, applied, busy: writing } = useWrites(
-  async (showPageLoading) => {
-    await Promise.all([load(showPageLoading), loadQuestHours(false)]);
-  },
-  error,
-);
+const {
+  write,
+  applied,
+  busy: writing,
+} = useWrites(async (showPageLoading) => {
+  await Promise.all([load(showPageLoading), loadQuestHours(false)]);
+}, error);
 const shownError = computed(() => error.value || loadError.value || "");
 const tiles = computed(() => campaignTiles(todos.value, questHours.value));
 const doneCount = computed(
@@ -290,35 +292,33 @@ function checked(todo: HierarchyTodo) {
   return pendingCompletion.value.get(todo.id) ?? todo.completed;
 }
 /* A completion can be taken back in the toast, as on Heute. */
-const { undo, offer: offerUndo, take: takeUndo } = useUndo<HierarchyTodo>();
 async function toggleCompletion(todo: HierarchyTodo) {
   if (busy.value) return;
   const next = !checked(todo);
-  // A campaign with open quests asks first; they stay open either way.
-  const open = next && todo.parentId === null ? openBelow(todo.progress) : 0;
-  if (!(await campaignCompletion.confirm(todo.title, open))) return;
-  pendingCompletion.value = new Map(pendingCompletion.value).set(todo.id, next);
+  const target = { kind: "todo", id: todo.id, title: todo.title } as const;
+  const fallbackError = "Die Quest konnte nicht aktualisiert werden.";
+  const fill = () =>
+    (pendingCompletion.value = new Map(pendingCompletion.value).set(
+      todo.id,
+      next,
+    ));
   try {
-    const done = await run(() => updateTodoCompletion(todo.id, next), "", {
-      fallbackError: "Die Quest konnte nicht aktualisiert werden.",
-    });
-    if (done && next)
-      offerUndo(
-        todo,
-        open > 0 ? `„${todo.title}“ abgeschlossen` : `„${todo.title}“ erledigt`,
-      );
+    if (next)
+      // A campaign with open quests asks first; they stay open either way.
+      await ticks.complete(target, {
+        fallbackError,
+        campaign: todo.parentId === null ? openBelow(todo.progress) : undefined,
+        onConfirmed: fill,
+      });
+    else {
+      fill();
+      await ticks.reopen(target, { fallbackError });
+    }
   } finally {
     const rest = new Map(pendingCompletion.value);
     rest.delete(todo.id);
     pendingCompletion.value = rest;
   }
-}
-async function undoLast() {
-  const todo = takeUndo();
-  if (!todo) return;
-  await run(() => updateTodoCompletion(todo.id, false), "", {
-    fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
-  });
 }
 function toggleCollapse(id: number) {
   const next = new Set(collapsed.value);
@@ -404,7 +404,9 @@ useShortcutHandlers({
   <main ref="page" class="page hierarchy">
     <header class="page-header">
       <h1 class="page-title">Kampagnen</h1>
-      <p class="page-lead">Deine längerfristigen Ziele und wie weit sie sind.</p>
+      <p class="page-lead">
+        Deine längerfristigen Ziele und wie weit sie sind.
+      </p>
     </header>
     <div v-if="shownError" class="alert" role="alert">
       <p>{{ shownError }}</p>
@@ -428,150 +430,151 @@ useShortcutHandlers({
       <span /><span /><span />
     </div>
     <template v-else-if="openTile">
-        <button
-          class="btn btn--quiet campaign-back"
-          type="button"
-          @click="closeCampaign"
-        >
-          <AppIcon name="chevron-left" />Alle Kampagnen
-        </button>
+      <button
+        class="btn btn--quiet campaign-back"
+        type="button"
+        @click="closeCampaign"
+      >
+        <AppIcon name="chevron-left" />Alle Kampagnen
+      </button>
+      <section
+        class="card campaign-detail"
+        :class="{ 'row--over': dropTarget === openTile.todo.id }"
+        :style="{ '--mark': openMark }"
+        aria-labelledby="campaign-detail-title"
+        :data-focus-key="`todo-${openTile.todo.id}`"
+        @dragover.prevent="dropTarget = openTile.todo.id"
+        @dragleave="dropTarget = undefined"
+        @drop.stop="drop($event, openTile.todo.id)"
+      >
+        <div class="campaign-detail__head">
+          <span class="campaign-detail__badge" aria-hidden="true">
+            <AppIcon :name="openTile.icon ?? 'campaigns'" />
+          </span>
+          <div class="campaign-detail__name">
+            <h2 id="campaign-detail-title" tabindex="-1">
+              {{ openTile.todo.title }}
+            </h2>
+            <p v-if="checked(openTile.todo)" class="campaign-detail__state">
+              Abgeschlossen
+            </p>
+          </div>
+          <ActionMenu
+            :title="openTile.todo.title"
+            :entries="campaignMenu(openTile.todo)"
+            :disabled="busy"
+            :trigger-key="openTile.todo.id"
+          />
+        </div>
+        <!-- Its own reason under its name: what the campaign is for. -->
+        <p v-if="openTile.todo.why" class="campaign-detail__why">
+          {{ openTile.todo.why }}
+        </p>
         <section
-          class="card campaign-detail"
-          :class="{ 'row--over': dropTarget === openTile.todo.id }"
-          :style="{ '--mark': openMark }"
-          aria-labelledby="campaign-detail-title"
-          :data-focus-key="`todo-${openTile.todo.id}`"
-          @dragover.prevent="dropTarget = openTile.todo.id"
-          @dragleave="dropTarget = undefined"
-          @drop.stop="drop($event, openTile.todo.id)"
+          v-if="questHours"
+          class="campaign-detail__group"
+          aria-labelledby="campaign-week-title"
         >
-          <div class="campaign-detail__head">
-            <span class="campaign-detail__badge" aria-hidden="true">
-              <AppIcon :name="openTile.icon ?? 'campaigns'" />
-            </span>
-            <div class="campaign-detail__name">
-              <h2 id="campaign-detail-title" tabindex="-1">
-                {{ openTile.todo.title }}
-              </h2>
-              <p v-if="checked(openTile.todo)" class="campaign-detail__state">
-                Abgeschlossen
-              </p>
-            </div>
-            <ActionMenu
-              :title="openTile.todo.title"
-              :entries="campaignMenu(openTile.todo)"
-              :disabled="busy"
-              :trigger-key="openTile.todo.id"
+          <h3 id="campaign-week-title" class="card-title">Diese Woche</h3>
+          <!-- Wraps between the figures, never inside one. -->
+          <p class="campaign-detail__week">
+            <strong
+              ><template
+                v-for="(part, index) in againstTargetParts(
+                  openTile.minutes,
+                  openTile.weeklyTargetMinutes,
+                )"
+                :key="index"
+                >{{ index ? " " : ""
+                }}<span class="campaign-detail__figure">{{
+                  part
+                }}</span></template
+              ></strong
+            >
+            Kampagnen-Stunden
+          </p>
+          <span
+            v-if="openTile.weeklyTargetMinutes !== null"
+            class="campaign-detail__bar"
+            aria-hidden="true"
+          >
+            <span :style="{ width: `${weekShare}%` }" />
+          </span>
+          <div class="campaign-detail__trend">
+            <p class="campaign-detail__trend-head">
+              <span>letzte {{ openTile.weeks.length }} Wochen</span>
+              <span class="campaign-detail__figure"
+                >insgesamt {{ formatDuration(openTile.totalMinutes) }}</span
+              >
+            </p>
+            <QuestTrend
+              :weeks="openTile.weeks"
+              :starts="trendStarts"
+              :mark="openMark"
             />
           </div>
-          <!-- Its own reason under its name: what the campaign is for. -->
-          <p v-if="openTile.todo.why" class="campaign-detail__why">
-            {{ openTile.todo.why }}
-          </p>
-          <section
-            v-if="questHours"
-            class="campaign-detail__group"
-            aria-labelledby="campaign-week-title"
-          >
-            <h3 id="campaign-week-title" class="card-title">Diese Woche</h3>
-            <!-- Wraps between the figures, never inside one. -->
-            <p class="campaign-detail__week">
-              <strong
-                ><template
-                  v-for="(part, index) in againstTargetParts(
-                    openTile.minutes,
-                    openTile.weeklyTargetMinutes,
-                  )"
-                  :key="index"
-                  >{{ index ? " " : "" }}<span class="campaign-detail__figure">{{
-                    part
-                  }}</span></template
-                ></strong
-              >
-              Kampagnen-Stunden
-            </p>
-            <span
-              v-if="openTile.weeklyTargetMinutes !== null"
-              class="campaign-detail__bar"
-              aria-hidden="true"
-            >
-              <span :style="{ width: `${weekShare}%` }" />
-            </span>
-            <div class="campaign-detail__trend">
-              <p class="campaign-detail__trend-head">
-                <span>letzte {{ openTile.weeks.length }} Wochen</span>
-                <span class="campaign-detail__figure"
-                  >insgesamt {{ formatDuration(openTile.totalMinutes) }}</span
-                >
-              </p>
-              <QuestTrend
-                :weeks="openTile.weeks"
-                :starts="trendStarts"
-                :mark="openMark"
-              />
-            </div>
-          </section>
-          <section
-            v-if="hasProgress(openTile.todo.progress)"
-            class="campaign-detail__group"
-            aria-labelledby="campaign-progress-title"
-          >
-            <h3 id="campaign-progress-title" class="card-title">Fortschritt</h3>
-            <p class="campaign-detail__count">
-              {{ questCount(openTile.todo.progress) }}
-            </p>
-            <div class="row__progress">
-              <span
-                class="row__bar"
-                role="progressbar"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                :aria-valuenow="Math.round(openTile.todo.progress.percentage)"
-                :aria-valuetext="progressWords(openTile.todo.progress)"
-                :aria-label="`Fortschritt von ${openTile.todo.title}`"
-              >
-                <span
-                  :style="{
-                    width: `${Math.min(100, Math.max(0, openTile.todo.progress.percentage))}%`,
-                  }"
-                />
-              </span>
-            </div>
-            <GoalBurnup :todo-id="openTile.todo.id" beside-bar />
-          </section>
-          <div class="campaign-detail__actions">
-            <button
-              class="btn"
-              type="button"
-              data-edit-button
-              :disabled="busy"
-              :aria-label="`Kampagne ${openTile.todo.title} bearbeiten`"
-              @click="open('edit', openTile.todo)"
-            >
-              <AppIcon name="edit" />Bearbeiten
-            </button>
-            <button
-              class="btn"
-              type="button"
-              data-complete-button
-              :disabled="busy"
-              :aria-label="
-                checked(openTile.todo)
-                  ? `Kampagne ${openTile.todo.title} wieder öffnen`
-                  : `Kampagne ${openTile.todo.title} abschließen`
-              "
-              @click="toggleCompletion(openTile.todo)"
-            >
-              <AppIcon name="check" />{{
-                checked(openTile.todo) ? "Wieder öffnen" : "Abschließen"
-              }}
-            </button>
-          </div>
         </section>
-        <h2 class="section-title">Quests der Kampagne</h2>
-        <p v-if="!rows.length" class="status-line">
-          Noch keine Quests. Der Plus-Button legt die erste an.
-        </p>
+        <section
+          v-if="hasProgress(openTile.todo.progress)"
+          class="campaign-detail__group"
+          aria-labelledby="campaign-progress-title"
+        >
+          <h3 id="campaign-progress-title" class="card-title">Fortschritt</h3>
+          <p class="campaign-detail__count">
+            {{ questCount(openTile.todo.progress) }}
+          </p>
+          <div class="row__progress">
+            <span
+              class="row__bar"
+              role="progressbar"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              :aria-valuenow="Math.round(openTile.todo.progress.percentage)"
+              :aria-valuetext="progressWords(openTile.todo.progress)"
+              :aria-label="`Fortschritt von ${openTile.todo.title}`"
+            >
+              <span
+                :style="{
+                  width: `${Math.min(100, Math.max(0, openTile.todo.progress.percentage))}%`,
+                }"
+              />
+            </span>
+          </div>
+          <GoalBurnup :todo-id="openTile.todo.id" beside-bar />
+        </section>
+        <div class="campaign-detail__actions">
+          <button
+            class="btn"
+            type="button"
+            data-edit-button
+            :disabled="busy"
+            :aria-label="`Kampagne ${openTile.todo.title} bearbeiten`"
+            @click="open('edit', openTile.todo)"
+          >
+            <AppIcon name="edit" />Bearbeiten
+          </button>
+          <button
+            class="btn"
+            type="button"
+            data-complete-button
+            :disabled="busy"
+            :aria-label="
+              checked(openTile.todo)
+                ? `Kampagne ${openTile.todo.title} wieder öffnen`
+                : `Kampagne ${openTile.todo.title} abschließen`
+            "
+            @click="toggleCompletion(openTile.todo)"
+          >
+            <AppIcon name="check" />{{
+              checked(openTile.todo) ? "Wieder öffnen" : "Abschließen"
+            }}
+          </button>
+        </div>
+      </section>
+      <h2 class="section-title">Quests der Kampagne</h2>
+      <p v-if="!rows.length" class="status-line">
+        Noch keine Quests. Der Plus-Button legt die erste an.
+      </p>
       <ul class="tree" aria-label="Quests der Kampagne">
         <li
           v-for="{ todo, depth } in rows"
@@ -776,11 +779,11 @@ useShortcutHandlers({
       @close="close"
     />
     <CampaignCompletionDialog
-      v-if="campaignCompletion.question.value"
-      :title="campaignCompletion.question.value.title"
-      :open="campaignCompletion.question.value.open"
-      @confirm="campaignCompletion.reply(true)"
-      @cancel="campaignCompletion.reply(false)"
+      v-if="ticks.campaignQuestion.value"
+      :title="ticks.campaignQuestion.value.title"
+      :open="ticks.campaignQuestion.value.open"
+      @confirm="ticks.answerCampaign(true)"
+      @cancel="ticks.answerCampaign(false)"
     />
     <UndoToast :label="undo?.label ?? null" @undo="undoLast" />
     <!-- After the content in reading order; fixed in place, it looks the same. -->

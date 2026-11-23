@@ -26,9 +26,7 @@ watch(
   async (name) => {
     if (typeof name !== "string") return;
     await nextTick();
-    const title = document.querySelector<HTMLElement>(
-      `#${sectionId(name)} h2`,
-    );
+    const title = document.querySelector<HTMLElement>(`#${sectionId(name)} h2`);
     if (!title) return;
     title.tabIndex = -1;
     title.focus({ preventScroll: true });

@@ -9,13 +9,7 @@ import {
   watch,
 } from "vue";
 import { routeLocationKey, routerKey } from "vue-router";
-import {
-  openRunToday,
-  rescheduleOccurrence,
-  rescheduleTodo,
-  updateOccurrenceStatus,
-  updateTodoCompletion,
-} from "../api/day-planner.api";
+import { openRunToday } from "../api/day-planner.api";
 import { getHistory } from "../api/history.api";
 import AppIcon from "../components/AppIcon.vue";
 import CalendarDay from "../components/CalendarDay.vue";
@@ -34,7 +28,7 @@ import UndoToast from "../components/UndoToast.vue";
 import { useListFocus } from "../composables/useListFocus";
 import { useLoader } from "../composables/useLoader";
 import { useLogRemoval } from "../composables/useLogRemoval";
-import { useUndo } from "../composables/useUndo";
+import { tickLabel, useTicks, writeDone } from "../composables/useTicks";
 import { useWrites } from "../composables/useWrites";
 import type {
   HistoryFilter,
@@ -322,15 +316,12 @@ function closeDialogs(): void {
  * Deleting a Logbuch stretch shares the toast; its DELETE waits until the
  * offer ends (`useLogRemoval`).
  */
-type Undoable = { kind: "todo" | "occurrence" | "log"; id: number };
-const {
-  undo,
-  offer: offerUndo,
-  take: takeUndo,
-  flush: flushUndo,
-} = useUndo<Undoable>();
+const ticks = useTicks(writes.write, {
+  onOtherUndo: (held) => restoreLog(held.id),
+});
+const { undo, undoLast, flushUndo } = ticks;
 const { hiddenLogs, removeLog, restoreLog } = useLogRemoval(
-  offerUndo,
+  ticks.offerUndo,
   writes.write,
 );
 /* Closing or reloading the page sends a held delete on its way. */
@@ -341,11 +332,13 @@ function quickMove(item: HistoryPlannedItem, date: string): void {
   if (item.id === null) return;
   const id = item.id;
   void listFocus.around(item.key, () =>
-    writes.write(
-      () =>
-        item.type === "todo"
-          ? rescheduleTodo(id, date, false)
-          : rescheduleOccurrence(id, date),
+    ticks.move(
+      {
+        kind: item.type === "todo" ? "todo" : "occurrence",
+        id,
+        title: item.title,
+      },
+      date,
       {
         key: busyKey(item),
         fallbackError: "Der Eintrag konnte nicht verschoben werden.",
@@ -369,7 +362,7 @@ function completeRun(item: HistoryPlannedItem): void {
         id ??= await openRunToday(habitId, item.scheduledDate);
         if (id === null)
           throw new Error("Dieses Daily ist heute nicht mehr fällig.");
-        await updateOccurrenceStatus(id, "completed");
+        await writeDone({ kind: "occurrence", id, title: item.title }, true);
       },
       {
         key: busyKey(item),
@@ -377,7 +370,13 @@ function completeRun(item: HistoryPlannedItem): void {
       },
     );
     if (done && id !== null)
-      offerUndo({ kind: "occurrence", id }, `„${item.title}“ erledigt`);
+      ticks.offerUndo(
+        {
+          kind: "tick",
+          target: { kind: "occurrence", id, title: item.title },
+        },
+        tickLabel(item.title),
+      );
   });
 }
 const plannedActions: PlannedActions = {
@@ -389,13 +388,13 @@ const plannedActions: PlannedActions = {
     if (item.type === "habit") return completeRun(item);
     if (item.id === null) return;
     const id = item.id;
-    void listFocus.around(item.key, async () => {
-      const done = await writes.write(() => updateTodoCompletion(id, true), {
-        key: busyKey(item),
-        fallbackError: "Die Quest konnte nicht erledigt werden.",
-      });
-      if (done) offerUndo({ kind: "todo", id }, `„${item.title}“ erledigt`);
-    });
+    // The calendar's rows do not ask about a campaign (todo-hierarchy.md).
+    void listFocus.around(item.key, () =>
+      ticks.complete(
+        { kind: "todo", id, title: item.title },
+        { key: busyKey(item) },
+      ),
+    );
   },
   editable: (item) =>
     item.type === "todo" ? item.id !== null : item.habitId !== null,
@@ -476,23 +475,6 @@ const plannedActions: PlannedActions = {
   },
   busy: (item) => writes.isWriting(busyKey(item)),
 };
-async function undoLast(): Promise<void> {
-  const target = takeUndo();
-  if (target === null) return;
-  // A held delete never went out: the stretch only comes back into view.
-  if (target.kind === "log") return restoreLog(target.id);
-  const id = target.id;
-  await writes.write(
-    () =>
-      target.kind === "todo"
-        ? updateTodoCompletion(id, false)
-        : updateOccurrenceStatus(id, "pending"),
-    {
-      key: `undo-${target.kind}-${id}`,
-      fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
-    },
-  );
-}
 </script>
 
 <template>

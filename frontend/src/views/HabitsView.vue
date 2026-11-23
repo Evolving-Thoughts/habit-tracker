@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { getHabits, updateOccurrenceStatus } from "../api/day-planner.api";
+import { getHabits } from "../api/day-planner.api";
 import { useCategoryLabels } from "../composables/useCategoryLabels";
 import { useListFocus } from "../composables/useListFocus";
 import HabitHistoryStrip from "../components/HabitHistoryStrip.vue";
@@ -14,7 +14,7 @@ import CheckRing from "../components/CheckRing.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
 import UndoToast from "../components/UndoToast.vue";
 import { useLoader } from "../composables/useLoader";
-import { useUndo } from "../composables/useUndo";
+import { useTicks } from "../composables/useTicks";
 import { useWrites } from "../composables/useWrites";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
@@ -117,27 +117,24 @@ function runToday(habit: HabitResponse): { id: number; done: boolean } | null {
 const anyRun = computed(() =>
   habits.value.some((habit) => runToday(habit) !== null),
 );
-const { undo, offer: offerUndo, take: takeUndo } = useUndo<number>();
+const ticks = useTicks(writes.write);
+const { undo, undoLast } = ticks;
 const runKey = (habit: HabitResponse) => `run-${habit.id}`;
 async function toggleRun(habit: HabitResponse): Promise<void> {
   const run = runToday(habit);
   if (!run) return;
-  const done = await writes.write(
-    () => updateOccurrenceStatus(run.id, run.done ? "pending" : "completed"),
-    {
-      key: runKey(habit),
-      fallbackError: "Das Daily konnte nicht aktualisiert werden.",
-    },
-  );
-  if (done && !run.done) offerUndo(run.id, `„${habit.title}“ erledigt`);
-}
-async function undoLast(): Promise<void> {
-  const id = takeUndo();
-  if (id === null) return;
-  await writes.write(() => updateOccurrenceStatus(id, "pending"), {
-    key: `undo-${id}`,
-    fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
-  });
+  const target = {
+    kind: "occurrence",
+    id: run.id,
+    title: habit.title,
+  } as const;
+  const options = {
+    key: runKey(habit),
+    fallbackError: "Das Daily konnte nicht aktualisiert werden.",
+  };
+  await (run.done
+    ? ticks.reopen(target, options)
+    : ticks.complete(target, options));
 }
 
 const isBusy = computed(() => isLoading.value || editorBusy.value);

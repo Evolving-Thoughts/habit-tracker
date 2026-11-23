@@ -15,8 +15,6 @@ import {
   reorderDay,
   rescheduleOccurrence,
   rescheduleTodo,
-  updateOccurrenceStatus,
-  updateTodoCompletion,
 } from "../api/day-planner.api";
 import { planQuest, unplanQuest } from "../api/questlog.api";
 import AppIcon from "../components/AppIcon.vue";
@@ -33,7 +31,6 @@ import PlanOverdue from "../components/PlanOverdue.vue";
 import PlanQuestlog from "../components/PlanQuestlog.vue";
 import UndoToast from "../components/UndoToast.vue";
 import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
-import { useCampaignCompletion } from "../composables/useCampaignCompletion";
 import { useListFocus } from "../composables/useListFocus";
 import { useLoader } from "../composables/useLoader";
 import { useMediaQuery } from "../composables/useMediaQuery";
@@ -42,7 +39,7 @@ import {
   useShortcutHandlers,
 } from "../composables/useShortcuts";
 import { toggleTimer, useTimer } from "../composables/useTimer";
-import { useUndo } from "../composables/useUndo";
+import { useTicks } from "../composables/useTicks";
 import { useWrites } from "../composables/useWrites";
 import type {
   WeekPlanEntry,
@@ -198,7 +195,12 @@ function toggleOverdue(): void {
 /** A choice made on this device; until then the window's width decides. */
 const questlogChoice = ref<string | null>(readQuestlogChoice());
 const questlogOpen = computed(() =>
-  questlogStartsOpen(questlogChoice.value, frameWidth.value ? frameWidth.value >= BOARD.questlogOpen + BOARD.column + BOARD.gap : wide.value),
+  questlogStartsOpen(
+    questlogChoice.value,
+    frameWidth.value
+      ? frameWidth.value >= BOARD.questlogOpen + BOARD.column + BOARD.gap
+      : wide.value,
+  ),
 );
 function toggleQuestlog(): void {
   const choice: QuestlogChoice = questlogOpen.value ? "closed" : "open";
@@ -324,15 +326,21 @@ async function applyDrop(drop: Drop): Promise<void> {
   const result = dropOnDay(before, drop);
   if (!result) return;
   const { write } = result;
-  plan.value = result.plan;
-  notice.value = "";
-  status.value = placeLine(
-    result.plan,
-    drop.toDate,
-    (item) => item.type === "todo" && item.todoId === write.todoId,
-    !!write.moveTo,
-  );
-  const done = await writes.write(
+  await writes.writeShown(
+    () => {
+      plan.value = result.plan;
+      notice.value = "";
+      status.value = placeLine(
+        result.plan,
+        drop.toDate,
+        (item) => item.type === "todo" && item.todoId === write.todoId,
+        !!write.moveTo,
+      );
+      return () => {
+        plan.value = before;
+        status.value = "";
+      };
+    },
     async () => {
       if (write.moveTo)
         await rescheduleTodo(write.todoId, write.moveTo, write.confirmFixed);
@@ -343,15 +351,12 @@ async function applyDrop(drop: Drop): Promise<void> {
       fallbackError: "Die Quest konnte nicht verschoben werden.",
     },
   );
-  if (done) return;
-  // Taken back at once; a quiet reload then shows what the server kept.
-  plan.value = before;
-  status.value = "";
-  void reload(false);
 }
 
 /** An open stored run on the board or left behind, with the day it is on. */
-function findRun(occurrenceId: number): { run: OpenRun; date: string | null } | null {
+function findRun(
+  occurrenceId: number,
+): { run: OpenRun; date: string | null } | null {
   const current = plan.value;
   if (!current) return null;
   for (const entry of current.overdue)
@@ -367,7 +372,9 @@ function findRun(occurrenceId: number): { run: OpenRun; date: string | null } | 
 /** "bis Freitag, 21. Nov." or, when it may stay only where it is, nothing. */
 function windowLine(run: OpenRun): string {
   return run.moveUntil
-    ? fullStop(`„${run.title}“ kann höchstens bis ${dayLabel(run.moveUntil)} warten`)
+    ? fullStop(
+        `„${run.title}“ kann höchstens bis ${dayLabel(run.moveUntil)} warten`,
+      )
     : `„${run.title}“ bleibt an seinem Tag.`;
 }
 
@@ -387,15 +394,22 @@ async function applyRunDrop(drop: RunDrop): Promise<boolean> {
     return false;
   }
   const { write } = result;
-  plan.value = result.plan;
-  notice.value = "";
-  status.value = placeLine(
-    result.plan,
-    drop.toDate,
-    (item) => isMovableRun(item) && item.occurrenceId === write.occurrenceId,
-    !!write.moveTo,
-  );
-  const done = await writes.write(
+  return writes.writeShown(
+    () => {
+      plan.value = result.plan;
+      notice.value = "";
+      status.value = placeLine(
+        result.plan,
+        drop.toDate,
+        (item) =>
+          isMovableRun(item) && item.occurrenceId === write.occurrenceId,
+        !!write.moveTo,
+      );
+      return () => {
+        plan.value = before;
+        status.value = "";
+      };
+    },
     async () => {
       if (write.moveTo)
         await rescheduleOccurrence(write.occurrenceId, write.moveTo);
@@ -406,11 +420,6 @@ async function applyRunDrop(drop: RunDrop): Promise<boolean> {
       fallbackError: "Das Daily konnte nicht verschoben werden.",
     },
   );
-  if (done) return true;
-  plan.value = before;
-  status.value = "";
-  void reload(false);
-  return false;
 }
 
 /**
@@ -456,7 +465,10 @@ function focusCard(key: string, on: "menu" | "card"): void {
  * run (a run the schedule only forecasts has none yet). `date` is the
  * column the card stands in, for the focus to come back to.
  */
-function openEditing(entry: WeekPlanEntry | { todoId: number }, date = ""): void {
+function openEditing(
+  entry: WeekPlanEntry | { todoId: number },
+  date = "",
+): void {
   if (dialogBusy.value || writes.busy.value) return;
   if ("type" in entry && entry.type === "habit") {
     listFocus.remember(entryKey(entry, date));
@@ -483,25 +495,26 @@ async function applyQuestlogDrop(drop: Drop): Promise<void> {
   if (!before || !todo || writes.busy.value) return;
   const result = dropOnDay(before, drop, questlogEntry(todo, drop.toDate));
   if (!result) return;
-  plan.value = result.plan;
-  backlog.value = backlogBefore.filter((item) => item.id !== todo.id);
-  status.value = fullStop(
-    `„${todo.title}“ steht jetzt am ${dayLabel(drop.toDate)}`,
-  );
   const { order } = result.write;
-  const done = await writes.write(
+  await writes.writeShown(
+    () => {
+      plan.value = result.plan;
+      backlog.value = backlogBefore.filter((item) => item.id !== todo.id);
+      status.value = fullStop(
+        `„${todo.title}“ steht jetzt am ${dayLabel(drop.toDate)}`,
+      );
+      return () => {
+        plan.value = before;
+        backlog.value = backlogBefore;
+        status.value = "";
+      };
+    },
     async () => {
       await planQuest(todo, drop.toDate);
       if (order) await reorderDay(order);
     },
     { key: "plan", fallbackError: "Die Quest konnte nicht eingeplant werden." },
   );
-  if (done) return;
-  plan.value = before;
-  backlog.value = backlogBefore;
-  status.value = "";
-  void reload(false);
-  void reloadBacklog(false);
 }
 
 /**
@@ -518,12 +531,19 @@ async function applyShelve(drop: ShelfDrop): Promise<boolean> {
   const { write } = result;
   const place = write.order.indexOf(write.todoId);
   const quest = result.backlog[place]!;
-  plan.value = result.plan;
-  backlog.value = result.backlog;
-  status.value = `„${quest.title}“ steht jetzt im Questlog an Stelle ${
-    place + 1
-  } von ${write.order.length}.`;
-  const done = await writes.write(
+  return writes.writeShown(
+    () => {
+      plan.value = result.plan;
+      backlog.value = result.backlog;
+      status.value = `„${quest.title}“ steht jetzt im Questlog an Stelle ${
+        place + 1
+      } von ${write.order.length}.`;
+      return () => {
+        plan.value = before;
+        backlog.value = backlogBefore;
+        status.value = "";
+      };
+    },
     async () => {
       if (write.unplan) await unplanQuest(write.todoId);
       await reorderBacklog(write.order);
@@ -535,13 +555,6 @@ async function applyShelve(drop: ShelfDrop): Promise<boolean> {
         : "Die Reihenfolge konnte nicht gespeichert werden.",
     },
   );
-  if (done) return true;
-  plan.value = before;
-  backlog.value = backlogBefore;
-  status.value = "";
-  void reload(false);
-  void reloadBacklog(false);
-  return false;
 }
 
 /** A card was dropped: on a day (from wherever it came) or into the column. */
@@ -670,56 +683,27 @@ watch(
   { flush: "post" },
 );
 
-/* What the toast takes back after a quest or a run was ticked with X. */
-type Ticked =
-  | { kind: "todo"; todoId: number; title: string }
-  | { kind: "run"; occurrenceId: number; title: string };
-const { undo, offer: offerUndo, take: takeUndo } = useUndo<Ticked>();
-const campaignCompletion = useCampaignCompletion();
+/* Ticking with X, its undo toast and the campaign question: `useTicks`. */
+const ticks = useTicks(writes.write);
+const { undo, undoLast } = ticks;
 async function complete(
   entry: { todoId: number; title: string },
   campaign: { id: number } | null,
 ): Promise<void> {
   // A campaign with open quests asks first, as everywhere.
-  const open =
-    campaign?.id === entry.todoId
-      ? await campaignCompletion.openQuestsBelow(entry.todoId)
-      : 0;
-  if (!(await campaignCompletion.confirm(entry.title, open))) return;
-  const done = await writes.write(
-    () => updateTodoCompletion(entry.todoId, true),
-    { key: "plan", fallbackError: "Die Quest konnte nicht erledigt werden." },
+  await ticks.complete(
+    { kind: "todo", id: entry.todoId, title: entry.title },
+    {
+      key: "plan",
+      campaign: campaign?.id === entry.todoId ? "lookup" : undefined,
+    },
   );
-  if (done)
-    offerUndo(
-      { kind: "todo", ...entry },
-      open > 0 ? `„${entry.title}“ abgeschlossen` : `„${entry.title}“ erledigt`,
-    );
 }
 /** X on a run due by today: done through the same path as Heute's ring. */
 async function completeRun(run: OpenRun): Promise<void> {
-  const done = await writes.write(
-    () => updateOccurrenceStatus(run.occurrenceId, "completed"),
-    { key: "plan", fallbackError: "Das Daily konnte nicht erledigt werden." },
-  );
-  if (done)
-    offerUndo(
-      { kind: "run", occurrenceId: run.occurrenceId, title: run.title },
-      `„${run.title}“ erledigt`,
-    );
-}
-async function undoLast(): Promise<void> {
-  const entry = takeUndo();
-  if (!entry) return;
-  await writes.write(
-    () =>
-      entry.kind === "todo"
-        ? updateTodoCompletion(entry.todoId, false)
-        : updateOccurrenceStatus(entry.occurrenceId, "pending"),
-    {
-      key: "plan",
-      fallbackError: "Das Rückgängigmachen hat nicht geklappt.",
-    },
+  await ticks.complete(
+    { kind: "occurrence", id: run.occurrenceId, title: run.title },
+    { key: "plan" },
   );
 }
 
@@ -729,12 +713,9 @@ async function skipRun(run: OpenRun): Promise<void> {
   const key = entryKey(run, "");
   await listFocus.around(key, async () => {
     if (
-      await writes.write(
-        () => updateOccurrenceStatus(run.occurrenceId, "skipped"),
-        {
-          key: "plan",
-          fallbackError: "Das Daily konnte nicht übersprungen werden.",
-        },
+      await ticks.skip(
+        { kind: "occurrence", id: run.occurrenceId, title: run.title },
+        "plan",
       )
     )
       status.value = `„${run.title}“ übersprungen.`;
@@ -765,12 +746,10 @@ function moveByShortcut(entry: WeekPlanTodoEntry, date: string): boolean {
       });
       return;
     }
-    const moved = await writes.write(
-      () => rescheduleTodo(entry.todoId, date, false),
-      {
-        key: "plan",
-        fallbackError: "Die Quest konnte nicht verschoben werden.",
-      },
+    const moved = await ticks.move(
+      { kind: "todo", id: entry.todoId, title: entry.title },
+      date,
+      { key: "plan" },
     );
     if (moved)
       status.value = fullStop(
@@ -802,15 +781,15 @@ function moveRunByShortcut(
       });
       return;
     }
-    const moved = await writes.write(
-      () => rescheduleOccurrence(run.occurrenceId, date),
-      {
-        key: "plan",
-        fallbackError: "Das Daily konnte nicht verschoben werden.",
-      },
+    const moved = await ticks.move(
+      { kind: "occurrence", id: run.occurrenceId, title: run.title },
+      date,
+      { key: "plan" },
     );
     if (moved)
-      status.value = fullStop(`„${run.title}“ steht jetzt am ${dayLabel(date)}`);
+      status.value = fullStop(
+        `„${run.title}“ steht jetzt am ${dayLabel(date)}`,
+      );
   });
   return true;
 }
@@ -858,7 +837,9 @@ function openQuest(key: string | null): WeekPlanTodoEntry | null {
 }
 
 /** An open stored run of the board by its row key, with its day (null: left behind). */
-function openRun(key: string | null): { run: OpenRun; date: string | null } | null {
+function openRun(
+  key: string | null,
+): { run: OpenRun; date: string | null } | null {
   const current = plan.value;
   if (!current) return null;
   for (const entry of current.overdue)
@@ -1174,7 +1155,11 @@ useShortcutHandlers({
         aria-label="Plan wird geladen"
       >
         <span class="plan-view__bone plan-view__bone--questlog" />
-        <span v-for="index in shownCount" :key="index" class="plan-view__bone" />
+        <span
+          v-for="index in shownCount"
+          :key="index"
+          class="plan-view__bone"
+        />
       </div>
       <div v-else-if="loadError" class="alert" role="alert">
         <p>{{ loadError }}</p>
@@ -1237,11 +1222,11 @@ useShortcutHandlers({
     </p>
 
     <CampaignCompletionDialog
-      v-if="campaignCompletion.question.value"
-      :title="campaignCompletion.question.value.title"
-      :open="campaignCompletion.question.value.open"
-      @confirm="campaignCompletion.reply(true)"
-      @cancel="campaignCompletion.reply(false)"
+      v-if="ticks.campaignQuestion.value"
+      :title="ticks.campaignQuestion.value.title"
+      :open="ticks.campaignQuestion.value.open"
+      @confirm="ticks.answerCampaign(true)"
+      @cancel="ticks.answerCampaign(false)"
     />
     <UndoToast :label="undo?.label ?? null" @undo="undoLast" />
   </main>

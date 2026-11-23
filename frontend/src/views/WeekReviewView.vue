@@ -37,8 +37,7 @@ const week = computed(() =>
   weekFromQuery(route.query.woche, getCurrentDateInTimeZone()),
 );
 /** Asked fresh each time: the app may stay open into the next week. */
-const thisWeek = (): string =>
-  weekFromQuery(null, getCurrentDateInTimeZone());
+const thisWeek = (): string => weekFromQuery(null, getCurrentDateInTimeZone());
 function showWeek(start: string): Promise<unknown> {
   return router.push({
     query: start === thisWeek() ? {} : { woche: start },
@@ -89,7 +88,8 @@ const {
 const loading = computed(() => hoursLoading.value || reviewLoading.value);
 /** Only when both reads arrived: a failed one must not pass for an empty week. */
 const quiet = computed(
-  () => !!hours.value && !!review.value && isQuietWeek(hours.value, review.value),
+  () =>
+    !!hours.value && !!review.value && isQuietWeek(hours.value, review.value),
 );
 const ahead = computed(() => week.value > thisWeek());
 /* A week still ahead has nothing to compare or count yet. */
@@ -126,13 +126,15 @@ const showFigures = computed(
 const goalEditable = computed(() => week.value === thisWeek());
 /* The charts only for measured time, never a wall of empty ones. */
 const measured = computed(
-  () => !!hours.value && hours.value.questMinutes + hours.value.otherMinutes > 0,
+  () =>
+    !!hours.value && hours.value.questMinutes + hours.value.otherMinutes > 0,
 );
 const distance = computed(() => weekDistance(week.value, thisWeek()));
 
 /* The new goal shows at once; Heute and the rest refresh in the background. */
 function onTargetSaved(minutes: number | null): void {
-  if (hours.value) hours.value = { ...hours.value, weeklyTargetMinutes: minutes };
+  if (hours.value)
+    hours.value = { ...hours.value, weeklyTargetMinutes: minutes };
   notifyDataChanged();
 }
 
@@ -146,7 +148,9 @@ function onSaved(answers: WeekReviewAnswers): void {
     <header class="page-header week-review__header">
       <div class="week-review__heading">
         <h1 class="page-title">Wochenrückblick</h1>
-        <p class="page-lead">Wie weit die Woche deine Kampagnen gebracht hat.</p>
+        <p class="page-lead">
+          Wie weit die Woche deine Kampagnen gebracht hat.
+        </p>
       </div>
       <!-- "Diese Woche" first, so the arrows keep their place when it leaves. -->
       <div class="week-review__nav">
@@ -233,7 +237,9 @@ function onSaved(answers: WeekReviewAnswers): void {
           >
         </template>
         <template v-else>
-          <strong>In dieser Woche ist nichts gemessen und nichts erledigt.</strong>
+          <strong
+            >In dieser Woche ist nichts gemessen und nichts erledigt.</strong
+          >
           <span>Auch eine ruhige Woche darf einen Rückblick haben.</span>
         </template>
       </div>
