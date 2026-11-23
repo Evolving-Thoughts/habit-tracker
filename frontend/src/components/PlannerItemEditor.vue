@@ -152,7 +152,8 @@ const weeklyTarget = ref<string | number>("");
  */
 const isCampaign = computed(
   () =>
-    !!loadedTodo.value && loadedTodo.value.campaign?.id === loadedTodo.value.id,
+    !!loadedTodo.value &&
+    loadedTodo.value.campaign?.id === loadedTodo.value.id,
 );
 /** At the top now (as chosen): colour, icon and goal are on offer. */
 const isTopLevel = computed(() => parentId.value === null);

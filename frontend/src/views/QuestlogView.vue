@@ -181,8 +181,7 @@ async function onCreated(): Promise<void> {
 const openList = ref<HTMLElement | null>(null);
 function listRef(key: string) {
   return (element: unknown) => {
-    if (key === "open")
-      openList.value = (element as HTMLElement | null) ?? null;
+    if (key === "open") openList.value = (element as HTMLElement | null) ?? null;
   };
 }
 async function moveInList(from: number, to: number): Promise<void> {
@@ -193,9 +192,10 @@ async function moveInList(from: number, to: number): Promise<void> {
   if (!todo || order[from] === todo) return;
   todos.value = order;
   successMessage.value = `„${todo.title}“ steht jetzt an Stelle ${to + 1} von ${order.length}.`;
-  const written = await write(() => reorderBacklog(order.map(({ id }) => id)), {
-    fallbackError: "Die Reihenfolge konnte nicht gespeichert werden.",
-  });
+  const written = await write(
+    () => reorderBacklog(order.map(({ id }) => id)),
+    { fallbackError: "Die Reihenfolge konnte nicht gespeichert werden." },
+  );
   if (written) return;
   // Taken back at once; the error says why.
   todos.value = before;
@@ -205,10 +205,7 @@ useSortable(openList, {
   item: "[data-todo-id]",
   onMove: (from, to) => void moveInList(from, to),
 });
-async function shiftInList(
-  todo: TodoResponse,
-  direction: -1 | 1,
-): Promise<void> {
+async function shiftInList(todo: TodoResponse, direction: -1 | 1): Promise<void> {
   const from = todos.value.indexOf(todo);
   if (from === -1) return;
   await moveInList(from, from + direction);
@@ -571,4 +568,5 @@ useShortcutHandlers({
 .dump-done__toggle[aria-expanded="true"] :deep(svg) {
   transform: rotate(90deg);
 }
+
 </style>

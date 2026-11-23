@@ -195,12 +195,7 @@ function toggleOverdue(): void {
 /** A choice made on this device; until then the window's width decides. */
 const questlogChoice = ref<string | null>(readQuestlogChoice());
 const questlogOpen = computed(() =>
-  questlogStartsOpen(
-    questlogChoice.value,
-    frameWidth.value
-      ? frameWidth.value >= BOARD.questlogOpen + BOARD.column + BOARD.gap
-      : wide.value,
-  ),
+  questlogStartsOpen(questlogChoice.value, frameWidth.value ? frameWidth.value >= BOARD.questlogOpen + BOARD.column + BOARD.gap : wide.value),
 );
 function toggleQuestlog(): void {
   const choice: QuestlogChoice = questlogOpen.value ? "closed" : "open";
@@ -354,9 +349,7 @@ async function applyDrop(drop: Drop): Promise<void> {
 }
 
 /** An open stored run on the board or left behind, with the day it is on. */
-function findRun(
-  occurrenceId: number,
-): { run: OpenRun; date: string | null } | null {
+function findRun(occurrenceId: number): { run: OpenRun; date: string | null } | null {
   const current = plan.value;
   if (!current) return null;
   for (const entry of current.overdue)
@@ -372,9 +365,7 @@ function findRun(
 /** "bis Freitag, 21. Nov." or, when it may stay only where it is, nothing. */
 function windowLine(run: OpenRun): string {
   return run.moveUntil
-    ? fullStop(
-        `„${run.title}“ kann höchstens bis ${dayLabel(run.moveUntil)} warten`,
-      )
+    ? fullStop(`„${run.title}“ kann höchstens bis ${dayLabel(run.moveUntil)} warten`)
     : `„${run.title}“ bleibt an seinem Tag.`;
 }
 
@@ -465,10 +456,7 @@ function focusCard(key: string, on: "menu" | "card"): void {
  * run (a run the schedule only forecasts has none yet). `date` is the
  * column the card stands in, for the focus to come back to.
  */
-function openEditing(
-  entry: WeekPlanEntry | { todoId: number },
-  date = "",
-): void {
+function openEditing(entry: WeekPlanEntry | { todoId: number }, date = ""): void {
   if (dialogBusy.value || writes.busy.value) return;
   if ("type" in entry && entry.type === "habit") {
     listFocus.remember(entryKey(entry, date));
@@ -787,9 +775,7 @@ function moveRunByShortcut(
       { key: "plan" },
     );
     if (moved)
-      status.value = fullStop(
-        `„${run.title}“ steht jetzt am ${dayLabel(date)}`,
-      );
+      status.value = fullStop(`„${run.title}“ steht jetzt am ${dayLabel(date)}`);
   });
   return true;
 }
@@ -837,9 +823,7 @@ function openQuest(key: string | null): WeekPlanTodoEntry | null {
 }
 
 /** An open stored run of the board by its row key, with its day (null: left behind). */
-function openRun(
-  key: string | null,
-): { run: OpenRun; date: string | null } | null {
+function openRun(key: string | null): { run: OpenRun; date: string | null } | null {
   const current = plan.value;
   if (!current) return null;
   for (const entry of current.overdue)
@@ -1155,11 +1139,7 @@ useShortcutHandlers({
         aria-label="Plan wird geladen"
       >
         <span class="plan-view__bone plan-view__bone--questlog" />
-        <span
-          v-for="index in shownCount"
-          :key="index"
-          class="plan-view__bone"
-        />
+        <span v-for="index in shownCount" :key="index" class="plan-view__bone" />
       </div>
       <div v-else-if="loadError" class="alert" role="alert">
         <p>{{ loadError }}</p>

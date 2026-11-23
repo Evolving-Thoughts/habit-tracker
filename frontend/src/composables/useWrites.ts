@@ -34,9 +34,7 @@ export function useWrites(
   const isWriting = (key: string): boolean => writing.value.includes(key);
 
   /** After a child dialog wrote on its own. */
-  async function applied(
-    notify: () => void = notifyDataChanged,
-  ): Promise<void> {
+  async function applied(notify: () => void = notifyDataChanged): Promise<void> {
     notify();
     await reload(false);
   }

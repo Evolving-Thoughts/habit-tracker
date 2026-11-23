@@ -43,7 +43,8 @@ const heading = computed(
 const intro = computed(
   () =>
     ({
-      login: "Schön, dass du da bist. Deine Quests und Dailies, nur für dich.",
+      login:
+        "Schön, dass du da bist. Deine Quests und Dailies, nur für dich.",
       register:
         "Ein Konto nur für dich. Danach schicken wir dir einen Link zur Bestätigung.",
       forgot:

@@ -545,7 +545,9 @@ function rowMenu(item: DayPlannerItem): MenuEntry[] {
           ? () => void router.push({ name: "focus" })
           : undefined,
       reparent:
-        item.type === "todo" ? () => openMenuDialog(item, "move") : undefined,
+        item.type === "todo"
+          ? () => openMenuDialog(item, "move")
+          : undefined,
       up:
         stepFrom(item, -1) !== null
           ? () => void shiftInOrder(item, -1)
@@ -920,10 +922,7 @@ useShortcutHandlers(
               }}
             </p>
           </section>
-          <section
-            v-else-if="!agenda.carriedOver.length"
-            class="today-view__empty"
-          >
+          <section v-else-if="!agenda.carriedOver.length" class="today-view__empty">
             <h2>Alles für heute erledigt.</h2>
             <p>Der Rest des Tages gehört dir.</p>
           </section>
@@ -970,9 +969,7 @@ useShortcutHandlers(
               data-sort-anchor
             >
               <span class="today-view__event-time">{{ entry.time }}</span>
-              <span class="today-view__event-title">{{
-                entry.event.title
-              }}</span>
+              <span class="today-view__event-title">{{ entry.event.title }}</span>
               <span class="today-view__event-source">Google Kalender</span>
             </div>
             <PlannerItem
@@ -1056,7 +1053,9 @@ useShortcutHandlers(
                 Morgen
               </button>
               <button
-                v-if="item.type === 'todo' || !!item.moveUntil"
+                v-if="
+                  item.type === 'todo' || !!item.moveUntil
+                "
                 class="catch-up__chip"
                 type="button"
                 data-move-button
@@ -1473,6 +1472,7 @@ useShortcutHandlers(
 .order > .focus {
   margin-bottom: var(--space-1);
 }
+
 
 .postpone__lead {
   margin: 0 0 var(--space-4);

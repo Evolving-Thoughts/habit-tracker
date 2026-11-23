@@ -11,13 +11,7 @@ function harness() {
   const onChange = () => steps.push("notify");
   window.addEventListener("timer-data-changed", onChange);
   const stop = () => window.removeEventListener("timer-data-changed", onChange);
-  return {
-    steps,
-    errorMessage,
-    reload,
-    stop,
-    ...useWrites(reload, errorMessage),
-  };
+  return { steps, errorMessage, reload, stop, ...useWrites(reload, errorMessage) };
 }
 
 describe("useWrites", () => {

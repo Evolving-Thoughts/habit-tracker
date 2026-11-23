@@ -235,11 +235,7 @@ useShortcutHandlers({
       <p class="focus-view__eyebrow">Fokus-Modus</p>
     </header>
 
-    <p
-      v-if="errorMessage || actionError"
-      class="focus-view__error"
-      role="alert"
-    >
+    <p v-if="errorMessage || actionError" class="focus-view__error" role="alert">
       {{ errorMessage || actionError }}
     </p>
 
