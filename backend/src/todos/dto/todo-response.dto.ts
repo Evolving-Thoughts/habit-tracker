@@ -1,6 +1,7 @@
 import type { CampaignColor, CampaignIcon } from '../campaign-style';
 import type { Campaign } from '../todo-ancestry';
 import type { InheritedWhy } from '../todo-hierarchy';
+import type { FocusBlockOverride } from '../../focus-blocks/focus-block-rules';
 
 export type TodoResponseDtoProperties = {
   id: number;
@@ -23,6 +24,7 @@ export type TodoResponseDtoProperties = {
   scheduledDate: string | null;
   timeOfDay: string | null;
   plannedDurationMinutes: number | null;
+  focusBlock?: FocusBlockOverride;
   /** Whether a timer may be started for this todo (see timer-target). */
   timerEligible: boolean;
 };
@@ -53,6 +55,8 @@ export class TodoResponseDto {
   /** HH:mm of an appointment; null for a todo that only has its day. */
   readonly timeOfDay: string | null;
   readonly plannedDurationMinutes: number | null;
+  /** Fokus-Sperre: the default rule, always or never. */
+  readonly focusBlock: FocusBlockOverride;
   readonly timerEligible: boolean;
 
   constructor(properties: TodoResponseDtoProperties) {
@@ -75,6 +79,7 @@ export class TodoResponseDto {
     this.scheduledDate = properties.scheduledDate;
     this.timeOfDay = properties.timeOfDay;
     this.plannedDurationMinutes = properties.plannedDurationMinutes;
+    this.focusBlock = properties.focusBlock ?? 'default';
     this.timerEligible = properties.timerEligible;
   }
 }

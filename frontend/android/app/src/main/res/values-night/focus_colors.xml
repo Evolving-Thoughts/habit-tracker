@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The block screen in the app's tokens (frontend/src/style.css, dark). -->
+<resources>
+    <color name="focus_ground">#1E1611</color>
+    <color name="focus_ink">#F6E9DF</color>
+    <color name="focus_ink_muted">#CDB4A4</color>
+    <color name="focus_action">#F08A4E</color>
+    <color name="focus_action_strong">#FFA774</color>
+    <color name="focus_on_action">#2B1408</color>
+</resources>

@@ -61,6 +61,8 @@ export type HabitResponse = {
   isActive: boolean;
   plannedDurationMinutes: number | null;
   timeOfDay: string | null;
+  /** Fokus-Sperre: the default rule, always or never (see focus-block.ts). */
+  focusBlock?: "default" | "always" | "never";
   timerOccurrenceId: number | null;
   timerDurationMinutes: number | null;
   currentSchedule: ScheduleVersionResponse | null;
@@ -87,6 +89,7 @@ export type UpdateHabitInput = {
   timeOfDay?: string | null;
   title?: string;
   isActive?: boolean;
+  focusBlock?: "default" | "always" | "never";
 };
 
 export type ChangeHabitScheduleInput = {
@@ -100,6 +103,7 @@ export type CreateHabitInput = {
   why?: string | null;
   plannedDurationMinutes?: number | null;
   timeOfDay?: string;
+  focusBlock?: "default" | "always" | "never";
   title: string;
   startDate?: string;
   schedule: HabitScheduleRule;

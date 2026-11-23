@@ -146,3 +146,30 @@ describe("habitChanges", () => {
     );
   });
 });
+
+describe("Fokus-Sperre in the editor", () => {
+  it("sends the quest's choice only when it changed", () => {
+    expect(todoChanges({ ...asLoaded, focusBlock: "default" }, todo)).toEqual(
+      base,
+    );
+    expect(todoChanges({ ...asLoaded, focusBlock: "always" }, todo)).toEqual({
+      ...base,
+      focusBlock: "always",
+    });
+    expect(
+      todoChanges(
+        { ...asLoaded, focusBlock: "default" },
+        { ...todo, focusBlock: "never" },
+      ),
+    ).toEqual({ ...base, focusBlock: "default" });
+  });
+
+  it("sends the daily's choice only when it changed", () => {
+    expect(
+      habitChanges({ ...habitAsLoaded, focusBlock: "default" }, habit),
+    ).toEqual({});
+    expect(
+      habitChanges({ ...habitAsLoaded, focusBlock: "never" }, habit),
+    ).toEqual({ focusBlock: "never" });
+  });
+});

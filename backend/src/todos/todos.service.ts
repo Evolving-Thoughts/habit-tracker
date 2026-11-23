@@ -200,6 +200,7 @@ export class TodosService {
                 : await nextBacklogPosition(manager, userId)
               : null,
           plannedDurationMinutes: dto.plannedDurationMinutes ?? null,
+          focusBlock: dto.focusBlock ?? 'default',
           ...campaign,
         }),
       );
@@ -248,6 +249,7 @@ export class TodosService {
       if (dto.title !== undefined) todo.title = dto.title;
       if (dto.plannedDurationMinutes !== undefined)
         todo.plannedDurationMinutes = dto.plannedDurationMinutes;
+      if (dto.focusBlock !== undefined) todo.focusBlock = dto.focusBlock;
       return saveQuest(
         manager,
         todo,

@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { assertDateOnly } from '../common/date/date-only.utils';
 import { releaseTimers } from '../timers/timer-target';
+import { endFocusBlocksOfDone } from '../focus-blocks/focus-block-store';
 import { TodoEntity } from './entities/todo.entity';
 
 /**
@@ -14,8 +15,8 @@ import { TodoEntity } from './entities/todo.entity';
  *   Questlog's order (`backlogPosition`), one that gets a day leaves it;
  * - a new or cleared time resets its place, so it anchors anew;
  * - an appointment needs a day;
- * - completing stamps `completedAt` once and ends its stopwatch in the same
- *   transaction; reopening clears the stamp.
+ * - completing stamps `completedAt` once and ends its stopwatch and its
+ *   Fokus-Sperre in the same transaction; reopening clears the stamp.
  *
  * Callers hold the per-user unit of work (`UserUnitOfWork`), so the timer
  * writes of `releaseTimers` keep the lock order user row → todo/timer rows.
@@ -65,9 +66,17 @@ export async function saveQuest(
   }
   assertQuestPlan(todo.scheduledDate, todo.timeOfDay);
   const saved = await manager.getRepository(TodoEntity).save(todo);
-  // A completed quest is no stopwatch target any more.
-  if (todo.completed)
+  // A completed quest is no stopwatch target any more, and its
+  // Fokus-Sperre ends, Hardcore included.
+  if (todo.completed) {
     await releaseTimers(manager, todo.userId, { todoIds: [todo.id] }, now);
+    await endFocusBlocksOfDone(
+      manager,
+      todo.userId,
+      { todoIds: [todo.id] },
+      now,
+    );
+  }
   return saved;
 }
 

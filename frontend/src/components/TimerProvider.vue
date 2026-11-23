@@ -8,6 +8,11 @@ import {
 } from "../utils/timer-duration";
 import { computed, onMounted, onUnmounted, provide, ref, watch } from "vue";
 import { createTimerController, timerKey } from "../composables/useTimer";
+import {
+  createFocusBlockController,
+  focusBlockKey,
+} from "../composables/useFocusBlock";
+import { hrefOf } from "../routes";
 import { useTargetNotice } from "../composables/useTargetNotice";
 import { writeDone } from "../composables/useTicks";
 import { formatStopwatch } from "../utils/stopwatch";
@@ -31,6 +36,21 @@ useDevicePushRestore();
 const controller = createTimerController();
 provide(timerKey, controller);
 const { timer, elapsed, reached, error, busy, switching } = controller;
+/*
+ * The Fokus-Sperre lives beside the stopwatch: it starts and ends with it,
+ * so it is read again whenever the stopwatch changes, and on Android handed
+ * to the plugin after every read.
+ */
+const focusBlock = createFocusBlockController();
+provide(focusBlockKey, focusBlock);
+watch(
+  // A string, so the 3-second poll's fresh objects do not count as a change.
+  () => `${timer.value?.id ?? ""}:${timer.value?.state ?? ""}`,
+  () => void focusBlock.refresh(),
+);
+const stopOpenFocus = focusBlock.native?.onOpenFocus(() => {
+  window.location.hash = hrefOf("focus");
+});
 const notice = useTargetNotice(controller);
 const editingId = ref<string>();
 const editing = ref(false);
@@ -111,9 +131,15 @@ const moreActions = computed<MenuEntry[]>(() => {
 });
 let ticker: ReturnType<typeof setInterval>;
 let poller: ReturnType<typeof setInterval>;
+let focusPoller: ReturnType<typeof setInterval>;
+let focusTicker: ReturnType<typeof setInterval>;
 function refresh(): void {
   if (document.visibilityState !== "hidden") void controller.refresh();
 }
+function refreshFocus(): void {
+  if (document.visibilityState !== "hidden") void focusBlock.refresh();
+}
+onTargetsChanged(refreshFocus);
 onTargetsChanged(refresh);
 onMounted(() => {
   void controller.refresh();
@@ -121,13 +147,25 @@ onMounted(() => {
   poller = setInterval(refresh, 3000);
   window.addEventListener("focus", refresh);
   document.addEventListener("visibilitychange", refresh);
+  void focusBlock.refresh();
+  // A block started on another device, a list changed elsewhere.
+  focusPoller = setInterval(refreshFocus, 30_000);
+  focusTicker = setInterval(focusBlock.tick, 10_000);
+  window.addEventListener("focus", refreshFocus);
+  document.addEventListener("visibilitychange", refreshFocus);
 });
 onUnmounted(() => {
   controller.dispose();
+  focusBlock.dispose();
+  stopOpenFocus?.();
   clearInterval(ticker);
   clearInterval(poller);
+  clearInterval(focusPoller);
+  clearInterval(focusTicker);
   window.removeEventListener("focus", refresh);
   document.removeEventListener("visibilitychange", refresh);
+  window.removeEventListener("focus", refreshFocus);
+  document.removeEventListener("visibilitychange", refreshFocus);
 });
 </script>
 <template>

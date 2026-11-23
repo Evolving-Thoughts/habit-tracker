@@ -34,6 +34,10 @@ function store(lastBacklog: number | null, timers: TimerEntity[] = []) {
       select: () => chain,
       where: () => chain,
       andWhere: () => chain,
+      // Ending a Fokus-Sperre with the stopwatch or the quest.
+      update: () => chain,
+      set: () => chain,
+      execute: () => Promise.resolve(),
       getRawOne: () => Promise.resolve({ edge: lastBacklog }),
       getMany: () => Promise.resolve(result),
     };

@@ -83,6 +83,10 @@ for (const view of ["Questlog", "Heute", "Dailies"] as const) {
         ),
       ).toBe(true);
     }
+    // Where the walk ends depends on the form's length. Inside the notes
+    // Escape only leaves the field (RichTextEditor), so it starts from one
+    // that is the same in every editor.
+    await dialog.locator('[name="title"]').focus();
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible();
     await expect(edit).toBeFocused();

@@ -28,6 +28,7 @@ export class TodoMapper {
       scheduledDate: todo.scheduledDate ?? null,
       timeOfDay: todo.timeOfDay ?? null,
       plannedDurationMinutes: todo.plannedDurationMinutes,
+      focusBlock: todo.focusBlock,
       timerEligible: isTodoTimerEligible(todo),
     });
   }

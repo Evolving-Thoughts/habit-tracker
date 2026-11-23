@@ -1,4 +1,8 @@
 import {
+  FOCUS_BLOCK_OVERRIDES,
+  type FocusBlockOverride,
+} from '../../focus-blocks/focus-block-rules';
+import {
   IsBoolean,
   IsDateString,
   IsIn,
@@ -10,6 +14,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import {
   CAMPAIGN_COLORS,
@@ -92,4 +97,9 @@ export class UpdateTodoDto {
   @IsOptional()
   @IsIn(CAMPAIGN_ICONS)
   readonly icon?: CampaignIcon | null;
+
+  /** Fokus-Sperre for this entry: the default rule, always or never. */
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsIn(FOCUS_BLOCK_OVERRIDES)
+  readonly focusBlock?: FocusBlockOverride;
 }

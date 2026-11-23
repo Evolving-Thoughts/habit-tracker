@@ -146,6 +146,31 @@ describe("PlannerItemEditor", () => {
     });
     expect(changeHabitSchedule).not.toHaveBeenCalled();
   });
+  it("sets the Fokus-Sperre of a quest and of a daily in their editors", async () => {
+    vi.mocked(getTodo).mockResolvedValue({ ...todo, focusBlock: "never" });
+    const quest = mount(PlannerItemEditor, {
+      props: { kind: "todo", entityId: 1 },
+    });
+    await flushPromises();
+    // A choice of its own keeps its group open.
+    expect(
+      quest.get<HTMLInputElement>("[data-test='focus-block-never']").element
+        .checked,
+    ).toBe(true);
+    await quest.get("[data-test='focus-block-always']").setValue(true);
+    await save(quest);
+    expect(vi.mocked(updateTodo).mock.calls[0]![1]).toMatchObject({
+      focusBlock: "always",
+    });
+
+    const daily = mountHabitEditor();
+    await flushPromises();
+    await daily.findAll("button").find((b) => b.text().startsWith("Fokus-Sperre"))!.trigger("click");
+    await daily.get("[data-test='focus-block-never']").setValue(true);
+    await save(daily);
+    expect(updateHabit).toHaveBeenCalledWith(10, { focusBlock: "never" });
+  });
+
   it("offers notes for a quest, and for a daily only when opened from a run", async () => {
     const quest = mount(PlannerItemEditor, {
       props: { kind: "todo", entityId: 1 },
@@ -877,10 +902,11 @@ describe("PlannerItemEditor", () => {
         "Termin (feste Uhrzeit)",
         "Ziel mit Daily (Daily und Zeitraum)",
         "Kategorie",
+        "Fokus-Sperre",
       ]);
       expect(
         toggles(wrapper).map((button) => button.attributes("aria-expanded")),
-      ).toEqual(["false", "false", "false", "false"]);
+      ).toEqual(["false", "false", "false", "false", "false"]);
       // The period means nothing without a daily: it is not even in the form.
       expect(wrapper.find('input[name="periodStart"]').exists()).toBe(false);
     });
@@ -892,6 +918,7 @@ describe("PlannerItemEditor", () => {
         "Termin (feste Uhrzeit)",
         "Ziel mit Daily (Daily und Zeitraum)",
         "Kategorie",
+        "Fokus-Sperre",
       ]);
     });
 
@@ -904,11 +931,12 @@ describe("PlannerItemEditor", () => {
         periodEnd: "2026-10-31",
         categoryId: 7,
         icon: "book",
+        focusBlock: "always",
       });
       await flushPromises();
       expect(
         toggles(wrapper).map((button) => button.attributes("aria-expanded")),
-      ).toEqual(["true", "true", "true", "true"]);
+      ).toEqual(["true", "true", "true", "true", "true"]);
       expect(
         wrapper.get<HTMLInputElement>('input[name="timeOfDay"]').element.value,
       ).toBe("10:00");

@@ -5,6 +5,7 @@ import type { CampaignColor } from '../../todos/campaign-style';
 import type { Campaign } from '../../todos/todo-ancestry';
 import type { Streak } from '../../habits/streaks';
 import type { MonthChallengeResponse } from '../../month-challenges/month-challenge.dto';
+import type { FocusBlockOverride } from '../../focus-blocks/focus-block-rules';
 
 export type DayPlannerTodoStatus = 'pending' | 'completed';
 
@@ -44,6 +45,8 @@ export type DayPlannerTodoItemDto = {
   plannedDurationMinutes: number | null;
   isOverdue: boolean;
   timerEligible: boolean;
+  /** Fokus-Sperre: the quest's own choice (focus-block-rules.ts). */
+  focusBlock: FocusBlockOverride;
 } & DayPlannerItemContext;
 
 export type DayPlannerHabitItemDto = {
@@ -67,6 +70,8 @@ export type DayPlannerHabitItemDto = {
   streak: Streak;
   /** The Daily carries the running Monats-Challenge (the row's marker). */
   monthChallenge: boolean;
+  /** Fokus-Sperre: the daily's own choice (focus-block-rules.ts). */
+  focusBlock: FocusBlockOverride;
 } & DayPlannerItemContext;
 
 export type DayPlannerItemDto = DayPlannerTodoItemDto | DayPlannerHabitItemDto;

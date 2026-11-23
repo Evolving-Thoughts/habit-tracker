@@ -2,6 +2,7 @@ import { UserEntity } from '../../auth/auth.entities';
 import { CategoryEntity } from '../../categories/category.entity';
 import type { CampaignColor, CampaignIcon } from '../campaign-style';
 import type { NotesDocument } from '../todo-notes';
+import type { FocusBlockOverride } from '../../focus-blocks/focus-block-rules';
 import {
   Check,
   Column,
@@ -27,6 +28,10 @@ import {
 @Check(
   'CHK_todos_weekly_target',
   '"weeklyTargetMinutes" IS NULL OR "weeklyTargetMinutes" BETWEEN 1 AND 6000',
+)
+@Check(
+  'CHK_todos_focus_block',
+  `"focusBlock" IN ('default', 'always', 'never')`,
 )
 export class TodoEntity {
   @Index()
@@ -140,6 +145,10 @@ export class TodoEntity {
     nullable: true,
   })
   plannedDurationMinutes!: number | null;
+
+  /** Fokus-Sperre: the default rule, always or never (focus-block-rules.ts). */
+  @Column({ type: 'varchar', length: 8, default: 'default' })
+  focusBlock!: FocusBlockOverride;
 
   @CreateDateColumn({
     type: 'timestamptz',

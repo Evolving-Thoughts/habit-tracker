@@ -3,6 +3,8 @@ export type TimerTarget = {
   kind: "todo" | "occurrence";
   targetId: number;
   title: string;
+  /** From the Fokus-Modus: a Fokus-Sperre may start with the stopwatch. */
+  focusBlock?: { mode?: "soft" | "hardcore" };
 };
 /** The one running or paused stopwatch of the signed-in user. */
 export type Timer = {

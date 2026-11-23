@@ -18,6 +18,7 @@ import { AnchoredAppointments1796200000000 } from './migrations/1796200000000-An
 import { StopwatchIdle1796300000000 } from './migrations/1796300000000-StopwatchIdle';
 import { DayBests1796400000000 } from './migrations/1796400000000-DayBests';
 import { MonthChallenges1796500000000 } from './migrations/1796500000000-MonthChallenges';
+import { FocusBlocks1796600000000 } from './migrations/1796600000000-FocusBlocks';
 
 type PostgresOptions = Extract<DataSourceOptions, { type: 'postgres' }>;
 
@@ -58,6 +59,7 @@ export function databaseOptions(
       StopwatchIdle1796300000000,
       DayBests1796400000000,
       MonthChallenges1796500000000,
+      FocusBlocks1796600000000,
     ],
   };
 }

@@ -1,7 +1,9 @@
 import { UserEntity } from '../../auth/auth.entities';
 import { CategoryEntity } from '../../categories/category.entity';
 import { TodoEntity } from '../../todos/entities/todo.entity';
+import type { FocusBlockOverride } from '../../focus-blocks/focus-block-rules';
 import {
+  Check,
   Column,
   Index,
   JoinColumn,
@@ -14,6 +16,10 @@ import {
 } from 'typeorm';
 
 @Entity({ name: 'habits' })
+@Check(
+  'CHK_habits_focus_block',
+  `"focusBlock" IN ('default', 'always', 'never')`,
+)
 export class HabitEntity {
   @Index()
   @Column({ type: 'uuid' })
@@ -29,6 +35,10 @@ export class HabitEntity {
   /** Fixed start as HH:mm in local time; null when only the day is planned. */
   @Column({ type: 'varchar', length: 5, nullable: true })
   timeOfDay!: string | null;
+
+  /** Fokus-Sperre: the default rule, always or never (focus-block-rules.ts). */
+  @Column({ type: 'varchar', length: 8, default: 'default' })
+  focusBlock!: FocusBlockOverride;
 
   @PrimaryGeneratedColumn()
   id!: number;

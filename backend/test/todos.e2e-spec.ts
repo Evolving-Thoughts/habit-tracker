@@ -174,6 +174,7 @@ describe('Todos API (e2e)', () => {
         timeOfDay: null,
         plannedDurationMinutes: null,
         timerEligible: true,
+        focusBlock: 'default',
       });
 
       const persistedTodo = await todoRepository.findOneBy({

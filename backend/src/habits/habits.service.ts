@@ -175,6 +175,7 @@ export class HabitsService {
           why: normalizeWhy(dto.why),
           plannedDurationMinutes: dto.plannedDurationMinutes ?? null,
           timeOfDay: dto.timeOfDay ?? null,
+          focusBlock: dto.focusBlock ?? 'default',
           userId,
           title,
           isActive: true,
@@ -206,7 +207,8 @@ export class HabitsService {
       dto.timeOfDay === undefined &&
       dto.categoryId === undefined &&
       dto.campaignId === undefined &&
-      dto.why === undefined
+      dto.why === undefined &&
+      dto.focusBlock === undefined
     ) {
       throw new BadRequestException('At least one property must be provided');
     }
@@ -228,6 +230,7 @@ export class HabitsService {
       const timeChanged =
         dto.timeOfDay !== undefined && dto.timeOfDay !== habit.timeOfDay;
       if (dto.timeOfDay !== undefined) habit.timeOfDay = dto.timeOfDay;
+      if (dto.focusBlock !== undefined) habit.focusBlock = dto.focusBlock;
       if (timeChanged)
         // Like a quest with a new time: its open runs take their place anew,
         // right after the appointment before them on the clock (day-order.ts).

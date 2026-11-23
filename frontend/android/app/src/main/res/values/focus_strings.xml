@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="focus_accessibility_label">Fokus-Sperre</string>
+    <string name="focus_accessibility_description">Die Fokus-Sperre erkennt, welche App gerade vorne ist (nur ihren Paketnamen), und legt während einer Sperre aus dem Fokus-Modus den Sperrbildschirm über Apps deiner Sperrliste. Sie liest keine Inhalte von Bildschirmen, keine Eingaben und sendet nichts davon irgendwohin. Ausschalten hebt die Sperre auf.</string>
+    <string name="focus_block_eyebrow">Fokus-Sperre</string>
+    <string name="focus_block_title">Fokus läuft: %1$s</string>
+    <plurals name="focus_block_minutes_left">
+        <item quantity="one">noch %1$d Min. · Hardcore</item>
+        <item quantity="other">noch %1$d Min. · Hardcore</item>
+    </plurals>
+    <string name="focus_block_almost_done">Gleich vorbei · Hardcore</string>
+    <string name="focus_block_soft">Soft: Du kannst die Sperre aufheben.</string>
+    <string name="focus_block_back">Zurück zur Quest</string>
+    <string name="focus_block_lift">Sperre aufheben</string>
+    <string name="focus_block_lift_question">Sperre aufheben?</string>
+    <string name="focus_block_lift_detail">Apps und Websites der Liste sind dann wieder frei. Die Stoppuhr läuft weiter.</string>
+    <string name="focus_block_keep">Weiter sperren</string>
+    <string name="focus_vpn_session">Fokus-Sperre (nur DNS)</string>
+    <string name="focus_vpn_channel">Fokus-Sperre</string>
+    <string name="focus_vpn_title">Fokus-Sperre aktiv</string>
+    <string name="focus_vpn_text">Gesperrte Websites lösen in Browsern nicht auf. Nur DNS, sonst nichts.</string>
+</resources>

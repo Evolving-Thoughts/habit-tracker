@@ -16,6 +16,8 @@ export type CreateTodoInput = CampaignInput & {
   /** HH:mm makes it an appointment fixed to that time; needs a day. */
   timeOfDay: string | null;
   plannedDurationMinutes: number | null;
+  /** Fokus-Sperre: the default rule, always or never (see focus-block.ts). */
+  focusBlock?: "default" | "always" | "never";
   /** Without a day: the head or (default) the end of the Questlog's order. */
   backlogPlace?: "top" | "bottom";
 };
@@ -59,6 +61,8 @@ export type TodoResponse = Required<TodoGoalInput> & {
   scheduledDate: string | null;
   timeOfDay: string | null;
   plannedDurationMinutes: number | null;
+  /** Fokus-Sperre: the default rule, always or never (see focus-block.ts). */
+  focusBlock?: "default" | "always" | "never";
   /** Server-side timer-target rule: may a timer run for this todo? */
   timerEligible: boolean;
 };

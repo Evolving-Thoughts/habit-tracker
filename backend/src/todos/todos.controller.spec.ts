@@ -50,6 +50,7 @@ describe('TodosController', () => {
     dayPosition: null,
     backlogPosition: null,
     plannedDurationMinutes: null,
+    focusBlock: 'default',
     createdAt: new Date('2026-09-18T10:00:00.000Z'),
     updatedAt: new Date('2026-09-18T10:00:00.000Z'),
     deletedAt: null,
@@ -113,6 +114,7 @@ describe('TodosController', () => {
           scheduledDate: null,
           timeOfDay: null,
           plannedDurationMinutes: null,
+          focusBlock: 'default',
           timerEligible: true,
         },
       ]);
@@ -153,6 +155,7 @@ describe('TodosController', () => {
         scheduledDate: null,
         timeOfDay: null,
         plannedDurationMinutes: null,
+        focusBlock: 'default',
         timerEligible: true,
       });
 
@@ -199,6 +202,7 @@ describe('TodosController', () => {
         scheduledDate: null,
         timeOfDay: null,
         plannedDurationMinutes: null,
+        focusBlock: 'default',
         timerEligible: true,
       });
 
@@ -265,6 +269,7 @@ describe('TodosController', () => {
         scheduledDate: '2026-09-20',
         timeOfDay: '12:00',
         plannedDurationMinutes: 30,
+        focusBlock: 'default',
         timerEligible: true,
       });
 
@@ -320,6 +325,7 @@ describe('TodosController', () => {
         scheduledDate: null,
         timeOfDay: null,
         plannedDurationMinutes: null,
+        focusBlock: 'default',
         timerEligible: false,
       });
 
@@ -372,6 +378,7 @@ describe('TodosController', () => {
         scheduledDate: null,
         timeOfDay: null,
         plannedDurationMinutes: null,
+        focusBlock: 'default',
         timerEligible: true,
       });
 
@@ -427,6 +434,7 @@ describe('TodosController', () => {
         scheduledDate: '2026-09-20',
         timeOfDay: '12:00',
         plannedDurationMinutes: 30,
+        focusBlock: 'default',
         timerEligible: true,
       });
 
