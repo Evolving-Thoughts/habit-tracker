@@ -9,3 +9,19 @@ export function firstThatFits(
 ): string {
   return options.find((text) => measure(text) <= available) ?? options.at(-1) ?? "";
 }
+
+/**
+ * The width text gets inside `element`: its border box less borders and
+ * padding. Not `clientWidth`, which for an `<input>` leaves the padding out
+ * in newer Chromium (158) and keeps it in older ones.
+ */
+export function contentWidth(element: HTMLElement): number {
+  const style = getComputedStyle(element);
+  return (
+    element.offsetWidth -
+    parseFloat(style.borderLeftWidth) -
+    parseFloat(style.borderRightWidth) -
+    parseFloat(style.paddingLeft) -
+    parseFloat(style.paddingRight)
+  );
+}

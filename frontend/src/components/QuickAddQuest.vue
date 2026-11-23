@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { createTodo, reorderDay } from "../api/day-planner.api";
 import { useInsertPlace } from "../composables/useInsertPlace";
-import { firstThatFits } from "../utils/fit-text";
+import { contentWidth, firstThatFits } from "../utils/fit-text";
 import AppIcon from "./AppIcon.vue";
 
 type OrderedItem = { type: "todo" | "habit"; id: number };
@@ -47,13 +47,9 @@ function fitPlaceholder(): void {
   if (!context) return;
   const style = getComputedStyle(input);
   context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-  const available =
-    input.clientWidth -
-    parseFloat(style.paddingLeft) -
-    parseFloat(style.paddingRight);
   placeholder.value = firstThatFits(
     PLACEHOLDERS,
-    available,
+    contentWidth(input),
     (text) => context!.measureText(text).width,
   );
 }

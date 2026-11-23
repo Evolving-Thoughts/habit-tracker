@@ -1,6 +1,11 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": { "noEmit": true, "incremental": false, "skipLibCheck": true },
+  "compilerOptions": {
+    "rootDir": "..",
+    "noEmit": true,
+    "incremental": false,
+    "skipLibCheck": true
+  },
   "include": ["test/contract.check.ts"],
   "exclude": []
 }

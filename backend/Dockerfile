@@ -1,11 +1,11 @@
-FROM node:24.20.0-alpine AS build
+FROM node:26.13.1-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npm run build && npm prune --omit=dev
 
-FROM node:24.20.0-alpine
+FROM node:26.13.1-alpine
 WORKDIR /app
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
 COPY --from=build /app/package.json ./
