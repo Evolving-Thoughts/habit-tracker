@@ -21,7 +21,6 @@ import {
 } from './timer-target';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
-import { ownedOccurrences } from '../habit-occurrences/owned-occurrences';
 import {
   elapsedAt,
   forgottenSince,
@@ -95,19 +94,13 @@ export class TimersService {
         throw new ConflictException('Erledigte Quests zuerst wieder öffnen.');
       return todo;
     }
-    const first = await ownedOccurrences(manager, userId)
-      .andWhere('occurrence.id = :id', { id })
-      .getOne();
-    if (!first) throw new NotFoundException('Daily-Ausführung nicht gefunden.');
-    const habit = await this.scheduling.lockHabit(
-      userId,
-      manager,
-      first.habitId,
-    );
-    await this.scheduling.reconcile(manager, habit, now);
-    const occurrence = await manager.findOneByOrFail(HabitOccurrenceEntity, {
-      id,
-    });
+    const { habit, occurrence } = await this.scheduling
+      .openRun(manager, userId, id, now)
+      .catch((error: unknown) => {
+        if (error instanceof NotFoundException)
+          throw new NotFoundException('Daily-Ausführung nicht gefunden.');
+        throw error;
+      });
     if (!isOccurrenceTimerEligible(occurrence, habit, dayOf(now)))
       throw new ConflictException('Keine offene fällige Daily-Ausführung.');
     occurrence.habit = habit;

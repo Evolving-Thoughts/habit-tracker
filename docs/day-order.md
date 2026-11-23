@@ -46,6 +46,13 @@ The time-based replanner ("Neu planen"), the day-end setting and the per-calenda
   the time turns an appointment into a todo of its day, at the end of it.
 - An appointment only moves with `confirmFixed`, as before, and keeps its time.
 - Completing or skipping does not touch positions.
+- One module applies these rules to a todo: `saveQuest` in
+  `backend/src/todos/quest-commands.ts` (day, time, completion; it ends the
+  stopwatch of a completed quest in the same transaction). `TodosService`
+  and the Google sync both go through it. Daily runs move and change status
+  through `HabitSchedulingService.moveRun` / `setRunStatus`, which lock the
+  habit, reconcile its runs and end a resolved run's stopwatch; the Google
+  sync moves runs through `moveRun` too.
 
 ## API
 
@@ -71,7 +78,8 @@ The backlog keeps an order of its own: `todos.backlogPosition` (nullable
 integer, migration `1795800000000-BacklogOrder`, which numbers every todo
 without a day by creation). A todo that enters the backlog, by being created
 without a day or by losing its day, takes the place after the last one
-(`TodosService.nextBacklogPosition`); one that gets a day loses its place.
+(`nextBacklogPosition` in `todos/quest-commands.ts`); one that gets a day
+loses its place, also when the day comes from Google.
 `POST /todos` without a day takes `backlogPlace: 'top' | 'bottom'`
 (default `bottom`): `top` puts the new quest before the first one
 (`firstBacklogPosition`, the lowest position minus one, so positions may
@@ -96,7 +104,17 @@ new order shows at once and a failed write takes it back.
 Of the plan, only appointments are written to the app's own Google calendar.
 A todo that loses its time loses its event; an event deleted in Google puts the
 todo back into the backlog. A new event in the app's calendar becomes an
-appointment with the event's Berlin day and time. Finished work also goes out,
+appointment with the event's Berlin day and time.
+
+An edit in Google that moves an appointment goes through `saveQuest` like a
+move in the app, but on purpose without the checks of
+`POST /todos/:id/reschedule` (past day, `confirmFixed`, open stopwatch):
+Google already shows the new time, so it wins as `PATCH /todos/:id` does.
+A completed quest is left alone. An edit that moves a daily run is taken
+only where `POST /habit-occurrences/:id/reschedule` would take it
+(`moveRun`: an open run of the active version of an active habit, within
+its window, no open stopwatch); otherwise the run stays and the next sync
+writes the event back to it. Finished work also goes out,
 export only, as Logbuch events (see `logbook.md`).
 
 ## Frontend

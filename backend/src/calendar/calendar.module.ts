@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { HabitsModule } from '../habits/habits.module';
 import { CalendarController } from './calendar.controller';
 import {
   CalendarConnectionEntity,
@@ -15,6 +16,7 @@ import { GoogleCalendarClient } from './google-calendar.client';
 
 @Module({
   imports: [
+    HabitsModule,
     TypeOrmModule.forFeature([
       CalendarConnectionEntity,
       CalendarLinkEntity,
