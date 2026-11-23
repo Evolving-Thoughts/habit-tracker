@@ -5,6 +5,7 @@ defineProps<{
     | "today"
     | "plan"
     | "review"
+    | "best"
     | "focus"
     | "questlog"
     | "dailies"
@@ -118,6 +119,12 @@ defineProps<{
     <template v-else-if="name === 'review'">
       <path d="M4 20h16" />
       <path d="M7 16v-3M12 16V7M17 16v-6" />
+    </template>
+    <template v-else-if="name === 'best'">
+      <path
+        d="M11 4c.6 3.6 2.4 5.4 6 6-3.6.6-5.4 2.4-6 6-.6-3.6-2.4-5.4-6-6 3.6-.6 5.4-2.4 6-6Z"
+      />
+      <path d="M18.5 15v5M16 17.5h5" />
     </template>
     <template v-else-if="name === 'campaigns'">
       <rect x="9" y="3" width="6" height="5" rx="1.5" />

@@ -54,14 +54,33 @@ async function pushPreference() {
 const pushId = (value) =>
   typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+// What each kind of push shows. Fixed texts: a payload never carries content.
+const MESSAGES = {
+  "timer-target-reached": (data) => ({
+    tag: `habit-timer-${data.timerId}`,
+    title: "Du hast dein Soll erreicht",
+    body: "Die Stoppuhr läuft weiter.",
+    url: "/",
+  }),
+  // The evening reminder of "Das Beste des Tages" (one per day).
+  "day-best-reminder": () => ({
+    tag: "habit-day-best",
+    title: "Was war heute das Beste?",
+    body: "Eine Zeile reicht.",
+    url: "/#/heute",
+  }),
+};
 self.addEventListener("push", (event) => {
   event.waitUntil(
     (async () => {
       try {
         const data = event.data?.json();
+        const message = Object.hasOwn(MESSAGES, data?.type)
+          ? MESSAGES[data.type](data)
+          : null;
         if (
-          data?.type !== "timer-target-reached" ||
-          !pushId(data.timerId) ||
+          !message ||
+          (data.type === "timer-target-reached" && !pushId(data.timerId)) ||
           !pushId(data.deliveryId) ||
           !pushId(data.subscriptionId)
         )
@@ -75,7 +94,8 @@ self.addEventListener("push", (event) => {
           Notification.permission !== "granted"
         )
           return;
-        // Fail closed: verify this exact device/session and still-valid timer before display.
+        // Fail closed: verify this exact device/session and that it still holds
+        // (timer still at its Soll, the day still without its line) before display.
         // Logout/reset/stop/opt-out after send must not reveal a late notification.
         const response = await fetch(
           `/api/push/deliveries/${data.deliveryId}`,
@@ -91,15 +111,16 @@ self.addEventListener("push", (event) => {
         if (!latest.enabled || latest.subscriptionId !== data.subscriptionId)
           return;
         // The open app said it already: no second notification for the same Soll.
-        const tag = `habit-timer-${data.timerId}`;
-        if (announcedTimers.has(data.timerId)) return;
+        const { tag } = message;
+        if (data.type === "timer-target-reached" && announcedTimers.has(data.timerId))
+          return;
         if ((await self.registration.getNotifications({ tag })).length) return;
-        await self.registration.showNotification("Du hast dein Soll erreicht", {
-          body: "Die Stoppuhr läuft weiter.",
+        await self.registration.showNotification(message.title, {
+          body: message.body,
           icon: "/icon-192.svg",
           tag,
           renotify: false,
-          data: { url: "/" },
+          data: { url: message.url },
         });
       } catch {
         /* Missing permission, offline server or invalid message: show nothing. */
@@ -109,6 +130,10 @@ self.addEventListener("push", (event) => {
 });
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  // Only the fixed paths above; anything else opens the start page.
+  const path = ["/", "/#/heute"].includes(event.notification.data?.url)
+    ? event.notification.data.url
+    : "/";
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({
@@ -122,7 +147,7 @@ self.addEventListener("notificationclick", (event) => {
         await existing.focus();
         return;
       }
-      await self.clients.openWindow(new URL("/", self.location.origin).href);
+      await self.clients.openWindow(new URL(path, self.location.origin).href);
     })(),
   );
 });

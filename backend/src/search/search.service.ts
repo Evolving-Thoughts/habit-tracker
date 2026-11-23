@@ -56,6 +56,7 @@ type RunNotesRow = {
   date: string;
 };
 type ReflectionRow = { id: number; date: string; text: string };
+type DayBestRow = { id: number; date: string; text: string };
 type WeekReviewRow = {
   id: number;
   week: string;
@@ -69,7 +70,8 @@ type Dated = { hit: SearchTextHit; at: string };
 
 /**
  * The search of the command menu: titles of campaigns, quests and dailies,
- * and the plain text of notes, reflections and weekly reviews. Matching
+ * and the plain text of notes, reflections, the lines of "Das Beste des
+ * Tages" and weekly reviews. Matching
  * ignores case, and accents where the database has `unaccent`; notes are
  * read as the text of their document's nodes (`jsonb_path_query`), so no
  * copy of them has to be kept in step.
@@ -252,6 +254,13 @@ export class SearchService {
          LIMIT ${SEARCH_LIMIT}`,
       [userId, pattern],
     );
+    const dayBests = await manager.query<DayBestRow[]>(
+      `SELECT b.id, b.date::text AS date, b.text FROM day_bests b
+         WHERE b."userId" = $1 AND ${like('b.text')}
+         ORDER BY b.date DESC
+         LIMIT ${SEARCH_LIMIT}`,
+      [userId, pattern],
+    );
     const reviews = await manager.query<WeekReviewRow[]>(
       `SELECT w.id, w.week::text AS week, w."wentWell", w."wentBadly",
                 w."changeNext"
@@ -297,6 +306,17 @@ export class SearchService {
           id: row.id,
           label: `Reflexion vom ${shortDate(row.date, today)}`,
           ...snippetOf(flatten(row.text)),
+          date: row.date,
+          habitId: null,
+        },
+      })),
+      ...dayBests.map((row) => ({
+        at: row.date,
+        hit: {
+          kind: 'day-best' as const,
+          id: row.id,
+          label: `Das Beste vom ${shortDate(row.date, today)}`,
+          ...snippetOf(row.text),
           date: row.date,
           habitId: null,
         },

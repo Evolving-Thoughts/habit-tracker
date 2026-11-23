@@ -41,9 +41,10 @@ describe("AppNavigation: Mehr", () => {
       "Plan",
       "Dailies",
       "Wochenrückblick",
+      "Das Beste",
       "Einstellungen",
     ]);
-    expect(menu.findAll("a svg")).toHaveLength(5);
+    expect(menu.findAll("a svg")).toHaveLength(6);
   });
 
   it("opens and closes on click", async () => {
@@ -100,7 +101,7 @@ describe("AppNavigation: Mehr", () => {
   it("closes on navigation and marks itself current for its views", async () => {
     const { wrapper, router, more } = await mountNavigation();
     await more.trigger("click");
-    await wrapper.findAll("#more-views a")[4]!.trigger("click");
+    await wrapper.findAll("#more-views a")[5]!.trigger("click");
     await flushPromises();
     expect(router.currentRoute.value.name).toBe("settings");
     expect(more.attributes("aria-expanded")).toBe("false");
@@ -138,6 +139,7 @@ describe("AppNavigation: top bar", () => {
       "Kampagnen",
       "Dailies",
       "Wochenrückblick",
+      "Das Beste",
     ]);
     // Each group after the first starts with a little more space.
     expect(

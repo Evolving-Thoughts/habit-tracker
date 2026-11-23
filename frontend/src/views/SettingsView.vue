@@ -4,6 +4,7 @@ import { useRoute } from "vue-router";
 import AppIcon from "../components/AppIcon.vue";
 import CalendarConnection from "../components/CalendarConnection.vue";
 import CategorySettings from "../components/CategorySettings.vue";
+import DayBestSetting from "../components/DayBestSetting.vue";
 import PushSettings from "../components/PushSettings.vue";
 import QuestTargetSetting from "../components/QuestTargetSetting.vue";
 import ShortcutSettings from "../components/ShortcutSettings.vue";
@@ -63,6 +64,17 @@ watch(
       <section class="card" aria-labelledby="settings-theme">
         <h2 id="settings-theme" class="section-title">Darstellung</h2>
         <ThemeSetting />
+      </section>
+
+      <section
+        :id="sectionId('das-beste')"
+        class="card"
+        aria-labelledby="settings-day-best"
+      >
+        <h2 id="settings-day-best" class="section-title">
+          Das Beste des Tages
+        </h2>
+        <DayBestSetting />
       </section>
 
       <section class="card" aria-labelledby="settings-push">

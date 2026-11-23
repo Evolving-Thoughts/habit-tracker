@@ -18,6 +18,7 @@ import AppIcon from "../components/AppIcon.vue";
 import CampaignChip from "../components/CampaignChip.vue";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
+import DayBestCard from "../components/DayBestCard.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
 import PlannerItem from "../components/PlannerItem.vue";
 import QuickAddQuest from "../components/QuickAddQuest.vue";
@@ -1103,6 +1104,9 @@ useShortcutHandlers(
           </div>
         </section>
       </template>
+
+      <!-- In the evening, at the end of the day's list: the day's best. -->
+      <DayBestCard v-if="planner && !isLoading" :date="planner.date" />
     </div>
 
     <!-- Wide screens: today on one hour axis beside the list, in view while it scrolls. -->

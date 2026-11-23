@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import DayBestDay from "./DayBestDay.vue";
 import DayCalendar from "./DayCalendar.vue";
 import DayReflection from "./DayReflection.vue";
 import HistoryItem from "./HistoryItem.vue";
@@ -59,7 +60,7 @@ const tally = computed(() =>
 const isEmpty = computed(
   () => !props.weeklyTargets.length && !hasEntries(props.day),
 );
-/** Only what has begun can be reflected on. */
+/** Only what has begun can be reflected on, or have had its best. */
 const isPastOrToday = computed(() => props.day.date <= props.today);
 </script>
 
@@ -67,6 +68,7 @@ const isPastOrToday = computed(() => props.day.date <= props.today);
   <div class="calendar-day">
     <div class="calendar-day__list">
       <DayReflection v-if="isPastOrToday" :date="day.date" />
+      <DayBestDay v-if="isPastOrToday" :date="day.date" />
 
       <div v-if="isEmpty" class="empty-state calendar-day__empty">
         <strong>Für diesen Zeitraum gibt es nichts.</strong>
@@ -140,6 +142,11 @@ const isPastOrToday = computed(() => props.day.date <= props.today);
 
 .calendar-day__empty {
   margin-top: var(--space-5);
+}
+
+/* The day's best right below the reflection, as its companion. */
+.calendar-day__list > .day-best-day {
+  margin-top: var(--space-2);
 }
 
 .calendar-day__tally {

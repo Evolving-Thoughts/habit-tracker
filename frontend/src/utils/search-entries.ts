@@ -8,6 +8,7 @@ export type SearchAction =
   | { type: "campaign"; id: number }
   | { type: "edit-habit"; id: number; occurrenceId?: number }
   | { type: "day"; date: string }
+  | { type: "day-best"; date: string }
   | { type: "week"; date: string };
 
 /** One option of the list: the row itself or one of its side actions. */
@@ -94,7 +95,10 @@ export function titleRows(hits: readonly SearchTitleHit[]): SearchRow[] {
   });
 }
 
-/** Where a text hit leads: the notes in their editor, the day, the week. */
+/**
+ * Where a text hit leads: the notes in their editor, the day, the day's
+ * best in its timeline, the week.
+ */
 function textAction(hit: SearchTextHit): SearchAction {
   switch (hit.kind) {
     case "quest-notes":
@@ -103,12 +107,14 @@ function textAction(hit: SearchTextHit): SearchAction {
       return { type: "edit-habit", id: hit.habitId!, occurrenceId: hit.id };
     case "reflection":
       return { type: "day", date: hit.date! };
+    case "day-best":
+      return { type: "day-best", date: hit.date! };
     case "week-review":
       return { type: "week", date: hit.date! };
   }
 }
 
-/** Notes, reflections and weekly reviews found by their text. */
+/** Notes, reflections, day bests and weekly reviews found by their text. */
 export function textRows(hits: readonly SearchTextHit[]): SearchRow[] {
   return hits.map((hit) => {
     const key = `search-${hit.kind}-${hit.id}`;

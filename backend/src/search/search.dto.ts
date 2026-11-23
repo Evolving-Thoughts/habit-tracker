@@ -36,11 +36,11 @@ export type SearchTitleHit = {
 /**
  * A note or answer that contains the query: quest notes (`id` is the
  * todo), the notes of a daily's run (`id` the occurrence, `habitId` its
- * daily, `date` its day), a day's reflection (`date`) or a weekly review
- * (`date` its Monday).
+ * daily, `date` its day), a day's reflection (`date`), a day's best
+ * (`date`) or a weekly review (`date` its Monday).
  */
 export type SearchTextHit = {
-  kind: 'quest-notes' | 'run-notes' | 'reflection' | 'week-review';
+  kind: 'quest-notes' | 'run-notes' | 'reflection' | 'day-best' | 'week-review';
   id: number;
   /** Where the text is, e.g. "Notiz zu Kapitel 2 überarbeiten". */
   label: string;

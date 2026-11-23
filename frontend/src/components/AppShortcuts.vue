@@ -46,6 +46,7 @@ const VIEW_KEYS: Record<ViewName, ShortcutId> = {
   campaigns: "view.campaigns",
   dailies: "view.dailies",
   review: "view.review",
+  best: "view.best",
   settings: "view.settings",
 };
 
@@ -63,6 +64,7 @@ useShortcutHandlers(
     "view.campaigns": () => show("campaigns"),
     "view.dailies": () => show("dailies"),
     "view.review": () => show("review"),
+    "view.best": () => show("best"),
     "view.settings": () => show("settings"),
     // Views without a quest dialog of their own: write it on Heute.
     "quest.new": () => {
@@ -89,6 +91,7 @@ useShortcutHandlers(
 /** Further words a view is found by. */
 const VIEW_KEYWORDS: Partial<Record<ViewName, string[]>> = {
   focus: ["Fokus-Modus", "starten"],
+  best: ["Das Beste des Tages", "Tagebuch", "Erinnerung"],
 };
 
 /**
@@ -246,6 +249,9 @@ async function open(action: SearchAction): Promise<void> {
       return;
     case "week":
       void router.push({ name: "review", query: { woche: action.date } });
+      return;
+    case "day-best":
+      void router.push({ name: "best", query: { [DAY_QUERY]: action.date } });
       return;
   }
 }

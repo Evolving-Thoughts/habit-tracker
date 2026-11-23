@@ -8,6 +8,7 @@ import ReviewAnswers from "../components/ReviewAnswers.vue";
 import ReviewCampaignHours from "../components/ReviewCampaignHours.vue";
 import ReviewCampaignProgress from "../components/ReviewCampaignProgress.vue";
 import ReviewDayBars from "../components/ReviewDayBars.vue";
+import ReviewDayBests from "../components/ReviewDayBests.vue";
 import ReviewDoneList from "../components/ReviewDoneList.vue";
 import ReviewFigures from "../components/ReviewFigures.vue";
 import ReviewQuestSplit from "../components/ReviewQuestSplit.vue";
@@ -247,7 +248,7 @@ function onSaved(answers: WeekReviewAnswers): void {
       </div>
       <ReviewWeekTrend v-if="hours && hasTrend" :hours="hours" />
 
-      <!-- What the week changed, and the questions. -->
+      <!-- What the week changed, its best days, and the questions. -->
       <ReviewCampaignProgress
         v-if="review && !quiet"
         :campaigns="review.campaigns"
@@ -257,6 +258,8 @@ function onSaved(answers: WeekReviewAnswers): void {
         :days="review.days"
         :today="review.today"
       />
+      <!-- The week's lines of "Das Beste des Tages"; none, no card. -->
+      <ReviewDayBests v-if="review" :week="review.startDate" :today="review.today" />
       <ReviewAnswers
         v-if="review"
         :week="review.startDate"

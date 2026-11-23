@@ -3,6 +3,14 @@
  * fails `npm run check:contract` instead of the app. Types only; nothing runs.
  */
 import type { CategoryResponse as CategoryResponseDto } from '../src/categories/category.dto';
+import type {
+  DayBestMonthsResponse,
+  DayBestRangeResponse,
+  DayBestResponse,
+  DayBestSettingsResponse,
+  SaveDayBestDto,
+  SaveDayBestSettingsDto,
+} from '../src/day-bests/day-best.dto';
 import type { DayPlannerResponseDto } from '../src/day-planner/dto/day-planner-response.dto';
 import type { WeekPlanResponseDto } from '../src/day-planner/dto/week-plan.dto';
 import type { HabitOccurrenceResponseDto } from '../src/habit-occurrences/dto/habit-occurrence-response.dto';
@@ -43,6 +51,12 @@ import type {
   CAMPAIGN_ICONS,
 } from '../../frontend/src/types/campaign';
 import type { CategoryResponse } from '../../frontend/src/types/category';
+import type {
+  DayBest,
+  DayBestMonths,
+  DayBestRange,
+  DayBestSettings,
+} from '../../frontend/src/types/day-best';
 import type { HistoryResponse } from '../../frontend/src/types/history';
 import type {
   QuestHoursResponse,
@@ -101,6 +115,12 @@ export type Contract = [
   Assert<Reads<WeekReviewResponseDto, WeekReviewResponse>>,
   Assert<Reads<WeekReviewAnswersDto, WeekReviewAnswers>>,
   Assert<Sends<WeekReviewInput, SaveWeekReviewDto>>,
+  Assert<Reads<DayBestResponse, DayBest>>,
+  Assert<Reads<DayBestRangeResponse, DayBestRange>>,
+  Assert<Reads<DayBestMonthsResponse, DayBestMonths>>,
+  Assert<Reads<DayBestSettingsResponse, DayBestSettings>>,
+  Assert<Sends<Pick<DayBest, 'text'>, SaveDayBestDto>>,
+  Assert<Sends<Partial<DayBestSettings>, SaveDayBestSettingsDto>>,
   Assert<Same<typeof BACKEND_COLORS, typeof CAMPAIGN_COLORS>>,
   Assert<Same<typeof BACKEND_ICONS, typeof CAMPAIGN_ICONS>>,
   Assert<Sends<CreateTodoInput, CreateTodoDto>>,

@@ -55,6 +55,8 @@ export function validSubscription(value: SubscribeDto): void {
   }
 }
 export type SendResult = 'sent' | 'gone' | 'retry' | 'failed';
+/** A stopwatch's Soll is urgent; a reminder for the evening is not. */
+export type SendOptions = { urgency?: 'high' | 'normal' };
 @Injectable()
 export class PushTransport {
   readonly publicKey: string | null;
@@ -96,12 +98,13 @@ export class PushTransport {
     subscription: SubscribeDto,
     payload: object,
     ttl: number,
+    options: SendOptions = {},
   ): Promise<SendResult> {
     if (!this.publicKey) return 'failed';
     try {
       await webpush.sendNotification(subscription, JSON.stringify(payload), {
         TTL: ttl,
-        urgency: 'high',
+        urgency: options.urgency ?? 'high',
         timeout: 2000,
         vapidDetails: {
           subject: this.subject,
