@@ -34,10 +34,10 @@ export class PushSubscriptionEntity {
 @Check('CHK_push_delivery_attempts', '"attempts" BETWEEN 0 AND 3')
 @Check(
   'CHK_push_delivery_kind',
-  `("kind" = 'timer' AND "timerId" IS NOT NULL AND "day" IS NULL) OR ("kind" = 'day-best' AND "timerId" IS NULL AND "day" IS NOT NULL)`,
+  `("kind" = 'timer' AND "timerId" IS NOT NULL AND "day" IS NULL) OR ("kind" IN ('day-best', 'challenge') AND "timerId" IS NULL AND "day" IS NOT NULL)`,
 )
 @Index(['timerId', 'subscriptionId'], { unique: true })
-@Index(['subscriptionId', 'day'], { unique: true })
+@Index(['subscriptionId', 'kind', 'day'], { unique: true })
 export class PushDeliveryEntity {
   @PrimaryGeneratedColumn('uuid') id!: string;
   @Column({ type: 'uuid' }) userId!: string;
@@ -46,11 +46,12 @@ export class PushDeliveryEntity {
   user?: UserEntity;
   /**
    * What the delivery announces: a stopwatch reaching its Soll (`timerId`)
-   * or the evening reminder of "Das Beste des Tages" (`day`, at most one
-   * per device and day).
+   * or a daily reminder naming its `day`, at most one per device, kind and
+   * day: the evening one of "Das Beste des Tages" (`day-best`) or the one
+   * of the Monats-Challenge (`challenge`).
    */
   @Column({ type: 'varchar', length: 16, default: 'timer' }) kind!:
-    'timer' | 'day-best';
+    'timer' | 'day-best' | 'challenge';
   @Column({ type: 'uuid', nullable: true }) timerId!: string | null;
   @ManyToOne(() => TimerEntity, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'timerId' })

@@ -1304,6 +1304,7 @@ describe('Habit domain and day planner (e2e)', () => {
           weekMinutes: 0,
           weeklyTargetMinutes: null,
         },
+        monthChallenge: null,
       });
     });
   });

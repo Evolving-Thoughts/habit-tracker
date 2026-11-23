@@ -42,6 +42,10 @@ import {
   lifecycleChanges,
 } from './occurrence-lifecycle';
 import { loadStreaks, NO_STREAK, Streak } from '../streaks';
+import {
+  challengeHabitIds,
+  closeChallengesOfHabit,
+} from '../../month-challenges/challenge-store';
 
 /** A run opened for a change (`HabitSchedulingService.openRun`). */
 export type OpenRun = {
@@ -99,6 +103,16 @@ export class HabitSchedulingService {
     );
   }
 
+  /** Whether the habit carries today's running Monats-Challenge (its marker). */
+  async carriesChallenge(
+    manager: EntityManager,
+    userId: string,
+    habitId: number,
+    now: Date,
+  ): Promise<boolean> {
+    return (await challengeHabitIds(manager, userId, dayOf(now))).has(habitId);
+  }
+
   versionResponse(
     version: HabitScheduleVersionEntity,
   ): ScheduleVersionResponse {
@@ -120,6 +134,7 @@ export class HabitSchedulingService {
     at = this.clock.now(),
     pending?: HabitOccurrenceEntity,
     streak: Streak = NO_STREAK,
+    monthChallenge = false,
   ): HabitResponseDto {
     const active = activeVersion(versions, at);
 
@@ -143,6 +158,7 @@ export class HabitSchedulingService {
       currentSchedule: active ? this.versionResponse(active) : null,
       upcomingSchedule: upcoming ? this.versionResponse(upcoming) : null,
       streak,
+      monthChallenge,
     };
   }
 
@@ -184,6 +200,7 @@ export class HabitSchedulingService {
           now,
           undefined,
           await this.streakOf(manager, habitId, now),
+          await this.carriesChallenge(manager, userId, habitId, now),
         );
       }
 
@@ -219,6 +236,7 @@ export class HabitSchedulingService {
         now,
         undefined,
         await this.streakOf(manager, habitId, now),
+        await this.carriesChallenge(manager, userId, habitId, now),
       );
     });
   }
@@ -306,7 +324,11 @@ export class HabitSchedulingService {
     await this.reconcile(manager, habit, now);
   }
 
-  /** Deletes a habit (softly, its runs stay) and ends the stopwatch of its runs. */
+  /**
+   * Deletes a habit (softly, its runs stay) and ends the stopwatch of its
+   * runs. Its Monats-Challenges stay in the history under its title, with
+   * their result frozen.
+   */
   async removeHabit(
     manager: EntityManager,
     userId: string,
@@ -314,6 +336,7 @@ export class HabitSchedulingService {
     now: Date,
   ): Promise<void> {
     const habit = await this.lockHabit(userId, manager, habitId);
+    await closeChallengesOfHabit(manager, habit, now);
     await manager.getRepository(HabitEntity).softRemove(habit);
     await releaseTimers(manager, userId, { habitId: habit.id }, now);
   }

@@ -12,6 +12,7 @@ async function setup(
   pref = { enabled: true, subscriptionId: id },
   permission = "granted",
   allowed = true,
+  receipt = {},
 ) {
   const indexedDB = new IDBFactory();
   await new Promise((resolve, reject) => {
@@ -62,7 +63,7 @@ async function setup(
     fetch: async (...args) => {
       requests.push(args);
       if (self.networkFails) throw new Error("offline");
-      return { ok: true, json: async () => ({ allowed }) };
+      return { ok: true, json: async () => ({ allowed, ...receipt }) };
     },
   });
   const payload = {
@@ -223,4 +224,34 @@ test("a click on the reminder opens Heute when no window is open", async () => {
     }),
   );
   assert.deepEqual(result.opened, ["https://example.invalid/#/heute"]);
+});
+
+const challengeReminder = {
+  type: "challenge-reminder",
+  deliveryId: id,
+  subscriptionId: id,
+  expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+  title: "Never expose this title from the payload",
+};
+test("shows the challenge reminder with the Daily's title from the receipt, once", async () => {
+  const result = await setup(undefined, "granted", true, { title: " Sport " });
+  await result.push(challengeReminder);
+  await result.push(challengeReminder);
+  assert.equal(result.shown.length, 1);
+  assert.equal(result.shown[0][0], "Monats-Challenge");
+  assert.equal(result.shown[0][1].body, "Sport ist heute noch offen.");
+  assert.equal(result.shown[0][1].tag, "habit-month-challenge");
+  assert.equal(result.shown[0][1].data.url, "/#/heute");
+  assert.ok(!JSON.stringify(result.shown).includes("Never expose"));
+  assert.equal(result.requests[0][0], `/api/push/deliveries/${id}`);
+});
+test("keeps fixed words for a challenge reminder whose receipt has no title", async () => {
+  const result = await setup(undefined, "granted", true, { title: 7 });
+  await result.push(challengeReminder);
+  assert.equal(result.shown[0][1].body, "Der Lauf von heute ist noch offen.");
+});
+test("leaves the challenge reminder out once today's run is done", async () => {
+  const result = await setup(undefined, "granted", false, { title: "Sport" });
+  await result.push(challengeReminder);
+  assert.equal(result.shown.length, 0);
 });

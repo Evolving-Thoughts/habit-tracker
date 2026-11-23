@@ -14,7 +14,7 @@ async function reset() {
     const { rows } = await client.query('SELECT current_database() AS name');
     if (rows[0]?.name !== DATABASE) throw new Error('Refusing to reset an unexpected database');
     // All FK-related tables together; deliberately no CASCADE and no public reset endpoint.
-    const truncate = 'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, "habit_occurrences", "habit_schedule_versions", "habits", "todos", "categories", "reflections", "week_reviews", "day_bests", "day_best_settings", "work_logs", "goal_snapshots", "auth_tokens", "auth_sessions", "auth_rate_limits", "weekly_quest_targets", "users" RESTART IDENTITY';
+    const truncate = 'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, "habit_occurrences", "habit_schedule_versions", "habits", "todos", "categories", "reflections", "week_reviews", "day_bests", "day_best_settings", "month_challenges", "work_logs", "goal_snapshots", "auth_tokens", "auth_sessions", "auth_rate_limits", "weekly_quest_targets", "users" RESTART IDENTITY';
     // A request of the test before may still read these tables in another
     // order. Postgres then ends one side; when it is the reset, it tries again.
     for (let attempt = 1; ; attempt += 1) {

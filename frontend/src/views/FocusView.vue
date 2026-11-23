@@ -17,6 +17,7 @@ import { useShortcutHandlers } from "../composables/useShortcuts";
 import { hrefOf } from "../routes";
 import type { DayPlannerItem, DayPlannerResponse } from "../types/day-planner";
 import CampaignChip from "../components/CampaignChip.vue";
+import ChallengeMark from "../components/ChallengeMark.vue";
 import { formatStopwatch } from "../utils/stopwatch";
 import { streakLine } from "../utils/streak";
 import {
@@ -272,6 +273,9 @@ useShortcutHandlers({
       </p>
       <p class="focus-view__state">
         <strong>{{ stateLabel }}</strong>
+        <ChallengeMark
+          v-if="current.type === 'habit' && current.monthChallenge"
+        />
         <span v-for="fact in facts" :key="fact">{{ fact }}</span>
       </p>
       <p v-if="comingUp" class="focus-view__soon">

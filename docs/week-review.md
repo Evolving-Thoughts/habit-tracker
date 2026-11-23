@@ -38,6 +38,7 @@ The view loads two reads side by side; neither carries what the other has.
   }[],
   weekQuota: { completed, total, percentage } | null,
   perfectWeek: { perfect, categories: { id, name, target, completed, reached }[] } | null,
+  monthChallenge: { title, done, due } | null,   // see challenges.md
   days: { date, items: { type, id, title, status, resolvedAt, deleted, campaign }[] }[],
   answers: { wentWell, wentBadly, changeNext },   // nulls without a review
 }

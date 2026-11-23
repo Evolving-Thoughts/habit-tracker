@@ -9,7 +9,7 @@ import { createHabit } from "../api/day-planner.api";
 import { useTodoDeletion } from "../composables/useTodoDeletion";
 import CategoryPicker from "./CategoryPicker.vue";
 import ParentPicker from "./ParentPicker.vue";
-import type { CreateHabitInput } from "../types/habit";
+import type { CreateHabitInput, HabitResponse } from "../types/habit";
 import type { InheritedWhy } from "../types/todo";
 import WhyField from "./WhyField.vue";
 import { categoryOfChoice, type ParentChoice } from "../utils/parent-choice";
@@ -38,12 +38,16 @@ export type HabitDraft = {
  * Kategorie and Kampagne, Warum, and the optional start, time and duration.
  * Given `replaces`, the daily takes the place of that quest: once it is
  * created, the quest is deleted (with its subtree preview, like any delete).
+ * `habit` hands the new daily on (the Monats-Challenge starts on it) right
+ * before `created`; `submitLabel` names the button for such a next step.
  */
 const props = defineProps<{
   initial?: HabitDraft;
   replaces?: { id: number; title: string };
+  submitLabel?: string;
 }>();
 const emit = defineEmits<{
+  habit: [habit: HabitResponse];
   created: [];
   busy: [value: boolean];
   cancel: [];
@@ -141,7 +145,7 @@ async function submit(): Promise<void> {
     isSubmitting.value = true;
     emit("busy", true);
     if (input) {
-      await createHabit(input);
+      emit("habit", await createHabit(input));
       habitCreated.value = true;
     }
     await removeReplaced();
@@ -327,7 +331,7 @@ async function submit(): Promise<void> {
                 ? "Wird erstellt …"
                 : replaces
                   ? "Als Daily speichern"
-                  : "Daily erstellen"
+                  : (submitLabel ?? "Daily erstellen")
             }}
           </button>
           <button

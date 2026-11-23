@@ -16,9 +16,11 @@ import {
 import ActionMenu from "../components/ActionMenu.vue";
 import AppIcon from "../components/AppIcon.vue";
 import CampaignChip from "../components/CampaignChip.vue";
+import ChallengeMark from "../components/ChallengeMark.vue";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import DayBestCard from "../components/DayBestCard.vue";
+import MonthChallengeCard from "../components/MonthChallengeCard.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
 import PlannerItem from "../components/PlannerItem.vue";
 import QuickAddQuest from "../components/QuickAddQuest.vue";
@@ -263,6 +265,25 @@ async function toggleItem(item: DayPlannerItem): Promise<void> {
       : undefined;
   await ticks.complete(tickTarget(item), { ...options, campaign });
 }
+
+/**
+ * Today's run of the running Monats-Challenge in the day's list: the open
+ * one, or the one done today. Its card ticks it like the row does.
+ */
+const challengeRun = computed<DayPlannerHabitItem | null>(() => {
+  const challenge = planner.value?.monthChallenge;
+  if (!challenge || challenge.todayRun === "none") return null;
+  return (
+    planner.value!.items.find(
+      (item): item is DayPlannerHabitItem =>
+        item.type === "habit" &&
+        item.habitId === challenge.habitId &&
+        (challenge.todayRun === "open"
+          ? item.occurrenceId === challenge.todayOccurrenceId
+          : item.status === "completed"),
+    ) ?? null
+  );
+});
 
 async function skipHabit(item: DayPlannerHabitItem): Promise<void> {
   if (isUpdating(item)) {
@@ -786,6 +807,15 @@ useShortcutHandlers(
         @created="writes.applied()"
       />
 
+      <!-- The month's challenge, calm and above the focus card. -->
+      <MonthChallengeCard
+        v-if="planner?.monthChallenge && !isLoading"
+        :challenge="planner.monthChallenge"
+        :run="challengeRun"
+        :busy="challengeRun ? isUpdating(challengeRun) : editorBusy"
+        @toggle="toggleItem"
+      />
+
       <div
         v-if="isLoading"
         class="today-view__loading"
@@ -856,6 +886,9 @@ useShortcutHandlers(
               <span v-if="agenda.focus.type === 'habit'" class="focus__daily">
                 <AppIcon name="dailies" />Daily
               </span>
+              <ChallengeMark
+                v-if="agenda.focus.type === 'habit' && agenda.focus.monthChallenge"
+              />
               <span v-if="agenda.focus.categoryName" class="focus__category">
                 <i
                   class="category-mark"

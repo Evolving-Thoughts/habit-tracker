@@ -32,6 +32,7 @@ export class PushWorker implements OnModuleInit, OnModuleDestroy {
     try {
       await this.push.enqueueDue();
       await this.push.enqueueDayBestReminders();
+      await this.push.enqueueChallengeReminders();
       await this.push.sendPending();
     } catch {
       this.logger.warn(

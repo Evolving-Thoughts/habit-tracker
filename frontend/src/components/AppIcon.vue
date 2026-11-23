@@ -9,6 +9,8 @@ defineProps<{
     | "focus"
     | "questlog"
     | "dailies"
+    // The Monats-Challenge: a month with a flag in it.
+    | "challenge"
     | "calendar"
     | "campaigns"
     | "history"
@@ -107,6 +109,11 @@ defineProps<{
       <path d="M20 12a8 8 0 1 1-2.3-5.6" />
       <path d="M20 4v4h-4" />
       <path d="m9 12 2 2 4-4" />
+    </template>
+    <template v-else-if="name === 'challenge'">
+      <rect x="3.5" y="5" width="17" height="15" rx="3" />
+      <path d="M3.5 10h17M8 3v4M16 3v4" />
+      <path d="M10 17.5v-5h5l-1.25 1.5L15 15.5h-5" />
     </template>
     <template v-else-if="name === 'calendar'">
       <rect x="3.5" y="5" width="17" height="15" rx="3" />

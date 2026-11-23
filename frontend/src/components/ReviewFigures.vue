@@ -20,8 +20,15 @@ const props = withDefaults(
      * over shows the goal it had.
      */
     editable?: boolean;
-    /** The fourth figure: Dailies im Wochensoll and the perfect week. */
-    dailies?: { quota: WeekQuota | null; perfectWeek: PerfectWeek | null } | null;
+    /**
+     * The fourth figure: Dailies im Wochensoll, the perfect week and the
+     * Monats-Challenge as it stood at the week's end.
+     */
+    dailies?: {
+      quota: WeekQuota | null;
+      perfectWeek: PerfectWeek | null;
+      challenge?: { title: string; done: number; due: number } | null;
+    } | null;
   }>(),
   { editable: false, dailies: null },
 );
@@ -57,6 +64,12 @@ const share = computed(() =>
 const quota = computed(() =>
   props.dailies?.quota && props.dailies.quota.total > 0
     ? props.dailies.quota
+    : null,
+);
+/* Only once a run of it was due; a number, never a verdict. */
+const challenge = computed(() =>
+  props.dailies?.challenge && props.dailies.challenge.due > 0
+    ? props.dailies.challenge
     : null,
 );
 const perfectWeek = computed(() =>
@@ -176,6 +189,13 @@ function onSaved(minutes: number | null): void {
         <dd v-else class="figures__value">–</dd>
         <dd class="figures__note">
           {{ quota ? "fälligen Ausführungen erledigt" : "Nichts fällig in dieser Woche" }}
+        </dd>
+        <dd v-if="challenge" class="figures__challenge">
+          <AppIcon name="challenge" />
+          <span
+            >Monats-Challenge „{{ challenge.title }}“: {{ challenge.done }} von
+            {{ challenge.due }}</span
+          >
         </dd>
         <dd v-if="perfectWeek" class="figures__perfect">
           <span class="figures__perfect-label">{{
@@ -323,6 +343,23 @@ function onSaved(minutes: number | null): void {
 }
 
 /* The perfect week in one quiet run of text: "Sport ✓, Lesen 2 von 3". */
+.figures__challenge {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+  margin-top: var(--space-2);
+  color: var(--color-ink);
+  font-size: 0.875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.figures__challenge :deep(svg) {
+  width: 1rem;
+  height: 1rem;
+  color: var(--color-ink-muted);
+}
+
 .figures__perfect {
   margin-top: var(--space-3);
   color: var(--color-ink-muted);

@@ -107,6 +107,7 @@ const dailies = computed(() =>
     ? {
         quota: review.value.weekQuota,
         perfectWeek: review.value.perfectWeek,
+        challenge: review.value.monthChallenge ?? null,
       }
     : null,
 );

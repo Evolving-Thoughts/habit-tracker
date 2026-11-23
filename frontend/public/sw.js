@@ -54,7 +54,9 @@ async function pushPreference() {
 const pushId = (value) =>
   typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-// What each kind of push shows. Fixed texts: a payload never carries content.
+// What each kind of push shows. Fixed texts: a payload never carries content;
+// the only words of the user's own (a Daily's title) come with the receipt,
+// fetched behind the session.
 const MESSAGES = {
   "timer-target-reached": (data) => ({
     tag: `habit-timer-${data.timerId}`,
@@ -69,17 +71,27 @@ const MESSAGES = {
     body: "Eine Zeile reicht.",
     url: "/#/heute",
   }),
+  // The daily reminder of the Monats-Challenge (one per day).
+  "challenge-reminder": (_data, receipt) => {
+    const title =
+      typeof receipt?.title === "string" ? receipt.title.trim().slice(0, 200) : "";
+    return {
+      tag: "habit-month-challenge",
+      title: "Monats-Challenge",
+      body: title
+        ? `${title} ist heute noch offen.`
+        : "Der Lauf von heute ist noch offen.",
+      url: "/#/heute",
+    };
+  },
 };
 self.addEventListener("push", (event) => {
   event.waitUntil(
     (async () => {
       try {
         const data = event.data?.json();
-        const message = Object.hasOwn(MESSAGES, data?.type)
-          ? MESSAGES[data.type](data)
-          : null;
         if (
-          !message ||
+          !Object.hasOwn(MESSAGES, data?.type) ||
           (data.type === "timer-target-reached" && !pushId(data.timerId)) ||
           !pushId(data.deliveryId) ||
           !pushId(data.subscriptionId)
@@ -101,12 +113,9 @@ self.addEventListener("push", (event) => {
           `/api/push/deliveries/${data.deliveryId}`,
           { credentials: "include", cache: "no-store" },
         );
-        if (
-          !response.ok ||
-          !(await response.json()).allowed ||
-          expires <= Date.now()
-        )
-          return;
+        const receipt = response.ok ? await response.json() : null;
+        if (!receipt?.allowed || expires <= Date.now()) return;
+        const message = MESSAGES[data.type](data, receipt);
         const latest = await pushPreference();
         if (!latest.enabled || latest.subscriptionId !== data.subscriptionId)
           return;

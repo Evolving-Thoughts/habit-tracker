@@ -196,6 +196,7 @@ describe('Plan board (e2e)', () => {
           moveUntil: null,
           timerEligible: false,
           streak: { current: 0, best: 0, unit: 'runs' },
+          monthChallenge: false,
           title: 'Laufen',
           timeOfDay: null,
           plannedDurationMinutes: 20,

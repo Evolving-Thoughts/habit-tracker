@@ -1,3 +1,6 @@
+// ".js": the backend's contract check resolves these files as Node modules.
+import type { MonthChallenge } from "./month-challenge.js";
+
 export type TodoStatus = "pending" | "completed";
 
 export type HabitOccurrenceStatus = "pending" | "completed" | "skipped";
@@ -62,6 +65,8 @@ export type DayPlannerHabitItem = {
   timerEligible: boolean;
   /** The daily's series: done runs in a row now, and the longest ever. */
   streak: { current: number; best: number; unit: "runs" | "weeks" };
+  /** The Daily carries the running Monats-Challenge (the row's marker). */
+  monthChallenge?: boolean;
 } & DayPlannerItemContext;
 
 export type DayPlannerItem = DayPlannerTodoItem | DayPlannerHabitItem;
@@ -83,4 +88,6 @@ export type DayPlannerResponse = {
     weekMinutes: number;
     weeklyTargetMinutes: number | null;
   };
+  /** This month's running Monats-Challenge with its progress, for its card. */
+  monthChallenge?: MonthChallenge | null;
 };

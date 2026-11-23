@@ -16,6 +16,12 @@ import type { WeekPlanResponseDto } from '../src/day-planner/dto/week-plan.dto';
 import type { HabitOccurrenceResponseDto } from '../src/habit-occurrences/dto/habit-occurrence-response.dto';
 import type { CreateHabitDto } from '../src/habits/dto/create-habit.dto';
 import type { HabitResponseDto } from '../src/habits/dto/habit-response.dto';
+import type {
+  CreateMonthChallengeDto,
+  MonthChallengeResponse,
+  MonthChallengesResponse,
+  UpdateMonthChallengeDto,
+} from '../src/month-challenges/month-challenge.dto';
 import type { UpdateHabitDto } from '../src/habits/dto/update-habit.dto';
 import type { HistoryResponse as HistoryResponseDto } from '../src/history/history.dto';
 import type {
@@ -58,6 +64,12 @@ import type {
   DayBestSettings,
 } from '../../frontend/src/types/day-best';
 import type { HistoryResponse } from '../../frontend/src/types/history';
+import type {
+  CreateMonthChallengeInput,
+  MonthChallenge,
+  MonthChallenges,
+  UpdateMonthChallengeInput,
+} from '../../frontend/src/types/month-challenge';
 import type {
   QuestHoursResponse,
   QuestTarget,
@@ -121,6 +133,10 @@ export type Contract = [
   Assert<Reads<DayBestSettingsResponse, DayBestSettings>>,
   Assert<Sends<Pick<DayBest, 'text'>, SaveDayBestDto>>,
   Assert<Sends<Partial<DayBestSettings>, SaveDayBestSettingsDto>>,
+  Assert<Reads<MonthChallengeResponse, MonthChallenge>>,
+  Assert<Reads<MonthChallengesResponse, MonthChallenges>>,
+  Assert<Sends<CreateMonthChallengeInput, CreateMonthChallengeDto>>,
+  Assert<Sends<UpdateMonthChallengeInput, UpdateMonthChallengeDto>>,
   Assert<Same<typeof BACKEND_COLORS, typeof CAMPAIGN_COLORS>>,
   Assert<Same<typeof BACKEND_ICONS, typeof CAMPAIGN_ICONS>>,
   Assert<Sends<CreateTodoInput, CreateTodoDto>>,

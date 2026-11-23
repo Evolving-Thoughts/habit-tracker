@@ -49,6 +49,8 @@ export type WeekPlanHabitEntryDto = {
   timerEligible: boolean;
   /** The daily's series (see habits/streaks.ts). */
   streak: Streak;
+  /** A run of the Daily carrying the running Monats-Challenge, in its month. */
+  monthChallenge: boolean;
 } & WeekPlanEntryContext;
 
 export type WeekPlanEntryDto = WeekPlanTodoEntryDto | WeekPlanHabitEntryDto;

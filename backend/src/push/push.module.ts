@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { HabitsModule } from '../habits/habits.module';
 import { TimersModule } from '../timers/timers.module';
 import { PushSubscriptionEntity, PushDeliveryEntity } from './push.entities';
 import { PushController } from './push.controller';
@@ -10,6 +11,7 @@ import { PushWorker } from './push.worker';
   imports: [
     TypeOrmModule.forFeature([PushSubscriptionEntity, PushDeliveryEntity]),
     TimersModule,
+    HabitsModule,
   ],
   controllers: [PushController],
   providers: [PushService, PushTransport, PushWorker],
