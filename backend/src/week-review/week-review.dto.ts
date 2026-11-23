@@ -89,6 +89,12 @@ export type WeekReviewResponse = {
   weekQuota: WeekQuota | null;
   /** Null when no category has a weekly target. */
   perfectWeek: PerfectWeek | null;
+  /**
+   * The Monats-Challenge of the month of the week's last day (today in the
+   * running week), as it stood then: runs done of those decided. Null
+   * without one begun by then.
+   */
+  monthChallenge: { title: string; done: number; due: number } | null;
   /** Monday to Sunday, each with what was resolved that day. */
   days: { date: string; items: WeekReviewItem[] }[];
   answers: WeekReviewAnswers;

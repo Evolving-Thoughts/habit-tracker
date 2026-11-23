@@ -35,6 +35,8 @@ export type WeekPlanHabitEntry = {
   timerEligible: boolean;
   /** The daily's series: done runs in a row now, and the longest ever. */
   streak: { current: number; best: number; unit: "runs" | "weeks" };
+  /** A run of the Daily carrying the running Monats-Challenge, in its month. */
+  monthChallenge?: boolean;
 } & WeekPlanEntryContext;
 
 export type WeekPlanEntry = WeekPlanTodoEntry | WeekPlanHabitEntry;

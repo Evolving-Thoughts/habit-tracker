@@ -1,11 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { assertDateOnly } from '../common/date/date-only.utils';
-import {
-  atWallClockMinutes,
-  dayOf,
-  daysBetween,
-  endOfDay,
-} from '../common/date/local-day';
+import { dayOf, daysBetween } from '../common/date/local-day';
+import { reminderWindowAt, type ReminderWindow } from '../push/reminder-window';
 
 /**
  * The rules of "Das Beste des Tages" that need no database: what a line is,
@@ -19,8 +15,6 @@ export const MAX_RANGE_DAYS = 400;
 export const REMINDER_DELAY_MINUTES = 60;
 /** After this long without being sent (server down), a reminder is dropped. */
 export const REMINDER_WINDOW_MINUTES = 60;
-
-const MINUTES_PER_DAY = 24 * 60;
 
 /** One line: whitespace collapsed to single spaces, trimmed. */
 export function normalizeDayBestText(text: string): string {
@@ -60,7 +54,7 @@ export function timeOfMinutes(minutes: number): string {
   return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
 }
 
-export type ReminderWindow = { dueAt: Date; expiresAt: Date };
+export type { ReminderWindow };
 
 /**
  * When the evening reminder for `date` is due (an hour after the card time,
@@ -73,12 +67,11 @@ export function reminderWindow(
   date: string,
   cardMinutes: number,
 ): ReminderWindow | null {
-  const minutes = cardMinutes + REMINDER_DELAY_MINUTES;
-  if (minutes >= MINUTES_PER_DAY) return null;
-  const dueAt = atWallClockMinutes(date, minutes);
-  const latest = dueAt.getTime() + REMINDER_WINDOW_MINUTES * 60_000;
-  const expiresAt = new Date(Math.min(latest, endOfDay(date).getTime()));
-  return { dueAt, expiresAt };
+  return reminderWindowAt(
+    date,
+    cardMinutes + REMINDER_DELAY_MINUTES,
+    REMINDER_WINDOW_MINUTES,
+  );
 }
 
 export type ReminderState = {

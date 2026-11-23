@@ -26,6 +26,7 @@ import { loadTodoAncestry } from '../todos/todo-ancestry';
 import { buildVersion, normalizeSchedule } from './scheduling/schedule-rules';
 import { assertCampaignTarget } from './habit-campaign';
 import { loadStreaks } from './streaks';
+import { challengeHabitIds } from '../month-challenges/challenge-store';
 
 @Injectable()
 export class HabitsService {
@@ -72,6 +73,11 @@ export class HabitsService {
       now,
       true,
     );
+    const challenged = await challengeHabitIds(
+      this.dataSource.manager,
+      userId,
+      dayOf(now),
+    );
     const result: HabitResponseDto[] = [];
 
     for (const habit of habits) {
@@ -87,6 +93,7 @@ export class HabitsService {
               item.status === HabitOccurrenceStatus.PENDING,
           ),
           streaks.get(habit.id),
+          challenged.has(habit.id),
         ),
       );
     }
@@ -119,6 +126,7 @@ export class HabitsService {
         now,
         pending,
         await this.scheduling.streakOf(manager, id, now),
+        await this.scheduling.carriesChallenge(manager, userId, id, now),
       );
     });
   }
@@ -247,6 +255,7 @@ export class HabitsService {
         now,
         undefined,
         await this.scheduling.streakOf(manager, id, now),
+        await this.scheduling.carriesChallenge(manager, userId, id, now),
       );
     });
   }

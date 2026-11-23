@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import AppIcon from "./AppIcon.vue";
 import CampaignChip from "./CampaignChip.vue";
+import ChallengeMark from "./ChallengeMark.vue";
 import ItemRow from "./ItemRow.vue";
 import { campaignMark as markOf, categoryMark } from "../utils/category-mark";
 import { formatDateForGermanDisplay } from "../utils/date";
@@ -139,6 +140,7 @@ const measure = computed(() =>
       <span v-if="item.type === 'habit'" class="planner-item__daily">
         <AppIcon name="dailies" />Daily
       </span>
+      <ChallengeMark v-if="item.type === 'habit' && item.monthChallenge" />
       <span v-if="item.categoryName" class="planner-item__category">
         <i
           class="category-mark"

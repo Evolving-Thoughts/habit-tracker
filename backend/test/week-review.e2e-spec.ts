@@ -104,6 +104,7 @@ describe('Week review (e2e)', () => {
       campaigns: [],
       weekQuota: null,
       perfectWeek: null,
+      monthChallenge: null,
       days: [16, 17, 18, 19, 20, 21, 22].map((day) => ({
         date: `2026-11-${day}`,
         items: [],

@@ -31,6 +31,7 @@ import {
   ReviewWeek,
 } from './week-review';
 import { WeekReviewEntity } from './week-review.entity';
+import { challengeAsOf } from '../month-challenges/challenge-store';
 
 @Injectable()
 export class WeekReviewService {
@@ -103,6 +104,12 @@ export class WeekReviewService {
           week.endDate,
         ),
         perfectWeek: perfectWeekOf(categories, done, resolved),
+        monthChallenge: await challengeAsOf(
+          manager,
+          userId,
+          week.endDate < week.today ? week.endDate : week.today,
+          this.clock.now(),
+        ),
         days: doneDays(week, done, resolved, {
           todo: (id) => ancestry.todoCampaign(id),
           habit: (habitId) => ancestry.habitCampaign(habitId),

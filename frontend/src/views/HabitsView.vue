@@ -2,11 +2,14 @@
 import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { getHabits } from "../api/day-planner.api";
+import { getMonthChallenges } from "../api/month-challenges.api";
 import { useCategoryLabels } from "../composables/useCategoryLabels";
 import { useListFocus } from "../composables/useListFocus";
 import HabitHistoryStrip from "../components/HabitHistoryStrip.vue";
 import ActionMenu from "../components/ActionMenu.vue";
 import CampaignChip from "../components/CampaignChip.vue";
+import ChallengeMark from "../components/ChallengeMark.vue";
+import MonthChallengeSection from "../components/MonthChallengeSection.vue";
 import DeleteItemDialog, {
   type DeleteTarget,
 } from "../components/DeleteItemDialog.vue";
@@ -22,6 +25,7 @@ import EditItemDialog from "../components/EditItemDialog.vue";
 import { getHistory } from "../api/history.api";
 import type { HabitResponse, HabitScheduleRule } from "../types/habit";
 import type { HistoryResponse } from "../types/history";
+import type { MonthChallenges } from "../types/month-challenge";
 import { shownWhy } from "../utils/why";
 import { onCardClick } from "../utils/card-click";
 import { rowMenu, type MenuEntry } from "../utils/row-actions";
@@ -68,11 +72,26 @@ async function loadWeek(): Promise<void> {
     week.value = null;
   }
 }
+/*
+ * The Monats-Challenges above the list; like the week, the list stays
+ * usable without them.
+ */
+const challenges = ref<MonthChallenges | null>(null);
+/** A challenge dialog is open or its change runs: nothing reloads meanwhile. */
+const challengeActive = ref(false);
+async function loadChallenges(): Promise<void> {
+  try {
+    challenges.value = await getMonthChallenges();
+  } catch {
+    challenges.value = null;
+  }
+}
 async function loadAll(): Promise<HabitResponse[]> {
   const [habits] = await Promise.all([
     getHabits(),
     loadCategories(),
     loadWeek(),
+    loadChallenges(),
   ]);
   return habits;
 }
@@ -90,6 +109,7 @@ const {
     editingId.value === null &&
     !deleting.value &&
     !creationOpen.value &&
+    !challengeActive.value &&
     !writes.busy.value,
 });
 const writes = useWrites(loadHabits, errorMessage);
@@ -137,7 +157,9 @@ async function toggleRun(habit: HabitResponse): Promise<void> {
     : ticks.complete(target, options));
 }
 
-const isBusy = computed(() => isLoading.value || editorBusy.value);
+const isBusy = computed(
+  () => isLoading.value || editorBusy.value || challengeActive.value,
+);
 
 /* The filter lives in the address (#/dailies?kategorie=…&kampagne=…). */
 const route = useRoute();
@@ -261,6 +283,10 @@ async function onEditorChanged(): Promise<void> {
   await applied();
   closeEditing();
 }
+async function onChallengeChanged(message: string): Promise<void> {
+  successMessage.value = message || null;
+  await applied();
+}
 async function onCreated(): Promise<void> {
   successMessage.value = "Daily erstellt.";
   await applied();
@@ -319,6 +345,14 @@ async function onCreated(): Promise<void> {
     <p v-if="successMessage" class="habits-view__status" role="status">
       {{ successMessage }}
     </p>
+    <MonthChallengeSection
+      v-if="hasLoaded && challenges"
+      :overview="challenges"
+      :habits="habits"
+      :busy="isBusy || editingId !== null"
+      @changed="onChallengeChanged"
+      @active="challengeActive = $event"
+    />
     <div
       v-if="isLoading"
       class="skeleton"
@@ -453,6 +487,7 @@ async function onCreated(): Promise<void> {
                   {{ shownWhy(habit) }}
                 </p>
                 <p class="habit-card__details">
+                  <ChallengeMark v-if="habit.monthChallenge" />
                   <span v-if="statusOf(habit)" class="habit-card__status">{{
                     statusOf(habit)
                   }}</span>

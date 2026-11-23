@@ -75,6 +75,8 @@ export type HabitResponse = {
       state: "done" | "missed" | "open" | "skipped" | "free";
     }[];
   };
+  /** It carries this month's running Monats-Challenge (the rows' marker). */
+  monthChallenge?: boolean;
 };
 
 export type UpdateHabitInput = {

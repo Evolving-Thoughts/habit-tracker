@@ -78,6 +78,11 @@ export type WeekReviewResponse = {
       reached: boolean;
     }[];
   } | null;
+  /**
+   * The Monats-Challenge of the month of the week's last day (today in the
+   * running week), as it stood then: runs done of those decided.
+   */
+  monthChallenge?: { title: string; done: number; due: number } | null;
   /** Monday to Sunday. */
   days: { date: string; items: WeekReviewItem[] }[];
   answers: WeekReviewAnswers;

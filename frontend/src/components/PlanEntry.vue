@@ -3,6 +3,7 @@ import { computed } from "vue";
 import ActionMenu from "./ActionMenu.vue";
 import AppIcon from "./AppIcon.vue";
 import CampaignChip from "./CampaignChip.vue";
+import ChallengeMark from "./ChallengeMark.vue";
 import type { WeekPlanEntry } from "../types/week-plan";
 import { onCardClick } from "../utils/card-click";
 import { campaignMark as markOf } from "../utils/category-mark";
@@ -119,6 +120,9 @@ const campaign = computed(() => {
         <span v-if="entry.type === 'habit'" class="plan-entry__daily">
           <AppIcon name="dailies" />Daily
         </span>
+        <ChallengeMark
+          v-if="entry.type === 'habit' && entry.monthChallenge"
+        />
         <span v-for="part in details" :key="part">{{ part }}</span>
       </p>
       <!-- Icon and name; a long name ends in an ellipsis, its tooltip names it. -->

@@ -94,6 +94,7 @@ export function plannedHabitCandidate(
   today: string,
   campaign: Campaign | null,
   streak: Streak = NO_STREAK,
+  monthChallenge = false,
 ): WeekCandidate {
   if (item.habitId === null) throw new Error('Expected a planned habit run');
   const date = item.date < today ? today : item.date;
@@ -105,6 +106,7 @@ export function plannedHabitCandidate(
     moveUntil: item.moveUntil,
     timerEligible: item.id !== null && date <= today,
     streak,
+    monthChallenge,
     isOverdue: item.isOverdue,
     title: item.title,
     timeOfDay: item.timeOfDay,
@@ -137,6 +139,7 @@ export function resolvedHabitCandidate(
   plannedDurationMinutes: number | null,
   campaign: Campaign | null,
   streak: Streak = NO_STREAK,
+  monthChallenge = false,
 ): WeekCandidate {
   const date =
     occurrence.status === 'completed'
@@ -150,6 +153,7 @@ export function resolvedHabitCandidate(
     moveUntil: null,
     timerEligible: false,
     streak,
+    monthChallenge,
     isOverdue: false,
     title: habit.title,
     timeOfDay: habit.timeOfDay ?? null,

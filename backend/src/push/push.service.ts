@@ -29,6 +29,16 @@ import {
   markReminded,
   reminderStillWanted,
 } from '../day-bests/day-best-reminder';
+import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
+import {
+  challengeReminderDecision,
+  monthOf,
+} from '../month-challenges/challenge-rules';
+import {
+  challengeReminderTitle,
+  loadChallengeReminder,
+  markChallengeReminded,
+} from '../month-challenges/challenge-reminder';
 
 /** The longest a reminder may wait at the push provider, in seconds. */
 const REMINDER_MAX_TTL_SECONDS = 3600;
@@ -44,6 +54,7 @@ export class PushService {
     private readonly clock: Clock,
     private readonly transport: PushTransport,
     private readonly unitOfWork: UserUnitOfWork,
+    private readonly scheduling: HabitSchedulingService,
   ) {}
   config() {
     return {
@@ -267,9 +278,88 @@ export class PushService {
     }
   }
   /**
+   * The daily reminder of the Monats-Challenge: at the challenge's reminder
+   * time, for everyone with a push device whose challenge runs today and
+   * whose run of today is still open, at most once a day (`remindedOn`).
+   * The rule is `challengeReminderDecision`; a reminder whose window passed
+   * unsent, or whose run was already done, is marked handled.
+   */
+  async enqueueChallengeReminders(): Promise<void> {
+    const now = this.clock.now();
+    const today = dayOf(now);
+    // Cheap first pass without locks; the decision is taken again inside.
+    const candidates = await this.db.query<
+      {
+        userId: string;
+        reminderMinutes: number;
+        remindedOn: string | null;
+      }[]
+    >(
+      `SELECT c."userId", c."reminderMinutes",
+              c."remindedOn"::text AS "remindedOn"
+       FROM month_challenges c
+       WHERE c.month = $2
+         AND c."startDate" <= $1
+         AND c."endedAt" IS NULL
+         AND c."habitId" IS NOT NULL
+         AND c."reminderMinutes" IS NOT NULL
+         AND (c."remindedOn" IS NULL OR c."remindedOn" < $1)
+         AND EXISTS (SELECT 1 FROM push_subscriptions p WHERE p."userId" = c."userId")
+       ORDER BY c.id`,
+      [today, monthOf(today)],
+    );
+    for (const candidate of candidates) {
+      const first = challengeReminderDecision(now, {
+        reminderMinutes: candidate.reminderMinutes,
+        remindedOn: candidate.remindedOn,
+        running: true,
+        runOpen: true,
+      });
+      if (first.kind === 'none' || first.kind === 'wait') continue;
+      await this.locked(candidate.userId, async (manager) => {
+        const at = this.clock.now();
+        const reminder = await loadChallengeReminder(
+          manager,
+          this.scheduling,
+          candidate.userId,
+          at,
+        );
+        if (!reminder) return;
+        const decision = challengeReminderDecision(at, reminder.state);
+        if (decision.kind === 'none' || decision.kind === 'wait') return;
+        await markChallengeReminded(
+          manager,
+          reminder.challengeId,
+          decision.day,
+        );
+        if (decision.kind !== 'send') return;
+        for (const subscription of await this.subscriptions(
+          manager,
+          candidate.userId,
+          at,
+        ))
+          await manager.save(
+            PushDeliveryEntity,
+            manager.create(PushDeliveryEntity, {
+              userId: candidate.userId,
+              kind: 'challenge',
+              timerId: null,
+              day: decision.day,
+              subscriptionId: subscription.id,
+              state: 'pending',
+              attempts: 0,
+              expiresAt: decision.expiresAt,
+              retryAt: at,
+            }),
+          );
+      });
+    }
+  }
+  /**
    * The message of a delivery, or null when it should no longer go out: the
-   * stopwatch no longer stands at its Soll, or the day got its line (or the
-   * reminder was switched off) in the meantime.
+   * stopwatch no longer stands at its Soll, the day got its line (or the
+   * reminder was switched off), or the challenge's run of today was done in
+   * the meantime.
    */
   private async message(
     manager: EntityManager,
@@ -280,20 +370,30 @@ export class PushService {
     const seconds = Math.ceil(
       (delivery.expiresAt.getTime() - now.getTime()) / 1000,
     );
-    if (delivery.kind === 'day-best') {
-      if (
-        !delivery.day ||
-        !(await reminderStillWanted(
-          manager,
-          delivery.userId,
-          delivery.day,
-          now,
-        ))
-      )
-        return null;
+    if (delivery.kind === 'day-best' || delivery.kind === 'challenge') {
+      const wanted =
+        !!delivery.day &&
+        (delivery.kind === 'day-best'
+          ? await reminderStillWanted(
+              manager,
+              delivery.userId,
+              delivery.day,
+              now,
+            )
+          : (await challengeReminderTitle(
+              manager,
+              delivery.userId,
+              delivery.day,
+              now,
+            )) !== null);
+      if (!wanted) return null;
       return {
         payload: {
-          type: 'day-best-reminder',
+          // The Daily's title is not part of it: the worker asks for it.
+          type:
+            delivery.kind === 'day-best'
+              ? 'day-best-reminder'
+              : 'challenge-reminder',
           deliveryId: delivery.id,
           subscriptionId,
           expiresAt: delivery.expiresAt.toISOString(),
@@ -383,11 +483,16 @@ export class PushService {
         await manager.save(delivery);
       });
   }
+  /**
+   * Whether the service worker may show a delivery it received. A challenge
+   * reminder also gets the Daily's title here, behind the session, so the
+   * push itself never carries it.
+   */
   async confirm(
     userId: string,
     sessionHash: string,
     id: string,
-  ): Promise<{ allowed: boolean }> {
+  ): Promise<{ allowed: boolean; title?: string }> {
     return this.locked(userId, async (manager) => {
       const now = this.clock.now();
       await this.session(manager, userId, sessionHash, now);
@@ -407,6 +512,12 @@ export class PushService {
         sessionHash,
       });
       if (!subscription) return { allowed: false };
+      if (delivery.kind === 'challenge') {
+        const title = delivery.day
+          ? await challengeReminderTitle(manager, userId, delivery.day, now)
+          : null;
+        return title === null ? { allowed: false } : { allowed: true, title };
+      }
       if (delivery.kind === 'day-best')
         return {
           allowed:

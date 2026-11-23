@@ -104,7 +104,8 @@ today; for each the decision is taken again inside the person's lock, then
 `push_deliveries` got a `kind` (`timer` | `day-best`, default `timer`):
 a reminder has `day` instead of `timerId` (a check holds exactly one of
 them), and a unique index on `(subscriptionId, day)` keeps it to one per
-device and day. Sending reuses the timer path (retries, gone endpoints,
+device and day (since the Monats-Challenge `(subscriptionId, kind, day)`,
+one per device, kind and day; see [challenges.md](challenges.md)). Sending reuses the timer path (retries, gone endpoints,
 session check); before sending and in the receipt `GET
 /push/deliveries/:id` it checks that the day still has no line and the
 reminder is still on, so a line written meanwhile cancels it. The payload

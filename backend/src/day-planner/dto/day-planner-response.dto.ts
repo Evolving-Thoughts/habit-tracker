@@ -4,6 +4,7 @@ import type { QuestHoursToday } from '../../quest-hours/quest-hours.dto';
 import type { CampaignColor } from '../../todos/campaign-style';
 import type { Campaign } from '../../todos/todo-ancestry';
 import type { Streak } from '../../habits/streaks';
+import type { MonthChallengeResponse } from '../../month-challenges/month-challenge.dto';
 
 export type DayPlannerTodoStatus = 'pending' | 'completed';
 
@@ -64,6 +65,8 @@ export type DayPlannerHabitItemDto = {
   timerEligible: boolean;
   /** The daily's series (see habits/streaks.ts). */
   streak: Streak;
+  /** The Daily carries the running Monats-Challenge (the row's marker). */
+  monthChallenge: boolean;
 } & DayPlannerItemContext;
 
 export type DayPlannerItemDto = DayPlannerTodoItemDto | DayPlannerHabitItemDto;
@@ -88,6 +91,8 @@ export class DayPlannerResponseDto {
   readonly workedMinutes: number;
   /** Quest minutes today and this week, against the overall weekly goal. */
   readonly questHours: QuestHoursToday;
+  /** This month's running Monats-Challenge with its progress, for its card. */
+  readonly monthChallenge: MonthChallengeResponse | null;
 
   constructor(properties: {
     date: string;
@@ -95,6 +100,7 @@ export class DayPlannerResponseDto {
     externalEvents?: DayPlannerExternalEventDto[];
     workedMinutes?: number;
     questHours?: QuestHoursToday;
+    monthChallenge?: MonthChallengeResponse | null;
   }) {
     this.date = properties.date;
     this.items = properties.items;
@@ -105,5 +111,6 @@ export class DayPlannerResponseDto {
       weekMinutes: 0,
       weeklyTargetMinutes: null,
     };
+    this.monthChallenge = properties.monthChallenge ?? null;
   }
 }

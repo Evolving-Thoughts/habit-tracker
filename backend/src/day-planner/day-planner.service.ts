@@ -35,6 +35,11 @@ import { openTargetRuns, plannedHabits } from '../history/history-planning';
 import { weeklyQuestTarget } from '../quest-hours/weekly-target';
 import { questSoFar } from '../quest-hours/quest-time';
 import { loadAgendaContext } from './agenda-context';
+import {
+  findRunningChallenge,
+  runningChallengeResponse,
+} from '../month-challenges/challenge-store';
+import { monthEnd } from '../month-challenges/challenge-rules';
 import { sortInDay } from './day-order';
 import {
   DayPlannerGoalDto,
@@ -60,7 +65,8 @@ type ContextField =
   | 'goal'
   | 'campaign'
   | 'workedMinutes'
-  | 'streak';
+  | 'streak'
+  | 'monthChallenge';
 
 @Injectable()
 export class DayPlannerService {
@@ -80,6 +86,12 @@ export class DayPlannerService {
       loadAgendaContext(this.db.manager, userId, today),
     ]);
     const { ancestry } = context;
+    // Runs are reconciled now: the challenge counts today's as stored.
+    const monthChallenge = await runningChallengeResponse(
+      this.db.manager,
+      userId,
+      this.clock.now(),
+    );
 
     // The week's stretches: today's work and the week's quest hours.
     const { startDate, endDate } = weekRange(today);
@@ -126,6 +138,7 @@ export class DayPlannerService {
           goal: habitGoalsByHabit.get(occurrence.habitId) ?? null,
           workedMinutes: workedOn('occurrenceId', occurrence.id),
           streak: streaks.get(occurrence.habitId) ?? NO_STREAK,
+          monthChallenge: monthChallenge?.habitId === occurrence.habitId,
         };
         return { item, id: occurrence.id, dayPosition: occurrence.dayPosition };
       }),
@@ -157,6 +170,7 @@ export class DayPlannerService {
         ),
         weeklyTargetMinutes: questTarget,
       },
+      monthChallenge,
     });
   }
 
@@ -219,6 +233,10 @@ export class DayPlannerService {
         now,
       );
       const streakOf = (habitId: number) => streaks.get(habitId) ?? NO_STREAK;
+      // The marker: runs of the challenge's Daily within its month.
+      const challenge = await findRunningChallenge(manager, userId, today);
+      const challengeOn = (habitId: number, date: string) =>
+        challenge?.habitId === habitId && date <= monthEnd(challenge.month);
       const planned = [
         ...plannedHabits(
           forecast.habits,
@@ -250,6 +268,7 @@ export class DayPlannerService {
             today,
             ancestry.habitCampaign(item.habitId!),
             streakOf(item.habitId!),
+            challengeOn(item.habitId!, item.date < today ? today : item.date),
           ),
         ),
         ...resolved.map((occurrence) =>
@@ -265,6 +284,10 @@ export class DayPlannerService {
             effectiveDuration(occurrence, occurrence.habit),
             ancestry.habitCampaign(occurrence.habitId),
             streakOf(occurrence.habitId),
+            challengeOn(
+              occurrence.habitId,
+              occurrence.resolvedDate ?? occurrence.scheduledDate,
+            ),
           ),
         ),
       ];

@@ -16,6 +16,7 @@ import {
 } from '../src/auth/auth.entities';
 import { AuthService } from '../src/auth/auth.service';
 import type { HabitResponseDto } from '../src/habits/dto/habit-response.dto';
+import type { MonthChallengeResponse } from '../src/month-challenges/month-challenge.dto';
 import { Clock } from '../src/common/clock';
 import { PushTransport, type SendResult } from '../src/push/push.transport';
 import { PushService } from '../src/push/push.service';
@@ -95,7 +96,7 @@ describe('Session-scoped timer Push (e2e)', () => {
   });
   beforeEach(async () => {
     await db.query(
-      'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, categories, reflections, week_reviews, day_bests, day_best_settings, work_logs, goal_snapshots, auth_tokens, auth_sessions, auth_rate_limits, weekly_quest_targets, users RESTART IDENTITY',
+      'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, categories, reflections, week_reviews, day_bests, day_best_settings, month_challenges, work_logs, goal_snapshots, auth_tokens, auth_sessions, auth_rate_limits, weekly_quest_targets, users RESTART IDENTITY',
     );
     await seedAuth(app);
     now = new Date();
@@ -580,6 +581,144 @@ describe('Session-scoped timer Push (e2e)', () => {
       at(22 * 60 + 30);
       await push.enqueueDayBestReminders();
       expect(await reminders()).toHaveLength(0);
+    });
+  });
+  describe('daily reminder of the Monats-Challenge', () => {
+    const today = () => dayOf(now);
+    /** Berlin wall clock of the current test day. */
+    const at = (minutes: number) => {
+      now = atWallClockMinutes(today(), minutes);
+    };
+    const reminders = async () =>
+      (await deliveries()).filter((row) => row.kind === 'challenge');
+    /** A daily Daily and this month's challenge on it, from 10:00. */
+    async function challenge(title = 'Sport', reminderTime?: string | null) {
+      at(10 * 60);
+      const habit = (
+        await client()
+          .post('/habits')
+          .send({
+            title,
+            schedule: {
+              type: 'interval',
+              intervalDays: 1,
+              missedOccurrencePolicy: 'skip',
+            },
+          })
+          .expect(201)
+      ).body as HabitResponseDto;
+      return (
+        await client()
+          .post('/month-challenges')
+          .send({
+            habitId: habit.id,
+            month: today().slice(0, 7),
+            ...(reminderTime === undefined ? {} : { reminderTime }),
+          })
+          .expect(201)
+      ).body as MonthChallengeResponse;
+    }
+    const complete = (occurrenceId: number) =>
+      client()
+        .patch(`/habit-occurrences/${occurrenceId}/status`)
+        .send({ status: 'completed' })
+        .expect(200);
+    beforeEach(() =>
+      db.query('UPDATE auth_sessions SET "expiresAt" = $1', [
+        new Date(Date.now() + 2 * 86_400_000),
+      ]),
+    );
+
+    it("comes once at its time while today's run is open; the title only behind the session", async () => {
+      await sub();
+      const created = await challenge();
+      at(19 * 60 - 1);
+      await push.enqueueChallengeReminders();
+      expect(await reminders()).toHaveLength(0);
+      at(19 * 60);
+      await Promise.all([
+        push.enqueueChallengeReminders(),
+        push.enqueueChallengeReminders(),
+      ]);
+      const queued = await reminders();
+      expect(queued).toHaveLength(1);
+      expect(queued[0]).toMatchObject({
+        day: today(),
+        timerId: null,
+        state: 'pending',
+      });
+      now = new Date(now.getTime() + 60_000);
+      await push.enqueueChallengeReminders();
+      expect(await reminders()).toHaveLength(1);
+
+      await push.sendPending();
+      expect(transport.send).toHaveBeenCalledTimes(1);
+      const payload = transport.send.mock.calls[0][1] as { type: string };
+      expect(payload.type).toBe('challenge-reminder');
+      expect(Object.keys(payload).sort()).toEqual([
+        'deliveryId',
+        'expiresAt',
+        'subscriptionId',
+        'type',
+      ]);
+      expect(transport.send.mock.calls[0][2]).toBeGreaterThan(30);
+      expect(transport.send.mock.calls[0][2]).toBeLessThanOrEqual(3600);
+      expect(await push.confirm(TEST_USER, sessionHash, queued[0].id)).toEqual({
+        allowed: true,
+        title: 'Sport',
+      });
+      // Done meanwhile: a notification still on its way stays hidden.
+      await complete(created.todayOccurrenceId!);
+      expect(await push.confirm(TEST_USER, sessionHash, queued[0].id)).toEqual({
+        allowed: false,
+      });
+    });
+
+    it('stays away when the run is done or the reminder is off, and is never caught up', async () => {
+      await sub();
+      const done = await challenge();
+      await complete(done.todayOccurrenceId!);
+      at(19 * 60 + 5);
+      await push.enqueueChallengeReminders();
+      expect(await reminders()).toHaveLength(0);
+      // Settled for today: not looked at again.
+      expect(
+        (
+          await db.query<{ remindedOn: string }[]>(
+            'SELECT "remindedOn"::text AS "remindedOn" FROM month_challenges',
+          )
+        )[0].remindedOn,
+      ).toBe(today());
+
+      await client().delete(`/month-challenges/${done.id}`).expect(204);
+      const off = await challenge('Lesen', null);
+      at(19 * 60 + 10);
+      await push.enqueueChallengeReminders();
+      expect(await reminders()).toHaveLength(0);
+
+      // A later time; a server down through its whole hour sends nothing.
+      await client()
+        .patch(`/month-challenges/${off.id}`)
+        .send({ reminderTime: '21:00' })
+        .expect(200);
+      at(22 * 60 + 1);
+      await push.enqueueChallengeReminders();
+      expect(await reminders()).toHaveLength(0);
+      at(22 * 60 + 30);
+      await push.enqueueChallengeReminders();
+      expect(await reminders()).toHaveLength(0);
+    });
+
+    it('keeps its own delivery beside the reminder of Das Beste des Tages', async () => {
+      await sub();
+      await challenge('Sport', '21:00');
+      at(21 * 60 + 5);
+      await push.enqueueDayBestReminders();
+      await push.enqueueChallengeReminders();
+      expect((await deliveries()).map(({ kind }) => kind).sort()).toEqual([
+        'challenge',
+        'day-best',
+      ]);
     });
   });
 });

@@ -55,4 +55,6 @@ export type HabitResponseDto = {
   upcomingSchedule: ScheduleVersionResponse | null;
   /** Done runs in a row and the longest such series (see streaks.ts). */
   streak: Streak;
+  /** It carries this month's running Monats-Challenge (the rows' marker). */
+  monthChallenge: boolean;
 };
