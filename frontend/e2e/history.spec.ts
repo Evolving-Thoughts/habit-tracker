@@ -452,11 +452,20 @@ test("Calendar forecast: future date placement, schedule change, pause and delet
     ["Wechselnder Rhythmus"],
   ];
   // The head names quests and Dailies without a time; the sentence counts the day.
-  const untimed = ["1 Daily", "1 Quest · 1 Daily", "1 Daily", null, "1 Daily", null, "1 Daily"];
+  const untimed = [
+    "1 Daily",
+    "1 Quest · 1 Daily",
+    "1 Daily",
+    null,
+    "1 Daily",
+    null,
+    "1 Daily",
+  ];
   for (let index = 0; index < 7; index++) {
     const head = page.locator(`.week-head[data-date="${dates[index]}"]`);
     const line = untimed[index];
-    if (line) await expect(head.locator(".week-head__summary")).toHaveText(line);
+    if (line)
+      await expect(head.locator(".week-head__summary")).toHaveText(line);
     else await expect(head.locator(".week-head__summary")).toHaveCount(0);
     await expect(head).toHaveAccessibleDescription(
       expected[index]!.length
@@ -622,7 +631,10 @@ test("Calendar day: reflection saves only after a change and time is logged in t
   await reflection
     .getByRole("button", { name: "Speichern", exact: true })
     .click();
-  await expect(reflection.getByRole("status")).toHaveText("Gespeichert");
+  // Its own status line (the microphone has one of its own).
+  await expect(reflection.locator(".day-reflection__saved")).toHaveText(
+    "Gespeichert",
+  );
   await page.reload();
   await openCalendar(page, "Tag");
   await expect(reflection.getByLabel("Reflexion")).toHaveValue("Ruhiger Tag");
@@ -732,7 +744,9 @@ test("Calendar day: sorted like Heute, counted like Heute, and Dailies are ticke
       .getByRole("list", { name: "Zeitachse", exact: true })
       .getByRole("listitem")
       .filter({ hasText: "Gliederung" }),
-  ).toMatchAriaSnapshot(String.raw`- listitem: /Gliederung, erledigt um \d\d:\d\d/`);
+  ).toMatchAriaSnapshot(
+    String.raw`- listitem: /Gliederung, erledigt um \d\d:\d\d/`,
+  );
 
   await daily
     .getByRole("button", { name: "Lesen erledigen", exact: true })

@@ -36,6 +36,9 @@ export const stubEngine: DictationEngine = {
 
   start(_mode, handlers) {
     let over = false;
+    queueMicrotask(() => {
+      if (!over) handlers.listening();
+    });
     const finish = () => {
       if (over) return;
       over = true;

@@ -36,7 +36,10 @@ export type {
   DictationSetup,
 } from "./dictation/engine";
 export { MICROPHONE_DENIED, NOTHING_HEARD } from "./dictation/engine";
-export { MAX_RECORDING_MS, removeWhisperModel } from "./dictation/whisper-engine";
+export {
+  MAX_RECORDING_MS,
+  removeWhisperModel,
+} from "./dictation/whisper-engine";
 
 export type DictationState =
   | "idle"
@@ -46,6 +49,8 @@ export type DictationState =
   | "downloading"
   /** Something to do first, e.g. install the offline pack (`setup`). */
   | "setup"
+  /** Opening the microphone, e.g. while the device asks for permission. */
+  | "starting"
   | "listening"
   | "processing"
   | "error";
@@ -282,9 +287,15 @@ export function useDictation(options: UseDictationOptions = {}) {
   }
 
   function listen(current: Attempt, chosen: DictationEngineId) {
-    state.value = "listening";
+    // "Hört zu" only once the microphone is open: a permission question
+    // may come first.
+    state.value = "starting";
     running.value = chosen;
     const handlers: DictationHandlers = {
+      listening: () => {
+        if (!current.ended && state.value === "starting")
+          state.value = "listening";
+      },
       partial: (text) => {
         if (current.ended) return;
         interim.value = text;
@@ -321,7 +332,11 @@ export function useDictation(options: UseDictationOptions = {}) {
   /** A tap on the microphone: start; stop while listening; give up loading. */
   function toggle(): void {
     if (state.value === "listening") stop();
-    else if (state.value === "downloading" || state.value === "confirming")
+    else if (
+      state.value === "downloading" ||
+      state.value === "confirming" ||
+      state.value === "starting"
+    )
       cancel();
     else if (state.value !== "processing") {
       dismiss();

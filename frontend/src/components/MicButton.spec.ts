@@ -165,7 +165,9 @@ describe("MicButton", () => {
     await flushPromises();
     expect(wrapper.emitted("result")).toEqual([["Steuer morgen"]]);
     expect(wrapper.find(".mic__word").exists()).toBe(false);
+    // "Mikrofon …" until the microphone is open, then "Hört zu …".
     expect(wrapper.emitted("state")).toEqual([
+      ["starting"],
       ["listening"],
       ["processing"],
       ["idle"],

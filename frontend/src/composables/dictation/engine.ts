@@ -15,6 +15,8 @@ export type DictationEngineId = "native" | "whisper" | "stub";
 
 /** What a running engine reports; calls after the first ending are ignored. */
 export type DictationHandlers = {
+  /** The microphone is open (after any permission question): it listens now. */
+  listening(): void;
   /** What was heard so far, if the engine can tell. */
   partial(text: string): void;
   /** Recording is over, the text is being worked out. */

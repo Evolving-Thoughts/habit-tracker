@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import { createTodo, reorderDay } from "../api/day-planner.api";
 import { useInsertPlace } from "../composables/useInsertPlace";
 import { contentWidth, firstThatFits } from "../utils/fit-text";
@@ -67,9 +74,10 @@ async function onDictated(text: string): Promise<void> {
 
 /*
  * The placeholder says as much as its field holds: a narrow day column of the
- * Plan gets the short form instead of one cut off in the middle of a word.
+ * Plan gets a short form instead of one cut off in the middle of a word; with
+ * the microphone in the field the narrowest columns need the shortest.
  */
-const PLACEHOLDERS = ["Quest hinzufügen …", "Hinzufügen …"];
+const PLACEHOLDERS = ["Quest hinzufügen …", "Hinzufügen …", "Neu …"];
 const placeholder = ref(PLACEHOLDERS[0]!);
 const field = ref<HTMLInputElement | null>(null);
 let observer: ResizeObserver | null = null;

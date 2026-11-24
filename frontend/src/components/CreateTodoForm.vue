@@ -54,8 +54,7 @@ const categories = ref<CategoryResponse[]>([]);
 /** The chosen category in words, for the closed disclosure. */
 const categoryName = computed(
   () =>
-    categories.value.find((entry) => entry.id === categoryId.value)?.name ??
-    "",
+    categories.value.find((entry) => entry.id === categoryId.value)?.name ?? "",
 );
 const why = ref("");
 const color = ref<CampaignColor | null>(null);
@@ -66,11 +65,13 @@ const isSubmitting = ref(false);
 const errorMessage = ref<string | null>(null);
 
 /*
- * Day and duration in the title ("Steuererklärung morgen 30 Minuten") fill
- * their fields while those are untouched, with the same chips as the quick
- * add. A field set by hand keeps its value and leaves the words in the
+ * Day and duration in a dictated title ("Steuererklärung morgen 30
+ * Minuten") fill their fields while those are untouched, with the same chips
+ * as the quick add. Only dictation is read: this form has its own fields for
+ * day and duration, so a typed title stays exactly as typed ("Heute-Show
+ * schauen"). A field set by hand keeps its value and leaves the words in the
  * title; a discarded chip does the same. Only on creating do the applied
- * words leave the title, so what is typed stays as typed.
+ * words leave the title.
  */
 const titleId = useId();
 const mic = ref<InstanceType<typeof MicButton> | null>(null);
@@ -79,8 +80,10 @@ const touched = ref<Record<QuestParseKind, boolean>>({
   duration: false,
 });
 const ignored = ref<QuestParseKind[]>([]);
+/** Set once dictation has written into the title; reading starts then. */
+const dictated = ref(false);
 const parsed = computed(() =>
-  props.campaign
+  props.campaign || !dictated.value
     ? null
     : parseQuest(title.value, {
         ignore: [
@@ -107,6 +110,7 @@ function discard(kind: QuestParseKind): void {
 
 /** Dictated text joins what is typed, after a space. */
 function onDictated(text: string): void {
+  dictated.value = true;
   const typed = title.value.trimEnd();
   title.value = (typed ? `${typed} ${text}` : text).slice(0, 200);
 }
@@ -141,6 +145,7 @@ function buildInput(): CreateTodoInput {
 
 function resetForm(): void {
   title.value = "";
+  dictated.value = false;
   date.value = "";
   time.value = "";
   durationMinutes.value = "";
@@ -280,7 +285,11 @@ async function submit(): Promise<void> {
         </template>
 
         <div v-else class="create-todo__more">
-          <AppointmentFields v-model:time="time" :date="date" id-prefix="todo" />
+          <AppointmentFields
+            v-model:time="time"
+            :date="date"
+            id-prefix="todo"
+          />
 
           <FormDisclosure
             label="Kategorie"
@@ -300,7 +309,10 @@ async function submit(): Promise<void> {
       </fieldset>
 
       <!-- It sticks to the dialog's bottom edge, like the editor's actions. -->
-      <div class="create-todo__footer sticky-actions" data-test="editor-actions">
+      <div
+        class="create-todo__footer sticky-actions"
+        data-test="editor-actions"
+      >
         <p v-if="errorMessage" class="form-error" role="alert">
           {{ errorMessage }}
         </p>

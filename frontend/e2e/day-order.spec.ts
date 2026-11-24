@@ -47,9 +47,9 @@ test("Heute: sort the day with Nach oben in the menu; the head becomes the focus
   expect(await shownOrder(page)).toEqual(["Erstes", "Zweites", "Drittes"]);
 
   await cardMenu(page, "Drittes", "Drittes nach oben");
-  await expect(page.getByRole("status").filter({ hasText: "Drittes" })).toHaveText(
-    "„Drittes“ steht jetzt an Stelle 2 von 3.",
-  );
+  await expect(
+    page.getByRole("status").filter({ hasText: "Drittes" }),
+  ).toHaveText("„Drittes“ steht jetzt an Stelle 2 von 3.");
   // The keyboard stays on the moved card's menu button.
   await expect(menuButton(page, "Drittes")).toBeFocused();
   await cardMenu(page, "Drittes", "Drittes nach oben");
@@ -64,19 +64,26 @@ test("Heute: sort the day with Nach oben in the menu; the head becomes the focus
 });
 
 test("Heute: a fixed appointment can be dragged onto the focus card and stays there after reload", async ({
-  page, request,
+  page,
+  request,
 }, info) => {
   test.skip(info.project.name !== "chromium", "Mouse drag");
   const date = await today(request);
   await page.clock.install({ time: berlinTime(date, "08:00") });
-  for (const [title, timeOfDay] of [["Transporter", "10:00"], ["Meeting", "14:30"], ["Texte", null]]) {
+  for (const [title, timeOfDay] of [
+    ["Transporter", "10:00"],
+    ["Meeting", "14:30"],
+    ["Texte", null],
+  ]) {
     await plan(request, { title, scheduledDate: date, timeOfDay });
   }
   await page.goto("/");
   await expect(page.locator("#focus-title")).toHaveText("Texte");
   await dragCard(page, card(page, "Transporter"), page.locator(".focus"));
   await expect(page.locator("#focus-title")).toHaveText("Transporter");
-  await expect.poll(() => storedOrder(request)).toEqual(["Transporter", "Texte", "Meeting"]);
+  await expect
+    .poll(() => storedOrder(request))
+    .toEqual(["Transporter", "Texte", "Meeting"]);
   await page.reload();
   await expect(page.locator("#focus-title")).toHaveText("Transporter");
 });
@@ -132,7 +139,9 @@ test("Heute: quick add puts a quest at the end or at the head of today", async (
   await field.fill("Hinten dran");
   await field.press("Enter");
   await expect(field).toHaveValue("");
-  await expect.poll(() => shownOrder(page)).toEqual(["Schon da", "Hinten dran"]);
+  await expect
+    .poll(() => shownOrder(page))
+    .toEqual(["Schon da", "Hinten dran"]);
 
   // The small toggle beside the field; the choice holds on this device.
   const top = page.getByRole("button", { name: "Oben einfügen", exact: true });
@@ -171,7 +180,17 @@ test("Heute: appointments sit in the list by their time and stay when the rest m
   await expect(appointment).toContainText("23:58");
   await expect(appointment).toHaveAttribute("data-sort-key", /todo-/);
 
-  await page.getByRole("button", { name: "Auf morgen", exact: true }).click();
+  // On a phone "Auf morgen" waits in the header's "…" menu.
+  if ((page.viewportSize()?.width ?? 1280) < 640) {
+    await page
+      .getByRole("button", { name: "Weitere Aktionen für heute", exact: true })
+      .click();
+    await page
+      .getByRole("menuitem", { name: "Auf morgen", exact: true })
+      .click();
+  } else {
+    await page.getByRole("button", { name: "Auf morgen", exact: true }).click();
+  }
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("2 offene Einträge wandern auf morgen");
   await dialog
@@ -182,7 +201,9 @@ test("Heute: appointments sit in the list by their time and stay when the rest m
   // An appointment never stands in for an empty order: it waits in the list.
   await expect(page.locator("#focus-title")).toHaveCount(0);
   await expect(
-    page.locator(".order [data-sort-key]:not(.today-view__appointment):not([data-sort-anchor])"),
+    page.locator(
+      ".order [data-sort-key]:not(.today-view__appointment):not([data-sort-anchor])",
+    ),
   ).toHaveCount(0);
   await expect(page.locator(".today-view__empty")).toContainText(
     "Nächster Termin: 23:58 Zahnarzt.",
@@ -262,7 +283,10 @@ test("Heute: an appointment is the focus card from its start to its end", async 
   await expect(past).toContainText("Teamrunde");
   await expect(past).toContainText("Vorbei – erledigt?");
   await past
-    .getByRole("button", { name: "Teamrunde auf einen anderen Tag", exact: true })
+    .getByRole("button", {
+      name: "Teamrunde auf einen anderen Tag",
+      exact: true,
+    })
     .click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");

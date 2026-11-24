@@ -122,6 +122,7 @@ export const whisperEngine: DictationEngine = {
         return;
       }
       if (cancelled) return recording.cancel();
+      handlers.listening();
       if (stopped) recording.stop();
       const result = await recording.result;
       if (cancelled || !result) return;

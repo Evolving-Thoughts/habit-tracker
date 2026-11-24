@@ -54,6 +54,8 @@ const busy = computed(
 const percent = computed(() => Math.round(progress.value * 100));
 const word = computed(() => {
   switch (state.value) {
+    case "starting":
+      return "Mikrofon …";
     case "listening":
       return "Hört zu …";
     case "processing":
@@ -67,6 +69,8 @@ const word = computed(() => {
 /** Read out once per change; the bubbles have their own roles. */
 const announcement = computed(() => {
   switch (state.value) {
+    case "starting":
+      return "Mikrofon wird geöffnet.";
     case "listening":
       return "Hört zu. Zum Beenden noch einmal tippen, Escape verwirft.";
     case "processing":

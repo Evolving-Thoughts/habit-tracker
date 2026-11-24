@@ -26,7 +26,7 @@ enableAutoUnmount(afterEach);
 const createTodoMock = vi.mocked(createTodo);
 
 const response: TodoResponse = {
-    ...TODO_FIELDS,
+  ...TODO_FIELDS,
   id: 1,
   parentId: null,
   title: "NestJS lernen",
@@ -381,13 +381,30 @@ describe("CreateTodoForm", () => {
     const value = (wrapper: ReturnType<typeof mountForm>, name: string) =>
       wrapper.get<HTMLInputElement>(`input[name="${name}"]`).element.value;
 
-    it("fills untouched day and duration, shows chips, and takes the words out only on creating", async () => {
+    it("leaves a typed title as typed: the form has its own day and duration", async () => {
       const wrapper = mountForm();
-      await wrapper.get('input[name="title"]').setValue("Arzt anrufen morgen 15 Minuten");
+      await wrapper.get('input[name="title"]').setValue("Heute schreiben");
+      expect(value(wrapper, "scheduledDate")).toBe("");
+      expect(wrapper.find(".parse-chip").exists()).toBe(false);
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+      expect(createTodoMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Heute schreiben",
+          scheduledDate: null,
+        }),
+      );
+    });
+
+    it("fills untouched day and duration from dictation, shows chips, and takes the words out only on creating", async () => {
+      const wrapper = mountForm();
+      await dictate(wrapper, "Arzt anrufen morgen 15 Minuten");
       expect(value(wrapper, "scheduledDate")).toBe("2026-11-25");
       expect(value(wrapper, "duration")).toBe("15");
       expect(
-        wrapper.findAll(".parse-chip").map((chip) => chip.attributes("aria-label")),
+        wrapper
+          .findAll(".parse-chip")
+          .map((chip) => chip.attributes("aria-label")),
       ).toEqual(["Tag: morgen, entfernen", "Dauer: 15 Min., entfernen"]);
       expect(value(wrapper, "title")).toBe("Arzt anrufen morgen 15 Minuten");
 
@@ -405,12 +422,12 @@ describe("CreateTodoForm", () => {
     it("leaves a field set by hand alone, and its words in the title", async () => {
       const wrapper = mountForm();
       await wrapper.get('input[name="scheduledDate"]').setValue("2026-12-01");
-      await wrapper.get('input[name="title"]').setValue("Wäsche morgen 20 Minuten");
+      await dictate(wrapper, "Wäsche morgen 20 Minuten");
       expect(value(wrapper, "scheduledDate")).toBe("2026-12-01");
       expect(value(wrapper, "duration")).toBe("20");
-      expect(wrapper.findAll(".parse-chip").map((chip) => chip.text())).toEqual([
-        "20 Min.",
-      ]);
+      expect(wrapper.findAll(".parse-chip").map((chip) => chip.text())).toEqual(
+        ["20 Min."],
+      );
 
       await wrapper.get("form").trigger("submit");
       await flushPromises();
@@ -425,7 +442,7 @@ describe("CreateTodoForm", () => {
 
     it("stops following the title once the duration is typed", async () => {
       const wrapper = mountForm();
-      await wrapper.get('input[name="title"]').setValue("Laufen 20 Minuten");
+      await dictate(wrapper, "Laufen 20 Minuten");
       await wrapper.get('input[name="duration"]').setValue("45");
       await wrapper.get('input[name="title"]').setValue("Laufen 30 Minuten");
       expect(value(wrapper, "duration")).toBe("45");
@@ -433,20 +450,25 @@ describe("CreateTodoForm", () => {
 
     it("empties a filled field again when its chip is discarded", async () => {
       const wrapper = mountForm();
-      await wrapper.get('input[name="title"]').setValue("Wäsche morgen");
+      await dictate(wrapper, "Wäsche morgen");
       expect(value(wrapper, "scheduledDate")).toBe("2026-11-25");
-      await wrapper.get('[aria-label="Tag: morgen, entfernen"]').trigger("click");
+      await wrapper
+        .get('[aria-label="Tag: morgen, entfernen"]')
+        .trigger("click");
       expect(value(wrapper, "scheduledDate")).toBe("");
       await wrapper.get("form").trigger("submit");
       await flushPromises();
       expect(createTodoMock).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Wäsche morgen", scheduledDate: null }),
+        expect.objectContaining({
+          title: "Wäsche morgen",
+          scheduledDate: null,
+        }),
       );
     });
 
     it("reads nothing out of a campaign's title", async () => {
       const wrapper = mountForm({ campaign: true });
-      await wrapper.get('input[name="title"]').setValue("Marathon in 3 Stunden");
+      await dictate(wrapper, "Marathon in 3 Stunden");
       expect(wrapper.find(".parse-chip").exists()).toBe(false);
     });
 

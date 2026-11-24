@@ -121,13 +121,18 @@ export const nativeEngine: DictationEngine = {
     function release() {
       offs.splice(0).forEach((off) => off());
     }
-    native.start({ partial: true }).catch((error: unknown) => {
-      const { code, message } = (error ?? {}) as {
-        code?: unknown;
-        message?: string;
-      };
-      fail(code, code === "offline-model-missing" ? message : START_FAILED);
-    });
+    native.start({ partial: true }).then(
+      () => {
+        if (!over) handlers.listening();
+      },
+      (error: unknown) => {
+        const { code, message } = (error ?? {}) as {
+          code?: unknown;
+          message?: string;
+        };
+        fail(code, code === "offline-model-missing" ? message : START_FAILED);
+      },
+    );
     return {
       stop: () => void native.stop().catch(() => {}),
       cancel: () => {
