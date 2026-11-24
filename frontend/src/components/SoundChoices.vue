@@ -23,6 +23,11 @@ const name = `sound-${useId()}`;
  * activation is not relied on: on some touch devices a tap on the text never
  * reached the radio, so the line picks itself and moves the focus there.
  */
+/** A press on the words must not move the focus away from the choice. */
+function keepFocus(event: MouseEvent): void {
+  if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
+}
+
 function pick(event: MouseEvent, id: string | null): void {
   const target = event.target as HTMLElement;
   if (target instanceof HTMLInputElement) return;
@@ -36,7 +41,11 @@ function pick(event: MouseEvent, id: string | null): void {
 <template>
   <fieldset class="sound-choices">
     <legend class="sound-choices__legend">{{ label }}</legend>
-    <label class="sound-choices__option" @click="pick($event, null)">
+    <label
+      class="sound-choices__option"
+      @mousedown="keepFocus"
+      @click="pick($event, null)"
+    >
       <input
         type="radio"
         :name="name"
@@ -59,6 +68,7 @@ function pick(event: MouseEvent, id: string | null): void {
           v-for="sound in group.sounds"
           :key="sound.id"
           class="sound-choices__option"
+          @mousedown="keepFocus"
           @click="pick($event, sound.id)"
         >
           <input

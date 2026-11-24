@@ -41,6 +41,9 @@ in `frontend/android/app/src/main/java/local/habittracker/app/sound/`.
   the first cross-fade.
 - Pausing or stopping the stopwatch (anywhere), leaving the Fokus-Modus and
   signing out stop the sound. After a pause it needs a gesture here again.
+  Leaving while the stopwatch runs keeps its go-ahead: coming back to the
+  Fokus-Modus while that same stopwatch still runs, the sound plays on (the
+  tap that leads back counts as the gesture browsers ask for).
 - The view watches the string `${timer.id}:${timer.state}`, as
   `TimerProvider.vue` does, so the 3-second poll's fresh objects never
   restart anything.

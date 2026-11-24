@@ -137,6 +137,14 @@ const timerIdOf = (key: string): string | null =>
  * and takes the gesture back. Only `timerKey` and `running` drive this, so
  * the poll that replaces the timer object every 3 seconds changes nothing.
  */
+/*
+ * Leaving the Fokus-Modus stops the sound, but the go-ahead of a stopwatch
+ * that keeps running survives the visit elsewhere: coming back while it
+ * still runs, its sound plays on (the tap that leads back is the gesture
+ * browsers ask for). A pause or stop takes it back.
+ */
+let carried: { armedFor: string; chimedFor: string | null } | null = null;
+
 export function useFocusSound(options: FocusSoundOptions) {
   const now = options.now ?? (() => Date.now());
   const { settings, update } = useFocusSoundSettings();
@@ -152,10 +160,16 @@ export function useFocusSound(options: FocusSoundOptions) {
   const stoppedOutside = ref(false);
   /** The stopwatch started or approved from this tab. */
   let armedFor: string | null = null;
-  /** When Start or Fortsetzen was pressed here, waiting for the stopwatch to run. */
-  let gestureAt = Number.NEGATIVE_INFINITY;
   /** The stopwatch whose "Soll erreicht" already chimed. */
   let chimedFor: string | null = null;
+  const runningId = options.running() ? timerIdOf(options.timerKey()) : null;
+  if (carried && carried.armedFor === runningId) {
+    armedFor = carried.armedFor;
+    chimedFor = carried.chimedFor;
+  }
+  carried = null;
+  /** When Start or Fortsetzen was pressed here, waiting for the stopwatch to run. */
+  let gestureAt = Number.NEGATIVE_INFINITY;
   /** A Start or Pause pressed here that the server has not confirmed yet. */
   let pending: { running: boolean; until: number } | null = null;
   let pendingCheck: ReturnType<typeof setTimeout> | null = null;
@@ -254,7 +268,11 @@ export function useFocusSound(options: FocusSoundOptions) {
     playingId.value = null;
     stoppedOutside.value = true;
   });
+  // Back in the view while its stopwatch still runs: on with the sound.
+  if (armedFor) sync();
   onScopeDispose(() => {
+    carried =
+      armed() && options.running() && armedFor ? { armedFor, chimedFor } : null;
     if (pendingCheck !== null) clearTimeout(pendingCheck);
     stopListening?.();
     silence();

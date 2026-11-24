@@ -71,9 +71,16 @@ function onOutsideClick(event: MouseEvent): void {
   if (root.value && !event.composedPath().includes(root.value)) close(false);
 }
 
+/*
+ * Focus moving out of the panel closes it, but not focus falling back to a
+ * container around it: a tap on a line's words moves the focus to the
+ * nearest focusable ancestor (the Fokus-Modus view) before the tap arrives.
+ */
 function onFocusOut(event: FocusEvent): void {
   const next = event.relatedTarget as Node | null;
-  if (next && !root.value?.contains(next)) close(false);
+  const panel = root.value;
+  if (!next || !panel || panel.contains(next) || next.contains(panel)) return;
+  close(false);
 }
 
 watch(open, (isOpen) => {
