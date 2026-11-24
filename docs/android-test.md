@@ -7,7 +7,7 @@ Die APK ist ein Fenster auf einen Server: Sie lädt die Web-App von dort, und di
 
 `capacitor.config.ts` nimmt `CAP_SERVER_URL`, sonst die Live-Adresse; `cleartext` gilt nur für eine `http://`-Adresse.
 
-Die Fokus-Sperre (siehe `focus-block.md`) gehört zur APK selbst: Nach Änderungen am Android-Code (`frontend/android`) braucht es eine neue APK, in beiden Varianten.
+Die Fokus-Sperre (siehe `focus-block.md`) und die Wiedergabe der Fokus-Klänge gehören zur APK selbst: Nach Änderungen am Android-Code (`frontend/android`) braucht es eine neue APK, in beiden Varianten.
 
 ## Live-APK bauen
 
@@ -49,7 +49,7 @@ Grenzen: Push geht ohne HTTPS nicht, und unterwegs ohne dieses WLAN lädt die Ap
 
 ## Ergebnis
 
-Die APK liegt danach unter `frontend/android/app/build/outputs/apk/debug/app-debug.apk`. Die JVM-Tests des Android-Codes (Fokus-Sperre) laufen mit `cd android && ./gradlew.bat test`.
+Die APK liegt danach unter `frontend/android/app/build/outputs/apk/debug/app-debug.apk`. Die JVM-Tests des Android-Codes (Fokus-Sperre, Cache der Fokus-Klänge) laufen mit `cd android && ./gradlew.bat test`.
 
 ## Fokus-Sperre am Handy einrichten
 
@@ -60,3 +60,20 @@ Die APK liegt danach unter `frontend/android/app/build/outputs/apk/debug/app-deb
 5. Prüfen: Soft endet mit der Stoppuhr; Hardcore zeigt die Restzeit und lässt sich nicht aufheben; „Zurück zur Quest“ öffnet den Fokus-Modus.
 
 Steht „Privates DNS“ in den Android-Einstellungen auf einem festen Anbieter, umgeht der Browser den Website-Filter; für den Test auf „Automatisch“ oder „Aus“ stellen.
+
+## Fokus-Klänge am Handy testen
+
+Die App lädt jeden Klang einmal vom Server in ihren Cache und spielt ihn in einem Mediendienst, also auch bei ausgeschaltetem Bildschirm. Eine neue Version des Klangs lädt sie neu.
+
+1. Neue APK installieren, anmelden, eine Quest im Fokus-Modus öffnen und dort einen Klang wählen.
+2. Stoppuhr starten: Der Klang läuft in Schleife, und es erscheint eine Medien-Benachrichtigung „Fokus-Klang“ mit dem Titel des Klangs.
+3. Bildschirm ausschalten und eine Minute warten: Der Klang läuft weiter, ohne Lücke an der Schleifenstelle.
+4. In der Benachrichtigung (oder in den Mediensteuerungen der Schnelleinstellungen) auf Pause tippen: Der Klang endet, die Benachrichtigung verschwindet, und der Klang-Knopf in der App zeigt „aus“.
+5. Klang wieder einschalten, dann die Stoppuhr in der App pausieren: Der Klang endet.
+6. Mit Kopfhörern starten und sie abziehen (oder Bluetooth trennen): Der Klang pausiert, statt aus dem Lautsprecher weiterzuspielen; der Knopf zeigt „aus“.
+7. Die Lautstärke in der App ändern: Der Klang wird sofort leiser oder lauter.
+8. Den Ton am Ende eines Solls abwarten: Er spielt einmal, der Klang läuft daneben weiter.
+9. Die App aus den letzten Apps wischen: Der Klang endet mit ihr.
+10. App wieder öffnen und in Heute eine Quest abhaken: Der „Erledigt“-Ton spielt. Unter Einstellungen › Töne den Schalter ausschalten und ein Daily abhaken: kein Ton.
+
+Ab Android 13 dürfen Medien-Benachrichtigungen auch ohne die Erlaubnis für Benachrichtigungen erscheinen; die Wiedergabe hängt nicht davon ab.

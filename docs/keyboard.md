@@ -31,13 +31,14 @@ comma, the usual key for settings.
 | , | Ansichten | Einstellungen |
 | N | Quests | Neue Quest (see below) |
 | Space | Quests | Start or pause the row's stopwatch |
-| X | Quests | Tick the row |
+| X | Quests | Tick the row; like a click it sounds "Erledigt" when Töne are on (`focus-sounds.md`) |
 | T | Quests | Move the row to today |
 | D | Quests | Move the row to tomorrow |
 | W | Quests | Move the row to next week's Monday |
 | Space | Fokus-Modus | Start, pause or resume its stopwatch |
 | Ctrl+Enter / Cmd+Enter | Fokus-Modus | Tick its quest, exactly like "Erledigt" |
 | Esc | Fokus-Modus | Back to Heute |
+| M | Fokus-Modus | Fokus-Klang on or off (`focus-sounds.md`) |
 | Ctrl+K / Cmd+K | Allgemein | Open the command menu |
 | ? | Allgemein | Open the shortcut overview |
 
@@ -74,7 +75,8 @@ Each is covered by `utils/shortcuts.spec.ts` and
   keyCode 229) or when another handler already called `preventDefault`
   (Tiptap's Ctrl+Enter line break, for example).
 - Keys that write (Space, X, T, D, W, Ctrl+Enter) never repeat while held;
-  view keys may.
+  view keys may. M does not repeat either: held, it would switch the sound
+  on and off in turn.
 - Space acts only when the focus is not on a button, link or other control,
   so native activation keeps working; without a row under the pointer or a
   focus view it does nothing and the page scrolls.

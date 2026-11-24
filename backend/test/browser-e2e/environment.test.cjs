@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
+const { existsSync } = require('node:fs');
 const { join } = require('node:path');
 const {
   browserEnvironment,
@@ -65,4 +66,12 @@ test('uses fresh test Push keys and disables outgoing jobs instead of inherited 
   assert.notEqual(env.VAPID_PUBLIC_KEY, 'inherited-key');
   assert.notEqual(env.VAPID_PRIVATE_KEY, 'inherited-secret');
   assert.equal(env.PUSH_WORKER_ENABLED, 'false');
+});
+
+test('serves the silent fixture sounds instead of an inherited sounds folder', () => {
+  const env = browserEnvironment({ SOUNDS_DIR: '/home/someone/real-sounds' });
+  assert.equal(env.SOUNDS_DIR, join(__dirname, '..', 'fixtures', 'sounds'));
+  // frontend/e2e/focus-sound.spec.ts plays these two.
+  for (const file of ['rain.ogg', 'chime-done.ogg'])
+    assert.ok(existsSync(join(env.SOUNDS_DIR, file)), file);
 });

@@ -23,6 +23,16 @@ import type {
   DayPlannerTodoItem,
 } from "../types/day-planner";
 import type { Timer } from "../types/timer";
+import { listSounds } from "../api/sounds.api";
+import type { Sound } from "../types/sound";
+import { resetSoundCatalog } from "../composables/useFocusSound";
+import {
+  reloadFocusSoundSettings,
+  updateFocusSound,
+} from "../composables/useFocusSoundSettings";
+import { updateSoundEffects } from "../composables/useSoundEffects";
+import { getWeekReview } from "../api/week-review.api";
+import type { WeekReviewResponse } from "../types/week-review";
 import FocusView from "./FocusView.vue";
 
 vi.mock("../api/day-planner.api", () => ({
@@ -37,6 +47,13 @@ vi.mock("../api/timers.api", () => ({
   timerAction: vi.fn(),
   changeTimerTarget: vi.fn(),
 }));
+
+vi.mock("../api/sounds.api", () => ({
+  listSounds: vi.fn(),
+  soundUrl: (sound: Sound) => `/api/sounds/${sound.id}?v=${sound.version}`,
+}));
+
+vi.mock("../api/week-review.api", () => ({ getWeekReview: vi.fn() }));
 
 vi.mock("../components/QuestNotes.vue", () => import("../test/quest-notes-stub"));
 
@@ -122,6 +139,10 @@ describe("FocusView", () => {
     vi.mocked(updateTodoCompletion).mockResolvedValue(undefined);
     vi.mocked(updateOccurrenceStatus).mockResolvedValue(undefined);
     vi.mocked(reorderDay).mockResolvedValue(undefined);
+    vi.mocked(listSounds).mockResolvedValue([]);
+    resetSoundCatalog();
+    localStorage.clear();
+    reloadFocusSoundSettings();
   });
   afterEach(() => vi.useRealTimers());
 
@@ -524,6 +545,8 @@ describe("FocusView › Fokus-Sperre", () => {
     vi.resetAllMocks();
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
+    vi.mocked(listSounds).mockResolvedValue([]);
+    resetSoundCatalog();
   });
   afterEach(() => vi.useRealTimers());
 
@@ -615,5 +638,147 @@ describe("FocusView › Fokus-Sperre", () => {
     const { startBlock, button } = await mountWithFocus(null, stopwatch());
     await button("Sperre starten")[0]!.trigger("click");
     expect(startBlock).toHaveBeenCalledWith("soft");
+  });
+});
+
+describe("FocusView › Fokus-Klänge", () => {
+  const SOUNDS: Sound[] = [
+    { id: "lofi-warm", title: "Lo-Fi warm", kind: "music", version: "1" },
+    { id: "rain", title: "Regen", kind: "ambience", version: "1" },
+    { id: "chime-done", title: "Erledigt", kind: "chime", version: "1" },
+  ];
+  let play: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
+    resetSoundCatalog();
+    localStorage.clear();
+    reloadFocusSoundSettings();
+    vi.mocked(listSounds).mockResolvedValue(SOUNDS);
+    play = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(
+      () => {},
+    );
+  });
+
+  const soundButton = (wrapper: Awaited<ReturnType<typeof mountView>>["wrapper"]) =>
+    wrapper.get("[data-sound-state]");
+
+  it("starts the chosen sound with Start and stops it with Pausieren", async () => {
+    updateFocusSound({ soundId: "rain" });
+    vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+    const { wrapper, controller, button } = await mountView();
+    expect(soundButton(wrapper).attributes("data-sound-state")).toBe("paused");
+    expect(soundButton(wrapper).text()).toBe("Klang");
+
+    await button("Starten").trigger("click");
+    controller.timer.value = stopwatch();
+    await flushPromises();
+    expect(soundButton(wrapper).attributes("data-sound-state")).toBe("playing");
+    // The state is in words, not only in colour.
+    expect(soundButton(wrapper).text()).toBe("Regen");
+    expect(soundButton(wrapper).attributes("aria-label")).toBe(
+      "Klang: Regen, spielt",
+    );
+    expect(play).toHaveBeenCalled();
+
+    await button("Pausieren").trigger("click");
+    controller.timer.value = stopwatch({ state: "paused" });
+    await flushPromises();
+    expect(soundButton(wrapper).attributes("data-sound-state")).toBe("paused");
+  });
+
+  it("stays silent for a stopwatch that already runs until a sound is picked", async () => {
+    vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+    const { wrapper } = await mountView(stopwatch());
+    expect(soundButton(wrapper).attributes("data-sound-state")).toBe("off");
+
+    await soundButton(wrapper).trigger("click");
+    expect(soundButton(wrapper).attributes("aria-expanded")).toBe("true");
+    const panel = wrapper.get(".focus-sound__panel");
+    expect(panel.findAll("legend").map((legend) => legend.text())).toEqual([
+      "Klang im Fokus-Modus",
+      "Musik",
+      "Geräusche",
+    ]);
+    expect(panel.get('input[type="range"]').attributes("aria-valuetext")).toBe(
+      "60 %",
+    );
+    await panel.findAll('input[type="radio"]')[2]!.setValue(true);
+    expect(soundButton(wrapper).attributes("data-sound-state")).toBe("playing");
+    expect(soundButton(wrapper).text()).toBe("Regen");
+  });
+
+  it("closes its panel with Escape and stays in the Fokus-Modus", async () => {
+    vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+    const { wrapper } = await mountView();
+    window.location.hash = "#/fokus";
+    await soundButton(wrapper).trigger("click");
+    const radio = wrapper.get<HTMLInputElement>(".focus-sound__panel input");
+    radio.element.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await flushPromises();
+    expect(wrapper.find(".focus-sound__panel").exists()).toBe(false);
+    expect(document.activeElement).toBe(soundButton(wrapper).element);
+    expect(window.location.hash).toBe("#/fokus");
+  });
+
+  it("switches the sound on and off with M", async () => {
+    vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+    const { wrapper } = await mountView(stopwatch());
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "m" }));
+    await flushPromises();
+    expect(soundButton(wrapper).attributes("data-sound-state")).toBe("playing");
+    expect(soundButton(wrapper).text()).toBe("Lo-Fi warm");
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "m" }));
+    await flushPromises();
+    expect(soundButton(wrapper).attributes("data-sound-state")).toBe("off");
+  });
+
+  it("sounds Erledigt when the quest is done here, through the shared completion", async () => {
+    updateSoundEffects({ enabled: true });
+    try {
+      vi.mocked(getWeekReview).mockResolvedValue({
+        startDate: "2026-09-28",
+        perfectWeek: null,
+      } as WeekReviewResponse);
+      vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+      const { wrapper } = await mountView();
+      await wrapper
+        .get('button[aria-label="Kapitel schreiben erledigen"]')
+        .trigger("click");
+      await flushPromises();
+      expect(updateTodoCompletion).toHaveBeenCalledWith(1, true);
+      expect(play).toHaveBeenCalledTimes(1);
+      const audio = play.mock.contexts[0] as HTMLAudioElement;
+      expect(audio.src).toContain("/api/sounds/chime-done");
+    } finally {
+      updateSoundEffects({ enabled: false });
+    }
+  });
+
+  it("notes calmly in the bar when the sound cannot load; the stopwatch goes on", async () => {
+    play.mockRejectedValue(new Error("Kein Audio"));
+    updateFocusSound({ soundId: "rain" });
+    vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+    const { wrapper, controller, button } = await mountView();
+    await button("Starten").trigger("click");
+    controller.timer.value = stopwatch();
+    await flushPromises();
+    const note = wrapper.get(".focus-view__bar [role='status']");
+    expect(note.text()).toBe(
+      "Der Klang konnte nicht geladen werden. Der Fokus-Modus läuft ohne ihn weiter.",
+    );
+    expect(soundButton(wrapper).attributes("data-sound-state")).toBe("paused");
+    expect(button("Pausieren").exists()).toBe(true);
+    expect(wrapper.find("[role='alert']").exists()).toBe(false);
   });
 });

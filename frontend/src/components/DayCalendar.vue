@@ -12,6 +12,7 @@ import AppIcon from "./AppIcon.vue";
 import CampaignChip from "./CampaignChip.vue";
 import WorkLogDialog from "./WorkLogDialog.vue";
 import { updateWorkLog, type WorkTarget } from "../api/work-logs.api";
+import { withWorkLogSound } from "../composables/action-sounds";
 import { notifyViewsChanged } from "../composables/data-sync";
 import { useDayClock } from "../composables/useDayClock";
 import { useWrites } from "../composables/useWrites";
@@ -292,7 +293,7 @@ async function saveResize(done: Drag): Promise<void> {
   }
   settled.value = { id: log.id, start: done.start, end: done.end };
   const saved = await write(
-    () => updateWorkLog(log.id, { startedAt, endedAt }),
+    () => withWorkLogSound(() => updateWorkLog(log.id, { startedAt, endedAt })),
     {
       key: `log-${log.id}`,
       fallbackError: "Der Abschnitt konnte nicht geändert werden.",

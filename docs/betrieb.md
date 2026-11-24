@@ -69,7 +69,7 @@ Danach die Sicherung nach [backup.md](backup.md) und das automatische Deployment
 
 ## Optionale Dienste
 
-Beide laufen ohne Neubau: Werte in `.env.production` setzen, dann das Backend neu anlegen (siehe Aktualisieren). Die Befehle gehören in den Repo-Ordner und schreiben Geheimnisse direkt in die Datei, ohne sie anzuzeigen.
+Push und Kalender laufen ohne Neubau: Werte in `.env.production` setzen, dann das Backend neu anlegen (siehe Aktualisieren). Die Befehle gehören in den Repo-Ordner und schreiben Geheimnisse direkt in die Datei, ohne sie anzuzeigen.
 
 ### Timer-Push (VAPID)
 
@@ -125,6 +125,15 @@ grep -c -E '^GOOGLE_(CLIENT_ID|CLIENT_SECRET|REDIRECT_URI|TOKEN_KEY)=.+' .env.pr
 `GOOGLE_TOKEN_KEY` verschlüsselt die gespeicherten Google-Zugriffe und muss genau 32 Byte haben (`… | base64 -d | wc -c`). Ändert er sich, müssen alle ihren Kalender neu verbinden.
 
 Die Google-App steht im Status „Testing“: Nur unter Audience eingetragene Testnutzer können ihren Kalender verbinden, und jede Verbindung läuft 7 Tage nach dem Verbinden ab. Veröffentlichen („Publish app“) verlangt einen Link zu einer Datenschutzerklärung unter Branding; danach einmal neu verbinden, Client und Serverwerte bleiben gleich. Nutzer sehen dann einmalig den Hinweis, dass Google die App nicht geprüft hat.
+
+### Fokus-Klänge
+
+Die Klänge für den Fokus-Modus (Ogg Opus, Katalog in `backend/src/sounds/sound-catalog.ts`) liegen nur auf dem Server, nie in Git: Nach den ElevenLabs-Bedingungen dürfen die erzeugten Dateien nicht einzeln öffentlich liegen, und das Repo ist öffentlich. Das Backend gibt sie nur mit gültiger Sitzung heraus (`GET /api/sounds`, `GET /api/sounds/<id>`).
+
+- Ordner auf dem Server: `~/habit-sounds`, außerhalb des Repo-Klons, damit kein Deploy ihn anfasst. Vor dem ersten Deploy mit dem Mount anlegen (`mkdir -p ~/habit-sounds` oder einmal hochladen); sonst legt Docker ihn beim Start als `root` an, und das Hochladen scheitert.
+- `compose.prod.yaml` hängt ihn nur lesend als `/app/sounds` in den Backend-Container (`SOUNDS_DIR`, Standard `/app/sounds`). Ein anderer Ort geht über `SOUNDS_HOST_DIR` in `.env.production`.
+- Hochladen vom PC mit `scripts/sounds/upload.sh`: kopiert `sounds/*.ogg` per `scp` nach `~/habit-sounds` und macht sie für den Container-Benutzer `node` lesbar. Anderer Zugang über `SOUNDS_SSH` (Standard `jonas@plan.evolving-thoughts.com`), anderer Ordner über `SOUNDS_REMOTE_DIR`.
+- Ohne Neustart: `GET /api/sounds` schaut bei jeder Anfrage nach, welche Katalog-Dateien da sind, und bietet nur diese an. Fehlt der Ordner, gibt es einfach keine Klänge. Eine ersetzte Datei bekommt eine neue Version (aus Größe und Änderungszeit), also eine neue Adresse, und Browser laden sie neu.
 
 ## Migrationen
 

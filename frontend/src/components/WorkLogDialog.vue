@@ -6,6 +6,7 @@ import {
   updateWorkLog,
   type WorkTarget,
 } from "../api/work-logs.api";
+import { withWorkLogSound } from "../composables/action-sounds";
 import { notifyViewsChanged } from "../composables/data-sync";
 import { useWrites } from "../composables/useWrites";
 import type { HistoryWorkLog } from "../types/history";
@@ -68,18 +69,20 @@ async function save(): Promise<void> {
   if (!log && !target) return;
   const saved = await write(
     () =>
-      log
-        ? updateWorkLog(
-            log.id,
-            times(
-              toLocalInput(log.startedAt).slice(0, 10),
-              toLocalInput(log.endedAt).slice(0, 10),
+      withWorkLogSound(() =>
+        log
+          ? updateWorkLog(
+              log.id,
+              times(
+                toLocalInput(log.startedAt).slice(0, 10),
+                toLocalInput(log.endedAt).slice(0, 10),
+              ),
+            )
+          : createWorkLog(
+              { kind: target!.kind, targetId: target!.targetId },
+              times(props.date, props.date),
             ),
-          )
-        : createWorkLog(
-            { kind: target!.kind, targetId: target!.targetId },
-            times(props.date, props.date),
-          ),
+      ),
     {
       fallbackError: "Die Arbeitszeit konnte nicht gespeichert werden.",
       // Heute names the worked time too; the calendar reloads itself.

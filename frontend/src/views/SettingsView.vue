@@ -6,9 +6,11 @@ import CalendarConnection from "../components/CalendarConnection.vue";
 import CategorySettings from "../components/CategorySettings.vue";
 import DayBestSetting from "../components/DayBestSetting.vue";
 import FocusBlockSettings from "../components/FocusBlockSettings.vue";
+import FocusSoundSettings from "../components/FocusSoundSettings.vue";
 import PushSettings from "../components/PushSettings.vue";
 import QuestTargetSetting from "../components/QuestTargetSetting.vue";
 import ShortcutSettings from "../components/ShortcutSettings.vue";
+import SoundEffectSettings from "../components/SoundEffectSettings.vue";
 import ThemeSetting from "../components/ThemeSetting.vue";
 import { useKeyboardLikely } from "../composables/useShortcuts";
 import { SECTION_QUERY, sectionId } from "../routes";
@@ -85,6 +87,24 @@ watch(
       >
         <h2 id="settings-focus-block" class="section-title">Fokus-Sperre</h2>
         <FocusBlockSettings />
+      </section>
+
+      <section
+        :id="sectionId('fokus-klaenge')"
+        class="card"
+        aria-labelledby="settings-focus-sound"
+      >
+        <h2 id="settings-focus-sound" class="section-title">Fokus-Klänge</h2>
+        <FocusSoundSettings />
+      </section>
+
+      <section
+        :id="sectionId('toene')"
+        class="card"
+        aria-labelledby="settings-sound-effects"
+      >
+        <h2 id="settings-sound-effects" class="section-title">Töne</h2>
+        <SoundEffectSettings />
       </section>
 
       <section class="card" aria-labelledby="settings-push">

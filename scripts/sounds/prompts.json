@@ -1,0 +1,77 @@
+{
+  "musicModel": "music_v2_5",
+  "sounds": {
+    "lofi-warm": {
+      "type": "music",
+      "lengthMs": 210000,
+      "prompt": "Warm, mellow lo-fi hip hop for deep focus work. 75 BPM, dusty vinyl crackle, soft Rhodes chords, gentle boom-bap drums with a relaxed swing, round upright bass, no vocals. Steady and unobtrusive, no build-ups, no drops, no sudden changes. Ends the way it began so it can loop."
+    },
+    "lofi-soft": {
+      "type": "music",
+      "lengthMs": 210000,
+      "prompt": "Very soft, slow lo-fi for quiet concentration. 65 BPM, muted warm piano chords, gentle soft kick and brushed snare far in the background, deep round bass, light vinyl warmth, no vocals, no bright hi-hats. Calm and even throughout, no build-ups. Ends the way it began so it can loop."
+    },
+    "lofi-rain-evening": {
+      "type": "music",
+      "lengthMs": 210000,
+      "prompt": "Calm lo-fi beat for a rainy evening of concentrated work. 70 BPM, muted jazz guitar, soft piano, brushed drums, faint rain in the background, warm tape saturation, no vocals. Even energy throughout, no build-ups or breaks. Ends the way it began so it can loop."
+    },
+    "piano-calm": {
+      "type": "music",
+      "lengthMs": 210000,
+      "prompt": "Quiet, minimal solo piano for studying and focus. Slow tempo, soft felt piano, simple repeating motifs, lots of space, warm room reverb, no other instruments, no vocals. Peaceful and steady, no dramatic swells. Ends the way it began so it can loop."
+    },
+    "ambient-drift": {
+      "type": "music",
+      "lengthMs": 210000,
+      "prompt": "Slow, calm ambient music for deep focus. Warm evolving synth pads, soft drones, gentle distant textures, no beat, no melody that demands attention, no vocals. Very even, meditative and spacious, no swells or sudden changes. Ends the way it began so it can loop."
+    },
+    "guitar-soft": {
+      "type": "music",
+      "lengthMs": 210000,
+      "prompt": "Gentle fingerpicked acoustic guitar for calm, focused work. Warm nylon-string guitar, slow tempo, simple repeating patterns, soft room sound, occasional quiet cello in the background, no percussion, no vocals. Steady and peaceful, no build-ups. Ends the way it began so it can loop."
+    },
+    "rain": {
+      "type": "sfx",
+      "durationSeconds": 30,
+      "loop": true,
+      "prompt": "Steady, gentle rain on a window and roof, soft and even, no thunder, no wind gusts, no birds, no people. Calm background ambience."
+    },
+    "cafe": {
+      "type": "sfx",
+      "durationSeconds": 30,
+      "loop": true,
+      "prompt": "Quiet coffee shop ambience: soft indistinct murmur of a few people, occasional gentle cup and saucer clinks, distant espresso machine, no music, no clearly audible words. Even and relaxed."
+    },
+    "forest-stream": {
+      "type": "sfx",
+      "durationSeconds": 30,
+      "loop": true,
+      "prompt": "Calm forest with a small babbling brook, soft water flowing over stones, light breeze in leaves, a few distant birds, no people. Even and peaceful."
+    },
+    "fireplace": {
+      "type": "sfx",
+      "durationSeconds": 30,
+      "loop": true,
+      "prompt": "Cozy fireplace, soft steady crackling of burning wood, gentle pops, no loud snaps, no wind, no people. Warm and even background ambience."
+    },
+    "chime-reached": {
+      "type": "sfx",
+      "durationSeconds": 2,
+      "loop": false,
+      "prompt": "A single soft, low, warm tone like a gently struck felt-covered marimba or a small singing bowl, mellow and round, quiet, slow natural fade, no high frequencies, no metallic shimmer. Calm notification that a goal was reached."
+    },
+    "chime-done": {
+      "type": "sfx",
+      "durationSeconds": 2,
+      "loop": false,
+      "prompt": "Two soft, low, descending warm notes on a felt piano, mellow and quiet, gentle attack, slow natural decay, no bright or high-pitched tones, no bells. Calm, satisfying sign that a task is finished."
+    },
+    "chime-milestone": {
+      "type": "sfx",
+      "durationSeconds": 3,
+      "loop": false,
+      "prompt": "A warm, gentle celebratory flourish: three or four soft ascending notes on felt piano and mellow marimba with a quiet warm pad underneath, calm and rich, low to mid register, slow natural fade. Feels like a well-earned milestone, not a game jingle. No bright bells, no high-pitched tones, no fanfare."
+    }
+  }
+}

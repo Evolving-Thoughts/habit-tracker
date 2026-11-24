@@ -1,4 +1,5 @@
 const { createECDH } = require('node:crypto');
+const { join } = require('node:path');
 const DATABASE = 'habit_tracker_browser_e2e';
 const API_PORT = '4310';
 const FRONTEND_URL = 'http://127.0.0.1:4173';
@@ -25,6 +26,8 @@ function browserEnvironment(source = process.env) {
     SMTP_USER: '',
     SMTP_PASSWORD: '',
     MAIL_FROM: 'Habit Tracker <noreply@habit-tracker.local>',
+    // Silent fixtures; the real sounds never leave the server.
+    SOUNDS_DIR: join(__dirname, '..', 'fixtures', 'sounds'),
   };
   assertBrowserEnvironment(env);
   return env;

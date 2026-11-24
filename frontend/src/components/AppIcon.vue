@@ -45,6 +45,10 @@ defineProps<{
     | "pause"
     | "arrow-up"
     | "arrow-down"
+    // Fokus-Klänge: playing, chosen but silent, off. Told apart by shape.
+    | "speaker"
+    | "speaker-idle"
+    | "speaker-off"
     // Campaign icons (keys of CAMPAIGN_ICONS; "code" is above).
     | "book"
     | "dumbbell"
@@ -311,6 +315,17 @@ defineProps<{
     </template>
     <template v-else-if="name === 'arrow-down'">
       <path d="M12 5v14M6 13l6 6 6-6" />
+    </template>
+    <template v-else-if="name === 'speaker'">
+      <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4Z" />
+      <path d="M15.5 9a4.2 4.2 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11" />
+    </template>
+    <template v-else-if="name === 'speaker-idle'">
+      <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4Z" />
+    </template>
+    <template v-else-if="name === 'speaker-off'">
+      <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4Z" />
+      <path d="m15.5 9.5 5 5M20.5 9.5l-5 5" />
     </template>
     <template v-else-if="name === 'bike'">
       <circle cx="5.5" cy="16.5" r="3.5" />

@@ -25,6 +25,9 @@ services:
       DB_USER: ${POSTGRES_USER:?}
       DB_PASSWORD: ${POSTGRES_PASSWORD:?}
       DB_NAME: ${POSTGRES_DB:?}
+    # Focus sounds live outside the clone, so no deploy touches them (docs/betrieb.md).
+    volumes:
+      - ${SOUNDS_HOST_DIR:-/home/jonas/habit-sounds}:/app/sounds:ro
     depends_on:
       postgres:
         condition: service_healthy

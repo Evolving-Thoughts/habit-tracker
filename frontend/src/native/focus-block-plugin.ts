@@ -1,10 +1,12 @@
 import type { FocusBlockState } from "../types/focus-block";
+import { apiBaseUrl } from "../api/http";
+import { listenNative, nativeBridge } from "./bridge";
 
 /**
  * The Android plugin `FocusBlock` (frontend/android, docs/focus-block.md),
- * reached through the bridge Capacitor injects into the app's page. The web
- * build bundles no Capacitor code: in a browser there is no bridge and
- * `focusBlockNative()` is null, so every caller keeps working without it.
+ * reached through the bridge Capacitor injects into the app's page
+ * (`./bridge`). In a browser `focusBlockNative()` is null, so every caller
+ * keeps working without it.
  */
 
 export type FocusBlockNativeStatus = {
@@ -31,41 +33,16 @@ export type FocusBlockNative = {
   onOpenFocus(handler: () => void): () => void;
 };
 
-type Bridge = {
-  getPlatform?: () => string;
-  PluginHeaders?: { name: string }[];
-  nativePromise?: (
-    plugin: string,
-    method: string,
-    options?: object,
-  ) => Promise<unknown>;
-  nativeCallback?: (
-    plugin: string,
-    method: string,
-    options: object,
-    callback: (data: unknown, error?: unknown) => void,
-  ) => string;
-};
-
 const PLUGIN = "FocusBlock";
-
-function bridge(): Bridge | null {
-  const candidate = (globalThis as { Capacitor?: Bridge }).Capacitor;
-  if (!candidate || candidate.getPlatform?.() !== "android") return null;
-  if (!candidate.PluginHeaders?.some((header) => header.name === PLUGIN))
-    return null;
-  return candidate;
-}
 
 /** The API's absolute address, which the phone polls by itself. */
 function apiUrl(path: string): string {
-  const base = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
-  return new URL(`${base}${path}`, window.location.href).toString();
+  return new URL(`${apiBaseUrl}${path}`, window.location.href).toString();
 }
 
 /** The plugin on Android; null in a browser or an app without it. */
 export function focusBlockNative(): FocusBlockNative | null {
-  const cap = bridge();
+  const cap = nativeBridge(PLUGIN);
   if (!cap?.nativePromise) return null;
   const call = <T>(method: string, options: object = {}) =>
     cap.nativePromise!(PLUGIN, method, options) as Promise<T>;
@@ -88,19 +65,6 @@ export function focusBlockNative(): FocusBlockNative | null {
             }
           : { state: null },
       ),
-    onOpenFocus: (handler) => {
-      if (!cap.nativeCallback) return () => {};
-      const callbackId = cap.nativeCallback(
-        PLUGIN,
-        "addListener",
-        { eventName: "openFocus" },
-        () => handler(),
-      );
-      return () =>
-        void call("removeListener", {
-          eventName: "openFocus",
-          callbackId,
-        }).catch(() => {});
-    },
+    onOpenFocus: (handler) => listenNative(cap, PLUGIN, "openFocus", handler),
   };
 }

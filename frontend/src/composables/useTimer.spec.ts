@@ -8,11 +8,17 @@ import {
   type TimerResponse,
 } from "../api/timers.api";
 import { ApiError } from "../api/http";
+import { primeMilestones, withActionSound } from "./action-sounds";
 vi.mock("../api/timers.api", () => ({
   getCurrentTimer: vi.fn(),
   startTimer: vi.fn(),
   timerAction: vi.fn(),
   changeTimerTarget: vi.fn(),
+}));
+vi.mock("./action-sounds", () => ({
+  RUNNING_STOPWATCH_MS: 43_200_000,
+  primeMilestones: vi.fn(),
+  withActionSound: vi.fn((action: () => Promise<unknown>) => action()),
 }));
 const response = (
   state: "running" | "paused" = "running",
@@ -174,6 +180,45 @@ describe("synced Timer controller", () => {
     expect(event).toHaveBeenCalledTimes(2);
     c.dispose();
     window.removeEventListener("timer-data-changed", event);
+  });
+});
+
+describe("milestone sound of the quest hours", () => {
+  const kindsOf = () =>
+    vi.mocked(withActionSound).mock.calls.map(([, options]) => options.kinds);
+
+  it("reads them ahead when the stopwatch starts running, here or elsewhere", async () => {
+    const c = createTimerController();
+    await c.refresh();
+    expect(primeMilestones).toHaveBeenCalledWith(["quest-hours"], 43_200_000);
+    // The poll that finds it still running reads nothing more.
+    await c.refresh();
+    expect(primeMilestones).toHaveBeenCalledTimes(1);
+    await c.action("pause");
+    vi.mocked(timerAction).mockResolvedValue(response("running"));
+    await c.action("resume");
+    expect(primeMilestones).toHaveBeenCalledTimes(2);
+    c.dispose();
+  });
+
+  it("listens at pause, stop and a start that replaces another stopwatch, not at resume", async () => {
+    vi.mocked(getCurrentTimer).mockResolvedValue(response("paused"));
+    const c = createTimerController();
+    await c.refresh();
+    await c.action("resume");
+    await c.action("pause");
+    await c.action("stop");
+    await c.start(target);
+    await c.start(target, "timer-0");
+    expect(kindsOf()).toEqual([
+      ["quest-hours"],
+      ["quest-hours"],
+      [],
+      ["quest-hours"],
+    ]);
+    const ok = vi.mocked(withActionSound).mock.calls[0]![1].ok;
+    expect(ok?.(false)).toBe(false);
+    c.dispose();
   });
 });
 

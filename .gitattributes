@@ -5,3 +5,6 @@
 
 # Server scripts run on Linux
 *.sh text eol=lf
+
+# Audio fixtures are bytes, never text
+*.ogg binary

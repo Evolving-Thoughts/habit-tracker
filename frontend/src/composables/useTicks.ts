@@ -4,6 +4,7 @@ import {
   updateOccurrenceStatus,
   updateTodoCompletion,
 } from "../api/day-planner.api";
+import { withActionSound } from "./action-sounds";
 import { useCampaignCompletion } from "./useCampaignCompletion";
 import { useUndo } from "./useUndo";
 
@@ -23,11 +24,32 @@ type Write = (
   options: { key?: string; fallbackError: string },
 ) => Promise<boolean>;
 
-/** Ticks a target done or open again, through its own endpoint. */
+/**
+ * Ticks a target done or open again, through its own endpoint. Every
+ * completion in the app runs through here (rings, X, the stopwatch bar,
+ * the Fokus-Modus, the calendar), so this is where it sounds: "Erledigt",
+ * or the milestone sound when it completed the Perfect Week or the
+ * Monats-Challenge, or its stopwatch ended at the weekly quest-hours goal
+ * (`action-sounds.ts`). Opening again, undo included, stays silent.
+ */
 export function writeDone(target: TickTarget, done: boolean): Promise<void> {
-  return target.kind === "todo"
-    ? updateTodoCompletion(target.id, done)
-    : updateOccurrenceStatus(target.id, done ? "completed" : "pending");
+  if (!done)
+    return target.kind === "todo"
+      ? updateTodoCompletion(target.id, false)
+      : updateOccurrenceStatus(target.id, "pending");
+  return withActionSound(
+    () =>
+      target.kind === "todo"
+        ? updateTodoCompletion(target.id, true)
+        : updateOccurrenceStatus(target.id, "completed"),
+    {
+      sound: "chime-done",
+      kinds:
+        target.kind === "todo"
+          ? ["perfect-week", "quest-hours"]
+          : ["perfect-week", "month-challenge", "quest-hours"],
+    },
+  );
 }
 
 /** Moves a target onto `date` without a dialog. */

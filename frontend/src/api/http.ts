@@ -1,4 +1,5 @@
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "/api").replace(
+/** Where the API lives: "/api" behind the same origin, or VITE_API_BASE_URL. */
+export const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "/api").replace(
   /\/$/,
   "",
 );

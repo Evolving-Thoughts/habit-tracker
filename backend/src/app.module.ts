@@ -7,6 +7,7 @@ import { WorkLogsModule } from './work-logs/work-logs.module';
 import { QuestHoursModule } from './quest-hours/quest-hours.module';
 import { WeekReviewModule } from './week-review/week-review.module';
 import { SearchModule } from './search/search.module';
+import { SoundsModule } from './sounds/sounds.module';
 import { PushModule } from './push/push.module';
 import { TimersModule } from './timers/timers.module';
 import { AuthModule } from './auth/auth.module';
@@ -53,6 +54,7 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
     QuestHoursModule,
     WeekReviewModule,
     SearchModule,
+    SoundsModule,
     CalendarModule,
   ],
   controllers: [AppController],
