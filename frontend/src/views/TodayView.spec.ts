@@ -24,6 +24,7 @@ import type {
   DayPlannerResponse,
   DayPlannerTodoItem,
 } from "../types/day-planner";
+import type { MonthChallenge } from "../types/month-challenge";
 import TodayView from "./TodayView.vue";
 import { getHistory } from "../api/history.api";
 import { deleteWorkLog } from "../api/work-logs.api";
@@ -39,6 +40,11 @@ import {
   type TimerController,
 } from "../composables/useTimer";
 
+const routerPush = vi.hoisted(() => vi.fn());
+vi.mock("vue-router", async (original) => ({
+  ...(await original<typeof import("vue-router")>()),
+  useRouter: () => ({ push: routerPush }),
+}));
 vi.mock("../api/history.api", () => ({ getHistory: vi.fn() }));
 vi.mock("../api/work-logs.api", () => ({
   createWorkLog: vi.fn(),
@@ -1596,6 +1602,157 @@ describe("TodayView: rows say what they are and what they are for", () => {
       wrapper.get(".order").element.compareDocumentPosition(plus.element) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+});
+
+describe("TodayView: the Monats-Challenge's run in the day", () => {
+  const challenge: MonthChallenge = {
+    id: 1,
+    month: "2026-10",
+    startDate: "2026-10-01",
+    endDate: "2026-10-31",
+    habitId: 7,
+    title: "Sport",
+    reminderTime: "19:00",
+    status: "running",
+    endedAt: null,
+    day: 2,
+    days: 31,
+    done: 1,
+    missed: 0,
+    remaining: 30,
+    total: 31,
+    percent: 3,
+    todayRun: "open",
+    todayOccurrenceId: 70,
+  };
+  const run = (overrides: Partial<DayPlannerHabitItem> = {}) =>
+    makeHabit({
+      occurrenceId: 70,
+      habitId: 7,
+      title: "Sport",
+      monthChallenge: true,
+      ...overrides,
+    });
+  const day = (items: DayPlannerResponse["items"]) => ({
+    ...makePlanner(items),
+    monthChallenge: challenge,
+  });
+  const titles = (wrapper: ReturnType<typeof mount>) =>
+    wrapper
+      .findAll(".order > [data-sort-key]")
+      .map((card) => card.attributes("data-sort-key"));
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // 08:00 in Berlin.
+    vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = "";
+  });
+
+  it("has no card of its own: the focus card heads the day, the run keeps its place", async () => {
+    getTodayMock.mockResolvedValue(
+      day([
+        makeTodo({ todoId: 1, title: "Erstens" }),
+        makeTodo({ todoId: 2, title: "Zweitens" }),
+        run(),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.find(".challenge-card").exists()).toBe(false);
+    expect(wrapper.get(".order > :first-child").classes()).toContain("focus");
+    expect(titles(wrapper)).toEqual(["todo-1", "todo-2", "habit-70"]);
+    // Its row names the challenge and where it stands, in words.
+    const row = wrapper.get('[data-focus-key="habit-70"]');
+    expect(row.get(".planner-item__challenge").text()).toBe(
+      "Monats-Challenge · Tag 2 · 1 von 1 geschafft · noch 30",
+    );
+    // Its meta line wraps on a phone, so the progress is never cut off.
+    expect(row.classes()).toContain("item-row--wrap-meta");
+  });
+
+  it("moves the open run right below the focus card from its reminder time", async () => {
+    // 19:30 in Berlin.
+    vi.setSystemTime(new Date("2026-10-02T17:30:00Z"));
+    getTodayMock.mockResolvedValue(
+      day([
+        makeTodo({ todoId: 1, title: "Erstens" }),
+        makeTodo({ todoId: 2, title: "Zweitens" }),
+        run(),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(titles(wrapper)).toEqual(["todo-1", "habit-70", "todo-2"]);
+    // It stays where it is stored: it does not step down.
+    await wrapper.get('[aria-label="Aktionen für Sport"]').trigger("click");
+    const labels = wrapper
+      .findAll("[role=menuitem] .action-menu__label")
+      .map((entry) => entry.text());
+    expect(labels).toContain("Nach oben");
+    expect(labels).not.toContain("Nach unten");
+  });
+
+  it("brings a run carried over from an earlier day up out of Nachholen in the evening", async () => {
+    // 19:30 in Berlin.
+    vi.setSystemTime(new Date("2026-10-02T17:30:00Z"));
+    getTodayMock.mockResolvedValue(
+      day([
+        run({ isOverdue: true, scheduledDate: "2026-09-30" }),
+        makeTodo({ todoId: 1, title: "Erstens", status: "completed" }),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(titles(wrapper)).toEqual(["habit-70"]);
+    expect(wrapper.find(".catch-up").exists()).toBe(false);
+    // It is still open, so the day is not done.
+    expect(wrapper.text()).not.toContain("Alles für heute erledigt.");
+    expect(
+      wrapper.get('[data-focus-key="habit-70"] .planner-item__challenge').text(),
+    ).toBe("Monats-Challenge · Tag 2 · 1 von 1 geschafft · noch 30");
+  });
+
+  it("puts the challenge on the focus card when its run is the focus", async () => {
+    getTodayMock.mockResolvedValue(
+      day([run(), makeTodo({ todoId: 2, title: "Danach" })]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.get(".focus__challenge").text()).toBe(
+      "Monats-Challenge · Tag 2 · 1 von 1 geschafft · noch 30",
+    );
+    expect(wrapper.find(".planner-item__challenge").exists()).toBe(false);
+  });
+
+  it("leads from the run's menu to the challenge in the Dailies", async () => {
+    getTodayMock.mockResolvedValue(
+      day([makeTodo({ todoId: 1, title: "Erstens" }), run()]),
+    );
+    const wrapper = mount(TodayView, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.get('[aria-label="Aktionen für Sport"]').trigger("click");
+    const entry = wrapper
+      .findAll("[role=menuitem]")
+      .find((item) => item.text().includes("Zur Monats-Challenge"))!;
+    await entry.trigger("click");
+    expect(routerPush).toHaveBeenCalledWith("/dailies?abschnitt=challenge");
+  });
+
+  it("shows nothing extra on a day without a run of the challenge", async () => {
+    getTodayMock.mockResolvedValue({
+      ...day([makeTodo({ todoId: 1, title: "Erstens" })]),
+      monthChallenge: { ...challenge, todayRun: "none", todayOccurrenceId: null },
+    });
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("Monats-Challenge");
+    expect(titles(wrapper)).toEqual(["todo-1"]);
   });
 });
 

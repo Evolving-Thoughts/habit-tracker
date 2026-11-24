@@ -37,7 +37,12 @@ export type DayMove = {
  * Drags the row at `from` onto `to` (indices into `sortableRows`). Only
  * stored items crossed on screen count: the focus card stands apart from
  * its stored place and events have none. An appointment stays on the clock
- * among the others. Null when nothing would change.
+ * among the others. The Monats-Challenge's run in the evening
+ * (`eveningChallenge`) also stands apart from its stored place: a drag of
+ * it, or onto it, sorts by what is on screen, and while it is open it keeps
+ * showing right below the focus card wherever it was stored. One carried
+ * over from an earlier day has no place in today's order and does not move.
+ * Null when nothing would change.
  */
 export function dropInDay(
   planner: DayPlannerResponse,
@@ -48,17 +53,23 @@ export function dropInDay(
   if (from === to) return null;
   const rows = sortableRows(agenda);
   const item = rows[from];
-  if (!item) return null;
+  if (!item || item.isOverdue) return null;
   const down = from < to;
   const crossed = down
     ? rows.slice(from + 1, to + 1).reverse()
     : rows.slice(to, from);
-  const neighbour = crossed.find((entry) => entry !== null);
+  // Only today's items have a place: events and a carried-over run are crossed.
+  const placed = (entry: DayPlannerItem | null): entry is DayPlannerItem =>
+    entry !== null && !entry.isOverdue;
+  const neighbour = crossed.find(placed);
   if (!neighbour) return null;
-  // Moving the focus card, or past it, sorts by what is on screen.
+  // Moving the focus card or the evening's challenge run, or past one,
+  // sorts by what is on screen.
+  const apart = (entry: DayPlannerItem) =>
+    entry === agenda.focus || entry === agenda.eveningChallenge;
   const base =
-    item === agenda.focus || neighbour === agenda.focus
-      ? rows.filter((entry): entry is DayPlannerItem => entry !== null)
+    apart(item) || apart(neighbour)
+      ? rows.filter(placed)
       : agenda.sequence;
   const sequence = anchoredOrder(base.filter((entry) => entry !== item));
   const index = clockBoundIndex(
@@ -77,7 +88,10 @@ export function dropInDay(
 /**
  * Where one step up (-1) or down (1) from `item` lands among the sortable
  * rows: events are stepped over, and an appointment never passes another
- * one on the clock. Null when it cannot move that way.
+ * one on the clock. The evening's challenge run keeps its place below the
+ * focus card: it only steps up (onto the focus card's place; not when it
+ * was carried over from an earlier day), and the other rows step over it.
+ * Null when it cannot move that way.
  */
 export function stepInDay(
   agenda: TodayAgenda,
@@ -87,13 +101,15 @@ export function stepInDay(
   const rows = sortableRows(agenda);
   const from = rows.indexOf(item);
   if (from === -1) return null;
+  const pinned = agenda.eveningChallenge;
+  if (item === pinned && (direction === 1 || item.isOverdue)) return null;
   for (
     let to = from + direction;
     to >= 0 && to < rows.length;
     to += direction
   ) {
     const row = rows[to];
-    if (!row) continue;
+    if (!row || row === pinned) continue;
     const time = row.timeOfDay;
     if (
       item.timeOfDay &&

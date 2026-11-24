@@ -1,4 +1,9 @@
-import type { DayPlannerItem, DayPlannerResponse } from "../types/day-planner";
+import type {
+  DayPlannerHabitItem,
+  DayPlannerItem,
+  DayPlannerResponse,
+} from "../types/day-planner";
+import type { MonthChallenge } from "../types/month-challenge";
 import { anchoredOrder } from "./day-order";
 import { tallyOfPlanner, type DayTally } from "./day-tally";
 
@@ -45,9 +50,19 @@ export type TodayAgenda = {
   /**
    * The rest of the day in one sequence, without the focus: the order of
    * the day with the appointments anchored in it (`day-order.ts`), and the
-   * calendar's events by clock among the appointments.
+   * calendar's events by clock among the appointments. In the evening
+   * today's open run of the Monats-Challenge leads it (`eveningChallenge`).
    */
   list: DayEntry[];
+  /**
+   * Today's open run of the Monats-Challenge while it stands at the head of
+   * `list`, right below the focus card, out of its stored place: from the
+   * challenge's reminder time (19:00 without one) until it is done or
+   * skipped. A run carried over from an earlier day comes up out of
+   * `carriedOver` then. Null at any other time, and when the run is the
+   * focus itself.
+   */
+  eveningChallenge: DayPlannerHabitItem | null;
   /**
    * Every open item of today in the order of the day, the focus included:
    * what a new order is written from, so appointments keep their place.
@@ -97,6 +112,40 @@ export function plannedClock(
     minutes: hours! * 60 + minutes!,
     time: item.timeOfDay.slice(0, 5),
   };
+}
+
+/** Without a reminder time, the challenge's run moves up at 19:00. */
+export const CHALLENGE_EVENING_MINUTES = 19 * 60;
+
+/**
+ * From when on today's open run of the Monats-Challenge stands right below
+ * the focus card: the challenge's reminder time ("HH:MM", Berlin), or
+ * CHALLENGE_EVENING_MINUTES when it has none. Minutes since midnight.
+ */
+export function challengeEveningAt(challenge: MonthChallenge): number {
+  if (!challenge.reminderTime) return CHALLENGE_EVENING_MINUTES;
+  const [hours, minutes] = challenge.reminderTime.split(":").map(Number);
+  return hours! * 60 + minutes!;
+}
+
+/**
+ * Today's open run of the running Monats-Challenge: the run the server names
+ * (`todayOccurrenceId`), still open; on today or carried over into it from
+ * an earlier day (a weekly target's run, say). Null without one.
+ */
+export function openChallengeRun(
+  planner: DayPlannerResponse,
+): DayPlannerHabitItem | null {
+  const challenge = planner.monthChallenge;
+  if (!challenge || challenge.todayRun !== "open") return null;
+  return (
+    planner.items.find(
+      (item): item is DayPlannerHabitItem =>
+        item.type === "habit" &&
+        item.occurrenceId === challenge.todayOccurrenceId &&
+        item.status === "pending",
+    ) ?? null
+  );
 }
 
 /** A stable key of an item, also what the order of the day is stored by. */
@@ -158,8 +207,9 @@ export function currentItem(
 /**
  * The next minute at which `currentItem` or the list of appointments can
  * change: an appointment starts (and the next one is another) or ends (and
- * is over). With `leadMinutes`, also that long before an appointment
- * starts, for a view that names it ahead (`soonAppointment`).
+ * is over), or the evening begins for an open run of the Monats-Challenge
+ * (`challengeEveningAt`). With `leadMinutes`, also that long before an
+ * appointment starts, for a view that names it ahead (`soonAppointment`).
  * Null when nothing changes any more today. A timer waits for exactly this
  * instead of polling the clock.
  */
@@ -185,6 +235,8 @@ export function nextChangeAt(
     const { minutes } = clockOf(event.start);
     moments.push(...ahead(minutes), minutes + 1, eventEnd(event));
   }
+  if (openChallengeRun(planner))
+    moments.push(challengeEveningAt(planner.monthChallenge!));
   const later = moments.filter((moment) => moment > now && moment < 1440);
   return later.length ? Math.min(...later) : null;
 }
@@ -197,12 +249,16 @@ function eventEnd(event: ExternalEvent): number {
   return end < start || length >= 86_400_000 ? 1440 : end;
 }
 
-/** Arranges today around what is up now. `now` is minutes since midnight. */
+/**
+ * Arranges today around what is up now. `now` is minutes since midnight in
+ * Berlin. The focus card always heads the day; in the evening today's open
+ * run of the Monats-Challenge follows it right away (`eveningChallenge`).
+ */
 export function arrangeToday(
   planner: DayPlannerResponse,
   now: number,
 ): TodayAgenda {
-  const carriedOver = planner.items.filter(
+  let carriedOver = planner.items.filter(
     (item) => item.isOverdue && item.status === "pending",
   );
   const today = planner.items.filter((item) => !item.isOverdue);
@@ -259,12 +315,29 @@ export function arrangeToday(
     list.splice(at, 0, event);
   }
 
+  // "Am Ende vom Tag": the challenge's open run moves up below the focus.
+  const run = openChallengeRun(planner);
+  const eveningChallenge =
+    run && run !== focus && now >= challengeEveningAt(planner.monthChallenge!)
+      ? run
+      : null;
+  if (eveningChallenge?.isOverdue) {
+    carriedOver = carriedOver.filter((item) => item !== eveningChallenge);
+    list.unshift({ kind: "row", item: eveningChallenge });
+  } else if (eveningChallenge) {
+    const index = list.findIndex(
+      (entry) => entry.kind !== "event" && entry.item === eveningChallenge,
+    );
+    if (index > 0) list.unshift(...list.splice(index, 1));
+  }
+
   return {
     focus,
     focusWindow: focus ? appointmentWindow(focus) : null,
     carriedOver,
     appointments,
     list,
+    eveningChallenge,
     sequence: pending,
     nextAppointment:
       appointments.find((entry) => entry.minutes >= now) ?? null,

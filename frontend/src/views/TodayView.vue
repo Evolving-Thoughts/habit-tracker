@@ -16,11 +16,11 @@ import {
 import ActionMenu from "../components/ActionMenu.vue";
 import AppIcon from "../components/AppIcon.vue";
 import CampaignChip from "../components/CampaignChip.vue";
+import ChallengeLine from "../components/ChallengeLine.vue";
 import ChallengeMark from "../components/ChallengeMark.vue";
 import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import DayBestCard from "../components/DayBestCard.vue";
-import MonthChallengeCard from "../components/MonthChallengeCard.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
 import PlannerItem from "../components/PlannerItem.vue";
 import QuickAddQuest from "../components/QuickAddQuest.vue";
@@ -59,6 +59,7 @@ import { tallyLine } from "../utils/day-tally";
 import { useDayClock } from "../composables/useDayClock";
 import { categoryMark } from "../utils/category-mark";
 import { workLine } from "../utils/quest-hours";
+import { CHALLENGE_HREF, runLine } from "../utils/month-challenge";
 import { streakLine } from "../utils/streak";
 import { useRouter } from "vue-router";
 import { hrefOf } from "../routes";
@@ -309,7 +310,9 @@ async function toggleItem(item: DayPlannerItem): Promise<void> {
 
 /**
  * Today's run of the running Monats-Challenge in the day's list: the open
- * one, or the one done today. Its card ticks it like the row does.
+ * one, or the one done today. It stands in the order like any other item
+ * (in the evening right below the focus card, see `arrangeToday`) and says
+ * in its meta line where the challenge stands.
  */
 const challengeRun = computed<DayPlannerHabitItem | null>(() => {
   const challenge = planner.value?.monthChallenge;
@@ -325,6 +328,12 @@ const challengeRun = computed<DayPlannerHabitItem | null>(() => {
     ) ?? null
   );
 });
+
+/** "Monats-Challenge · Tag 2 · noch 4" for today's run; null for every other item. */
+function challengeLine(item: DayPlannerItem): string | null {
+  const challenge = planner.value?.monthChallenge;
+  return challenge && item === challengeRun.value ? runLine(challenge) : null;
+}
 
 async function skipHabit(item: DayPlannerHabitItem): Promise<void> {
   if (isUpdating(item)) {
@@ -612,6 +621,11 @@ function rowMenu(item: DayPlannerItem): MenuEntry[] {
         item.type === "todo"
           ? () => openMenuDialog(item, "move")
           : undefined,
+      // The challenge's own place is in the Dailies.
+      challenge:
+        item.type === "habit" && item.monthChallenge
+          ? () => void router.push(CHALLENGE_HREF.slice(1))
+          : undefined,
       up:
         stepFrom(item, -1) !== null
           ? () => void shiftInOrder(item, -1)
@@ -878,15 +892,6 @@ useShortcutHandlers(
           @created="writes.applied()"
         />
 
-        <!-- The month's challenge, calm and above the focus card. -->
-        <MonthChallengeCard
-          v-if="planner?.monthChallenge && !isLoading"
-          :challenge="planner.monthChallenge"
-          :run="challengeRun"
-          :busy="challengeRun ? isUpdating(challengeRun) : editorBusy"
-          @toggle="toggleItem"
-        />
-
         <div
           v-if="isLoading"
           class="today-view__loading"
@@ -957,8 +962,16 @@ useShortcutHandlers(
                 <span v-if="agenda.focus.type === 'habit'" class="focus__daily">
                   <AppIcon name="dailies" />Daily
                 </span>
+                <!-- The challenge's run as the focus says where the month stands. -->
+                <ChallengeLine
+                  v-if="challengeLine(agenda.focus)"
+                  class="focus__challenge"
+                  :line="challengeLine(agenda.focus)!"
+                />
                 <ChallengeMark
-                  v-if="agenda.focus.type === 'habit' && agenda.focus.monthChallenge"
+                  v-else-if="
+                    agenda.focus.type === 'habit' && agenda.focus.monthChallenge
+                  "
                 />
                 <span v-if="agenda.focus.categoryName" class="focus__category">
                   <i
@@ -1030,7 +1043,11 @@ useShortcutHandlers(
                 }}
               </p>
             </section>
-            <section v-else-if="!agenda.carriedOver.length" class="today-view__empty">
+            <!-- A carried-over challenge run that moved up in the evening is still open. -->
+            <section
+              v-else-if="!agenda.carriedOver.length && !agenda.eveningChallenge"
+              class="today-view__empty"
+            >
               <h2>Alles für heute erledigt.</h2>
               <p>Der Rest des Tages gehört dir.</p>
             </section>
@@ -1064,6 +1081,7 @@ useShortcutHandlers(
                 :menu="rowMenu(entry.item)"
                 :past="entry.past"
                 :movable="canMoveByDialog(entry.item)"
+                :challenge="challengeLine(entry.item)"
                 why-wide-only
                 @toggle="toggleItem"
                 @edit="openEditing"
@@ -1087,6 +1105,7 @@ useShortcutHandlers(
                 :item="entry.item"
                 :is-updating="isUpdating(entry.item)"
                 :menu="rowMenu(entry.item)"
+                :challenge="challengeLine(entry.item)"
                 :why-wide-only="index >= 2"
                 sortable
                 @toggle="toggleItem"
@@ -1134,6 +1153,7 @@ useShortcutHandlers(
                 :data-focus-key="getItemKey(item)"
                 :item="item"
                 :is-updating="isUpdating(item)"
+                :challenge="challengeLine(item)"
                 show-date
                 compact
                 why-wide-only
@@ -1205,6 +1225,7 @@ useShortcutHandlers(
                 :data-focus-key="getItemKey(item)"
                 :item="item"
                 :is-updating="isUpdating(item)"
+                :challenge="challengeLine(item)"
                 @toggle="toggleItem"
                 @edit="openEditing"
               />
@@ -1533,6 +1554,7 @@ useShortcutHandlers(
   width: 1rem;
   height: 1rem;
 }
+
 
 /*
  * The stopwatch leads: Starten (Pausieren, Fortsetzen) is the primary button,

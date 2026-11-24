@@ -146,6 +146,13 @@ export only, as Logbuch events (see `logbook.md`).
   hidden tab becomes visible again. From 64rem the day calendar
   (`DayCalendar.vue`, see `logbook.md`) stands beside the list and shows
   the events there instead.
+- The focus card always heads Heute's list. In the evening (from the
+  Monats-Challenge's reminder time, 19:00 without one) today's open run of
+  the challenge stands right below it, out of its stored place, until it is
+  done or skipped, also one carried over from an earlier day
+  (`eveningChallenge`; see `challenges.md` › Heute). The
+  stored order is untouched; a drag of the run, or onto it, sorts by what
+  is on screen like the focus card, and its menu has no "Nach unten" then.
 - The Kalender lists a day's open entries in the same order: `GET /history`
   sorts `days[].planned` with `sortInDay` (`sortedLikeToday` in
   `history-planning.ts`): carried-over first, then the stored order with the

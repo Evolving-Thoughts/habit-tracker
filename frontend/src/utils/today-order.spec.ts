@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { NO_QUEST_HOURS, PLANNER_TODO_FIELDS } from "../types/fixtures";
+import {
+  NO_QUEST_HOURS,
+  PLANNER_HABIT_FIELDS,
+  PLANNER_TODO_FIELDS,
+} from "../types/fixtures";
 import type {
+  DayPlannerHabitItem,
   DayPlannerResponse,
   DayPlannerTodoItem,
 } from "../types/day-planner";
+import type { MonthChallenge } from "../types/month-challenge";
 import { arrangeToday } from "./today-agenda";
 import {
   dropInDay,
+  orderRef,
   postponedToEnd,
   sortableRows,
   stepInDay,
@@ -40,6 +47,36 @@ const day = (items: DayPlannerResponse["items"]): DayPlannerResponse => ({
 /* Nine o'clock: no appointment runs, the head of the order is in focus. */
 const nine = 9 * 60;
 const ids = (order: { id: number }[]) => order.map(({ id }) => id);
+
+/* The Monats-Challenge's run (occurrence 70), stored third; 20:00 is evening. */
+const evening = 20 * 60;
+const challengeRun = (dayPosition: number): DayPlannerHabitItem => ({
+  ...PLANNER_HABIT_FIELDS,
+  type: "habit",
+  occurrenceId: 70,
+  habitId: 7,
+  title: "Sport",
+  status: "pending",
+  scheduledDate: "2026-10-02",
+  plannedDurationMinutes: null,
+  moveUntil: null,
+  scheduleType: "interval",
+  isOverdue: false,
+  timerEligible: true,
+  timeOfDay: null,
+  dayPosition,
+  monthChallenge: true,
+});
+const withChallenge = (
+  items: DayPlannerResponse["items"],
+): DayPlannerResponse => ({
+  ...day(items),
+  monthChallenge: {
+    todayRun: "open",
+    todayOccurrenceId: 70,
+    reminderTime: null,
+  } as MonthChallenge,
+});
 
 describe("dropInDay", () => {
   it("places a row before the one it crossed and says where it stands", () => {
@@ -78,6 +115,59 @@ describe("dropInDay", () => {
     const agenda = arrangeToday(planner, nine);
     expect(dropInDay(planner, agenda, 1, 1)).toBeNull();
     expect(dropInDay(planner, agenda, 5, 0)).toBeNull();
+  });
+});
+
+describe("the evening's challenge run in the order", () => {
+  const planner = withChallenge([
+    quest(1, 0),
+    quest(2, 1),
+    challengeRun(2),
+    quest(4, 3),
+  ]);
+  const agenda = arrangeToday(planner, evening);
+
+  it("stands second on screen while its stored place stays third", () => {
+    const rows = sortableRows(agenda);
+    expect(rows[1]).toBe(agenda.eveningChallenge);
+    expect(ids(agenda.sequence.map(orderRef))).toEqual([1, 2, 70, 4]);
+  });
+
+  it("sorts by what is on screen when it is dragged or crossed", () => {
+    // Dragged down to the end: stored there, shown below the focus while open.
+    expect(ids(dropInDay(planner, agenda, 1, 3)!.order)).toEqual([1, 2, 4, 70]);
+    // Dragged onto the focus card: it heads the day and becomes the focus.
+    expect(ids(dropInDay(planner, agenda, 1, 0)!.order)).toEqual([70, 1, 2, 4]);
+    // A row dragged up onto it lands right below it.
+    expect(ids(dropInDay(planner, agenda, 3, 1)!.order)).toEqual([1, 4, 70, 2]);
+  });
+
+  it("only steps up, and the other rows step over it", () => {
+    const [, run, second, last] = sortableRows(agenda);
+    expect(stepInDay(agenda, run!, 1)).toBeNull();
+    expect(stepInDay(agenda, run!, -1)).toBe(0);
+    expect(stepInDay(agenda, second!, -1)).toBe(0);
+    expect(stepInDay(agenda, last!, -1)).toBe(2);
+  });
+});
+
+describe("the evening's challenge run carried over from an earlier day", () => {
+  const earlier = { ...challengeRun(0), isOverdue: true, scheduledDate: "2026-10-01" };
+  const planner = withChallenge([earlier, quest(1, 0), quest(2, 1)]);
+  const agenda = arrangeToday(planner, evening);
+
+  it("stands below the focus card but does not move", () => {
+    const rows = sortableRows(agenda);
+    expect(rows[1]).toBe(earlier);
+    expect(dropInDay(planner, agenda, 1, 2)).toBeNull();
+    expect(stepInDay(agenda, earlier, -1)).toBeNull();
+    expect(stepInDay(agenda, earlier, 1)).toBeNull();
+    // The rows below still step over it onto the focus card's place, and
+    // the order written leaves it out.
+    expect(stepInDay(agenda, rows[2]!, -1)).toBe(0);
+    expect(ids(dropInDay(planner, agenda, 2, 0)!.order)).toEqual([2, 1]);
+    // Dropped onto it alone, a row has crossed nothing with a place.
+    expect(dropInDay(planner, agenda, 2, 1)).toBeNull();
   });
 });
 

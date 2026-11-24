@@ -92,6 +92,9 @@ export type DayPlannerResponse = {
     weekMinutes: number;
     weeklyTargetMinutes: number | null;
   };
-  /** This month's running Monats-Challenge with its progress, for its card. */
+  /**
+   * This month's running Monats-Challenge with its progress: for its run's
+   * meta line and its evening place below the focus card (`today-agenda.ts`).
+   */
   monthChallenge?: MonthChallenge | null;
 };

@@ -9,9 +9,12 @@ import type {
   DayPlannerResponse,
   DayPlannerTodoItem,
 } from "../types/day-planner";
+import type { MonthChallenge } from "../types/month-challenge";
 import {
+  CHALLENGE_EVENING_MINUTES,
   DEFAULT_APPOINTMENT_MINUTES,
   arrangeToday,
+  challengeEveningAt,
   currentItem,
   formatDayHeading,
   formatDuration,
@@ -66,6 +69,29 @@ const planner = (
   questHours: NO_QUEST_HOURS,
 });
 const at = (hours: number, minutes = 0) => hours * 60 + minutes;
+const monthChallenge = (
+  change: Partial<MonthChallenge> = {},
+): MonthChallenge => ({
+  id: 1,
+  month: "2026-10",
+  startDate: "2026-10-01",
+  endDate: "2026-10-31",
+  habitId: 7,
+  title: "Sport",
+  reminderTime: "19:00",
+  status: "running",
+  endedAt: null,
+  day: 2,
+  days: 31,
+  done: 1,
+  missed: 0,
+  remaining: 30,
+  total: 31,
+  percent: 3,
+  todayRun: "open",
+  todayOccurrenceId: 70,
+  ...change,
+});
 
 describe("arrangeToday", () => {
   it("keeps the manually ordered head in focus before or after its appointment", () => {
@@ -206,6 +232,151 @@ describe("arrangeToday", () => {
     );
     expect(agenda.focus).toBeNull();
     expect(agenda.queue).toEqual([]);
+  });
+});
+
+describe("arrangeToday: the Monats-Challenge's run in the evening", () => {
+  const first = todo({ todoId: 1, title: "Erstes", dayPosition: 0 });
+  const second = todo({ todoId: 2, title: "Zweites", dayPosition: 1 });
+  const run = habit({
+    occurrenceId: 70,
+    habitId: 7,
+    title: "Sport",
+    dayPosition: 2,
+    monthChallenge: true,
+  });
+  const third = todo({ todoId: 3, title: "Drittes", dayPosition: 3 });
+  const withChallenge = (
+    items: DayPlannerResponse["items"],
+    change: Partial<MonthChallenge> = {},
+  ): DayPlannerResponse => ({
+    ...planner(items),
+    monthChallenge: monthChallenge(change),
+  });
+  const rows = (agenda: ReturnType<typeof arrangeToday>) =>
+    agenda.list.map((entry) =>
+      entry.kind === "event" ? entry.event.title : entry.item.title,
+    );
+
+  it("keeps its stored place before the reminder time", () => {
+    const agenda = arrangeToday(
+      withChallenge([first, second, run, third]),
+      at(18, 59),
+    );
+    expect(agenda.focus).toBe(first);
+    expect(rows(agenda)).toEqual(["Zweites", "Sport", "Drittes"]);
+    expect(agenda.eveningChallenge).toBeNull();
+  });
+
+  it("stands right below the focus card from the reminder time on", () => {
+    const agenda = arrangeToday(
+      withChallenge([first, second, run, third]),
+      at(19),
+    );
+    expect(agenda.focus).toBe(first);
+    expect(rows(agenda)).toEqual(["Sport", "Zweites", "Drittes"]);
+    expect(agenda.eveningChallenge).toBe(run);
+    // The stored order stays as it is; only the list shows it up.
+    expect(agenda.sequence).toEqual([first, second, run, third]);
+  });
+
+  it("follows the challenge's own reminder time", () => {
+    const day = withChallenge([first, second, run, third], {
+      reminderTime: "17:30",
+    });
+    expect(challengeEveningAt(day.monthChallenge!)).toBe(at(17, 30));
+    expect(arrangeToday(day, at(17, 29)).eveningChallenge).toBeNull();
+    expect(rows(arrangeToday(day, at(17, 30)))[0]).toBe("Sport");
+  });
+
+  it("takes 19:00 when the challenge has no reminder time", () => {
+    const day = withChallenge([first, second, run, third], {
+      reminderTime: null,
+    });
+    expect(CHALLENGE_EVENING_MINUTES).toBe(at(19));
+    expect(challengeEveningAt(day.monthChallenge!)).toBe(at(19));
+    expect(arrangeToday(day, at(18, 59)).eveningChallenge).toBeNull();
+    expect(arrangeToday(day, at(19)).eveningChallenge).toBe(run);
+  });
+
+  it("goes back to the done items once done or skipped", () => {
+    for (const status of ["completed", "skipped"] as const) {
+      const done = { ...run, status };
+      const agenda = arrangeToday(
+        withChallenge([first, second, done, third], {
+          todayRun: status === "completed" ? "done" : "none",
+          todayOccurrenceId: null,
+        }),
+        at(21),
+      );
+      expect(rows(agenda)).toEqual(["Zweites", "Drittes"]);
+      expect(agenda.resolved).toEqual([done]);
+      expect(agenda.eveningChallenge).toBeNull();
+    }
+  });
+
+  it("simply is the focus card when it heads the order", () => {
+    const head = { ...run, dayPosition: 0 };
+    const agenda = arrangeToday(
+      withChallenge([head, { ...first, dayPosition: 1 }, second]),
+      at(20),
+    );
+    expect(agenda.focus).toBe(head);
+    expect(rows(agenda)).toEqual(["Erstes", "Zweites"]);
+    expect(agenda.eveningChallenge).toBeNull();
+  });
+
+  it("adds nothing on a day without a run of the challenge", () => {
+    const agenda = arrangeToday(
+      withChallenge([first, second, third], {
+        todayRun: "none",
+        todayOccurrenceId: null,
+      }),
+      at(20),
+    );
+    expect(rows(agenda)).toEqual(["Zweites", "Drittes"]);
+    expect(agenda.eveningChallenge).toBeNull();
+  });
+
+  it("brings a run carried over from an earlier day up out of Nachholen", () => {
+    const earlier = { ...run, isOverdue: true, scheduledDate: "2026-10-01" };
+    const day = withChallenge([earlier, first, second, third]);
+    const morning = arrangeToday(day, at(10));
+    expect(morning.carriedOver).toEqual([earlier]);
+    expect(rows(morning)).toEqual(["Zweites", "Drittes"]);
+    expect(morning.eveningChallenge).toBeNull();
+    const evening = arrangeToday(day, at(20));
+    expect(evening.carriedOver).toEqual([]);
+    expect(rows(evening)).toEqual(["Sport", "Zweites", "Drittes"]);
+    expect(evening.eveningChallenge).toBe(earlier);
+    // It has no place in today's order, and it is never the focus.
+    expect(evening.focus).toBe(first);
+    expect(evening.sequence).toEqual([first, second, third]);
+  });
+
+  it("moves up a timed run with its time", () => {
+    const timed = { ...run, timeOfDay: "21:00" };
+    const agenda = arrangeToday(
+      withChallenge([first, second, third, timed]),
+      at(19, 30),
+    );
+    expect(agenda.list[0]).toMatchObject({
+      kind: "item",
+      time: "21:00",
+      item: timed,
+    });
+    expect(agenda.eveningChallenge).toBe(timed);
+  });
+
+  it("wakes the clock at the reminder time while the run is open", () => {
+    const open = withChallenge([first, run], { reminderTime: "18:15" });
+    expect(nextChangeAt(open, at(9))).toBe(at(18, 15));
+    expect(nextChangeAt(open, at(18, 15))).toBeNull();
+    const done = withChallenge([first, { ...run, status: "completed" }], {
+      todayRun: "done",
+      todayOccurrenceId: null,
+    });
+    expect(nextChangeAt(done, at(9))).toBeNull();
   });
 });
 
