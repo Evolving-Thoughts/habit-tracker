@@ -9,6 +9,7 @@ import {
 } from "vue";
 import { createTodo, reorderDay } from "../api/day-planner.api";
 import { useInsertPlace } from "../composables/useInsertPlace";
+import { useQuestParseContext } from "../composables/useQuestParseContext";
 import { contentWidth, firstThatFits } from "../utils/fit-text";
 import { parseQuest, type QuestParseKind } from "../utils/quest-parse";
 import AppIcon from "./AppIcon.vue";
@@ -28,6 +29,12 @@ type OrderedItem = { type: "todo" | "habit"; id: number };
  * field and are taken on adding: the day wins over the row's, so "morgen"
  * in Heute plans it for tomorrow, and a day typed into the Questlog plans
  * it out of there. A tap on a chip leaves its words in the title instead.
+ *
+ * A campaign or category named with its keyword ("Kampagne Buch
+ * schreiben", "Kategorie Sport", or a campaign after "für") becomes a chip
+ * too: the quest goes below that campaign, and without a named category it
+ * takes the campaign's, as the editor suggests. A quest below a campaign
+ * still stands in the Questlog (and on its day), so that chip moves nothing.
  */
 const props = withDefaults(
   defineProps<{
@@ -52,12 +59,14 @@ const notice = ref<string | null>(null);
 
 /** Chips discarded for the text being typed; a fresh title starts clean. */
 const ignored = ref<QuestParseKind[]>([]);
+const names = useQuestParseContext();
 const parsed = computed(() =>
-  parseQuest(title.value, { ignore: ignored.value }),
+  parseQuest(title.value, { ignore: ignored.value, ...names.options.value }),
 );
 watch(title, (text) => {
   if (text.trim()) notice.value = null;
   else ignored.value = [];
+  void names.need(text);
 });
 function discard(kind: QuestParseKind): void {
   ignored.value = [...ignored.value, kind];
@@ -116,6 +125,11 @@ async function add(): Promise<void> {
   const date =
     result.scheduledDate !== undefined ? result.scheduledDate : props.date;
   const dateMatch = result.matches.find((match) => match.kind === "date");
+  const categoryId =
+    result.categoryId ??
+    (result.campaignId === undefined
+      ? undefined
+      : names.campaignCategory(result.campaignId));
   busy.value = true;
   errorMessage.value = null;
   try {
@@ -125,6 +139,10 @@ async function add(): Promise<void> {
       scheduledDate: date,
       timeOfDay: null,
       plannedDurationMinutes: result.plannedDurationMinutes ?? null,
+      ...(result.campaignId === undefined
+        ? {}
+        : { parentId: result.campaignId }),
+      ...(categoryId === undefined ? {} : { categoryId }),
       ...(date === null ? { backlogPlace: place.value } : {}),
     });
     title.value = "";

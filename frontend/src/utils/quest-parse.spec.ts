@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { durationLabel, parseQuest } from "./quest-parse";
+import { durationLabel, parseQuest, type QuestParseKind } from "./quest-parse";
 
 // A Tuesday.
 const today = "2026-11-24";
@@ -269,5 +269,238 @@ describe("title", () => {
       "am Freitag",
       "eine halbe Stunde",
     ]);
+  });
+});
+
+describe("campaigns and categories", () => {
+  const campaigns = [
+    { id: 1, title: "Buch schreiben", icon: "book" },
+    { id: 2, title: "Buch", icon: null },
+    { id: 3, title: "Garten & Haus" },
+    { id: 4, title: "Größe", icon: null },
+    { id: 5, title: "Uni" },
+  ];
+  const categories = [
+    { id: 10, name: "Sport", mark: "var(--color-mark-pine)" },
+    { id: 11, name: "Schreiben" },
+    { id: 12, name: "Haushalt & Garten" },
+    { id: 13, name: "Ämter" },
+  ];
+  const named = (text: string, ignore?: QuestParseKind[]) =>
+    parseQuest(text, { today, ignore, campaigns, categories });
+
+  it("reads the full example with day and duration", () => {
+    const text =
+      "Kapitel 4 gliedern morgen 30 Minuten Kampagne Buch schreiben Kategorie Schreiben";
+    const result = named(text);
+    expect(result).toMatchObject({
+      title: "Kapitel 4 gliedern",
+      scheduledDate: "2026-11-25",
+      plannedDurationMinutes: 30,
+      campaignId: 1,
+      categoryId: 11,
+    });
+    expect(
+      result.matches.map((match) => [match.kind, match.label, match.text]),
+    ).toEqual([
+      ["date", "morgen", "morgen"],
+      ["duration", "30 Min.", "30 Minuten"],
+      ["campaign", "Buch schreiben", "Kampagne Buch schreiben"],
+      ["category", "Schreiben", "Kategorie Schreiben"],
+    ]);
+    expect(result.matches[2]).toMatchObject({ id: 1, icon: "book" });
+  });
+
+  it.each([
+    ["Kapitel gliedern Kampagne Buch schreiben", "Kampagne Buch schreiben"],
+    [
+      "Kapitel gliedern zur Kampagne Buch schreiben",
+      "zur Kampagne Buch schreiben",
+    ],
+    [
+      "Kapitel gliedern für die Kampagne Buch schreiben",
+      "für die Kampagne Buch schreiben",
+    ],
+    [
+      "Kapitel gliedern für Kampagne Buch schreiben",
+      "für Kampagne Buch schreiben",
+    ],
+    ["Kampagne Buch schreiben: Kapitel gliedern", "Kampagne Buch schreiben"],
+    [
+      "Kapitel gliedern, Kampagne „Buch schreiben“",
+      "Kampagne „Buch schreiben“",
+    ],
+  ])("finds the campaign after its keyword: %s", (text, words) => {
+    const result = named(text);
+    expect(result.campaignId).toBe(1);
+    expect(result.title).toBe("Kapitel gliedern");
+    expect(result.matches[0]).toMatchObject({ kind: "campaign", text: words });
+  });
+
+  it.each([
+    ["Laufen Kategorie Sport", "Kategorie Sport"],
+    ["Laufen in der Kategorie Sport", "in der Kategorie Sport"],
+    ["Laufen in Kategorie Sport", "in Kategorie Sport"],
+    ["Laufen, Kategorie Sport.", "Kategorie Sport"],
+  ])("finds the category after its keyword: %s", (text, words) => {
+    const result = parseQuest(text, { today, categories });
+    expect(result.categoryId).toBe(10);
+    expect(result.title).toBe("Laufen");
+    expect(result.matches[0]).toMatchObject({
+      kind: "category",
+      id: 10,
+      label: "Sport",
+      text: words,
+      mark: "var(--color-mark-pine)",
+    });
+  });
+
+  it("matches without case, umlauts, ß and punctuation", () => {
+    expect(named("Antrag kategorie aemter").categoryId).toBe(13);
+    expect(named("Antrag KATEGORIE ÄMTER").categoryId).toBe(13);
+    expect(named("Messen Kampagne groesse").campaignId).toBe(4);
+    expect(named("Messen Kampagne Grösse").campaignId).toBe(4);
+    expect(named("Kapitel Kampagne buch-schreiben").campaignId).toBe(1);
+    expect(named("Kapitel Kampagne Buch schreiben.").title).toBe("Kapitel");
+  });
+
+  it("hears „und“ for „&“", () => {
+    expect(named("Hecke Kampagne Garten und Haus")).toMatchObject({
+      campaignId: 3,
+      title: "Hecke",
+    });
+    expect(named("Fenster Kategorie Haushalt und Garten").categoryId).toBe(12);
+  });
+
+  it("forgives one recognition error in names of five letters or more", () => {
+    // A letter missing, a word split or joined, a letter off.
+    expect(named("Kapitel Kampagne Buch schreibn").campaignId).toBe(1);
+    expect(named("Kapitel Kampagne Buchschreiben").campaignId).toBe(1);
+    expect(named("Kapitel Kampagne Buch schreiben").campaignId).toBe(1);
+    expect(named("Laufen Kategorie Spord").categoryId).toBe(10);
+    expect(named("Laufen Kategorie Sports").title).toBe("Laufen");
+    // The keyword too: a plural or one letter off.
+    expect(named("Laufen Kathegorie Sport").categoryId).toBe(10);
+    expect(named("Kapitel Kampagnen Buch schreiben").campaignId).toBe(1);
+  });
+
+  it("asks short names to be exact", () => {
+    expect(named("Lernen Kampagne Uni").campaignId).toBe(5);
+    expect(named("Lernen Kampagne Umi").campaignId).toBeUndefined();
+    expect(named("Lernen Kampagne Bich").campaignId).toBeUndefined();
+    expect(named("Laufen Kategorie Sportverein").categoryId).toBeUndefined();
+  });
+
+  it("takes the longest name, but an exact one over a near one", () => {
+    expect(named("Kapitel Kampagne Buch schreiben").campaignId).toBe(1);
+    expect(named("Lesen Kampagne Buch").campaignId).toBe(2);
+    expect(named("Lesen Kampagne Buch lesen")).toMatchObject({
+      campaignId: 2,
+      title: "Lesen lesen",
+    });
+    expect(
+      parseQuest("Lesen Kampagne Buch", {
+        today,
+        campaigns: [
+          { id: 2, title: "Buch" },
+          { id: 6, title: "Buche" },
+        ],
+      }).campaignId,
+    ).toBe(2);
+  });
+
+  it("takes a campaign after „für“ only when spelt exactly", () => {
+    const result = named("Kapitel 4 gliedern für Buch schreiben");
+    expect(result).toMatchObject({ campaignId: 1, title: "Kapitel 4 gliedern" });
+    expect(result.matches[0].text).toBe("für Buch schreiben");
+    // "Buch schreibn" is not exact; "Buch" alone is.
+    expect(named("Kapitel für Buch schreibn")).toMatchObject({
+      campaignId: 2,
+      title: "Kapitel schreibn",
+    });
+    expect(named("Recherche für Buchschreiben").campaignId).toBeUndefined();
+    // Never a category after "für" alone.
+    expect(named("Schuhe für Sport kaufen").categoryId).toBeUndefined();
+  });
+
+  it("never takes a bare name", () => {
+    expect(named("Buch schreiben morgen")).toMatchObject({
+      title: "Buch schreiben",
+      matches: [expect.objectContaining({ kind: "date" })],
+    });
+    expect(named("Sport machen").matches).toEqual([]);
+    expect(named("Schreiben üben").matches).toEqual([]);
+  });
+
+  it("leaves an unknown name in the title", () => {
+    expect(named("Laufen Kategorie Fitness")).toEqual({
+      title: "Laufen Kategorie Fitness",
+      matches: [],
+    });
+  });
+
+  it("names only what it was given", () => {
+    expect(parse("Laufen Kategorie Sport")).toEqual({
+      title: "Laufen Kategorie Sport",
+      matches: [],
+    });
+    expect(
+      parseQuest("Kapitel Kampagne Buch schreiben", { today, campaigns: [] })
+        .campaignId,
+    ).toBeUndefined();
+  });
+
+  it("counts the first campaign and the first category", () => {
+    const result = named("Laufen Kategorie Sport Kategorie Schreiben");
+    expect(result.categoryId).toBe(10);
+    expect(result.title).toBe("Laufen Kategorie Schreiben");
+  });
+
+  it("leaves a discarded kind in the title", () => {
+    expect(
+      named("Kapitel Kampagne Buch schreiben Kategorie Sport", ["campaign"]),
+    ).toMatchObject({
+      title: "Kapitel Kampagne Buch schreiben",
+      categoryId: 10,
+    });
+    expect(
+      named("Kapitel Kampagne Buch schreiben Kategorie Sport", ["category"]),
+    ).toMatchObject({ title: "Kapitel Kategorie Sport", campaignId: 1 });
+  });
+
+  it("drops an „und“ between two names and never leaves the title empty", () => {
+    expect(
+      named("Kapitel Kampagne Buch schreiben und Kategorie Schreiben").title,
+    ).toBe("Kapitel");
+    // Only names: the text stays the title, the names still count.
+    expect(named("Kampagne Buch schreiben")).toMatchObject({
+      title: "Kampagne Buch schreiben",
+      campaignId: 1,
+    });
+    expect(named("Morgen Kampagne Buch schreiben Kapitel 4").title).toBe(
+      "Kapitel 4",
+    );
+  });
+
+  it("reads a day in a campaign's name as part of the name", () => {
+    const result = parseQuest("Laufen Kampagne Sport am Montag morgen", {
+      today,
+      campaigns: [{ id: 9, title: "Sport am Montag" }],
+    });
+    expect(result).toMatchObject({
+      title: "Laufen",
+      campaignId: 9,
+      scheduledDate: "2026-11-25",
+    });
+  });
+
+  it("gives ranges that cut exactly the recognised words", () => {
+    const text = "Kapitel, für die Kampagne Buch schreiben, Kategorie Sport";
+    const result = named(text);
+    expect(result.matches.map((m) => text.slice(m.start, m.end))).toEqual([
+      "für die Kampagne Buch schreiben",
+      "Kategorie Sport",
+    ]);
+    expect(result.title).toBe("Kapitel");
   });
 });

@@ -4,20 +4,28 @@ import {
   isValidIsoDate,
   weekStart,
 } from "./date";
+import {
+  findAfterFuer,
+  findAfterKeyword,
+  type NamedEntry,
+  type NamedFind,
+} from "./quest-parse-names";
 
 /**
  * Reads the day and the planned duration out of a quest typed or dictated in
- * German ("Steuererklärung morgen, 30 Minuten"), docs/voice-input.md. Pure:
+ * German ("Steuererklärung morgen, 30 Minuten"), docs/voice-input.md, and,
+ * given the person's campaigns and categories, the ones it names
+ * ("Kampagne Buch schreiben", "Kategorie Sport"; quest-parse-names.ts). Pure:
  * the caller shows what was recognised (`matches`, as chips) before anything
  * is saved, and a chip the person discards goes back into the title via
- * `ignore`. Only the first day and the first duration count; anything
- * further stays in the title.
+ * `ignore`. Only the first of each kind counts; anything further stays in
+ * the title.
  */
 
-export type QuestParseKind = "date" | "duration";
+export type QuestParseKind = "date" | "duration" | "campaign" | "category";
 
 type MatchBase = {
-  /** For the chip: "morgen", "Fr., 27.11.", "30 Min.". */
+  /** For the chip: "morgen", "Fr., 27.11.", "30 Min.", "Buch schreiben". */
   label: string;
   /** Range in the input, connecting words ("am", "für") included. */
   start: number;
@@ -28,7 +36,9 @@ type MatchBase = {
 
 export type QuestParseMatch =
   | (MatchBase & { kind: "date"; date: string })
-  | (MatchBase & { kind: "duration"; minutes: number });
+  | (MatchBase & { kind: "duration"; minutes: number })
+  | (MatchBase & { kind: "campaign"; id: number; icon?: string | null })
+  | (MatchBase & { kind: "category"; id: number; mark?: string | null });
 
 export type QuestParse = {
   /** The text without what was recognised; never empty for non-empty input. */
@@ -36,6 +46,10 @@ export type QuestParse = {
   /** YYYY-MM-DD (Berlin day). */
   scheduledDate?: string;
   plannedDurationMinutes?: number;
+  /** The campaign named ("Kampagne Buch schreiben", "für Buch schreiben"). */
+  campaignId?: number;
+  /** The category named ("Kategorie Sport"). */
+  categoryId?: number;
   matches: QuestParseMatch[];
 };
 
@@ -44,6 +58,10 @@ export type QuestParseOptions = {
   today?: string;
   /** Kinds the person discarded: their words stay in the title. */
   ignore?: readonly QuestParseKind[];
+  /** The open campaigns the text may name; `icon` rides along to the chip. */
+  campaigns?: readonly { id: number; title: string; icon?: string | null }[];
+  /** The person's categories; `mark` rides along to the chip. */
+  categories?: readonly { id: number; name: string; mark?: string | null }[];
 };
 
 /** Longest planned duration taken from text: one day. */
@@ -427,6 +445,26 @@ function cleanTitle(text: string, removed: Candidate[]): string {
   return title;
 }
 
+/** Campaigns as named entries, once per list (the matcher caches by list). */
+const campaignEntries = new WeakMap<object, NamedEntry[]>();
+function asEntries(
+  campaigns: NonNullable<QuestParseOptions["campaigns"]>,
+): NamedEntry[] {
+  let entries = campaignEntries.get(campaigns);
+  if (!entries) {
+    entries = campaigns.map(({ id, title, icon }) => ({ id, name: title, icon }));
+    campaignEntries.set(campaigns, entries);
+  }
+  return entries;
+}
+
+const asCandidate = (found: NamedFind): Candidate => ({
+  start: found.start,
+  end: found.end,
+  value: found.entry.id,
+  label: found.entry.name,
+});
+
 export function parseQuest(
   text: string,
   options: QuestParseOptions = {},
@@ -437,7 +475,48 @@ export function parseQuest(
   const removed: Candidate[] = [];
   let searched = text;
 
-  // Durations first, so "1,5 h" is never read as a date.
+  // Names first: a keyword announces them, and a campaign may be called
+  // "Sport am Montag" without the day being meant.
+  const campaigns =
+    ignore.has("campaign") || !options.campaigns?.length
+      ? []
+      : asEntries(options.campaigns);
+  const campaign = campaigns.length
+    ? (findAfterKeyword(searched, "kampagne", campaigns) ??
+      findAfterFuer(searched, campaigns))
+    : null;
+  if (campaign) {
+    removed.push(asCandidate(campaign));
+    searched = blank(searched, campaign.start, campaign.end);
+    matches.push({
+      kind: "campaign",
+      id: campaign.entry.id,
+      icon: campaign.entry.icon ?? null,
+      label: campaign.entry.name,
+      start: campaign.start,
+      end: campaign.end,
+      text: text.slice(campaign.start, campaign.end),
+    });
+  }
+  const category =
+    ignore.has("category") || !options.categories?.length
+      ? null
+      : findAfterKeyword(searched, "kategorie", options.categories);
+  if (category) {
+    removed.push(asCandidate(category));
+    searched = blank(searched, category.start, category.end);
+    matches.push({
+      kind: "category",
+      id: category.entry.id,
+      mark: category.entry.mark ?? null,
+      label: category.entry.name,
+      start: category.start,
+      end: category.end,
+      text: text.slice(category.start, category.end),
+    });
+  }
+
+  // Durations before days, so "1,5 h" is never read as a date.
   const duration = ignore.has("duration") ? null : findDuration(searched);
   if (duration) {
     removed.push(duration);
@@ -473,6 +552,8 @@ export function parseQuest(
     title,
     ...(date ? { scheduledDate: String(date.value) } : {}),
     ...(duration ? { plannedDurationMinutes: Number(duration.value) } : {}),
+    ...(campaign ? { campaignId: campaign.entry.id } : {}),
+    ...(category ? { categoryId: category.entry.id } : {}),
     matches,
   };
 }

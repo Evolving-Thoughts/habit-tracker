@@ -166,6 +166,34 @@ const weekGoal = computed(() => {
 });
 /* Wide screens: the day calendar stands beside the list. */
 const wide = useMediaQuery("(min-width: 64rem)");
+/*
+ * Narrower, the list and the day calendar take turns: "Liste · Logbuch"
+ * under the head, remembered on this device; the list comes first.
+ */
+type Pane = "list" | "logbook";
+const PANE_KEY = "today:pane";
+const PANES: { value: Pane; label: string }[] = [
+  { value: "list", label: "Liste" },
+  { value: "logbook", label: "Logbuch" },
+];
+function storedPane(): Pane {
+  try {
+    return localStorage.getItem(PANE_KEY) === "logbook" ? "logbook" : "list";
+  } catch {
+    return "list";
+  }
+}
+const pane = ref<Pane>(storedPane());
+function choosePane(next: Pane): void {
+  pane.value = next;
+  try {
+    localStorage.setItem(PANE_KEY, next);
+  } catch {
+    // Without storage the choice lasts until the page is left.
+  }
+}
+const showsList = computed(() => wide.value || pane.value === "list");
+const showsCalendar = computed(() => wide.value || pane.value === "logbook");
 /** On a phone "Auf morgen" waits in the header's "…"; the title keeps the line. */
 const phone = useMediaQuery(SHEET_QUERY);
 const headerMenu = computed<MenuEntry[]>(() => [
@@ -621,6 +649,7 @@ const focusTimer = computed(() => {
 useShortcutHandlers(
   {
     "quest.new": () => {
+      if (!showsList.value) choosePane("list");
       void focusWhenReady(() =>
         page.value?.querySelector<HTMLElement>('input[name="quickTitle"]'),
       );
@@ -728,6 +757,25 @@ useShortcutHandlers(
         </button>
       </header>
 
+      <!-- Narrower than the split: the list or the day calendar, by choice. -->
+      <div
+        v-if="!wide"
+        class="segmented today-view__panes"
+        role="radiogroup"
+        aria-label="Ansicht"
+      >
+        <label v-for="option in PANES" :key="option.value">
+          <input
+            type="radio"
+            name="todayPane"
+            :value="option.value"
+            :checked="pane === option.value"
+            @change="choosePane(option.value)"
+          />
+          {{ option.label }}
+        </label>
+      </div>
+
       <CreateItemDialog
         v-if="creationOpen"
         :dictate="creationDictate"
@@ -822,358 +870,370 @@ useShortcutHandlers(
         </button>
       </div>
 
-      <QuickAddQuest
-        v-if="planner"
-        :date="planner.date"
-        :order="orderRefs"
-        @created="writes.applied()"
-      />
+      <div v-show="showsList" class="today-view__day">
+        <QuickAddQuest
+          v-if="planner"
+          :date="planner.date"
+          :order="orderRefs"
+          @created="writes.applied()"
+        />
 
-      <!-- The month's challenge, calm and above the focus card. -->
-      <MonthChallengeCard
-        v-if="planner?.monthChallenge && !isLoading"
-        :challenge="planner.monthChallenge"
-        :run="challengeRun"
-        :busy="challengeRun ? isUpdating(challengeRun) : editorBusy"
-        @toggle="toggleItem"
-      />
+        <!-- The month's challenge, calm and above the focus card. -->
+        <MonthChallengeCard
+          v-if="planner?.monthChallenge && !isLoading"
+          :challenge="planner.monthChallenge"
+          :run="challengeRun"
+          :busy="challengeRun ? isUpdating(challengeRun) : editorBusy"
+          @toggle="toggleItem"
+        />
 
-      <div
-        v-if="isLoading"
-        class="today-view__loading"
-        role="status"
-        aria-label="Tagesplan wird geladen"
-      >
-        <span class="today-view__bone today-view__bone--focus" />
-        <span class="today-view__bone" />
-        <span class="today-view__bone" />
-      </div>
-
-      <section v-else-if="!hasItems && !errorMessage" class="today-view__empty">
-        <h2>Für heute ist nichts geplant.</h2>
-        <p>Genieße den freien Raum oder schreib oben auf, was heute ansteht.</p>
-      </section>
-
-      <template v-else-if="agenda && hasItems">
-        <div ref="order" class="order">
-          <section
-            v-if="agenda.focus"
-            class="focus card-target card-drag"
-            :data-focus-key="getItemKey(agenda.focus)"
-            :data-sort-key="getItemKey(agenda.focus)"
-            aria-labelledby="focus-title"
-            @click="openFocusFromCard($event, agenda.focus)"
-          >
-            <div class="focus__head">
-              <!-- The heading keeps the plain title; the button inside says "bearbeiten". -->
-              <h2
-                id="focus-title"
-                class="focus__title"
-                :aria-label="agenda.focus.title"
-              >
-                <button
-                  class="focus__title-button"
-                  data-edit-button
-                  type="button"
-                  :disabled="isUpdating(agenda.focus)"
-                  :aria-label="`${agenda.focus.title} bearbeiten`"
-                  @click="openEditing(agenda.focus)"
-                >
-                  {{ agenda.focus.title }}
-                </button>
-              </h2>
-            </div>
-            <p v-if="focusSlot" class="focus__slot">
-              <AppIcon name="calendar" />
-              <span>{{ focusSlot }}</span>
-            </p>
-            <p v-if="agenda.focus.why" class="focus__why">
-              {{ agenda.focus.why }}
-            </p>
-            <p
-              v-if="
-                focusMeta.length ||
-                focusGoal ||
-                focusTimer ||
-                agenda.focus.type === 'habit' ||
-                focusCampaign
-              "
-              class="focus__meta"
-            >
-              <span v-if="focusTimer" class="focus__running">
-                <i aria-hidden="true" />{{
-                  focusTimer === "running" ? "läuft" : "pausiert"
-                }}
-              </span>
-              <span v-if="agenda.focus.type === 'habit'" class="focus__daily">
-                <AppIcon name="dailies" />Daily
-              </span>
-              <ChallengeMark
-                v-if="agenda.focus.type === 'habit' && agenda.focus.monthChallenge"
-              />
-              <span v-if="agenda.focus.categoryName" class="focus__category">
-                <i
-                  class="category-mark"
-                  :style="{
-                    background: categoryMark(
-                      agenda.focus.categoryName,
-                      agenda.focus.categoryColor,
-                    ),
-                  }"
-                  aria-hidden="true"
-                />{{ agenda.focus.categoryName }}
-              </span>
-              <span v-for="part in focusMeta" :key="part">{{ part }}</span>
-              <span v-if="focusGoal">{{ focusGoal }}</span>
-              <CampaignChip v-if="focusCampaign" :campaign="focusCampaign" />
-            </p>
-            <!-- The stopwatch is the primary step, Erledigt the secondary one. -->
-            <div class="focus__actions">
-              <ItemPlayButton
-                class="focus__play"
-                labelled
-                :kind="agenda.focus.type === 'todo' ? 'todo' : 'occurrence'"
-                :target-id="
-                  agenda.focus.type === 'todo'
-                    ? agenda.focus.todoId
-                    : agenda.focus.occurrenceId
-                "
-                :title="agenda.focus.title"
-                :eligible="agenda.focus.timerEligible"
-                :disabled="isUpdating(agenda.focus)"
-              />
-              <button
-                class="btn focus__done"
-                type="button"
-                :disabled="isUpdating(agenda.focus)"
-                :aria-label="`${agenda.focus.title} erledigen`"
-                @click="toggleItem(agenda.focus)"
-              >
-                <AppIcon name="check" />
-                <span>Erledigt</span>
-              </button>
-              <!-- The Fokus-Modus has no Später or Überspringen for an appointment. -->
-              <a
-                v-if="!focusSlot"
-                class="focus__mode"
-                :href="hrefOf('focus')"
-                aria-label="Fokus-Modus"
-                title="Fokus-Modus"
-              >
-                <AppIcon name="focus" />
-              </a>
-              <ActionMenu
-                v-if="rowMenu(agenda.focus).length"
-                :title="agenda.focus.title"
-                :entries="rowMenu(agenda.focus)"
-                :disabled="isUpdating(agenda.focus)"
-              />
-            </div>
-          </section>
-          <!-- Nothing is up: only appointments are left, none running, and the day was never sorted. They wait in the list below. -->
-          <section v-else-if="openAppointments" class="today-view__empty">
-            <h2>In der Reihenfolge ist nichts mehr offen.</h2>
-            <p>
-              {{
-                nextAppointment
-                  ? `Nächster Termin: ${nextAppointment}.`
-                  : "Was noch offen ist, steht unten bei seiner Uhrzeit."
-              }}
-            </p>
-          </section>
-          <section v-else-if="!agenda.carriedOver.length" class="today-view__empty">
-            <h2>Alles für heute erledigt.</h2>
-            <p>Der Rest des Tages gehört dir.</p>
-          </section>
-
-          <!--
-            The rest of the day in one order. Appointments stand in it with
-            their time and drag like any other card; one that is over but
-            still open asks quietly. Google events are read-only anchors: a
-            card can be dropped next to them, but they never lift. On wide
-            screens they stand in the day calendar instead. On a phone only the next two rows carry
-            their Warum, so the day stays short.
-          -->
-          <template
-            v-for="(entry, index) in agenda.list"
-            :key="
-              entry.kind === 'event'
-                ? `event-${entry.event.id}`
-                : getItemKey(entry.item)
-            "
-          >
-            <PlannerItem
-              v-if="entry.kind === 'item'"
-              class="today-view__appointment"
-              :class="{ 'today-view__appointment--past': entry.past }"
-              :data-focus-key="getItemKey(entry.item)"
-              :data-sort-key="getItemKey(entry.item)"
-              sortable
-              :item="entry.item"
-              :time="entry.time"
-              :is-updating="isUpdating(entry.item)"
-              :menu="rowMenu(entry.item)"
-              :past="entry.past"
-              :movable="canMoveByDialog(entry.item)"
-              why-wide-only
-              @toggle="toggleItem"
-              @edit="openEditing"
-              @move="openMoving"
-            />
-            <div
-              v-else-if="entry.kind === 'event'"
-              class="today-view__event"
-              :class="{ 'today-view__event--past': entry.past }"
-              :data-sort-key="`event-${entry.event.id}`"
-              data-sort-anchor
-            >
-              <span class="today-view__event-time">{{ entry.time }}</span>
-              <span class="today-view__event-title">{{ entry.event.title }}</span>
-              <span class="today-view__event-source">Google Kalender</span>
-            </div>
-            <PlannerItem
-              v-else
-              :data-focus-key="getItemKey(entry.item)"
-              :data-sort-key="getItemKey(entry.item)"
-              :item="entry.item"
-              :is-updating="isUpdating(entry.item)"
-              :menu="rowMenu(entry.item)"
-              :why-wide-only="index >= 2"
-              sortable
-              @toggle="toggleItem"
-              @edit="openEditing"
-            />
-          </template>
+        <div
+          v-if="isLoading"
+          class="today-view__loading"
+          role="status"
+          aria-label="Tagesplan wird geladen"
+        >
+          <span class="today-view__bone today-view__bone--focus" />
+          <span class="today-view__bone" />
+          <span class="today-view__bone" />
         </div>
 
-        <section
-          v-if="agenda.carriedOver.length"
-          class="catch-up"
-          aria-label="Einträge von früher"
-        >
-          <button
-            class="catch-up__toggle"
-            type="button"
-            :aria-expanded="catchUpOpen"
-            aria-controls="catch-up-list"
-            @click="catchUpOpen = !catchUpOpen"
-          >
-            <span>
-              {{
-                agenda.carriedOver.length === 1
-                  ? "1 Eintrag von früher"
-                  : `${agenda.carriedOver.length} Einträge von früher`
-              }}
-            </span>
-            <span class="catch-up__hint">Nachholen</span>
-            <AppIcon name="chevron" />
-          </button>
-          <div v-if="catchUpOpen" id="catch-up-list" class="catch-up__body">
-            <button
-              v-if="quickToday.length > 1"
-              class="catch-up__all"
-              type="button"
-              :disabled="writes.busy.value"
-              @click="catchUpAll"
+        <section v-else-if="!hasItems && !errorMessage" class="today-view__empty">
+          <h2>Für heute ist nichts geplant.</h2>
+          <p>Genieße den freien Raum oder schreib oben auf, was heute ansteht.</p>
+        </section>
+
+        <template v-else-if="agenda && hasItems">
+          <div ref="order" class="order">
+            <section
+              v-if="agenda.focus"
+              class="focus card-target card-drag"
+              :data-focus-key="getItemKey(agenda.focus)"
+              :data-sort-key="getItemKey(agenda.focus)"
+              aria-labelledby="focus-title"
+              @click="openFocusFromCard($event, agenda.focus)"
             >
-              Alle {{ quickToday.length }} heute einplanen
-            </button>
-            <PlannerItem
-              v-for="item in agenda.carriedOver"
-              :key="getItemKey(item)"
-              class="catch-up__row"
-              :data-focus-key="getItemKey(item)"
-              :item="item"
-              :is-updating="isUpdating(item)"
-              show-date
-              compact
-              why-wide-only
-              @toggle="toggleItem"
-              @edit="openEditing"
-            >
-              <button
-                v-if="planner && quickMovable(item, planner.date)"
-                class="catch-up__chip"
-                type="button"
-                :disabled="isUpdating(item)"
-                :aria-label="`${item.title} heute einplanen`"
-                @click="moveTo(item, planner.date)"
-              >
-                Heute
-              </button>
-              <button
-                v-if="quickMovable(item, tomorrow)"
-                class="catch-up__chip"
-                type="button"
-                :disabled="isUpdating(item)"
-                :aria-label="`${item.title} auf morgen`"
-                @click="moveTo(item, tomorrow)"
-              >
-                Morgen
-              </button>
-              <button
+              <div class="focus__head">
+                <!-- The heading keeps the plain title; the button inside says "bearbeiten". -->
+                <h2
+                  id="focus-title"
+                  class="focus__title"
+                  :aria-label="agenda.focus.title"
+                >
+                  <button
+                    class="focus__title-button"
+                    data-edit-button
+                    type="button"
+                    :disabled="isUpdating(agenda.focus)"
+                    :aria-label="`${agenda.focus.title} bearbeiten`"
+                    @click="openEditing(agenda.focus)"
+                  >
+                    {{ agenda.focus.title }}
+                  </button>
+                </h2>
+              </div>
+              <p v-if="focusSlot" class="focus__slot">
+                <AppIcon name="calendar" />
+                <span>{{ focusSlot }}</span>
+              </p>
+              <p v-if="agenda.focus.why" class="focus__why">
+                {{ agenda.focus.why }}
+              </p>
+              <p
                 v-if="
-                  item.type === 'todo' || !!item.moveUntil
+                  focusMeta.length ||
+                  focusGoal ||
+                  focusTimer ||
+                  agenda.focus.type === 'habit' ||
+                  focusCampaign
                 "
-                class="catch-up__chip"
-                type="button"
-                data-move-button
-                :disabled="isUpdating(item)"
-                :aria-label="`${item.title} auf einen anderen Tag`"
-                @click="openMoving(item)"
+                class="focus__meta"
               >
-                Anderer Tag
-              </button>
-              <button
-                v-if="item.type === 'habit'"
-                class="catch-up__chip"
-                type="button"
-                :disabled="isUpdating(item)"
-                :aria-label="`${item.title} überspringen`"
-                @click="skipHabit(item)"
-              >
-                Überspringen
-              </button>
-            </PlannerItem>
-          </div>
-        </section>
+                <span v-if="focusTimer" class="focus__running">
+                  <i aria-hidden="true" />{{
+                    focusTimer === "running" ? "läuft" : "pausiert"
+                  }}
+                </span>
+                <span v-if="agenda.focus.type === 'habit'" class="focus__daily">
+                  <AppIcon name="dailies" />Daily
+                </span>
+                <ChallengeMark
+                  v-if="agenda.focus.type === 'habit' && agenda.focus.monthChallenge"
+                />
+                <span v-if="agenda.focus.categoryName" class="focus__category">
+                  <i
+                    class="category-mark"
+                    :style="{
+                      background: categoryMark(
+                        agenda.focus.categoryName,
+                        agenda.focus.categoryColor,
+                      ),
+                    }"
+                    aria-hidden="true"
+                  />{{ agenda.focus.categoryName }}
+                </span>
+                <span v-for="part in focusMeta" :key="part">{{ part }}</span>
+                <span v-if="focusGoal">{{ focusGoal }}</span>
+                <CampaignChip v-if="focusCampaign" :campaign="focusCampaign" />
+              </p>
+              <!-- The stopwatch is the primary step, Erledigt the secondary one. -->
+              <div class="focus__actions">
+                <ItemPlayButton
+                  class="focus__play"
+                  labelled
+                  :kind="agenda.focus.type === 'todo' ? 'todo' : 'occurrence'"
+                  :target-id="
+                    agenda.focus.type === 'todo'
+                      ? agenda.focus.todoId
+                      : agenda.focus.occurrenceId
+                  "
+                  :title="agenda.focus.title"
+                  :eligible="agenda.focus.timerEligible"
+                  :disabled="isUpdating(agenda.focus)"
+                />
+                <button
+                  class="btn focus__done"
+                  type="button"
+                  :disabled="isUpdating(agenda.focus)"
+                  :aria-label="`${agenda.focus.title} erledigen`"
+                  @click="toggleItem(agenda.focus)"
+                >
+                  <AppIcon name="check" />
+                  <span>Erledigt</span>
+                </button>
+                <!-- The Fokus-Modus has no Später or Überspringen for an appointment. -->
+                <a
+                  v-if="!focusSlot"
+                  class="focus__mode"
+                  :href="hrefOf('focus')"
+                  aria-label="Fokus-Modus"
+                  title="Fokus-Modus"
+                >
+                  <AppIcon name="focus" />
+                </a>
+                <ActionMenu
+                  v-if="rowMenu(agenda.focus).length"
+                  :title="agenda.focus.title"
+                  :entries="rowMenu(agenda.focus)"
+                  :disabled="isUpdating(agenda.focus)"
+                />
+              </div>
+            </section>
+            <!-- Nothing is up: only appointments are left, none running, and the day was never sorted. They wait in the list below. -->
+            <section v-else-if="openAppointments" class="today-view__empty">
+              <h2>In der Reihenfolge ist nichts mehr offen.</h2>
+              <p>
+                {{
+                  nextAppointment
+                    ? `Nächster Termin: ${nextAppointment}.`
+                    : "Was noch offen ist, steht unten bei seiner Uhrzeit."
+                }}
+              </p>
+            </section>
+            <section v-else-if="!agenda.carriedOver.length" class="today-view__empty">
+              <h2>Alles für heute erledigt.</h2>
+              <p>Der Rest des Tages gehört dir.</p>
+            </section>
 
-        <section v-if="agenda.resolved.length" class="resolved">
-          <button
-            class="resolved__toggle"
-            type="button"
-            :aria-expanded="resolvedOpen"
-            aria-controls="resolved-list"
-            @click="resolvedOpen = !resolvedOpen"
+            <!--
+              The rest of the day in one order. Appointments stand in it with
+              their time and drag like any other card; one that is over but
+              still open asks quietly. Google events are read-only anchors: a
+              card can be dropped next to them, but they never lift. On wide
+              screens they stand in the day calendar instead. On a phone only the next two rows carry
+              their Warum, so the day stays short.
+            -->
+            <template
+              v-for="(entry, index) in agenda.list"
+              :key="
+                entry.kind === 'event'
+                  ? `event-${entry.event.id}`
+                  : getItemKey(entry.item)
+              "
+            >
+              <PlannerItem
+                v-if="entry.kind === 'item'"
+                class="today-view__appointment"
+                :class="{ 'today-view__appointment--past': entry.past }"
+                :data-focus-key="getItemKey(entry.item)"
+                :data-sort-key="getItemKey(entry.item)"
+                sortable
+                :item="entry.item"
+                :time="entry.time"
+                :is-updating="isUpdating(entry.item)"
+                :menu="rowMenu(entry.item)"
+                :past="entry.past"
+                :movable="canMoveByDialog(entry.item)"
+                why-wide-only
+                @toggle="toggleItem"
+                @edit="openEditing"
+                @move="openMoving"
+              />
+              <div
+                v-else-if="entry.kind === 'event'"
+                class="today-view__event"
+                :class="{ 'today-view__event--past': entry.past }"
+                :data-sort-key="`event-${entry.event.id}`"
+                data-sort-anchor
+              >
+                <span class="today-view__event-time">{{ entry.time }}</span>
+                <span class="today-view__event-title">{{ entry.event.title }}</span>
+                <span class="today-view__event-source">Google Kalender</span>
+              </div>
+              <PlannerItem
+                v-else
+                :data-focus-key="getItemKey(entry.item)"
+                :data-sort-key="getItemKey(entry.item)"
+                :item="entry.item"
+                :is-updating="isUpdating(entry.item)"
+                :menu="rowMenu(entry.item)"
+                :why-wide-only="index >= 2"
+                sortable
+                @toggle="toggleItem"
+                @edit="openEditing"
+              />
+            </template>
+          </div>
+
+          <section
+            v-if="agenda.carriedOver.length"
+            class="catch-up"
+            aria-label="Einträge von früher"
           >
-            {{ agenda.resolved.length }} abgeschlossen
-            <AppIcon name="chevron" />
-          </button>
-          <div v-if="resolvedOpen" id="resolved-list" class="resolved__list">
-            <PlannerItem
-              v-for="item in agenda.resolved"
-              :key="getItemKey(item)"
-              :data-focus-key="getItemKey(item)"
-              :item="item"
-              :is-updating="isUpdating(item)"
-              @toggle="toggleItem"
-              @edit="openEditing"
-            />
-          </div>
-        </section>
-      </template>
+            <button
+              class="catch-up__toggle"
+              type="button"
+              :aria-expanded="catchUpOpen"
+              aria-controls="catch-up-list"
+              @click="catchUpOpen = !catchUpOpen"
+            >
+              <span>
+                {{
+                  agenda.carriedOver.length === 1
+                    ? "1 Eintrag von früher"
+                    : `${agenda.carriedOver.length} Einträge von früher`
+                }}
+              </span>
+              <span class="catch-up__hint">Nachholen</span>
+              <AppIcon name="chevron" />
+            </button>
+            <div v-if="catchUpOpen" id="catch-up-list" class="catch-up__body">
+              <button
+                v-if="quickToday.length > 1"
+                class="catch-up__all"
+                type="button"
+                :disabled="writes.busy.value"
+                @click="catchUpAll"
+              >
+                Alle {{ quickToday.length }} heute einplanen
+              </button>
+              <PlannerItem
+                v-for="item in agenda.carriedOver"
+                :key="getItemKey(item)"
+                class="catch-up__row"
+                :data-focus-key="getItemKey(item)"
+                :item="item"
+                :is-updating="isUpdating(item)"
+                show-date
+                compact
+                why-wide-only
+                @toggle="toggleItem"
+                @edit="openEditing"
+              >
+                <button
+                  v-if="planner && quickMovable(item, planner.date)"
+                  class="catch-up__chip"
+                  type="button"
+                  :disabled="isUpdating(item)"
+                  :aria-label="`${item.title} heute einplanen`"
+                  @click="moveTo(item, planner.date)"
+                >
+                  Heute
+                </button>
+                <button
+                  v-if="quickMovable(item, tomorrow)"
+                  class="catch-up__chip"
+                  type="button"
+                  :disabled="isUpdating(item)"
+                  :aria-label="`${item.title} auf morgen`"
+                  @click="moveTo(item, tomorrow)"
+                >
+                  Morgen
+                </button>
+                <button
+                  v-if="
+                    item.type === 'todo' || !!item.moveUntil
+                  "
+                  class="catch-up__chip"
+                  type="button"
+                  data-move-button
+                  :disabled="isUpdating(item)"
+                  :aria-label="`${item.title} auf einen anderen Tag`"
+                  @click="openMoving(item)"
+                >
+                  Anderer Tag
+                </button>
+                <button
+                  v-if="item.type === 'habit'"
+                  class="catch-up__chip"
+                  type="button"
+                  :disabled="isUpdating(item)"
+                  :aria-label="`${item.title} überspringen`"
+                  @click="skipHabit(item)"
+                >
+                  Überspringen
+                </button>
+              </PlannerItem>
+            </div>
+          </section>
 
-      <!-- In the evening, at the end of the day's list: the day's best. -->
-      <DayBestCard v-if="planner && !isLoading" :date="planner.date" />
+          <section v-if="agenda.resolved.length" class="resolved">
+            <button
+              class="resolved__toggle"
+              type="button"
+              :aria-expanded="resolvedOpen"
+              aria-controls="resolved-list"
+              @click="resolvedOpen = !resolvedOpen"
+            >
+              {{ agenda.resolved.length }} abgeschlossen
+              <AppIcon name="chevron" />
+            </button>
+            <div v-if="resolvedOpen" id="resolved-list" class="resolved__list">
+              <PlannerItem
+                v-for="item in agenda.resolved"
+                :key="getItemKey(item)"
+                :data-focus-key="getItemKey(item)"
+                :item="item"
+                :is-updating="isUpdating(item)"
+                @toggle="toggleItem"
+                @edit="openEditing"
+              />
+            </div>
+          </section>
+        </template>
+
+        <!-- In the evening, at the end of the day's list: the day's best. -->
+        <DayBestCard v-if="planner && !isLoading" :date="planner.date" />
+      </div>
     </div>
 
-    <!-- Wide screens: today on one hour axis beside the list, in view while it scrolls. -->
+    <!--
+      Today on one hour axis: on wide screens beside the list, in view while
+      it scrolls; narrower as the "Logbuch" pane, scrolling with the page.
+    -->
     <TodayCalendar
-      v-if="wide && planner"
+      v-if="showsCalendar && planner"
       class="today-view__calendar"
       :date="planner.date"
       :hidden-logs="hiddenLogs"
+      :flow="!wide"
       @remove-log="removeLog"
+    />
+    <div
+      v-else-if="showsCalendar && isLoading"
+      class="today-view__calendar-loading"
+      role="status"
+      aria-label="Kalender des Tages wird geladen"
     />
 
     <!-- Stays mounted, so a move that empties the day is still announced. -->
@@ -1760,6 +1820,26 @@ useShortcutHandlers(
   to {
     opacity: 0.5;
   }
+}
+
+/* "Liste · Logbuch" under the head; on a phone in two even halves. */
+.today-view__panes {
+  margin-bottom: var(--space-4);
+}
+
+@media (max-width: 39.99rem) {
+  .today-view__panes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* The day calendar as a pane: its natural height, scrolling with the page. */
+.today-view__calendar-loading {
+  min-height: 24rem;
+  border-radius: var(--radius-card);
+  background: var(--color-surface-flat);
+  animation: today-pulse 1.4s ease-in-out infinite alternate;
 }
 
 @media (min-width: 56rem) {

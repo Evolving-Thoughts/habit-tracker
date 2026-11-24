@@ -31,6 +31,27 @@ export const MIN_BLOCK_MINUTES = ((2.75 + 0.125) / HOUR_REM) * 60;
 /** A completion is a moment, not a stretch: a mark of 1.5rem and its margins. */
 export const DONE_MARK_MINUTES = ((1.5 + 0.125) / HOUR_REM) * 60;
 /**
+ * One line of a Logbuch label (the title at 0.8125rem and line height 1.2,
+ * with a little air), in rem. A shorter stretch is still drawn this high, so
+ * its name stays readable; its campaign stripe keeps the real length.
+ */
+export const LOG_LINE_REM = 1.375;
+/** Stretches shorter than this are drawn one line high: about 21 minutes. */
+export const LOG_LINE_MINUTES = (LOG_LINE_REM / HOUR_REM) * 60;
+/** Title and times on two lines need 2rem of the axis: half an hour. */
+export const LOG_FULL_MINUTES = (2 / HOUR_REM) * 60;
+/**
+ * How a Logbuch block labels itself, by its length:
+ * - "full": title and times on two lines (and the campaign chip, if it fits);
+ * - "line": one line, "Titel · 25 Min.", inside its real height;
+ * - "chip": one line drawn higher than the stretch, the stripe its real length.
+ */
+export type LogLabelMode = "full" | "line" | "chip";
+export function logLabelMode(minutes: number): LogLabelMode {
+  if (minutes < LOG_LINE_MINUTES) return "chip";
+  return minutes < LOG_FULL_MINUTES ? "line" : "full";
+}
+/**
  * The axis runs from early morning to midnight; an entry before six pulls
  * it back to that entry's full hour.
  */
@@ -203,13 +224,17 @@ function doneMarks(day: PlannedDay): PlanBlock[] {
   });
 }
 
-/** The day's stretches, cut to the day. */
+/**
+ * The day's stretches, cut to the day. Each takes at least one line of room,
+ * so short stretches next to each other stand side by side, each with its
+ * readable label, instead of on top of each other.
+ */
 export function logBlocks(work: HistoryDayWork, date: string): LogBlock[] {
   return (work.logs ?? []).map((log) => {
     const start = minuteOfDay(log.startedAt, date);
     // The repeated hour in autumn can make the wall clock run backwards.
     const end = Math.max(start, minuteOfDay(log.endedAt, date));
-    return { key: `log:${log.id}`, log, start, end, minLength: 0 };
+    return { key: `log:${log.id}`, log, start, end, minLength: LOG_LINE_MINUTES };
   });
 }
 

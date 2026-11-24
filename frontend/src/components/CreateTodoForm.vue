@@ -11,7 +11,13 @@ import type { HierarchyTodo } from "../types/todo-hierarchy";
 import { buildTodoInput } from "../utils/todo-input";
 import type { CampaignColor, CampaignIcon } from "../types/campaign";
 import { hoursToMinutes } from "../utils/quest-hours";
-import { categoryOfChoice, type ParentChoice } from "../utils/parent-choice";
+import {
+  categoryOfChoice,
+  parentChoices,
+  type ParentChoice,
+} from "../utils/parent-choice";
+import { categoryMark } from "../utils/category-mark";
+import { isCampaignIcon } from "../utils/campaign-style";
 import { parseQuest, type QuestParseKind } from "../utils/quest-parse";
 import { whyBelow } from "../utils/why";
 import CampaignFields from "./CampaignFields.vue";
@@ -72,13 +78,45 @@ const errorMessage = ref<string | null>(null);
  * schauen"). A field set by hand keeps its value and leaves the words in the
  * title; a discarded chip does the same. Only on creating do the applied
  * words leave the title.
+ *
+ * A campaign or category named in it ("Kampagne Buch schreiben",
+ * "Kategorie Sport") fills "Gehört zu" and Kategorie the same way, from the
+ * lists the two pickers load. A named campaign brings its category, as a
+ * chosen place does, unless a category was named too. A form opened inside
+ * a campaign already has its place: only the category is read there.
  */
 const titleId = useId();
 const mic = ref<InstanceType<typeof MicButton> | null>(null);
-const touched = ref<Record<QuestParseKind, boolean>>({
+const untouched = (): Record<QuestParseKind, boolean> => ({
   date: false,
   duration: false,
+  campaign: Boolean(props.parent),
+  category: false,
 });
+const touched = ref(untouched());
+/** Every quest the parent picker loaded; its open campaigns can be named. */
+const hierarchy = ref<HierarchyTodo[]>([]);
+const campaignChoices = computed(() =>
+  parentChoices(hierarchy.value, { campaignsOnly: true }),
+);
+const names = computed(() => ({
+  campaigns: campaignChoices.value.map(({ todo }) => ({
+    id: todo.id,
+    title: todo.title,
+    icon: isCampaignIcon(todo.icon) ? todo.icon : null,
+  })),
+  categories: categories.value.map((category) => ({
+    id: category.id,
+    name: category.name,
+    mark: categoryMark(category.name, category.color),
+  })),
+}));
+/**
+ * While dictation sets the category, the one it replaced (none, the
+ * campaign's preset or a chosen place's) comes back when its chip goes.
+ */
+let categoryFromText = false;
+let categoryBefore: number | null = null;
 const ignored = ref<QuestParseKind[]>([]);
 /** Set once dictation has written into the title; reading starts then. */
 const dictated = ref(false);
@@ -88,10 +126,11 @@ const parsed = computed(() =>
     : parseQuest(title.value, {
         ignore: [
           ...ignored.value,
-          ...(["date", "duration"] as const).filter(
+          ...(["date", "duration", "campaign", "category"] as const).filter(
             (kind) => touched.value[kind],
           ),
         ],
+        ...names.value,
       }),
 );
 watch(parsed, (result) => {
@@ -99,6 +138,31 @@ watch(parsed, (result) => {
   if (!touched.value.date) date.value = result.scheduledDate ?? "";
   if (!touched.value.duration)
     durationMinutes.value = result.plannedDurationMinutes ?? "";
+  const campaign = campaignChoices.value.find(
+    (choice) => choice.todo.id === result.campaignId,
+  );
+  if (!touched.value.campaign) {
+    const id = campaign?.todo.id ?? null;
+    if (parentId.value !== id) {
+      parentId.value = id;
+      inheritedWhy.value = campaign ? whyBelow(campaign.todo) : null;
+    }
+  }
+  if (!touched.value.category) {
+    const wanted =
+      result.categoryId ??
+      (campaign && !touched.value.campaign
+        ? (categoryOfChoice(campaign) ?? undefined)
+        : undefined);
+    if (wanted !== undefined) {
+      if (!categoryFromText) categoryBefore = categoryId.value;
+      categoryFromText = true;
+      categoryId.value = wanted;
+    } else if (categoryFromText) {
+      categoryFromText = false;
+      categoryId.value = categoryBefore;
+    }
+  }
 });
 function setDate(value: string): void {
   touched.value.date = true;
@@ -121,17 +185,28 @@ onMounted(async () => {
   void mic.value?.start();
 });
 
-/** A chosen place brings its reason (live, never copied) and its category. */
-function choose(choice: ParentChoice | null): void {
-  inheritedWhy.value = choice ? whyBelow(choice.todo) : null;
-  if (choice && categoryId.value === null)
+/** A category the form would hold without dictation: none so far takes it. */
+function suggestCategory(choice: ParentChoice): void {
+  if (categoryFromText) categoryBefore ??= categoryOfChoice(choice);
+  else if (categoryId.value === null)
     categoryId.value = categoryOfChoice(choice);
 }
+/** A chosen place brings its reason (live, never copied) and its category. */
+function choose(choice: ParentChoice | null): void {
+  touched.value.campaign = true;
+  inheritedWhy.value = choice ? whyBelow(choice.todo) : null;
+  if (choice) suggestCategory(choice);
+}
 /** Created inside a campaign: the campaign's category if the parent has none. */
-function preset(choices: ParentChoice[]): void {
+function preset(choices: ParentChoice[], todos: HierarchyTodo[]): void {
+  hierarchy.value = todos;
   const choice = choices.find((entry) => entry.todo.id === parentId.value);
-  if (choice && categoryId.value === null)
-    categoryId.value = categoryOfChoice(choice);
+  if (choice) suggestCategory(choice);
+}
+/** A category picked by hand stays, whatever the dictation names. */
+function pickCategory(): void {
+  touched.value.category = true;
+  categoryFromText = false;
 }
 
 function buildInput(): CreateTodoInput {
@@ -153,8 +228,9 @@ function resetForm(): void {
   color.value = null;
   icon.value = null;
   weeklyTarget.value = "";
-  touched.value = { date: false, duration: false };
+  touched.value = untouched();
   ignored.value = [];
+  categoryFromText = false;
 }
 
 async function submit(): Promise<void> {
@@ -272,6 +348,7 @@ async function submit(): Promise<void> {
             <CategoryPicker
               id="todo-category"
               v-model="categoryId"
+              @update:model-value="pickCategory"
               @loaded="categories = $event"
             />
           </div>
@@ -301,6 +378,7 @@ async function submit(): Promise<void> {
               <CategoryPicker
                 id="todo-category"
                 v-model="categoryId"
+                @update:model-value="pickCategory"
                 @loaded="categories = $event"
               />
             </div>

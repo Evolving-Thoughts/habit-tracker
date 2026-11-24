@@ -20,6 +20,8 @@ type Quest = {
   title: string;
   scheduledDate: string | null;
   plannedDurationMinutes: number | null;
+  parentId: number | null;
+  categoryId: number | null;
 };
 async function quests(request: APIRequestContext): Promise<Quest[]> {
   return (await (await request.get(`${API_URL}/todos`)).json()) as Quest[];
@@ -80,6 +82,60 @@ test("quick add in Heute: a typed day plans the quest for that day", async ({
     .poll(async () => quests(request))
     .toContainEqual(
       expect.objectContaining({ title: "Wäsche", scheduledDate: tomorrow }),
+    );
+});
+
+test("quick add in Heute: a dictated campaign and category put the quest below the campaign", async ({
+  page,
+  request,
+}) => {
+  const category = await request.post(`${API_URL}/categories`, {
+    data: { name: "Schreiben", color: null },
+  });
+  expect(category.ok()).toBeTruthy();
+  const { id: categoryId } = (await category.json()) as { id: number };
+  // Its colour and symbol make the top-level quest a campaign.
+  const campaign = await request.post(`${API_URL}/todos`, {
+    data: {
+      title: "Buch schreiben",
+      parentId: null,
+      scheduledDate: null,
+      timeOfDay: null,
+      plannedDurationMinutes: null,
+      color: "pine",
+      icon: "book",
+    },
+  });
+  expect(campaign.ok()).toBeTruthy();
+  const { id: campaignId } = (await campaign.json()) as { id: number };
+  await hear(
+    page,
+    "Kapitel 4 gliedern morgen Kampagne Buch schreiben Kategorie Schreiben",
+  );
+  const tomorrow = daysAfter(await today(request), 1);
+  await page.goto("/");
+  const row = quickAdd(page);
+  await row.getByRole("button", { name: "Quest diktieren" }).click();
+  await expect(
+    row.getByRole("button", { name: "Kampagne: Buch schreiben, entfernen" }),
+  ).toHaveText("Kampagne: Buch schreiben");
+  await expect(
+    row.getByRole("button", { name: "Kategorie: Schreiben, entfernen" }),
+  ).toHaveText("Kategorie: Schreiben");
+  await expect(
+    row.getByRole("button", { name: "Tag: morgen, entfernen" }),
+  ).toBeVisible();
+
+  await row.locator('input[name="quickTitle"]').press("Enter");
+  await expect
+    .poll(async () => quests(request))
+    .toContainEqual(
+      expect.objectContaining({
+        title: "Kapitel 4 gliedern",
+        scheduledDate: tomorrow,
+        parentId: campaignId,
+        categoryId,
+      }),
     );
 });
 

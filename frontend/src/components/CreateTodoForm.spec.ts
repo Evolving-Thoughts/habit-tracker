@@ -487,4 +487,164 @@ describe("CreateTodoForm", () => {
       expect(micStart).toHaveBeenCalledTimes(1);
     });
   });
+  describe("campaign and category from the title", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-24T10:00:00Z"));
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        hierarchyTodo({
+          id: 1,
+          title: "Buch schreiben",
+          icon: "book",
+          color: "pine",
+          categoryId: 11,
+          why: "Eine Geschichte erzählen",
+        }),
+        hierarchyTodo({ id: 2, title: "Kapitel 3", parentId: 1 }),
+        hierarchyTodo({ id: 5, title: "Garten", color: "plum" }),
+      ]);
+      vi.mocked(getCategories).mockResolvedValue([
+        { id: 10, name: "Sport" },
+        { id: 11, name: "Schreiben" },
+      ]);
+    });
+    afterEach(() => vi.useRealTimers());
+
+    const mountForm = async (props: Record<string, unknown> = {}) => {
+      const wrapper = mount(CreateTodoForm, {
+        props,
+        global: { stubs: { MicButton: MicStub } },
+      });
+      await flushPromises();
+      return wrapper;
+    };
+    type Form = Awaited<ReturnType<typeof mountForm>>;
+    const value = (wrapper: Form, selector: string) =>
+      wrapper.get<HTMLInputElement>(selector).element.value;
+    const chipNames = (wrapper: Form) =>
+      wrapper
+        .findAll(".parse-chip")
+        .map((chip) => chip.attributes("aria-label"));
+    const submit = async (wrapper: Form) => {
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+      return createTodoMock.mock.calls.at(-1)![0];
+    };
+
+    it("fills Gehört zu and the campaign's category from dictation", async () => {
+      const wrapper = await mountForm();
+      await dictate(wrapper, "Kapitel 4 gliedern morgen Kampagne Buch schreiben");
+      expect(chipNames(wrapper)).toEqual([
+        "Tag: morgen, entfernen",
+        "Kampagne: Buch schreiben, entfernen",
+      ]);
+      expect(value(wrapper, "#todo-parent")).toBe("Buch schreiben");
+      expect(value(wrapper, "#todo-category")).toBe("Schreiben");
+      expect(wrapper.get("blockquote").text()).toContain(
+        "Eine Geschichte erzählen",
+      );
+      expect(await submit(wrapper)).toMatchObject({
+        title: "Kapitel 4 gliedern",
+        scheduledDate: "2026-11-25",
+        parentId: 1,
+        categoryId: 11,
+      });
+    });
+
+    it("takes a named category over the campaign's", async () => {
+      const wrapper = await mountForm();
+      await dictate(
+        wrapper,
+        "Kapitel 4 gliedern morgen 30 Minuten Kampagne Buch schreiben Kategorie Sport",
+      );
+      expect(value(wrapper, "#todo-category")).toBe("Sport");
+      expect(await submit(wrapper)).toMatchObject({
+        title: "Kapitel 4 gliedern",
+        plannedDurationMinutes: 30,
+        parentId: 1,
+        categoryId: 10,
+      });
+    });
+
+    it("empties both again when the campaign's chip is discarded", async () => {
+      const wrapper = await mountForm();
+      await dictate(wrapper, "Notizen Kampagne Buch schreiben");
+      await wrapper
+        .get('[aria-label="Kampagne: Buch schreiben, entfernen"]')
+        .trigger("click");
+      expect(value(wrapper, "#todo-parent")).toBe("Keine");
+      expect(value(wrapper, "#todo-category")).toBe("Keine");
+      expect(wrapper.find("blockquote").exists()).toBe(false);
+      expect(await submit(wrapper)).toMatchObject({
+        title: "Notizen Kampagne Buch schreiben",
+        parentId: null,
+        categoryId: null,
+      });
+    });
+
+    it("gives back the category a chosen place brought when the named one goes", async () => {
+      const wrapper = await mountForm();
+      await choose(wrapper, "#todo-parent", "Kapitel 3");
+      expect(value(wrapper, "#todo-category")).toBe("Schreiben");
+      await dictate(wrapper, "Szene Kategorie Sport");
+      expect(value(wrapper, "#todo-category")).toBe("Sport");
+      await wrapper
+        .get('[aria-label="Kategorie: Sport, entfernen"]')
+        .trigger("click");
+      expect(value(wrapper, "#todo-category")).toBe("Schreiben");
+    });
+
+    it("leaves a place chosen by hand alone, and the campaign's words in the title", async () => {
+      const wrapper = await mountForm();
+      await choose(wrapper, "#todo-parent", "Garten");
+      await dictate(wrapper, "Hecke Kampagne Buch schreiben Kategorie Sport");
+      expect(chipNames(wrapper)).toEqual(["Kategorie: Sport, entfernen"]);
+      expect(value(wrapper, "#todo-parent")).toBe("Garten");
+      expect(await submit(wrapper)).toMatchObject({
+        title: "Hecke Kampagne Buch schreiben",
+        parentId: 5,
+        categoryId: 10,
+      });
+    });
+
+    it("leaves a category chosen by hand alone", async () => {
+      const wrapper = await mountForm();
+      await wrapper.get(".form-disclosure__toggle").trigger("click");
+      await choose(wrapper, "#todo-category", "Sport");
+      await dictate(wrapper, "Kapitel Kampagne Buch schreiben Kategorie Schreiben");
+      expect(chipNames(wrapper)).toEqual([
+        "Kampagne: Buch schreiben, entfernen",
+      ]);
+      expect(await submit(wrapper)).toMatchObject({
+        title: "Kapitel Kategorie Schreiben",
+        parentId: 1,
+        categoryId: 10,
+      });
+    });
+
+    it("reads only the category inside a campaign: the place is set", async () => {
+      const garden = hierarchyTodo({ id: 5, title: "Garten", color: "plum" });
+      const wrapper = await mountForm({ parent: garden });
+      await dictate(wrapper, "Hecke Kampagne Buch schreiben Kategorie Sport");
+      expect(chipNames(wrapper)).toEqual(["Kategorie: Sport, entfernen"]);
+      expect(await submit(wrapper)).toMatchObject({
+        title: "Hecke Kampagne Buch schreiben",
+        parentId: 5,
+        categoryId: 10,
+      });
+    });
+
+    it("leaves a typed title as typed", async () => {
+      const wrapper = await mountForm();
+      await wrapper
+        .get('input[name="title"]')
+        .setValue("Kapitel Kampagne Buch schreiben");
+      expect(wrapper.find(".parse-chip").exists()).toBe(false);
+      expect(await submit(wrapper)).toMatchObject({
+        title: "Kapitel Kampagne Buch schreiben",
+        parentId: null,
+        categoryId: null,
+      });
+    });
+  });
 });

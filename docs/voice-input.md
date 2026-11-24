@@ -1,6 +1,6 @@
 # Spracheingabe
 
-Quests, Notizen, Reflexion, Das Beste des Tages und die Antworten im Wochenrückblick lassen sich diktieren. Ein Mikrofon-Knopf neben dem Feld startet das Diktat; beim Anlegen einer Quest liest die App aus dem Text auch Tag und Dauer („Steuererklärung morgen, 30 Minuten“).
+Quests, Notizen, Reflexion, Das Beste des Tages und die Antworten im Wochenrückblick lassen sich diktieren. Ein Mikrofon-Knopf neben dem Feld startet das Diktat; beim Anlegen einer Quest liest die App aus dem Text auch Tag und Dauer („Steuererklärung morgen, 30 Minuten“) sowie Kampagne und Kategorie („Kapitel 4 gliedern, Kampagne Buch schreiben, Kategorie Schreiben“).
 
 Die Erkennung läuft **nur auf dem Gerät**. Keine Aufnahme geht an den eigenen Server oder an einen fremden Dienst.
 
@@ -10,7 +10,8 @@ Code:
 - `composables/dictation/`: ein Modul pro Weg. `engine.ts` beschreibt die gemeinsame Form; dazu `native-engine.ts` (Android) und `whisper-engine.ts` (Browser) mit `whisper-client.ts`, `whisper.worker.ts`, `whisper-model.ts`, `audio.ts` und `silence.ts`.
 - `composables/useVoiceInputSettings.ts`: Schalter pro Gerät.
 - `components/MicButton.vue`: der Knopf.
-- `utils/quest-parse.ts`: Tag und Dauer aus dem Text; `components/QuestParseChips.vue` zeigt das Erkannte.
+- `utils/quest-parse.ts`: Tag und Dauer aus dem Text, mit `utils/quest-parse-names.ts` auch Kampagne und Kategorie; `components/QuestParseChips.vue` zeigt das Erkannte.
+- `composables/useQuestParseContext.ts`: die offenen Kampagnen und die Kategorien für das Schnell-Anlegen, einmal geladen für alle Felder.
 - `utils/insert-text.ts`: Diktat an der Schreibmarke in ein Textfeld.
 - `components/VoiceInputSettings.vue`: der Abschnitt in den Einstellungen.
 - `native/speech-plugin.ts` und in Android `frontend/android/app/src/main/java/local/habittracker/app/speech/` (`SpeechPlugin.java`, `SpeechAvailability.java`, `SpeechErrors.java`).
@@ -19,8 +20,8 @@ Code:
 
 | Ort | Knopf | Was mit dem Text passiert |
 |---|---|---|
-| Schnell-Anlegen (`QuickAddQuest.vue`: Heute, Questlog, Tage im Plan) | kurz, im Feld rechts | kommt ins Feld, hinter schon Getipptes mit Leerzeichen; Tag und Dauer werden erkannt (unten) |
-| Neue Quest (`CreateTodoForm.vue`) | kurz, im Titelfeld rechts | kommt in den Titel; erkannter Tag und erkannte Dauer füllen ihre Felder |
+| Schnell-Anlegen (`QuickAddQuest.vue`: Heute, Questlog, Tage im Plan) | kurz, im Feld rechts | kommt ins Feld, hinter schon Getipptes mit Leerzeichen; Tag, Dauer, Kampagne und Kategorie werden erkannt (unten) |
+| Neue Quest (`CreateTodoForm.vue`) | kurz, im Titelfeld rechts | kommt in den Titel; Erkanntes füllt Tag, Dauer, „Gehört zu“ und Kategorie |
 | Notizen (`RichTextEditor.vue`) | lang, in der Werkzeugleiste | als reiner Text an der Schreibmarke (Tiptap `insertContent` mit einem Textknoten, kein HTML) |
 | Das Beste des Tages (`DayBestField.vue`) | lang, oben rechts im Feld | an der Schreibmarke; was über 280 Zeichen ginge, fällt weg, und still steht „Gekürzt auf 280 Zeichen.“ |
 | Reflexion (`DayReflection.vue`) | lang, oben rechts im Feld | an der Schreibmarke; „Speichern“ erscheint wie beim Tippen |
@@ -120,6 +121,42 @@ Der Reihe nach, ohne Umweg über das Netz:
 - Tag und Dauer aus dem Titel füllen ihre Felder, solange niemand diese Felder selbst angefasst hat (auch „Heute“/„Morgen“ zählt als angefasst). Dieselben Chips stehen unter dem Titel; ein ✕ leert das Feld wieder.
 - Aus dem Titel gehen beim Erstellen nur die Wörter, deren Wert auch übernommen wurde. Hat jemand den Tag selbst gesetzt, bleibt „morgen“ im Titel stehen.
 - Für eine Kampagne wird nichts erkannt; sie hat weder Tag noch Dauer.
+
+## Kampagne und Kategorie beim Anlegen
+
+Bekommt `parseQuest` die offenen Kampagnen (`campaigns`) und die Kategorien (`categories`), erkennt es auch, wozu eine Quest gehört. Was man sagen kann:
+
+| Gesagt | Ergebnis |
+|---|---|
+| „Kapitel 4 gliedern **Kampagne Buch schreiben**“ | unter „Buch schreiben“ |
+| „… **zur Kampagne** Buch schreiben“, „… **für die Kampagne** Buch schreiben“ | ebenso |
+| „Kapitel 4 gliedern **für Buch schreiben**“ | ebenso, aber nur, wenn der Name genau stimmt |
+| „Laufen **Kategorie Sport**“, „Laufen **in der Kategorie** Sport“ | Kategorie Sport |
+| „Kapitel 4 gliedern morgen 30 Minuten Kampagne Buch schreiben Kategorie Schreiben“ | Titel „Kapitel 4 gliedern“, morgen, 30 Min., unter „Buch schreiben“, Kategorie Schreiben |
+
+Regeln (`utils/quest-parse-names.ts`):
+
+- **Nur mit Schlüsselwort.** Ein Name zählt nach „Kampagne“ bzw. „Kategorie“ (davor dürfen „zur“, „zum“, „für (die)“, „in (der)“, „mit (der)“, „unter“ stehen). Ohne Schlüsselwort zählt nur eine Kampagne nach „für“, und nur, wenn ihr Name genau dasteht. Ein Name allein zählt nie: „Sport machen“ bleibt ein Titel, auch wenn es die Kategorie Sport gibt.
+- **Vergleich:** ohne Groß- und Kleinschreibung, Umlaute (ä = ae), ß (= ss), Akzente und Satzzeichen; „&“ und „+“ gelten als „und“. Mehrere Wörter gehen („Buch schreiben“), ein Komma, Doppelpunkt oder eine Klammer beendet den Namen.
+- **Kleine Hörfehler:** Nach einem Schlüsselwort darf ein Name ab fünf Buchstaben einen Fehler haben (ein Buchstabe falsch, zu viel oder zu wenig, auch ein getrenntes oder zusammengezogenes Wort: „Buch schreibn“, „Buchschreiben“). Kürzere Namen müssen stimmen. Das Schlüsselwort selbst darf einen Fehler haben („Kathegorie“, „Kampagnen“).
+- **Längster Name gewinnt:** Gibt es „Buch“ und „Buch schreiben“, gewinnt bei „Kampagne Buch schreiben“ das längere. Ein Fehler zählt wie zwei Buchstaben weniger, so schlägt ein genaues „Buch“ ein „Buche“ mit einem Fehler.
+- Namen werden vor Tag und Dauer gesucht: Eine Kampagne „Sport am Montag“ bleibt ganz, das „am Montag“ darin ist kein Tag.
+- Es zählt nur die erste Kampagne und die erste Kategorie. Das Erkannte geht mit Schlüsselwort und Verbindungswörtern aus dem Titel; ein „und“ zwischen zwei Erkanntem auch. Bliebe nichts übrig, bleibt der ganze Text der Titel.
+- Nur offene Kampagnen (erledigte nicht, lose oberste Quests nicht; `parentChoices(…, { campaignsOnly: true })`) und nur die eigenen Kategorien.
+- `matches` liefert `campaign` (mit `id` und dem Symbol der Kampagne) und `category` (mit `id` und Marke); das Ergebnis `campaignId` und `categoryId`.
+
+### Im Schnell-Anlegen
+
+- Die Listen lädt `useQuestParseContext` erst, wenn der Text „Kampagn…“, „Kategor…“ oder „für“ enthält, und nur einmal für alle Felder der Seite (im Plan steht eins je Tag). Nach einer Änderung an den Daten oder nach einer Minute lädt es beim nächsten solchen Text neu; scheitert das Laden, versucht es nach einer halben Minute wieder, und bis dahin wird kein Name erkannt.
+- Chips: „Kampagne: Buch schreiben“ mit dem Symbol der Kampagne und „Kategorie: Sport“ mit dem Quadrat ihrer Marke, nie nur Farbe. Ein ✕ verwirft sie wie die anderen.
+- Beim Anlegen geht die Quest mit `parentId` unter die Kampagne. Ohne genannte Kategorie bekommt sie die der Kampagne, wie der Editor sie vorschlägt (`categoryOfChoice`).
+- Eine Quest unter einer Kampagne bleibt im Questlog (es zeigt offene Quests ohne Tag, egal wo sie hängen) und an ihrem Tag in Heute und im Plan. Der Kampagnen-Chip verschiebt also nichts und trägt kein „→“.
+
+### In „Neue Quest“
+
+- Wie Tag und Dauer nur aus dem Diktat. Erkanntes füllt „Gehört zu“ und Kategorie, solange niemand sie selbst gewählt hat; „Gehört zu“ zeigt dann auch das übernommene Warum der Kampagne. Die Listen kommen aus den beiden Auswahlfeldern, die sie ohnehin laden.
+- Eine genannte Kampagne bringt ihre Kategorie mit, wenn keine genannt ist. Verschwindet der Chip, kommt die Kategorie zurück, die vorher galt (keine, die der Kampagne, in der der Dialog geöffnet wurde, oder die eines gewählten Platzes).
+- Geöffnet in einer Kampagne steht „Gehört zu“ schon fest: Dort wird nur die Kategorie erkannt.
 
 ## Datenschutz
 

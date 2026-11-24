@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import { isCampaignIcon } from "../utils/campaign-style";
 import type { QuestParseKind, QuestParseMatch } from "../utils/quest-parse";
 import AppIcon from "./AppIcon.vue";
 
 /**
  * What `parseQuest` read out of a typed or dictated quest, as small chips
  * under the field (docs/voice-input.md): a symbol and the words ("morgen",
- * "30 Min."), never colour alone. A tap on a chip discards it: its words
+ * "30 Min."), never colour alone. A campaign shows its own symbol and a
+ * category its mark, both with the kind in words ("Kampagne: Buch
+ * schreiben", "Kategorie: Sport"). A tap on a chip discards it: its words
  * then stay in the title and nothing is set from them.
  */
 defineProps<{
@@ -18,7 +21,13 @@ const emit = defineEmits<{ remove: [kind: QuestParseKind] }>();
 const KIND_NAME: Record<QuestParseKind, string> = {
   date: "Tag",
   duration: "Dauer",
+  campaign: "Kampagne",
+  category: "Kategorie",
 };
+
+/** Day and duration speak for themselves; a name says what it names. */
+const named = (match: QuestParseMatch) =>
+  match.kind === "campaign" || match.kind === "category";
 </script>
 
 <template>
@@ -33,11 +42,24 @@ const KIND_NAME: Record<QuestParseKind, string> = {
         }, entfernen`"
         @click="emit('remove', match.kind)"
       >
-        <AppIcon :name="match.kind === 'date' ? 'calendar' : 'timer'" />
+        <AppIcon v-if="match.kind === 'date'" name="calendar" />
+        <AppIcon v-else-if="match.kind === 'duration'" name="timer" />
+        <AppIcon
+          v-else-if="match.kind === 'campaign'"
+          :name="isCampaignIcon(match.icon) ? match.icon : 'campaigns'"
+        />
+        <span
+          v-else
+          class="parse-chip__mark"
+          :style="match.mark ? { '--mark': match.mark } : undefined"
+          aria-hidden="true"
+        ></span>
         <span class="parse-chip__label"
           ><span v-if="moves && match.kind === 'date'" aria-hidden="true"
             >→
-          </span>{{ match.label }}</span
+          </span
+          ><template v-if="named(match)">{{ KIND_NAME[match.kind] }}: </template
+          >{{ match.label }}</span
         >
         <AppIcon name="close" class="parse-chip__remove" />
       </button>
@@ -59,8 +81,14 @@ const KIND_NAME: Record<QuestParseKind, string> = {
  * Quiet: a tinted pill in ink, smaller than a filter chip. Named through
  * `.parse-chips`, so a dialog's button style does not reach it.
  */
+.parse-chips > li {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .parse-chips .parse-chip {
   display: inline-flex;
+  max-width: 100%;
   gap: var(--space-1);
   align-items: center;
   min-height: 2rem;
@@ -83,6 +111,28 @@ const KIND_NAME: Record<QuestParseKind, string> = {
   width: 1rem;
   height: 1rem;
   color: var(--color-action-strong);
+}
+
+/* A long campaign name ends with an ellipsis; the chip keeps its ✕. */
+.parse-chip__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.parse-chips .parse-chip :deep(.app-icon),
+.parse-chip__mark {
+  flex: none;
+}
+
+/* A category's mark: the small square it carries everywhere. */
+.parse-chip__mark {
+  width: 0.625rem;
+  height: 0.625rem;
+  margin-inline: 0.1875rem;
+  border-radius: 0.2rem;
+  background: var(--mark, var(--color-ink-muted));
 }
 
 .parse-chips .parse-chip :deep(.parse-chip__remove) {

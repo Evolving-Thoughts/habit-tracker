@@ -26,6 +26,12 @@ export function onDataChanged(handler: () => void): void {
   onUnmounted(() => window.removeEventListener(DATA_CHANGED, handler));
 }
 
+/** Subscribes outside a component (a shared cache); returns the unsubscribe. */
+export function listenDataChanged(handler: () => void): () => void {
+  window.addEventListener(DATA_CHANGED, handler);
+  return () => window.removeEventListener(DATA_CHANGED, handler);
+}
+
 /** Subscribes for the component's lifetime: only target changes (timer provider). */
 export function onTargetsChanged(handler: () => void): void {
   onMounted(() => window.addEventListener(TARGETS_CHANGED, handler));

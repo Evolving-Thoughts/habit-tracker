@@ -20,8 +20,10 @@ import type { HistoryResponse, HistoryWorkLog } from "../types/history";
 import { campaignMark } from "../utils/category-mark";
 import { APP_TIME_ZONE, getCurrentDateInTimeZone } from "../utils/date";
 import { dayLabel } from "../utils/history";
+import { holdScroll } from "../utils/scroll-hold";
 import {
   HOUR_REM,
+  LOG_LINE_REM,
   axisHours,
   calendarBlocks,
   clockLabel,
@@ -29,12 +31,14 @@ import {
   formatDuration,
   logBlocks,
   logLabel,
+  logLabelMode,
   logTimes,
   planBlocks,
   resizedEdge,
   wallTime,
   type CalendarBlock,
   type LogBlock,
+  type LogLabelMode,
   type Placed,
 } from "../utils/logbook";
 
@@ -53,6 +57,10 @@ type Edge = "start" | "end";
  * end on a 5-minute grid, never past the other edge and never into the
  * future; Escape cancels the drag. The dialog is the keyboard's way to the
  * same. A tap on empty time, or "Zeit nachtragen" in the head, adds time.
+ *
+ * A stretch under half an hour names itself on one line ("Lesen · 5 Min.");
+ * one under a line's height is still drawn a line high, its campaign stripe
+ * as long as it really was (DESIGN.md › Tageskalender).
  */
 const props = withDefaults(
   defineProps<{
@@ -66,8 +74,13 @@ const props = withDefaults(
     hours?: { from: number; to: number };
     /** Stretches whose delete waits behind the undo toast: already out of view. */
     hiddenLogs?: ReadonlySet<number>;
+    /**
+     * Takes its natural height and scrolls with the page instead of in
+     * itself; on open the page moves to now (Heute's Logbuch on a phone).
+     */
+    flow?: boolean;
   }>(),
-  { compact: false, hours: undefined, hiddenLogs: undefined },
+  { compact: false, hours: undefined, hiddenLogs: undefined, flow: false },
 );
 const emit = defineEmits<{ removeLog: [log: HistoryWorkLog] }>();
 
@@ -324,6 +337,19 @@ function place(block: Placed<CalendarBlock>) {
 }
 const resizing = (block: Placed<CalendarBlock>) =>
   block.kind === "log" && drag.value?.log.id === block.log.id;
+/**
+ * A one-line label adds the length only with the lane's whole width: where
+ * stretches share it, the title is what tells them apart (the length is in
+ * the tooltip, the label and the dialog).
+ */
+const showsLength = (block: Placed<CalendarBlock>) =>
+  !props.compact && block.columns === 1;
+/** How a Logbuch block labels itself at its drawn length; none for the plan. */
+function logMode(block: Placed<CalendarBlock>): LogLabelMode | null {
+  if (block.kind !== "log") return null;
+  const { start, end } = span(block);
+  return logLabelMode(end - start);
+}
 /** The live time of a block being dragged, else its stored times. */
 function blockTimes(block: Placed<CalendarBlock> & { kind: "log" }): string {
   if (!resizing(block)) return logTimes(block.log);
@@ -346,10 +372,25 @@ async function scrollToStart(): Promise<void> {
     : Number.isFinite(first)
       ? first - 30
       : 8 * 60;
-  element.scrollTop = Math.max(
+  const offset = Math.max(
     0,
     (target - axis.value.from * 60) / minutesPerPixel(),
   );
+  if (props.flow) scrollPageTo(offset);
+  else element.scrollTop = offset;
+}
+
+/*
+ * In the page's flow the page itself moves, and only when the moment asked
+ * for would lie below the first screen; it is held there while the rest of
+ * the view settles, like a section a link points to.
+ */
+function scrollPageTo(offset: number): void {
+  const at = () =>
+    (lane.value?.getBoundingClientRect().top ?? 0) + window.scrollY + offset;
+  if (at() < window.innerHeight * 0.5) return;
+  holdScroll(at);
+  window.scrollTo({ top: at(), behavior: "instant" });
 }
 onMounted(scrollToStart);
 watch(
@@ -369,12 +410,14 @@ watch(
     class="day-calendar"
     :class="{
       'day-calendar--compact': compact,
+      'day-calendar--flow': flow,
       'day-calendar--today': isToday,
     }"
     :aria-labelledby="compact ? undefined : titleId"
     :aria-label="compact ? dayLabel(day.date) : undefined"
     :style="{
       '--hour': `${HOUR_REM}rem`,
+      '--log-line': `${LOG_LINE_REM}rem`,
       '--from': axis.from,
       '--hours': axis.to - axis.from,
       '--overflow': overflow,
@@ -431,7 +474,8 @@ watch(
               class="day-calendar__slot"
               :class="{
                 'day-calendar__slot--log': block.kind === 'log',
-                'day-calendar__slot--short': block.kind === 'log' && span(block).end - span(block).start < 20,
+                'day-calendar__slot--line': logMode(block) === 'line',
+                'day-calendar__slot--chip': logMode(block) === 'chip',
                 'day-calendar__slot--mark':
                   block.kind === 'plan' && block.source === 'done',
                 'day-calendar__slot--resizing': resizing(block),
@@ -482,15 +526,34 @@ watch(
                     )
                   "
                 >
-                  <strong class="day-calendar__title-text">{{
-                    block.log.title
-                  }}</strong>
-                  <span class="day-calendar__meta">{{ blockTimes(block) }}</span>
-                  <CampaignChip
-                    v-if="block.log.campaign && !compact"
-                    class="log-block__chip"
-                    :campaign="block.log.campaign"
-                  />
+                  <template v-if="logMode(block) === 'full'">
+                    <strong class="day-calendar__title-text">{{
+                      block.log.title
+                    }}</strong>
+                    <span class="day-calendar__meta">{{
+                      blockTimes(block)
+                    }}</span>
+                    <CampaignChip
+                      v-if="block.log.campaign && !compact"
+                      class="log-block__chip"
+                      :campaign="block.log.campaign"
+                    />
+                  </template>
+                  <!-- Short: one line at the usual size, "Lesen · 5 Min.". -->
+                  <span v-else class="log-block__line">
+                    <strong class="day-calendar__title-text">{{
+                      block.log.title
+                    }}</strong
+                    ><template v-if="showsLength(block) || resizing(block)"
+                      >{{ " " }}<span class="day-calendar__meta"
+                        >· {{
+                          resizing(block)
+                            ? blockTimes(block)
+                            : formatDuration(block.log.minutes)
+                        }}</span
+                      ></template
+                    >
+                  </span>
                 </button>
                 <!-- Pointer only; the dialog is the keyboard's way to the same. -->
                 <span
@@ -586,6 +649,11 @@ watch(
   overflow: visible;
   border-radius: 0;
   background: transparent;
+}
+
+/* In the page's flow: its natural height, no scroll area inside the page. */
+.day-calendar--flow .day-calendar__scroller {
+  overflow: clip;
 }
 
 .day-calendar__axis {
@@ -688,25 +756,65 @@ watch(
   cursor: default;
 }
 
-/* A completion is a moment: a slim mark, nothing to tap. */
+/*
+ * A stretch is drawn as long as it was, but never lower than one line of
+ * its label: a shorter one keeps its real length in its stripe.
+ */
 .day-calendar__slot--log {
-  height: max(1px, calc(var(--length) * var(--minute)));
+  height: max(var(--log-line), calc(var(--length) * var(--minute)));
   padding: 0 1px;
 }
-.day-calendar__slot--log .log-block { padding-block: 0; }
-.day-calendar__slot--log .log-handle { height: min(25%, 0.625rem); }
-.day-calendar__slot--short .log-handle { width: 22%; height: var(--tap); top: 50%; transform: translateY(-50%); }
-.day-calendar__slot--short .log-handle--start { right: auto; }
-.day-calendar__slot--short .log-handle--end { left: auto; }
-.day-calendar__slot--short .log-block::after { content: ""; position: absolute; inset-inline: 24%; top: 50%; height: var(--tap); transform: translateY(-50%); }
+
+.day-calendar__slot--log .log-block {
+  padding-block: 0;
+}
+
+.day-calendar__slot--log .log-handle {
+  height: min(25%, 0.625rem);
+}
+
+/* One line high, too low for two edges: start on the left, end on the right. */
+.day-calendar__slot--chip .log-handle {
+  top: 50%;
+  width: 22%;
+  height: var(--tap);
+  transform: translateY(-50%);
+}
+
+.day-calendar__slot--chip .log-handle--start {
+  right: auto;
+}
+
+.day-calendar__slot--chip .log-handle--end {
+  left: auto;
+}
+
 /*
- * A finger reaches every stretch: an invisible field at least a tap high
- * around its middle, the edges' handles stay on top. The block looks the
+ * The middle of such a block takes a tap a finger high; on a touch screen
+ * every block does, its edges' handles stay on top. The block looks the
  * same; only where it can be touched grows.
  */
-@media (pointer: coarse) {
-  .day-calendar__slot--log .log-block::after { content: ""; position: absolute; inset-inline: 24%; top: 50%; height: max(100%, var(--tap)); transform: translateY(-50%); }
+.day-calendar__slot--chip .log-block::after {
+  position: absolute;
+  top: 50%;
+  height: var(--tap);
+  content: "";
+  inset-inline: 24%;
+  transform: translateY(-50%);
 }
+
+@media (pointer: coarse) {
+  .day-calendar__slot--log .log-block::after {
+    position: absolute;
+    top: 50%;
+    height: max(100%, var(--tap));
+    content: "";
+    inset-inline: 24%;
+    transform: translateY(-50%);
+  }
+}
+
+/* A completion is a moment, not a stretch: a slim mark, nothing to tap. */
 .day-calendar__slot--mark {
   height: calc(1.5rem + 2px);
 }
@@ -771,10 +879,16 @@ watch(
   box-shadow: none;
 }
 
+/*
+ * The 5px campaign stripe runs down the block's edge, which its corners
+ * round; drawn as a background, a short block can shape it differently.
+ */
 .log-block {
   border: 0;
-  background: var(--color-surface);
-  box-shadow: inset 0.3125rem 0 0 var(--campaign-mark);
+  background:
+    linear-gradient(var(--campaign-mark), var(--campaign-mark))
+      var(--stripe-at, 0 0) / var(--stripe-size, 0.3125rem 100%) no-repeat,
+    var(--color-surface);
   font: inherit;
   cursor: pointer;
   transition: transform 420ms var(--spring);
@@ -786,13 +900,40 @@ watch(
 }
 
 .day-calendar__slot--resizing .log-block {
-  box-shadow:
-    inset 0.3125rem 0 0 var(--campaign-mark),
-    var(--shadow-card);
+  box-shadow: var(--shadow-card);
   transform: none;
 }
 
+/*
+ * Drawn a line high, a stretch keeps its real length in a small gauge
+ * instead of the edge, clear of the rounded corner: 4px wide, as high as its
+ * minutes on the axis (1px for a stretch of seconds).
+ */
+.day-calendar__slot--chip .log-block {
+  --stripe-at: 0.1875rem 0.1875rem;
+  --stripe-size: 0.25rem
+    clamp(1px, calc(var(--length) * var(--minute)), calc(100% - 0.375rem));
+}
+
 .log-block__chip {
+  flex: none;
+}
+
+/* Short: title and length on one line, centred, the title giving way first. */
+.day-calendar__slot--line .log-block,
+.day-calendar__slot--chip .log-block {
+  justify-content: center;
+}
+
+.log-block__line {
+  display: flex;
+  gap: 0.25rem;
+  align-items: baseline;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.log-block__line > .day-calendar__meta {
   flex: none;
 }
 

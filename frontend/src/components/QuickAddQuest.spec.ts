@@ -1,14 +1,21 @@
 import { TODO_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getCategories } from "../api/categories.api";
 import { createTodo, reorderDay } from "../api/day-planner.api";
+import { getTodoHierarchy } from "../api/todo-hierarchy.api";
+import { forgetQuestParseContext } from "../composables/useQuestParseContext";
+import { hierarchyTodo } from "../test/hierarchy";
 import { MicStub, dictate } from "../test/mic-stub";
+import AppIcon from "./AppIcon.vue";
 import QuickAddQuest from "./QuickAddQuest.vue";
 
 vi.mock("../api/day-planner.api", () => ({
   createTodo: vi.fn(),
   reorderDay: vi.fn(),
 }));
+vi.mock("../api/categories.api", () => ({ getCategories: vi.fn() }));
+vi.mock("../api/todo-hierarchy.api", () => ({ getTodoHierarchy: vi.fn() }));
 
 enableAutoUnmount(afterEach);
 
@@ -47,6 +54,9 @@ describe("QuickAddQuest", () => {
     vi.resetAllMocks();
     vi.mocked(createTodo).mockResolvedValue(created);
     vi.mocked(reorderDay).mockResolvedValue(undefined);
+    vi.mocked(getTodoHierarchy).mockResolvedValue([]);
+    vi.mocked(getCategories).mockResolvedValue([]);
+    forgetQuestParseContext();
   });
 
   it("plans a quest for the day and lets it join the end", async () => {
@@ -315,6 +325,186 @@ describe("QuickAddQuest", () => {
       await field.setValue("Steuer  ");
       await dictate(wrapper, "sortieren");
       expect(field.element.value).toBe("Steuer sortieren");
+    });
+  });
+  describe("campaign and category in the text", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-24T10:00:00Z"));
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        hierarchyTodo({
+          id: 1,
+          title: "Buch schreiben",
+          icon: "book",
+          color: "pine",
+          categoryId: 11,
+        }),
+        hierarchyTodo({ id: 2, title: "Kapitel 3", parentId: 1 }),
+        // Done: no longer a place for new quests.
+        hierarchyTodo({
+          id: 3,
+          title: "Umzug",
+          color: "plum",
+          completed: true,
+        }),
+        // A loose quest is no campaign.
+        hierarchyTodo({ id: 4, title: "Steuer" }),
+      ]);
+      vi.mocked(getCategories).mockResolvedValue([
+        { id: 10, name: "Sport", color: "pine" },
+        { id: 11, name: "Schreiben" },
+      ]);
+    });
+    afterEach(() => vi.useRealTimers());
+
+    function mountAt(date: string | null = "2026-11-24") {
+      return mount(QuickAddQuest, {
+        props: { date, order },
+        global: { stubs: { MicButton: MicStub } },
+      });
+    }
+    async function typeIn(
+      wrapper: ReturnType<typeof mountAt>,
+      text: string,
+    ): Promise<void> {
+      await wrapper.get('input[name="quickTitle"]').setValue(text);
+      await flushPromises();
+    }
+    const chipNames = (wrapper: ReturnType<typeof mountAt>) =>
+      wrapper
+        .findAll(".parse-chip")
+        .map((chip) => chip.attributes("aria-label"));
+
+    it("shows the campaign as a chip and creates the quest below it, with its category", async () => {
+      const wrapper = mountAt();
+      await typeIn(wrapper, "Kapitel 4 gliedern Kampagne Buch schreiben morgen");
+      expect(chipNames(wrapper)).toEqual([
+        "Kampagne: Buch schreiben, entfernen",
+        "Tag: morgen, entfernen",
+      ]);
+      const chip = wrapper.get('[data-kind="campaign"]');
+      expect(chip.text()).toBe("Kampagne: Buch schreiben");
+      // Its own symbol and the name, never its colour alone.
+      expect(chip.findComponent(AppIcon).props("name")).toBe("book");
+
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+      expect(createTodo).toHaveBeenCalledWith({
+        title: "Kapitel 4 gliedern",
+        scheduledDate: "2026-11-25",
+        timeOfDay: null,
+        plannedDurationMinutes: null,
+        parentId: 1,
+        categoryId: 11,
+      });
+    });
+
+    it("takes a named category over the campaign's", async () => {
+      const wrapper = mountAt();
+      await typeIn(
+        wrapper,
+        "Laufen gehen für Buch schreiben in der Kategorie Sport",
+      );
+      expect(chipNames(wrapper)).toEqual([
+        "Kampagne: Buch schreiben, entfernen",
+        "Kategorie: Sport, entfernen",
+      ]);
+      expect(
+        wrapper
+          .get('[data-kind="category"] .parse-chip__mark')
+          .attributes("style"),
+      ).toContain("--mark: var(--color-mark-pine)");
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+      expect(createTodo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Laufen gehen",
+          parentId: 1,
+          categoryId: 10,
+        }),
+      );
+    });
+
+    it("leaves a discarded chip's words in the title and sets nothing from them", async () => {
+      const wrapper = mountAt();
+      await typeIn(wrapper, "Notizen Kampagne Buch schreiben");
+      await wrapper
+        .get('[aria-label="Kampagne: Buch schreiben, entfernen"]')
+        .trigger("click");
+      expect(wrapper.findAll(".parse-chip")).toHaveLength(0);
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+      expect(createTodo).toHaveBeenCalledWith({
+        title: "Notizen Kampagne Buch schreiben",
+        scheduledDate: "2026-11-24",
+        timeOfDay: null,
+        plannedDurationMinutes: null,
+      });
+    });
+
+    it("keeps a quest under a campaign in the Questlog, so its chip moves nothing", async () => {
+      const wrapper = mountAt(null);
+      await typeIn(
+        wrapper,
+        "Gliederung Kategorie Schreiben Kampagne Buch schreiben",
+      );
+      expect(
+        wrapper.findAll(".parse-chip").map((chip) => chip.text()),
+      ).toEqual(["Kategorie: Schreiben", "Kampagne: Buch schreiben"]);
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+      expect(createTodo).toHaveBeenCalledWith({
+        title: "Gliederung",
+        scheduledDate: null,
+        timeOfDay: null,
+        plannedDurationMinutes: null,
+        parentId: 1,
+        categoryId: 11,
+        backlogPlace: "bottom",
+      });
+    });
+
+    it("names only open campaigns, never a done one or a loose quest", async () => {
+      const wrapper = mountAt();
+      await typeIn(wrapper, "Kisten Kampagne Umzug");
+      expect(wrapper.findAll(".parse-chip")).toHaveLength(0);
+      await typeIn(wrapper, "Belege für Steuer");
+      expect(wrapper.findAll(".parse-chip")).toHaveLength(0);
+    });
+
+    it("loads the lists once a text could name one, once for every field", async () => {
+      const first = mountAt();
+      const second = mountAt("2026-11-25");
+      await typeIn(first, "Wäsche morgen");
+      expect(getTodoHierarchy).not.toHaveBeenCalled();
+      await typeIn(first, "Wäsche Kategorie");
+      await typeIn(first, "Wäsche Kategorie Sport");
+      await typeIn(second, "Laufen Kategorie Sport");
+      expect(getTodoHierarchy).toHaveBeenCalledTimes(1);
+      expect(getCategories).toHaveBeenCalledTimes(1);
+      expect(chipNames(second)).toEqual(["Kategorie: Sport, entfernen"]);
+    });
+
+    it("reads a dictated campaign like a typed one", async () => {
+      const wrapper = mountAt();
+      await dictate(wrapper, "Kapitel 4 gliedern Kampagne Buch schreiben");
+      await flushPromises();
+      expect(chipNames(wrapper)).toEqual([
+        "Kampagne: Buch schreiben, entfernen",
+      ]);
+    });
+
+    it("adds the quest without names when the lists cannot be read", async () => {
+      vi.mocked(getTodoHierarchy).mockRejectedValue(new Error("Offline"));
+      const wrapper = mountAt();
+      await typeIn(wrapper, "Kapitel Kampagne Buch schreiben");
+      expect(wrapper.findAll(".parse-chip")).toHaveLength(0);
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+      expect(createTodo).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Kapitel Kampagne Buch schreiben" }),
+      );
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     });
   });
 });

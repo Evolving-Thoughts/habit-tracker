@@ -1685,3 +1685,118 @@ describe("TodayView on wide screens", () => {
     expect(deleteWorkLog).not.toHaveBeenCalled();
   });
 });
+
+describe("TodayView's Liste · Logbuch below the split", () => {
+  const original = window.matchMedia;
+  const stretch: HistoryWorkLog = {
+    id: 3,
+    title: "Kapitel",
+    startedAt: "2026-10-02T05:00:00.000Z",
+    endedAt: "2026-10-02T05:30:00.000Z",
+    minutes: 30,
+    source: "timer",
+    todoId: 1,
+    occurrenceId: null,
+    habitId: null,
+    campaign: null,
+  };
+  const choice = (wrapper: ReturnType<typeof mount>) =>
+    wrapper
+      .findAll('[role="radiogroup"][aria-label="Ansicht"] input')
+      .map((input) => [
+        input.element.parentElement!.textContent!.trim(),
+        (input.element as HTMLInputElement).checked,
+      ]);
+  const listShown = (wrapper: ReturnType<typeof mount>) =>
+    wrapper.get<HTMLElement>(".today-view__day").element.style.display !==
+    "none";
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    localStorage.removeItem("today:pane");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
+    getTodayMock.mockResolvedValue(makePlanner([makeTodo()]));
+    vi.mocked(getHistory).mockResolvedValue({
+      today: "2026-10-02",
+      timeZone: "Europe/Berlin",
+      startDate: "2026-10-02",
+      endDate: "2026-10-02",
+      days: [
+        {
+          date: "2026-10-02",
+          items: [],
+          planned: [],
+          external: [],
+          work: { minutes: 30, campaigns: [], logs: [stretch] },
+        },
+      ],
+    });
+  });
+  afterEach(() => {
+    window.matchMedia = original;
+    localStorage.removeItem("today:pane");
+    vi.useRealTimers();
+  });
+
+  it("starts with the list and does not load the day calendar", async () => {
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(choice(wrapper)).toEqual([
+      ["Liste", true],
+      ["Logbuch", false],
+    ]);
+    expect(listShown(wrapper)).toBe(true);
+    expect(wrapper.find("#focus-title").exists()).toBe(true);
+    expect(wrapper.find(".today-view__calendar").exists()).toBe(false);
+    expect(getHistory).not.toHaveBeenCalled();
+  });
+
+  it("shows the day calendar instead of the list and remembers the choice on this device", async () => {
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    await wrapper.findAll('input[name="todayPane"]')[1]!.setValue(true);
+    await flushPromises();
+    expect(localStorage.getItem("today:pane")).toBe("logbook");
+    expect(listShown(wrapper)).toBe(false);
+    const calendar = wrapper.get(".today-view__calendar .day-calendar");
+    // In the page's flow: no scroll area of its own inside the page.
+    expect(calendar.classes()).toContain("day-calendar--flow");
+    expect(calendar.get("h2").text()).toBe("Logbuch 30 Min.");
+    expect(calendar.get("button.log-block").attributes("aria-label")).toBe(
+      "Kapitel, 07:00 bis 07:30, 30 Min., ohne Kampagne, korrigieren",
+    );
+    wrapper.unmount();
+
+    const again = mount(TodayView);
+    await flushPromises();
+    expect(choice(again)).toEqual([
+      ["Liste", false],
+      ["Logbuch", true],
+    ]);
+    expect(again.find(".today-view__calendar .day-calendar").exists()).toBe(
+      true,
+    );
+
+    await again.findAll('input[name="todayPane"]')[0]!.setValue(true);
+    await flushPromises();
+    expect(localStorage.getItem("today:pane")).toBe("list");
+    expect(listShown(again)).toBe(true);
+    expect(again.find(".today-view__calendar").exists()).toBe(false);
+  });
+
+  it("shows both side by side on wide screens, whatever was chosen", async () => {
+    localStorage.setItem("today:pane", "logbook");
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("64rem"),
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.find('input[name="todayPane"]').exists()).toBe(false);
+    expect(listShown(wrapper)).toBe(true);
+    const calendar = wrapper.get(".today-view__calendar .day-calendar");
+    expect(calendar.classes()).not.toContain("day-calendar--flow");
+  });
+});
