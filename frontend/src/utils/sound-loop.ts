@@ -28,6 +28,8 @@ export type SoundLoopOptions = {
   /** The fade when the sound is stopped. */
   fadeOutMs?: number;
   tickMs?: number;
+  /** When the second element loads the file after a new sound starts. */
+  idleLoadMs?: number;
   now?: () => number;
   /** The file cannot be loaded or played (missing, not audio, offline). */
   onError?: (cause: unknown) => void;
@@ -62,6 +64,7 @@ export function createSoundLoop(options: SoundLoopOptions = {}): SoundLoop {
     crossfadeMs = 2000,
     fadeOutMs = 500,
     tickMs = 100,
+    idleLoadMs = 4000,
     now = () => Date.now(),
     onError = () => {},
   } = options;
@@ -70,6 +73,13 @@ export function createSoundLoop(options: SoundLoopOptions = {}): SoundLoop {
   let active: LoopElement = elements[0];
   let idle: LoopElement = elements[1];
   let url: string | null = null;
+  /*
+   * The second element loads the file a little later than the first, so a
+   * new sound starts with one download (the second then mostly comes from
+   * the browser's cache) instead of two at once.
+   */
+  let idleUrl: string | null = null;
+  let idleLoad: ReturnType<typeof setTimeout> | null = null;
   let volume = 1;
   let playing = false;
   /** The turn from one element to the other near the end of the file. */
@@ -123,6 +133,16 @@ export function createSoundLoop(options: SoundLoopOptions = {}): SoundLoop {
     });
   }
 
+  function loadIdle(): void {
+    if (idleLoad !== null) clearTimeout(idleLoad);
+    idleLoad = null;
+    if (url === null || idleUrl === url) return;
+    idleUrl = url;
+    idle.preload = "auto";
+    idle.src = url;
+    idle.currentTime = 0;
+  }
+
   function tick(): void {
     const time = now();
     if (fadeOut) {
@@ -149,6 +169,7 @@ export function createSoundLoop(options: SoundLoopOptions = {}): SoundLoop {
     const remainingMs = (duration - active.currentTime) * 1000;
     // A file shorter than two fades turns over at its middle.
     if (remainingMs > Math.min(crossfadeMs, (duration * 1000) / 2)) return;
+    loadIdle();
     idle.currentTime = 0;
     idle.volume = 0;
     start(idle);
@@ -172,11 +193,12 @@ export function createSoundLoop(options: SoundLoopOptions = {}): SoundLoop {
       // The same sound again carries on where it stopped.
       if (url !== next) {
         url = next;
-        for (const element of elements) {
-          element.preload = "auto";
-          element.src = next;
-          element.currentTime = 0;
-        }
+        idleUrl = null;
+        active.preload = "auto";
+        active.src = next;
+        active.currentTime = 0;
+        if (idleLoad !== null) clearTimeout(idleLoad);
+        idleLoad = setTimeout(loadIdle, idleLoadMs);
       }
       active.volume = volume;
       playing = true;

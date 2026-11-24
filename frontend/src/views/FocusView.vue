@@ -234,8 +234,18 @@ onBeforeRouteLeave((to) => {
 function toggleStopwatch(): boolean {
   const item = current.value;
   if (!item || busy.value) return false;
-  // Starting or resuming here lets the chosen sound start with it.
-  if (!running.value) sound.gesture();
+  // Starting or resuming here lets the chosen sound start with it. When no
+  // other stopwatch has to end first (that asks), the sound follows the
+  // press at once instead of waiting for the server's answer.
+  const other = timer?.timer.value;
+  const ownOrNone =
+    !other ||
+    (item.type === "todo"
+      ? other.kind === "todo" && other.targetId === item.todoId
+      : other.kind === "occurrence" && other.targetId === item.occurrenceId);
+  if (!ownOrNone) sound.gesture();
+  else if (running.value) sound.gesture("pause");
+  else if (other || item.timerEligible) sound.gesture("start");
   // Without the Fokus-Sperre (no provider) the stopwatch starts as anywhere.
   const focus =
     !focusBlock || activeBlock.value ? undefined : { mode: blockMode.value };

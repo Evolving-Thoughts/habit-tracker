@@ -101,6 +101,62 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("useFocusSound", () => {
+  it("follows Start and Pause pressed here at once, before the server answers", async () => {
+    vi.useFakeTimers();
+    try {
+      updateFocusSound({ soundId: "rain" });
+      const { focus, output, set, played } = await setup();
+      focus.gesture("start");
+      expect(played()).toEqual(["rain"]);
+      expect(focus.state.value).toBe("playing");
+      // The server confirms: nothing starts twice.
+      await set({ id: "t1", state: "running" });
+      expect(output.play).toHaveBeenCalledTimes(1);
+
+      focus.gesture("pause");
+      expect(output.stop).toHaveBeenCalledTimes(1);
+      expect(focus.state.value).toBe("paused");
+      await set({ id: "t1", state: "paused" });
+      expect(output.play).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls silent again when the server never confirms a Start", async () => {
+    vi.useFakeTimers();
+    try {
+      updateFocusSound({ soundId: "rain" });
+      const { focus, output, advance } = await setup();
+      focus.gesture("start");
+      expect(focus.state.value).toBe("playing");
+      advance(8_100);
+      vi.advanceTimersByTime(8_100);
+      expect(output.stop).toHaveBeenCalledTimes(1);
+      expect(focus.state.value).toBe("paused");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("resumes when a Pause pressed here is not confirmed", async () => {
+    vi.useFakeTimers();
+    try {
+      updateFocusSound({ soundId: "rain" });
+      const { focus, output, set, advance } = await setup();
+      focus.gesture("start");
+      await set({ id: "t1", state: "running" });
+      focus.gesture("pause");
+      expect(output.stop).toHaveBeenCalledTimes(1);
+      advance(8_100);
+      vi.advanceTimersByTime(8_100);
+      expect(output.play).toHaveBeenCalledTimes(2);
+      expect(focus.state.value).toBe("playing");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("plays with a stopwatch started here and stops when it pauses", async () => {
     updateFocusSound({ soundId: "rain" });
     const { focus, output, set, played } = await setup();

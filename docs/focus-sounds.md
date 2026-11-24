@@ -31,6 +31,14 @@ in `frontend/android/app/src/main/java/local/habittracker/app/sound/`.
   starts within 30 seconds (the request, or the question whether another
   stopwatch should end); the go-ahead belongs to that one stopwatch, so
   another one started elsewhere later stays silent.
+- Start and Pause pressed here act on the sound **at once**, without
+  waiting for the server; for up to 8 seconds the press stands in for the
+  server's answer. If the server never confirms (refused, failed), the
+  sound follows the server again. When another stopwatch has to end first
+  (that asks), the sound waits for the answer instead.
+- A new sound starts with one download: the loop's second element loads
+  the file 4 seconds later (mostly from the browser cache), or just before
+  the first cross-fade.
 - Pausing or stopping the stopwatch (anywhere), leaving the Fokus-Modus and
   signing out stop the sound. After a pause it needs a gesture here again.
 - The view watches the string `${timer.id}:${timer.state}`, as

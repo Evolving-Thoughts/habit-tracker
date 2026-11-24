@@ -112,6 +112,13 @@ export type FocusSoundOptions = {
  * (the request, or the question whether another stopwatch should end).
  */
 const GESTURE_MS = 30_000;
+/**
+ * Start or Pause pressed here acts on the sound at once, before the server
+ * confirms the stopwatch; this long the press stands in for its answer.
+ * If the server says otherwise by then (refused, failed), the sound follows
+ * the server again.
+ */
+const PENDING_MS = 8_000;
 
 const timerIdOf = (key: string): string | null =>
   key.slice(0, key.lastIndexOf(":")) || null;
@@ -149,6 +156,9 @@ export function useFocusSound(options: FocusSoundOptions) {
   let gestureAt = Number.NEGATIVE_INFINITY;
   /** The stopwatch whose "Soll erreicht" already chimed. */
   let chimedFor: string | null = null;
+  /** A Start or Pause pressed here that the server has not confirmed yet. */
+  let pending: { running: boolean; until: number } | null = null;
+  let pendingCheck: ReturnType<typeof setTimeout> | null = null;
 
   const output = (options.createOutput ?? defaultOutput)(() => {
     playingId.value = null;
@@ -176,8 +186,15 @@ export function useFocusSound(options: FocusSoundOptions) {
     return null;
   });
 
+  function pendingRunning(): boolean | null {
+    if (pending && now() < pending.until) return pending.running;
+    pending = null;
+    return null;
+  }
+  const running = () => pendingRunning() ?? options.running();
   const armed = () =>
-    armedFor !== null && armedFor === timerIdOf(options.timerKey());
+    pendingRunning() === true ||
+    (armedFor !== null && armedFor === timerIdOf(options.timerKey()));
 
   function silence(): void {
     if (playingId.value === null) return;
@@ -187,7 +204,7 @@ export function useFocusSound(options: FocusSoundOptions) {
 
   /** Plays what the rule asks for now, or nothing. */
   function sync(): void {
-    const wanted = armed() && options.running() ? chosenId.value : null;
+    const wanted = armed() && running() ? chosenId.value : null;
     if (!wanted) return silence();
     if (playingId.value === wanted) return;
     const entry = sound.value;
@@ -211,6 +228,8 @@ export function useFocusSound(options: FocusSoundOptions) {
     ([key, running, reached], [oldKey, wasRunning, wasReached]) => {
       const id = timerIdOf(key);
       if (key !== oldKey || running !== wasRunning) {
+        // The server answered the press here.
+        if (pending && pending.running === running) pending = null;
         if (!running) armedFor = null;
         else if (now() - gestureAt <= GESTURE_MS) {
           // The start pressed here: this stopwatch may sound.
@@ -236,6 +255,7 @@ export function useFocusSound(options: FocusSoundOptions) {
     stoppedOutside.value = true;
   });
   onScopeDispose(() => {
+    if (pendingCheck !== null) clearTimeout(pendingCheck);
     stopListening?.();
     silence();
   });
@@ -292,9 +312,21 @@ export function useFocusSound(options: FocusSoundOptions) {
       update({ volume });
       if (playingId.value) output.setVolume(settings.value.volume);
     },
-    /** Start or Fortsetzen pressed in this tab. */
-    gesture(): void {
-      gestureAt = now();
+    /**
+     * Start, Fortsetzen or Pause pressed in this tab. With `act` the sound
+     * follows the press at once ("start" or "pause"); without, it waits for
+     * the server (e.g. when another stopwatch has to end first, which asks).
+     */
+    gesture(act?: "start" | "pause"): void {
+      if (act !== "pause") gestureAt = now();
+      if (!act) return;
+      pending = { running: act === "start", until: now() + PENDING_MS };
+      if (pendingCheck !== null) clearTimeout(pendingCheck);
+      pendingCheck = setTimeout(() => {
+        pendingCheck = null;
+        sync();
+      }, PENDING_MS + 50);
+      sync();
     },
   };
 }

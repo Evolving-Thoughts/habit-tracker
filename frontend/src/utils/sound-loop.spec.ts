@@ -54,6 +54,9 @@ describe("the cross-fading loop", () => {
     const { loop, a, b } = setup();
     loop.play("/api/sounds/rain?v=1", 0.6);
     expect(a.src).toBe("/api/sounds/rain?v=1");
+    // The second element loads a little later: one download at the start.
+    expect(b.src).toBe("");
+    vi.advanceTimersByTime(4000);
     expect(b.src).toBe("/api/sounds/rain?v=1");
     expect(a.paused).toBe(false);
     expect(b.paused).toBe(true);
@@ -150,6 +153,7 @@ describe("the cross-fading loop", () => {
     a.currentTime = 9;
     loop.play("cafe", 0.6);
     expect(a.src).toBe("cafe");
+    vi.advanceTimersByTime(4000);
     expect(b.src).toBe("cafe");
     expect(a.currentTime).toBe(0);
     expect(a.paused).toBe(false);
