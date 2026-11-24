@@ -186,7 +186,10 @@ test("Heute: appointments sit in the list by their time and stay when the rest m
       .getByRole("button", { name: "Weitere Aktionen für heute", exact: true })
       .click();
     await page
-      .getByRole("menuitem", { name: "Auf morgen", exact: true })
+      .getByRole("menuitem", {
+        name: "Offenes auf morgen verschieben",
+        exact: true,
+      })
       .click();
   } else {
     await page.getByRole("button", { name: "Auf morgen", exact: true }).click();
