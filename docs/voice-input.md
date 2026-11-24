@@ -12,6 +12,7 @@ Code:
 - `components/MicButton.vue`: der Knopf.
 - `utils/quest-parse.ts`: Tag und Dauer aus dem Text, mit `utils/quest-parse-names.ts` auch Kampagne und Kategorie; `components/QuestParseChips.vue` zeigt das Erkannte.
 - `composables/useQuestParseContext.ts`: die offenen Kampagnen und die Kategorien für das Schnell-Anlegen, einmal geladen für alle Felder.
+- `api/new-places.api.ts`: legt eine genannte, noch fehlende Kampagne oder Kategorie vor der Quest an (`createCampaign` nutzt auch „Gehört zu“).
 - `utils/insert-text.ts`: Diktat an der Schreibmarke in ein Textfeld.
 - `components/VoiceInputSettings.vue`: der Abschnitt in den Einstellungen.
 - `native/speech-plugin.ts` und in Android `frontend/android/app/src/main/java/local/habittracker/app/speech/` (`SpeechPlugin.java`, `SpeechAvailability.java`, `SpeechErrors.java`).
@@ -145,6 +146,30 @@ Regeln (`utils/quest-parse-names.ts`):
 - Nur offene Kampagnen (erledigte nicht, lose oberste Quests nicht; `parentChoices(…, { campaignsOnly: true })`) und nur die eigenen Kategorien.
 - `matches` liefert `campaign` (mit `id` und dem Symbol der Kampagne) und `category` (mit `id` und Marke); das Ergebnis `campaignId` und `categoryId`.
 
+### Neue Kampagne, neue Kategorie
+
+Passt ein Name **nach seinem Schlüsselwort** zu keiner Kampagne bzw. Kategorie (auch nicht mit Hörfehler), bietet die App an, sie anzulegen (`parseQuest(…, { offerNew: true })`, `findNewAfterKeyword` in `quest-parse-names.ts`). Nach einem bloßen „für“ nie: Dort zählt weiter nur eine Kampagne, die es genau so gibt.
+
+| Gesagt (ohne passende Kampagne/Kategorie) | Ergebnis |
+|---|---|
+| „Wäsche waschen **Kategorie Haushalt** morgen“ | Titel „Wäsche waschen“, morgen, neue Kategorie „Haushalt“ |
+| „Kisten packen **Kampagne Umzug nach Berlin** 30 Minuten“ | neue Kampagne „Umzug nach Berlin“, 30 Min. |
+| „Kisten **Kampagne Umzug Kategorie Haushalt**“ | beide neu; die Kampagne bekommt die neue Kategorie |
+| „Laufen **Kampagne Marathon am Freitag**“ | neue Kampagne „Marathon“, Freitag |
+| „Kisten packen für Umzug“ | nichts: kein Schlüsselwort |
+
+- **Wie weit der Name reicht:** die Wörter nach dem Schlüsselwort bis dahin, wo ein Tag oder eine Dauer beginnt (mit ihren Verbindungswörtern: „am Freitag“, „für 30 Minuten“), bis zum anderen oder demselben Schlüsselwort (mit „in der“, „zur“ usw.), bis zu etwas schon Erkanntem, einem Komma, Punkt, Doppelpunkt oder einer Klammer, sonst bis zum Ende. Verbindungswörter am Ende („und“, „am“, „für“, „der“ …) gehören nicht dazu. Der erste Buchstabe wird groß.
+- **Höchstens so lang, wie der Server nimmt:** 200 Zeichen für eine Kampagne (Titel einer Quest), 60 für eine Kategorie. Ein längerer Name wird nicht angeboten; seine Wörter bleiben im Titel.
+- Nur, wenn die Liste bekannt ist: Solange die Kampagnen oder Kategorien nicht geladen sind (oder das Laden scheiterte), wird nichts als neu angeboten. Sonst entstünde eine Kampagne doppelt.
+- Eine erledigte Kampagne zählt nicht als vorhanden: „Kampagne Umzug“ bietet dann eine neue an.
+- `matches` liefert die neue als `campaign` bzw. `category` mit `isNew: true` (ohne `id`), das Ergebnis `newCampaign` bzw. `newCategory`.
+- **Chip:** „Neue Kampagne: Umzug“ bzw. „Neue Kategorie: Haushalt“, mit Plus statt Symbol oder Marke, dem Wort „Neue“ und gestricheltem Rand statt Füllung, nie nur Farbe. Der Name sagt „…, wird beim Anlegen erstellt, entfernen“. Ein ✕ verwirft ihn wie die anderen: Seine Wörter bleiben im Titel, und nichts wird angelegt.
+- **Beim Anlegen** entsteht erst das Neue, dann die Quest (`createNewPlaces` in `api/new-places.api.ts`): zuerst die Kategorie, wie in ihrem Auswahlfeld (`createCategory`, die Farbe wählt der Name), dann die Kampagne, wie „Gehört zu“ sie anlegt (`createCampaign`: oberste Quest ohne Tag und Dauer, in der Farbe ihres Titels), danach die Quest mit `parentId` der Kampagne.
+  - Eine neue Kampagne bekommt die genannte Kategorie (neu oder vorhanden), die Quest dieselbe. Ohne genannte Kategorie bekommen beide keine.
+  - Scheitert das Anlegen, entsteht keine Quest, der Text bleibt, und die Fehlerzeile sagt, was nicht ging: „Die Kategorie „Haushalt“ konnte nicht angelegt werden, die Quest ist nicht erstellt.“ und dahinter der Grund vom Server.
+  - Was schon entstanden ist (die Kategorie, bevor die Kampagne scheiterte), kennt der nächste Versuch: Es wird nicht doppelt angelegt.
+  - Danach `notifyDataChanged()`: Die Ansichten laden neu, und `useQuestParseContext` nimmt das Neue sofort in seine Liste auf (`remember`), so passt die nächste Quest mit demselben Namen schon dazu.
+
 ### Im Schnell-Anlegen
 
 - Die Listen lädt `useQuestParseContext` erst, wenn der Text „Kampagn…“, „Kategor…“ oder „für“ enthält, und nur einmal für alle Felder der Seite (im Plan steht eins je Tag). Nach einer Änderung an den Daten oder nach einer Minute lädt es beim nächsten solchen Text neu; scheitert das Laden, versucht es nach einer halben Minute wieder, und bis dahin wird kein Name erkannt.
@@ -157,6 +182,9 @@ Regeln (`utils/quest-parse-names.ts`):
 - Wie Tag und Dauer nur aus dem Diktat. Erkanntes füllt „Gehört zu“ und Kategorie, solange niemand sie selbst gewählt hat; „Gehört zu“ zeigt dann auch das übernommene Warum der Kampagne. Die Listen kommen aus den beiden Auswahlfeldern, die sie ohnehin laden.
 - Eine genannte Kampagne bringt ihre Kategorie mit, wenn keine genannt ist. Verschwindet der Chip, kommt die Kategorie zurück, die vorher galt (keine, die der Kampagne, in der der Dialog geöffnet wurde, oder die eines gewählten Platzes).
 - Geöffnet in einer Kampagne steht „Gehört zu“ schon fest: Dort wird nur die Kategorie erkannt.
+- Eine neue Kampagne oder Kategorie steht vorläufig in ihrem Auswahlfeld, als letzte Wahl mit Plus: „Neue Kampagne: Umzug“, „Neue Kategorie: Haushalt“ (`pending` an `ParentPicker` und `CategoryPicker`); die eingeklappte Kategorie zeigt „Haushalt (neu)“. Angelegt wird erst beim Erstellen, wie im Schnell-Anlegen. Wählt jemand im Feld etwas anderes (auch „Keine“), verschwindet das Vorläufige samt Chip, und die Wörter bleiben im Titel.
+- Eine neue Kategorie verdrängt die vorher geltende wie eine genannte; verschwindet ihr Chip, kommt die alte zurück.
+- Scheitert die Quest nach dem Anlegen, nimmt der nächste Versuch das schon Angelegte, statt es doppelt anzulegen.
 
 ## Datenschutz
 

@@ -9,6 +9,9 @@
  * Names compare without case, umlauts (ä = ae), ß (= ss), accents and
  * punctuation, so dictation and typing meet. After a keyword one small
  * recognition error is forgiven in names of five letters or more.
+ *
+ * A name after its keyword that matches nothing can be offered as a new
+ * one (`findNewAfterKeyword`); a name after a bare "für" never.
  */
 
 /** A campaign or category the text may name; `icon`/`mark` only ride along. */
@@ -92,6 +95,10 @@ function prepare(entries: readonly NamedEntry[]): Prepared[] {
 /** A comma, a colon or a bracket ends a name: it never reaches across. */
 const joinable = (text: string, left: Token, right: Token) =>
   !/[,;:!?()[\]]/u.test(text.slice(left.end, right.start));
+
+/** The keyword, or it with one error or a plural "n" ("Kathegorie"). */
+const isKeyword = (token: Token, keyword: string) =>
+  distance(token.norm, keyword, 1) <= 1;
 
 /** One recognition error in names of five letters or more. */
 const tolerance = (joined: string) => (joined.length >= 5 ? 1 : 0);
@@ -194,7 +201,7 @@ export function findAfterKeyword(
   if (!list.length) return null;
   const tokens = tokenize(text);
   for (let index = 0; index < tokens.length - 1; index++) {
-    if (distance(tokens[index]!.norm, keyword, 1) > 1) continue;
+    if (!isKeyword(tokens[index]!, keyword)) continue;
     if (!joinable(text, tokens[index]!, tokens[index + 1]!)) continue;
     const found = nameAt(text, tokens, index + 1, list, true);
     if (found)
@@ -226,6 +233,100 @@ export function findAfterFuer(
         start: tokens[index]!.start,
         end: closeQuote(text, tokens[found.last]!.end),
       };
+  }
+  return null;
+}
+
+/** Where each phrase of `keyword` starts, lead-in words included. */
+export function keywordStarts(text: string, keyword: string): number[] {
+  const tokens = tokenize(text);
+  return tokens.flatMap((token, index) =>
+    isKeyword(token, keyword) ? [leadIn(text, tokens, index)] : [],
+  );
+}
+
+/** A name that matches nothing yet, as it would be created. */
+export type NewNameFind = {
+  /** First letter capitalised: "Haushalt". */
+  name: string;
+  /** Range in the text: keyword and connecting words included. */
+  start: number;
+  end: number;
+};
+
+// Connecting words never end a new name: "Garten und" before "morgen".
+const TRAILING_WORDS = new Set([
+  "und",
+  "oder",
+  "am",
+  "im",
+  "an",
+  "bis",
+  "fuer",
+  "ab",
+  "um",
+  "in",
+  "mit",
+  "bei",
+  "zur",
+  "zum",
+  "der",
+  "die",
+  "das",
+  "den",
+  "dem",
+]);
+
+/**
+ * A new name after `keyword` ("Kategorie Haushalt"): the words up to the
+ * first of `stops` (where a day, a duration, a keyword or something already
+ * recognised begins), a comma, a period or the end, without connecting
+ * words at its end. The first keyword followed by such a word counts;
+ * `stops` is asked only once one is found. Null without one, or when the
+ * name is longer than `maxLength`.
+ */
+export function findNewAfterKeyword(
+  text: string,
+  keyword: string,
+  stops: () => number[],
+  maxLength: number,
+): NewNameFind | null {
+  const tokens = tokenize(text);
+  let positions: number[] | null = null;
+  for (let index = 0; index < tokens.length - 1; index++) {
+    const word = tokens[index]!;
+    if (!isKeyword(word, keyword)) continue;
+    if (!joinable(text, word, tokens[index + 1]!)) continue;
+    positions ??= stops();
+    const limit = Math.min(
+      text.length,
+      ...positions.filter((position) => position >= word.end),
+    );
+    let last = index;
+    for (let next = index + 1; next < tokens.length; next++) {
+      const token = tokens[next]!;
+      const previous = tokens[next - 1]!;
+      if (token.start >= limit) break;
+      if (
+        next > index + 1 &&
+        (!joinable(text, previous, token) ||
+          text.slice(previous.end, token.start).includes("."))
+      )
+        break;
+      last = next;
+    }
+    while (last > index && TRAILING_WORDS.has(tokens[last]!.norm)) last--;
+    if (last === index) continue;
+    const words = text
+      .slice(tokens[index + 1]!.start, tokens[last]!.end)
+      .replace(/\s+/gu, " ");
+    const name = words[0]!.toLocaleUpperCase("de-DE") + words.slice(1);
+    if (name.length > maxLength) return null;
+    return {
+      name,
+      start: leadIn(text, tokens, index),
+      end: closeQuote(text, tokens[last]!.end),
+    };
   }
   return null;
 }

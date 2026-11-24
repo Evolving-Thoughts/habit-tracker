@@ -504,3 +504,170 @@ describe("campaigns and categories", () => {
     expect(result.title).toBe("Kapitel");
   });
 });
+
+describe("new campaigns and categories", () => {
+  const campaigns = [{ id: 1, title: "Buch schreiben" }];
+  const categories = [{ id: 10, name: "Sport" }];
+  const fresh = (text: string, ignore?: QuestParseKind[]) =>
+    parseQuest(text, { today, ignore, campaigns, categories, offerNew: true });
+
+  it("offers a category that matches nothing, up to the day", () => {
+    const text = "Wäsche waschen Kategorie Haushalt morgen";
+    const result = fresh(text);
+    expect(result).toEqual({
+      title: "Wäsche waschen",
+      scheduledDate: "2026-11-25",
+      newCategory: "Haushalt",
+      matches: [
+        {
+          kind: "category",
+          isNew: true,
+          label: "Haushalt",
+          start: 15,
+          end: 33,
+          text: "Kategorie Haushalt",
+        },
+        expect.objectContaining({ kind: "date", text: "morgen" }),
+      ],
+    });
+    expect(result.categoryId).toBeUndefined();
+  });
+
+  it("takes several words up to a duration, a comma, a period or the end", () => {
+    expect(fresh("Kisten packen Kampagne Umzug nach Berlin 30 Minuten")).toMatchObject({
+      title: "Kisten packen",
+      newCampaign: "Umzug nach Berlin",
+      plannedDurationMinutes: 30,
+    });
+    expect(fresh("Kisten packen Kampagne Umzug, dringend")).toMatchObject({
+      title: "Kisten packen, dringend",
+      newCampaign: "Umzug",
+    });
+    expect(fresh("Kisten packen Kampagne Umzug. Dringend").newCampaign).toBe(
+      "Umzug",
+    );
+    expect(fresh("Kisten packen Kampagne Umzug nach Berlin").newCampaign).toBe(
+      "Umzug nach Berlin",
+    );
+  });
+
+  it("ends a name at the connecting words of a day or duration", () => {
+    expect(fresh("Laufen Kampagne Marathon am Freitag")).toMatchObject({
+      title: "Laufen",
+      newCampaign: "Marathon",
+      scheduledDate: "2026-11-27",
+    });
+    expect(fresh("Laufen Kampagne Marathon für 45 Minuten")).toMatchObject({
+      newCampaign: "Marathon",
+      plannedDurationMinutes: 45,
+    });
+    // "und" before what comes next stays out of the name.
+    expect(fresh("Laufen Kampagne Marathon und morgen")).toMatchObject({
+      title: "Laufen",
+      newCampaign: "Marathon",
+      scheduledDate: "2026-11-25",
+    });
+  });
+
+  it("capitalises the first letter", () => {
+    expect(fresh("Wäsche kategorie haushalt").newCategory).toBe("Haushalt");
+    expect(fresh("Kisten kampagne umzug nach berlin").newCampaign).toBe(
+      "Umzug nach berlin",
+    );
+  });
+
+  it("separates the two keywords, new or not", () => {
+    expect(
+      fresh("Kisten packen Kampagne Umzug Kategorie Haushalt morgen"),
+    ).toMatchObject({
+      title: "Kisten packen",
+      newCampaign: "Umzug",
+      newCategory: "Haushalt",
+      scheduledDate: "2026-11-25",
+    });
+    expect(
+      fresh("Kisten packen Kategorie Haushalt und Kampagne Umzug"),
+    ).toMatchObject({
+      title: "Kisten packen",
+      newCampaign: "Umzug",
+      newCategory: "Haushalt",
+    });
+    // An existing name on the other side.
+    expect(fresh("Kisten Kampagne Umzug in der Kategorie Sport")).toMatchObject({
+      title: "Kisten",
+      newCampaign: "Umzug",
+      categoryId: 10,
+    });
+    expect(fresh("Kapitel Kategorie Lektorat Kampagne Buch schreiben")).toMatchObject({
+      title: "Kapitel",
+      campaignId: 1,
+      newCategory: "Lektorat",
+    });
+  });
+
+  it("prefers an existing name, also one with a small error", () => {
+    const result = fresh("Laufen Kategorie Spord");
+    expect(result.categoryId).toBe(10);
+    expect(result.newCategory).toBeUndefined();
+    expect(fresh("Kapitel Kampagne Buch schreibn")).toMatchObject({
+      campaignId: 1,
+      title: "Kapitel",
+    });
+  });
+
+  it("never offers a name after a bare „für“", () => {
+    expect(fresh("Kisten packen für Umzug")).toEqual({
+      title: "Kisten packen für Umzug",
+      matches: [],
+    });
+  });
+
+  it("offers nothing without a word after the keyword", () => {
+    expect(fresh("Flyer für die Kampagne").matches).toEqual([]);
+    expect(fresh("Flyer Kampagne morgen")).toMatchObject({
+      title: "Flyer Kampagne",
+      matches: [expect.objectContaining({ kind: "date" })],
+    });
+    expect(fresh("Flyer Kampagne, morgen").newCampaign).toBeUndefined();
+  });
+
+  it("offers only when asked and the list is known", () => {
+    expect(
+      parseQuest("Wäsche Kategorie Haushalt", { today, categories }).matches,
+    ).toEqual([]);
+    expect(
+      parseQuest("Wäsche Kategorie Haushalt", { today, offerNew: true })
+        .matches,
+    ).toEqual([]);
+    // An empty list is known: everything named is new.
+    expect(
+      parseQuest("Wäsche Kategorie Haushalt", {
+        today,
+        categories: [],
+        offerNew: true,
+      }).newCategory,
+    ).toBe("Haushalt");
+  });
+
+  it("leaves a discarded new name in the title", () => {
+    expect(fresh("Wäsche Kategorie Haushalt morgen", ["category"])).toEqual({
+      title: "Wäsche Kategorie Haushalt",
+      scheduledDate: "2026-11-25",
+      matches: [expect.objectContaining({ kind: "date" })],
+    });
+  });
+
+  it("offers no name longer than the server takes", () => {
+    const long = "Haushalt ".repeat(7).trim();
+    expect(long.length).toBeGreaterThan(60);
+    expect(fresh(`Wäsche Kategorie ${long}`).newCategory).toBeUndefined();
+    expect(fresh(`Kisten Kampagne ${long}`).newCampaign).toBe(long);
+  });
+
+  it("counts the first keyword with a name", () => {
+    expect(fresh("Wäsche Kategorie Haushalt Kategorie Putzen")).toMatchObject({
+      title: "Wäsche Kategorie Putzen",
+      newCategory: "Haushalt",
+    });
+  });
+});

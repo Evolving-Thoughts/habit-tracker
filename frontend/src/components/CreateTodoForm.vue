@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, useId, watch } from "vue";
 import { createTodo } from "../api/day-planner.api";
+import {
+  createNewPlaces,
+  NewPlaceError,
+  type CreatedPlaces,
+} from "../api/new-places.api";
+import { notifyDataChanged } from "../composables/data-sync";
 import type { CategoryResponse } from "../types/category";
 import type {
   CreateTodoInput,
@@ -56,11 +62,14 @@ const date = ref("");
 const time = ref("");
 const durationMinutes = ref<string | number>("");
 const categoryId = ref<number | null>(props.parent?.categoryId ?? null);
-const categories = ref<CategoryResponse[]>([]);
+/** Null until the category picker loaded them. */
+const categories = ref<CategoryResponse[] | null>(null);
 /** The chosen category in words, for the closed disclosure. */
-const categoryName = computed(
-  () =>
-    categories.value.find((entry) => entry.id === categoryId.value)?.name ?? "",
+const categoryName = computed(() =>
+  parsed.value?.newCategory
+    ? `${parsed.value.newCategory} (neu)`
+    : (categories.value?.find((entry) => entry.id === categoryId.value)
+        ?.name ?? ""),
 );
 const why = ref("");
 const color = ref<CampaignColor | null>(null);
@@ -84,6 +93,11 @@ const errorMessage = ref<string | null>(null);
  * lists the two pickers load. A named campaign brings its category, as a
  * chosen place does, unless a category was named too. A form opened inside
  * a campaign already has its place: only the category is read there.
+ *
+ * Named with its keyword but matching none ("Kategorie Haushalt"), a
+ * campaign or category shows in its picker as "Neue Kategorie: Haushalt"
+ * and is created on saving, before the quest, as the quick add does. A
+ * pending new category wins over a preset one the way a named one does.
  */
 const titleId = useId();
 const mic = ref<InstanceType<typeof MicButton> | null>(null);
@@ -94,18 +108,23 @@ const untouched = (): Record<QuestParseKind, boolean> => ({
   category: false,
 });
 const touched = ref(untouched());
-/** Every quest the parent picker loaded; its open campaigns can be named. */
-const hierarchy = ref<HierarchyTodo[]>([]);
+/**
+ * Every quest the parent picker loaded (null until then); its open
+ * campaigns can be named. A list not loaded offers no new names either.
+ */
+const hierarchy = ref<HierarchyTodo[] | null>(null);
 const campaignChoices = computed(() =>
-  parentChoices(hierarchy.value, { campaignsOnly: true }),
+  parentChoices(hierarchy.value ?? [], { campaignsOnly: true }),
 );
 const names = computed(() => ({
-  campaigns: campaignChoices.value.map(({ todo }) => ({
-    id: todo.id,
-    title: todo.title,
-    icon: isCampaignIcon(todo.icon) ? todo.icon : null,
-  })),
-  categories: categories.value.map((category) => ({
+  campaigns: hierarchy.value
+    ? campaignChoices.value.map(({ todo }) => ({
+        id: todo.id,
+        title: todo.title,
+        icon: isCampaignIcon(todo.icon) ? todo.icon : null,
+      }))
+    : undefined,
+  categories: categories.value?.map((category) => ({
     id: category.id,
     name: category.name,
     mark: categoryMark(category.name, category.color),
@@ -131,6 +150,7 @@ const parsed = computed(() =>
           ),
         ],
         ...names.value,
+        offerNew: true,
       }),
 );
 watch(parsed, (result) => {
@@ -149,11 +169,14 @@ watch(parsed, (result) => {
     }
   }
   if (!touched.value.category) {
+    // A new category is none until saving; the picker shows it pending.
     const wanted =
-      result.categoryId ??
-      (campaign && !touched.value.campaign
-        ? (categoryOfChoice(campaign) ?? undefined)
-        : undefined);
+      result.newCategory !== undefined
+        ? null
+        : (result.categoryId ??
+          (campaign && !touched.value.campaign
+            ? (categoryOfChoice(campaign) ?? undefined)
+            : undefined));
     if (wanted !== undefined) {
       if (!categoryFromText) categoryBefore = categoryId.value;
       categoryFromText = true;
@@ -231,6 +254,44 @@ function resetForm(): void {
   touched.value = untouched();
   ignored.value = [];
   categoryFromText = false;
+  createdBefore = {};
+}
+
+/**
+ * Created on an earlier try whose quest then failed: taken again, never
+ * created twice.
+ */
+let createdBefore: CreatedPlaces = {};
+
+/** The new category and campaign the dictation named, created first. */
+async function createPending(): Promise<CreatedPlaces> {
+  const wanted = parsed.value;
+  const reuse: CreatedPlaces = {
+    ...(createdBefore.category?.name === wanted?.newCategory
+      ? { category: createdBefore.category }
+      : {}),
+    ...(createdBefore.campaign?.title === wanted?.newCampaign
+      ? { campaign: createdBefore.campaign }
+      : {}),
+  };
+  const remember = (created: CreatedPlaces) => {
+    createdBefore = { ...reuse, ...created };
+    if (created.category || created.campaign) notifyDataChanged();
+  };
+  try {
+    const created = await createNewPlaces(
+      {
+        category: reuse.category ? undefined : wanted?.newCategory,
+        campaign: reuse.campaign ? undefined : wanted?.newCampaign,
+      },
+      reuse.category?.id ?? categoryId.value,
+    );
+    remember(created);
+    return { ...reuse, ...created };
+  } catch (error) {
+    if (error instanceof NewPlaceError) remember(error.created);
+    throw error;
+  }
 }
 
 async function submit(): Promise<void> {
@@ -242,8 +303,13 @@ async function submit(): Promise<void> {
 
   try {
     const input = buildInput();
-    input.parentId = props.campaign ? null : parentId.value;
-    input.categoryId = categoryId.value;
+    isSubmitting.value = true;
+    emit("busy", true);
+    const places = props.campaign ? {} : await createPending();
+    input.parentId = props.campaign
+      ? null
+      : (places.campaign?.id ?? parentId.value);
+    input.categoryId = places.category?.id ?? categoryId.value;
     if (why.value.trim()) input.why = why.value.trim();
     if (props.campaign) {
       const minutes = hoursToMinutes(weeklyTarget.value);
@@ -251,9 +317,6 @@ async function submit(): Promise<void> {
       if (color.value) input.color = color.value;
       if (icon.value) input.icon = icon.value;
     }
-
-    isSubmitting.value = true;
-    emit("busy", true);
 
     const todo = await createTodo(input);
 
@@ -315,6 +378,7 @@ async function submit(): Promise<void> {
           <ParentPicker
             id="todo-parent"
             v-model="parentId"
+            :pending="parsed?.newCampaign ?? null"
             @chosen="choose"
             @ready="preset"
           />
@@ -378,7 +442,9 @@ async function submit(): Promise<void> {
               <CategoryPicker
                 id="todo-category"
                 v-model="categoryId"
+                :pending="parsed?.newCategory ?? null"
                 @update:model-value="pickCategory"
+                @chosen="pickCategory"
                 @loaded="categories = $event"
               />
             </div>

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { createTodo } from "../api/day-planner.api";
+import { createCampaign } from "../api/new-places.api";
 import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
-import type { TodoResponse } from "../types/todo";
-import { campaignMark, colorOfName } from "../utils/category-mark";
+import { campaignMark, categoryMark } from "../utils/category-mark";
 import { isCampaignIcon } from "../utils/campaign-style";
 import { parentChoices, type ParentChoice } from "../utils/parent-choice";
+import { asHierarchyTodo } from "../utils/todo-hierarchy";
 import ComboBox, { type ComboOption } from "./ComboBox.vue";
 
 /**
@@ -16,6 +16,10 @@ import ComboBox, { type ComboOption } from "./ComboBox.vue";
  * "Neue Kampagne „…“ anlegen": a new top-level quest in the colour its
  * title picks, which makes it a campaign (PRODUCT.md › Glossar), chosen
  * right away. `campaignsOnly` lists just the campaigns (a daily's field).
+ *
+ * `pending` shows a campaign the form will create on saving (a dictated
+ * "Kampagne Umzug") as the choice while none is chosen: "Neue Kampagne:
+ * Umzug" with a plus on its badge. Any other choice replaces it.
  */
 const props = defineProps<{
   id: string;
@@ -25,6 +29,8 @@ const props = defineProps<{
   /** What "Keine" means here, e.g. "Keine (eigene Kampagne)". */
   noneLabel?: string;
   describedBy?: string;
+  /** The title of a campaign created on saving; shown while none is chosen. */
+  pending?: string | null;
 }>();
 const model = defineModel<number | null>({ required: true });
 const emit = defineEmits<{
@@ -60,6 +66,11 @@ onMounted(async () => {
   }
 });
 
+const PENDING = "pending";
+const showsPending = computed(
+  () => Boolean(props.pending) && model.value === null,
+);
+// Last, so typing a name picks an existing place first.
 const options = computed<ComboOption[]>(() => [
   { value: "none", label: props.noneLabel ?? "Keine" },
   ...choices.value.map(
@@ -70,32 +81,32 @@ const options = computed<ComboOption[]>(() => [
     mark: campaignMark(campaign) ?? undefined,
     icon: isCampaignIcon(campaign.icon) ? campaign.icon : "campaigns",
   })),
+  ...(showsPending.value
+    ? [
+        {
+          value: PENDING,
+          label: `Neue Kampagne: ${props.pending}`,
+          mark: categoryMark(props.pending!),
+          icon: "plus" as const,
+        },
+      ]
+    : []),
 ]);
 const value = computed({
-  get: () => (model.value === null ? "none" : String(model.value)),
+  get: () =>
+    showsPending.value
+      ? PENDING
+      : model.value === null
+        ? "none"
+        : String(model.value),
   set: (next: string) => {
+    if (next === PENDING) return;
     // The model reads the parent's prop, which updates only after this.
     const id = next === "none" ? null : Number(next);
     model.value = id;
     emit("chosen", choices.value.find((choice) => choice.todo.id === id) ?? null);
   },
 });
-
-/** A just-created quest as a row of the tree, until the next load. */
-function asHierarchy(todo: TodoResponse): HierarchyTodo {
-  return {
-    ...todo,
-    progress: {
-      mode: "count",
-      completed: 0,
-      total: 0,
-      percentage: 0,
-      knownDurationMinutes: 0,
-      todoCount: 0,
-      doneCount: 0,
-    },
-  };
-}
 
 async function create(title: string): Promise<void> {
   if (creating.value) return;
@@ -106,14 +117,8 @@ async function create(title: string): Promise<void> {
   creating.value = true;
   errorMessage.value = null;
   try {
-    const todo = await createTodo({
-      title,
-      scheduledDate: null,
-      timeOfDay: null,
-      plannedDurationMinutes: null,
-      color: colorOfName(title),
-    });
-    todos.value = [...todos.value, asHierarchy(todo)];
+    const todo = await createCampaign(title);
+    todos.value = [...todos.value, asHierarchyTodo(todo)];
     value.value = String(todo.id);
   } catch (error) {
     errorMessage.value =

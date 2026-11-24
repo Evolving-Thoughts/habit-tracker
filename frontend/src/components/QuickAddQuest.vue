@@ -8,6 +8,12 @@ import {
   watch,
 } from "vue";
 import { createTodo, reorderDay } from "../api/day-planner.api";
+import {
+  createNewPlaces,
+  NewPlaceError,
+  type CreatedPlaces,
+} from "../api/new-places.api";
+import { notifyDataChanged } from "../composables/data-sync";
 import { useInsertPlace } from "../composables/useInsertPlace";
 import { useQuestParseContext } from "../composables/useQuestParseContext";
 import { contentWidth, firstThatFits } from "../utils/fit-text";
@@ -35,6 +41,12 @@ type OrderedItem = { type: "todo" | "habit"; id: number };
  * too: the quest goes below that campaign, and without a named category it
  * takes the campaign's, as the editor suggests. A quest below a campaign
  * still stands in the Questlog (and on its day), so that chip moves nothing.
+ *
+ * Named with its keyword but matching none ("Kategorie Haushalt"), a
+ * campaign or category shows as "Neue Kategorie: Haushalt" and is created
+ * on adding, before the quest: the category first, so a new campaign takes
+ * the category named. If that fails, no quest is created and the text
+ * stays; what was created already is known from then on.
  */
 const props = withDefaults(
   defineProps<{
@@ -61,7 +73,11 @@ const notice = ref<string | null>(null);
 const ignored = ref<QuestParseKind[]>([]);
 const names = useQuestParseContext();
 const parsed = computed(() =>
-  parseQuest(title.value, { ignore: ignored.value, ...names.options.value }),
+  parseQuest(title.value, {
+    ignore: ignored.value,
+    ...names.options.value,
+    offerNew: true,
+  }),
 );
 watch(title, (text) => {
   if (text.trim()) notice.value = null;
@@ -114,6 +130,13 @@ onMounted(() => {
 });
 onBeforeUnmount(() => observer?.disconnect());
 
+/** What was just created: known to the next quest and to every view. */
+function learn(places: CreatedPlaces): void {
+  if (!places.category && !places.campaign) return;
+  names.remember(places);
+  notifyDataChanged();
+}
+
 async function add(): Promise<void> {
   const text = title.value.trim();
   if (!text || busy.value) return;
@@ -125,13 +148,32 @@ async function add(): Promise<void> {
   const date =
     result.scheduledDate !== undefined ? result.scheduledDate : props.date;
   const dateMatch = result.matches.find((match) => match.kind === "date");
+  busy.value = true;
+  errorMessage.value = null;
+  let places: CreatedPlaces;
+  try {
+    places = await createNewPlaces(
+      { category: result.newCategory, campaign: result.newCampaign },
+      result.categoryId ?? null,
+    );
+  } catch (error: unknown) {
+    if (error instanceof NewPlaceError) learn(error.created);
+    errorMessage.value =
+      error instanceof Error
+        ? error.message
+        : "Die Quest konnte nicht erstellt werden.";
+    busy.value = false;
+    return;
+  }
+  learn(places);
+  const campaignId = places.campaign?.id ?? result.campaignId;
+  // A new campaign has the category named, or none.
   const categoryId =
+    places.category?.id ??
     result.categoryId ??
     (result.campaignId === undefined
       ? undefined
       : names.campaignCategory(result.campaignId));
-  busy.value = true;
-  errorMessage.value = null;
   try {
     // Into the Questlog the server places it at the head or the end itself.
     const created = await createTodo({
@@ -139,9 +181,7 @@ async function add(): Promise<void> {
       scheduledDate: date,
       timeOfDay: null,
       plannedDurationMinutes: result.plannedDurationMinutes ?? null,
-      ...(result.campaignId === undefined
-        ? {}
-        : { parentId: result.campaignId }),
+      ...(campaignId === undefined ? {} : { parentId: campaignId }),
       ...(categoryId === undefined ? {} : { categoryId }),
       ...(date === null ? { backlogPlace: place.value } : {}),
     });

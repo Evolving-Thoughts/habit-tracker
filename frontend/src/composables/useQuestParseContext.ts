@@ -1,5 +1,6 @@
 import { computed, shallowRef } from "vue";
 import { getCategories } from "../api/categories.api";
+import type { CreatedPlaces } from "../api/new-places.api";
 import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import type { CategoryResponse } from "../types/category";
 import { categoryMark } from "../utils/category-mark";
@@ -10,6 +11,7 @@ import {
   type ParentChoice,
 } from "../utils/parent-choice";
 import type { QuestParseOptions } from "../utils/quest-parse";
+import { asHierarchyTodo } from "../utils/todo-hierarchy";
 import { listenDataChanged } from "./data-sync";
 
 /**
@@ -20,6 +22,10 @@ import { listenDataChanged } from "./data-sync";
  * when data changes or after a minute and reloads on the next such text;
  * until then the old copy keeps the chips. A failed read waits half a
  * minute before it tries again and leaves the names unrecognised.
+ *
+ * A campaign or category a quick add just created joins the copy at once
+ * (`remember`), so the next quest naming it matches it instead of
+ * offering it as new again while the copy reloads.
  */
 
 type Loaded = { campaigns: ParentChoice[]; categories: CategoryResponse[] };
@@ -106,5 +112,20 @@ export function useQuestParseContext() {
     return choice ? categoryOfChoice(choice) : null;
   }
 
-  return { need, options, campaignCategory };
+  /** Adds what was just created to the copy, until the next load. */
+  function remember({ category, campaign }: CreatedPlaces): void {
+    const lists = loaded.value;
+    if (!lists || (!category && !campaign)) return;
+    const todo = campaign && asHierarchyTodo(campaign);
+    loaded.value = {
+      campaigns: todo
+        ? [...lists.campaigns, { todo, path: [todo.title], campaign: todo }]
+        : lists.campaigns,
+      categories: category
+        ? [...lists.categories, category]
+        : lists.categories,
+    };
+  }
+
+  return { need, options, campaignCategory, remember };
 }

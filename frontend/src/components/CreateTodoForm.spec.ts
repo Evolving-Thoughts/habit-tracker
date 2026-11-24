@@ -8,6 +8,7 @@ import type { TodoResponse } from "../types/todo";
 import { choose } from "../test/combobox";
 import { hierarchyTodo } from "../test/hierarchy";
 import { MicStub, dictate, micStart } from "../test/mic-stub";
+import { colorOfName } from "../utils/category-mark";
 import CreateTodoForm from "./CreateTodoForm.vue";
 
 vi.mock("../api/day-planner.api", () => ({
@@ -644,6 +645,159 @@ describe("CreateTodoForm", () => {
         title: "Kapitel Kampagne Buch schreiben",
         parentId: null,
         categoryId: null,
+      });
+    });
+
+    describe("a name that matches none", () => {
+      const campaignRow = (id: number, title: string) => ({
+        ...response,
+        id,
+        title,
+        color: colorOfName(title),
+      });
+
+      it("shows a new campaign and category pending in their pickers and creates both first", async () => {
+        vi.mocked(createCategory).mockResolvedValue({ id: 12, name: "Haushalt" });
+        createTodoMock
+          .mockResolvedValueOnce(campaignRow(40, "Umzug"))
+          .mockResolvedValueOnce(response);
+        const changed = vi.fn();
+        window.addEventListener("timer-data-changed", changed);
+        const wrapper = await mountForm();
+        await dictate(wrapper, "Kisten packen morgen Kampagne Umzug Kategorie Haushalt");
+        expect(chipNames(wrapper)).toEqual([
+          "Tag: morgen, entfernen",
+          "Neue Kampagne: Umzug, wird beim Anlegen erstellt, entfernen",
+          "Neue Kategorie: Haushalt, wird beim Anlegen erstellt, entfernen",
+        ]);
+        expect(value(wrapper, "#todo-parent")).toBe("Neue Kampagne: Umzug");
+        expect(value(wrapper, "#todo-category")).toBe("Neue Kategorie: Haushalt");
+        // Nothing exists before saving.
+        expect(createCategory).not.toHaveBeenCalled();
+        expect(createTodoMock).not.toHaveBeenCalled();
+
+        await wrapper.get("form").trigger("submit");
+        await flushPromises();
+        expect(createCategory).toHaveBeenCalledWith("Haushalt");
+        expect(createTodoMock).toHaveBeenNthCalledWith(1, {
+          title: "Umzug",
+          scheduledDate: null,
+          timeOfDay: null,
+          plannedDurationMinutes: null,
+          color: colorOfName("Umzug"),
+          categoryId: 12,
+        });
+        expect(createTodoMock).toHaveBeenNthCalledWith(
+          2,
+          expect.objectContaining({
+            title: "Kisten packen",
+            scheduledDate: "2026-11-25",
+            parentId: 40,
+            categoryId: 12,
+          }),
+        );
+        expect(changed).toHaveBeenCalled();
+        window.removeEventListener("timer-data-changed", changed);
+        expect(wrapper.emitted("created")).toHaveLength(1);
+      });
+
+      it("gives a new campaign the category named that exists", async () => {
+        createTodoMock
+          .mockResolvedValueOnce(campaignRow(40, "Umzug"))
+          .mockResolvedValueOnce(response);
+        const wrapper = await mountForm();
+        await dictate(wrapper, "Kisten Kampagne Umzug Kategorie Sport");
+        expect(value(wrapper, "#todo-category")).toBe("Sport");
+        await wrapper.get("form").trigger("submit");
+        await flushPromises();
+        expect(createTodoMock).toHaveBeenNthCalledWith(
+          1,
+          expect.objectContaining({ title: "Umzug", categoryId: 10 }),
+        );
+        expect(createTodoMock).toHaveBeenNthCalledWith(
+          2,
+          expect.objectContaining({ parentId: 40, categoryId: 10 }),
+        );
+        expect(createCategory).not.toHaveBeenCalled();
+      });
+
+      it("takes a pending category over the one a chosen place brought, and gives it back", async () => {
+        const wrapper = await mountForm();
+        await choose(wrapper, "#todo-parent", "Kapitel 3");
+        expect(value(wrapper, "#todo-category")).toBe("Schreiben");
+        await dictate(wrapper, "Szene Kategorie Lektorat");
+        expect(value(wrapper, "#todo-category")).toBe("Neue Kategorie: Lektorat");
+        await wrapper
+          .get(
+            '[aria-label="Neue Kategorie: Lektorat, wird beim Anlegen erstellt, entfernen"]',
+          )
+          .trigger("click");
+        expect(value(wrapper, "#todo-category")).toBe("Schreiben");
+        expect(await submit(wrapper)).toMatchObject({
+          title: "Szene Kategorie Lektorat",
+          parentId: 2,
+          categoryId: 11,
+        });
+        expect(createCategory).not.toHaveBeenCalled();
+      });
+
+      it("drops the pending campaign once a place is chosen by hand", async () => {
+        const wrapper = await mountForm();
+        await dictate(wrapper, "Hecke schneiden Kampagne Vorgarten");
+        expect(value(wrapper, "#todo-parent")).toBe("Neue Kampagne: Vorgarten");
+        await choose(wrapper, "#todo-parent", "Garten");
+        expect(wrapper.find(".parse-chip").exists()).toBe(false);
+        expect(await submit(wrapper)).toMatchObject({
+          title: "Hecke schneiden Kampagne Vorgarten",
+          parentId: 5,
+        });
+        expect(createTodoMock).toHaveBeenCalledTimes(1);
+      });
+
+      it("creates no quest when the campaign fails, and creates the category only once", async () => {
+        vi.mocked(createCategory).mockResolvedValue({ id: 12, name: "Haushalt" });
+        createTodoMock.mockRejectedValueOnce(new Error("Offline"));
+        const wrapper = await mountForm();
+        await dictate(wrapper, "Kisten Kampagne Umzug Kategorie Haushalt");
+        await wrapper.get("form").trigger("submit");
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toBe(
+          "Die Kampagne „Umzug“ konnte nicht angelegt werden, die Quest ist nicht erstellt. Offline",
+        );
+        expect(createTodoMock).toHaveBeenCalledTimes(1);
+        expect(value(wrapper, 'input[name="title"]')).toBe(
+          "Kisten Kampagne Umzug Kategorie Haushalt",
+        );
+        expect(wrapper.emitted("created")).toBeUndefined();
+
+        createTodoMock
+          .mockResolvedValueOnce(campaignRow(40, "Umzug"))
+          .mockResolvedValueOnce(response);
+        await wrapper.get("form").trigger("submit");
+        await flushPromises();
+        expect(createCategory).toHaveBeenCalledTimes(1);
+        expect(createTodoMock).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            title: "Kisten",
+            parentId: 40,
+            categoryId: 12,
+          }),
+        );
+      });
+
+      it("offers no new campaign inside a campaign: the place is set", async () => {
+        const garden = hierarchyTodo({ id: 5, title: "Garten", color: "plum" });
+        const wrapper = await mountForm({ parent: garden });
+        await dictate(wrapper, "Hecke Kampagne Vorgarten");
+        expect(wrapper.find(".parse-chip").exists()).toBe(false);
+      });
+
+      it("offers no new names while the lists could not be read", async () => {
+        vi.mocked(getTodoHierarchy).mockRejectedValue(new Error("Offline"));
+        vi.mocked(getCategories).mockRejectedValue(new Error("Offline"));
+        const wrapper = await mountForm();
+        await dictate(wrapper, "Kisten Kampagne Umzug Kategorie Haushalt");
+        expect(wrapper.find(".parse-chip").exists()).toBe(false);
       });
     });
   });

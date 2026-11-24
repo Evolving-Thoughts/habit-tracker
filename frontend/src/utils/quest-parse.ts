@@ -7,6 +7,8 @@ import {
 import {
   findAfterFuer,
   findAfterKeyword,
+  findNewAfterKeyword,
+  keywordStarts,
   type NamedEntry,
   type NamedFind,
 } from "./quest-parse-names";
@@ -19,7 +21,8 @@ import {
  * the caller shows what was recognised (`matches`, as chips) before anything
  * is saved, and a chip the person discards goes back into the title via
  * `ignore`. Only the first of each kind counts; anything further stays in
- * the title.
+ * the title. With `offerNew`, a name after its keyword that matches none
+ * of them comes back as one to create (`newCampaign`, `newCategory`).
  */
 
 export type QuestParseKind = "date" | "duration" | "campaign" | "category";
@@ -35,10 +38,22 @@ type MatchBase = {
 };
 
 export type QuestParseMatch =
-  | (MatchBase & { kind: "date"; date: string })
-  | (MatchBase & { kind: "duration"; minutes: number })
-  | (MatchBase & { kind: "campaign"; id: number; icon?: string | null })
-  | (MatchBase & { kind: "category"; id: number; mark?: string | null });
+  | (MatchBase & { kind: "date"; date: string; isNew?: never })
+  | (MatchBase & { kind: "duration"; minutes: number; isNew?: never })
+  | (MatchBase & {
+      kind: "campaign";
+      id: number;
+      icon?: string | null;
+      isNew?: never;
+    })
+  | (MatchBase & {
+      kind: "category";
+      id: number;
+      mark?: string | null;
+      isNew?: never;
+    })
+  /** A name that matches nothing yet: created on adding; `label` is it. */
+  | (MatchBase & { kind: "campaign" | "category"; isNew: true });
 
 export type QuestParse = {
   /** The text without what was recognised; never empty for non-empty input. */
@@ -50,6 +65,10 @@ export type QuestParse = {
   campaignId?: number;
   /** The category named ("Kategorie Sport"). */
   categoryId?: number;
+  /** A campaign named after its keyword that does not exist yet ("Umzug"). */
+  newCampaign?: string;
+  /** A category named after its keyword that does not exist yet. */
+  newCategory?: string;
   matches: QuestParseMatch[];
 };
 
@@ -62,7 +81,17 @@ export type QuestParseOptions = {
   campaigns?: readonly { id: number; title: string; icon?: string | null }[];
   /** The person's categories; `mark` rides along to the chip. */
   categories?: readonly { id: number; name: string; mark?: string | null }[];
+  /**
+   * A name after "Kampagne"/"Kategorie" that matches none of the given list
+   * becomes `newCampaign`/`newCategory`; only for a list that was given,
+   * and never after a bare "für".
+   */
+  offerNew?: boolean;
 };
+
+/** Longest new names: the server's limits for a quest title and a category. */
+export const MAX_CAMPAIGN_TITLE = 200;
+export const MAX_CATEGORY_NAME = 60;
 
 /** Longest planned duration taken from text: one day. */
 const MAX_MINUTES = 24 * 60;
@@ -308,7 +337,8 @@ function calendarDate(
   return isValidIsoDate(iso(thisYear + 1)) ? iso(thisYear + 1) : null;
 }
 
-function findDate(text: string, today: string): Candidate | null {
+/** Every day the text names, connecting words not yet taken in. */
+function dateCandidates(text: string, today: string): Candidate[] {
   const relative = scan(RELATIVE, text, (match) => {
     const word = match[1].toLowerCase();
     const days = word === "heute" ? 0 : word === "morgen" ? 1 : 2;
@@ -338,7 +368,11 @@ function findDate(text: string, today: string): Candidate | null {
     );
     return date ? { value: date, label: dateLabel(date, today) } : null;
   });
-  const found = first([...relative, ...weekdays, ...numeric, ...named]);
+  return [...relative, ...weekdays, ...numeric, ...named];
+}
+
+function findDate(text: string, today: string): Candidate | null {
+  const found = first(dateCandidates(text, today));
   return (
     found && {
       ...found,
@@ -347,7 +381,8 @@ function findDate(text: string, today: string): Candidate | null {
   );
 }
 
-function findDuration(text: string): Candidate | null {
+/** Every duration the text names, connecting words not yet taken in. */
+function durationCandidates(text: string): Candidate[] {
   const fixed = (pattern: RegExp, minutes: number) =>
     scan(pattern, text, () => ({ value: minutes, label: "" }));
   const hours = [
@@ -382,11 +417,14 @@ function findDuration(text: string): Candidate | null {
         }
       : hour;
   });
-  const valid = [...combined, ...minutes].filter((candidate) => {
+  return [...combined, ...minutes].filter((candidate) => {
     const value = Math.round(Number(candidate.value));
     return value >= 1 && value <= MAX_MINUTES;
   });
-  const found = first(valid);
+}
+
+function findDuration(text: string): Candidate | null {
+  const found = first(durationCandidates(text));
   if (!found) return null;
   const value = Math.round(Number(found.value));
   return {
@@ -516,6 +554,54 @@ export function parseQuest(
     });
   }
 
+  // A name that matches nothing, after its keyword only: it ends where a
+  // day, a duration, either keyword or something recognised begins.
+  const stops = () => [
+    ...removed.map((part) => part.start),
+    ...durationCandidates(searched).map((found) =>
+      withConnectors(searched, found.start, DURATION_CONNECTORS),
+    ),
+    ...dateCandidates(searched, today).map((found) =>
+      withConnectors(searched, found.start, DATE_CONNECTORS),
+    ),
+    ...keywordStarts(searched, "kampagne"),
+    ...keywordStarts(searched, "kategorie"),
+  ];
+  const offer = (kind: "campaign" | "category", listed: unknown) =>
+    options.offerNew === true && listed !== undefined && !ignore.has(kind);
+  const newCampaign =
+    !campaign && offer("campaign", options.campaigns)
+      ? findNewAfterKeyword(searched, "kampagne", stops, MAX_CAMPAIGN_TITLE)
+      : null;
+  if (newCampaign) {
+    removed.push({ ...newCampaign, value: 0, label: newCampaign.name });
+    searched = blank(searched, newCampaign.start, newCampaign.end);
+    matches.push({
+      kind: "campaign",
+      isNew: true,
+      label: newCampaign.name,
+      start: newCampaign.start,
+      end: newCampaign.end,
+      text: text.slice(newCampaign.start, newCampaign.end),
+    });
+  }
+  const newCategory =
+    !category && offer("category", options.categories)
+      ? findNewAfterKeyword(searched, "kategorie", stops, MAX_CATEGORY_NAME)
+      : null;
+  if (newCategory) {
+    removed.push({ ...newCategory, value: 0, label: newCategory.name });
+    searched = blank(searched, newCategory.start, newCategory.end);
+    matches.push({
+      kind: "category",
+      isNew: true,
+      label: newCategory.name,
+      start: newCategory.start,
+      end: newCategory.end,
+      text: text.slice(newCategory.start, newCategory.end),
+    });
+  }
+
   // Durations before days, so "1,5 h" is never read as a date.
   const duration = ignore.has("duration") ? null : findDuration(searched);
   if (duration) {
@@ -554,6 +640,8 @@ export function parseQuest(
     ...(duration ? { plannedDurationMinutes: Number(duration.value) } : {}),
     ...(campaign ? { campaignId: campaign.entry.id } : {}),
     ...(category ? { categoryId: category.entry.id } : {}),
+    ...(newCampaign ? { newCampaign: newCampaign.name } : {}),
+    ...(newCategory ? { newCategory: newCategory.name } : {}),
     matches,
   };
 }

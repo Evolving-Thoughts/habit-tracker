@@ -10,6 +10,10 @@ import AppIcon from "./AppIcon.vue";
  * category its mark, both with the kind in words ("Kampagne: Buch
  * schreiben", "Kategorie: Sport"). A tap on a chip discards it: its words
  * then stay in the title and nothing is set from them.
+ *
+ * A name to be created ("Neue Kategorie: Haushalt") carries a plus and the
+ * word "Neue" and a dashed outline instead of the fill, so it reads apart
+ * from a match without its colour.
  */
 defineProps<{
   matches: readonly QuestParseMatch[];
@@ -25,9 +29,26 @@ const KIND_NAME: Record<QuestParseKind, string> = {
   category: "Kategorie",
 };
 
+const NEW_NAME: Partial<Record<QuestParseKind, string>> = {
+  campaign: "Neue Kampagne",
+  category: "Neue Kategorie",
+};
+
 /** Day and duration speak for themselves; a name says what it names. */
-const named = (match: QuestParseMatch) =>
-  match.kind === "campaign" || match.kind === "category";
+const kindWords = (match: QuestParseMatch): string | null =>
+  match.kind === "campaign" || match.kind === "category"
+    ? match.isNew
+      ? NEW_NAME[match.kind]!
+      : KIND_NAME[match.kind]
+    : null;
+
+function chipName(match: QuestParseMatch, moves?: boolean): string {
+  const words = kindWords(match) ?? KIND_NAME[match.kind];
+  const into =
+    moves && match.kind === "date" ? ", plant sie ein statt ins Questlog" : "";
+  const created = match.isNew ? ", wird beim Anlegen erstellt" : "";
+  return `${words}: ${match.label}${into}${created}, entfernen`;
+}
 </script>
 
 <template>
@@ -36,13 +57,14 @@ const named = (match: QuestParseMatch) =>
       <button
         type="button"
         class="parse-chip"
+        :class="{ 'parse-chip--new': match.isNew }"
         :data-kind="match.kind"
-        :aria-label="`${KIND_NAME[match.kind]}: ${match.label}${
-          moves && match.kind === 'date' ? ', plant sie ein statt ins Questlog' : ''
-        }, entfernen`"
+        :data-new="match.isNew ? '' : undefined"
+        :aria-label="chipName(match, moves)"
         @click="emit('remove', match.kind)"
       >
-        <AppIcon v-if="match.kind === 'date'" name="calendar" />
+        <AppIcon v-if="match.isNew" name="plus" />
+        <AppIcon v-else-if="match.kind === 'date'" name="calendar" />
         <AppIcon v-else-if="match.kind === 'duration'" name="timer" />
         <AppIcon
           v-else-if="match.kind === 'campaign'"
@@ -58,7 +80,7 @@ const named = (match: QuestParseMatch) =>
           ><span v-if="moves && match.kind === 'date'" aria-hidden="true"
             >→
           </span
-          ><template v-if="named(match)">{{ KIND_NAME[match.kind] }}: </template
+          ><template v-if="kindWords(match)">{{ kindWords(match) }}: </template
           >{{ match.label }}</span
         >
         <AppIcon name="close" class="parse-chip__remove" />
@@ -144,6 +166,12 @@ const named = (match: QuestParseMatch) =>
 
 .parse-chips .parse-chip:hover {
   background: var(--color-action-tint-hover);
+}
+
+/* To be created: an outline instead of the fill, with the plus in front. */
+.parse-chips .parse-chip--new {
+  border: 1.5px dashed var(--color-action-strong);
+  background: transparent;
 }
 
 .parse-chips .parse-chip:hover :deep(.parse-chip__remove) {

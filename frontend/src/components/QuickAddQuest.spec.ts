@@ -1,12 +1,13 @@
 import { TODO_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getCategories } from "../api/categories.api";
+import { createCategory, getCategories } from "../api/categories.api";
 import { createTodo, reorderDay } from "../api/day-planner.api";
 import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import { forgetQuestParseContext } from "../composables/useQuestParseContext";
 import { hierarchyTodo } from "../test/hierarchy";
 import { MicStub, dictate } from "../test/mic-stub";
+import { colorOfName } from "../utils/category-mark";
 import AppIcon from "./AppIcon.vue";
 import QuickAddQuest from "./QuickAddQuest.vue";
 
@@ -14,7 +15,10 @@ vi.mock("../api/day-planner.api", () => ({
   createTodo: vi.fn(),
   reorderDay: vi.fn(),
 }));
-vi.mock("../api/categories.api", () => ({ getCategories: vi.fn() }));
+vi.mock("../api/categories.api", () => ({
+  getCategories: vi.fn(),
+  createCategory: vi.fn(),
+}));
 vi.mock("../api/todo-hierarchy.api", () => ({ getTodoHierarchy: vi.fn() }));
 
 enableAutoUnmount(afterEach);
@@ -466,8 +470,11 @@ describe("QuickAddQuest", () => {
 
     it("names only open campaigns, never a done one or a loose quest", async () => {
       const wrapper = mountAt();
+      // The done "Umzug" is no match: the name is offered as a new one.
       await typeIn(wrapper, "Kisten Kampagne Umzug");
-      expect(wrapper.findAll(".parse-chip")).toHaveLength(0);
+      expect(chipNames(wrapper)).toEqual([
+        "Neue Kampagne: Umzug, wird beim Anlegen erstellt, entfernen",
+      ]);
       await typeIn(wrapper, "Belege für Steuer");
       expect(wrapper.findAll(".parse-chip")).toHaveLength(0);
     });
@@ -505,6 +512,215 @@ describe("QuickAddQuest", () => {
         expect.objectContaining({ title: "Kapitel Kampagne Buch schreiben" }),
       );
       expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    });
+
+    describe("a name that matches none", () => {
+      const campaignRow = (
+        id: number,
+        title: string,
+        categoryId: number | null,
+      ) => ({
+        ...created,
+        id,
+        title,
+        scheduledDate: null,
+        color: colorOfName(title),
+        categoryId,
+      });
+      const firstCall = (fn: (...args: never[]) => unknown) =>
+        vi.mocked(fn).mock.invocationCallOrder[0]!;
+
+      it("offers a new category as a chip apart from a match and creates it first", async () => {
+        vi.mocked(createCategory).mockResolvedValue({ id: 12, name: "Haushalt" });
+        const changed = vi.fn();
+        window.addEventListener("timer-data-changed", changed);
+        const wrapper = mountAt();
+        await typeIn(wrapper, "Wäsche waschen Kategorie Haushalt morgen");
+        expect(chipNames(wrapper)).toEqual([
+          "Neue Kategorie: Haushalt, wird beim Anlegen erstellt, entfernen",
+          "Tag: morgen, entfernen",
+        ]);
+        const chip = wrapper.get('[data-kind="category"]');
+        expect(chip.text()).toBe("Neue Kategorie: Haushalt");
+        expect(chip.attributes("data-new")).toBe("");
+        expect(chip.classes()).toContain("parse-chip--new");
+        // A plus instead of the mark: never colour alone.
+        expect(chip.findComponent(AppIcon).props("name")).toBe("plus");
+        expect(chip.find(".parse-chip__mark").exists()).toBe(false);
+
+        await wrapper.get("form").trigger("submit");
+        await flushPromises();
+        expect(createCategory).toHaveBeenCalledWith("Haushalt");
+        expect(createTodo).toHaveBeenCalledTimes(1);
+        expect(createTodo).toHaveBeenCalledWith({
+          title: "Wäsche waschen",
+          scheduledDate: "2026-11-25",
+          timeOfDay: null,
+          plannedDurationMinutes: null,
+          categoryId: 12,
+        });
+        expect(firstCall(createCategory)).toBeLessThan(firstCall(createTodo));
+        expect(changed).toHaveBeenCalled();
+        window.removeEventListener("timer-data-changed", changed);
+        expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      });
+
+      it("creates a new campaign as Gehört zu does, then the quest below it, both with the category named", async () => {
+        vi.mocked(createTodo).mockResolvedValueOnce(
+          campaignRow(50, "Neue Wohnung", 10),
+        );
+        const wrapper = mountAt();
+        await typeIn(
+          wrapper,
+          "Kisten packen Kampagne neue Wohnung Kategorie Sport",
+        );
+        expect(chipNames(wrapper)).toEqual([
+          "Neue Kampagne: Neue Wohnung, wird beim Anlegen erstellt, entfernen",
+          "Kategorie: Sport, entfernen",
+        ]);
+        await wrapper.get("form").trigger("submit");
+        await flushPromises();
+        expect(createTodo).toHaveBeenNthCalledWith(1, {
+          title: "Neue Wohnung",
+          scheduledDate: null,
+          timeOfDay: null,
+          plannedDurationMinutes: null,
+          color: colorOfName("Neue Wohnung"),
+          categoryId: 10,
+        });
+        expect(createTodo).toHaveBeenNthCalledWith(2, {
+          title: "Kisten packen",
+          scheduledDate: "2026-11-24",
+          timeOfDay: null,
+          plannedDurationMinutes: null,
+          parentId: 50,
+          categoryId: 10,
+        });
+        expect(createCategory).not.toHaveBeenCalled();
+      });
+
+      it("gives a new campaign without a category none, and its quest neither", async () => {
+        vi.mocked(createTodo).mockResolvedValueOnce(
+          campaignRow(50, "Umzug", null),
+        );
+        const wrapper = mountAt();
+        await typeIn(wrapper, "Kisten Kampagne Umzug");
+        await wrapper.get("form").trigger("submit");
+        await flushPromises();
+        expect(createTodo).toHaveBeenNthCalledWith(1, {
+          title: "Umzug",
+          scheduledDate: null,
+          timeOfDay: null,
+          plannedDurationMinutes: null,
+          color: colorOfName("Umzug"),
+        });
+        expect(createTodo).toHaveBeenNthCalledWith(2, {
+          title: "Kisten",
+          scheduledDate: "2026-11-24",
+          timeOfDay: null,
+          plannedDurationMinutes: null,
+          parentId: 50,
+        });
+      });
+
+      it("creates a new category before a new campaign, which takes it", async () => {
+        vi.mocked(createCategory).mockResolvedValue({ id: 12, name: "Haushalt" });
+        vi.mocked(createTodo).mockResolvedValueOnce(
+          campaignRow(50, "Umzug", 12),
+        );
+        const wrapper = mountAt();
+        await typeIn(wrapper, "Kisten Kampagne Umzug Kategorie Haushalt");
+        await wrapper.get("form").trigger("submit");
+        await flushPromises();
+        expect(createTodo).toHaveBeenNthCalledWith(
+          1,
+          expect.objectContaining({ title: "Umzug", categoryId: 12 }),
+        );
+        expect(createTodo).toHaveBeenNthCalledWith(
+          2,
+          expect.objectContaining({
+            title: "Kisten",
+            parentId: 50,
+            categoryId: 12,
+          }),
+        );
+        expect(firstCall(createCategory)).toBeLessThan(firstCall(createTodo));
+      });
+
+      it("creates no quest when the category fails, and keeps the text", async () => {
+        vi.mocked(createCategory).mockRejectedValue(
+          new Error("Diese Kategorie gibt es bereits."),
+        );
+        const wrapper = mountAt();
+        await typeIn(wrapper, "Wäsche Kategorie Haushalt");
+        await wrapper.get("form").trigger("submit");
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toBe(
+          "Die Kategorie „Haushalt“ konnte nicht angelegt werden, die Quest ist nicht erstellt. Diese Kategorie gibt es bereits.",
+        );
+        expect(createTodo).not.toHaveBeenCalled();
+        expect(
+          wrapper.get<HTMLInputElement>('input[name="quickTitle"]').element
+            .value,
+        ).toBe("Wäsche Kategorie Haushalt");
+        expect(wrapper.emitted("created")).toBeUndefined();
+      });
+
+      it("knows a category created before a failed campaign and never creates it twice", async () => {
+        vi.mocked(createCategory).mockResolvedValue({ id: 12, name: "Haushalt" });
+        vi.mocked(createTodo).mockRejectedValueOnce(new Error("Offline"));
+        const wrapper = mountAt();
+        await typeIn(wrapper, "Kisten Kampagne Umzug Kategorie Haushalt");
+        await wrapper.get("form").trigger("submit");
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toBe(
+          "Die Kampagne „Umzug“ konnte nicht angelegt werden, die Quest ist nicht erstellt. Offline",
+        );
+        expect(createTodo).toHaveBeenCalledTimes(1);
+        // The category exists now: the same text names it.
+        expect(chipNames(wrapper)).toEqual([
+          "Neue Kampagne: Umzug, wird beim Anlegen erstellt, entfernen",
+          "Kategorie: Haushalt, entfernen",
+        ]);
+
+        vi.mocked(createTodo).mockResolvedValueOnce(
+          campaignRow(50, "Umzug", 12),
+        );
+        await wrapper.get("form").trigger("submit");
+        await flushPromises();
+        expect(createCategory).toHaveBeenCalledTimes(1);
+        expect(createTodo).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            title: "Kisten",
+            parentId: 50,
+            categoryId: 12,
+          }),
+        );
+      });
+
+      it("leaves a discarded new name in the title and creates nothing", async () => {
+        const wrapper = mountAt();
+        await typeIn(wrapper, "Wäsche Kategorie Haushalt");
+        await wrapper
+          .get(
+            '[aria-label="Neue Kategorie: Haushalt, wird beim Anlegen erstellt, entfernen"]',
+          )
+          .trigger("click");
+        expect(wrapper.findAll(".parse-chip")).toHaveLength(0);
+        await wrapper.get("form").trigger("submit");
+        await flushPromises();
+        expect(createCategory).not.toHaveBeenCalled();
+        expect(createTodo).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Wäsche Kategorie Haushalt" }),
+        );
+      });
+
+      it("offers nothing new while the lists are unknown", async () => {
+        vi.mocked(getCategories).mockRejectedValue(new Error("Offline"));
+        const wrapper = mountAt();
+        await typeIn(wrapper, "Wäsche Kategorie Haushalt");
+        expect(wrapper.findAll(".parse-chip")).toHaveLength(0);
+      });
     });
   });
 });

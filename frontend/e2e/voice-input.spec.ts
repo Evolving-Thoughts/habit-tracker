@@ -139,6 +139,44 @@ test("quick add in Heute: a dictated campaign and category put the quest below t
     );
 });
 
+test("quick add in Heute: a dictated category that does not exist yet is created with the quest", async ({
+  page,
+  request,
+}) => {
+  await hear(page, "Wäsche waschen Kategorie Haushalt morgen");
+  const tomorrow = daysAfter(await today(request), 1);
+  await page.goto("/");
+  const row = quickAdd(page);
+  await row.getByRole("button", { name: "Quest diktieren" }).click();
+  await expect(
+    row.getByRole("button", {
+      name: "Neue Kategorie: Haushalt, wird beim Anlegen erstellt, entfernen",
+    }),
+  ).toHaveText("Neue Kategorie: Haushalt");
+
+  await row.locator('input[name="quickTitle"]').press("Enter");
+  let categoryId: number | undefined;
+  await expect
+    .poll(async () => {
+      const categories = (await (
+        await request.get(`${API_URL}/categories`)
+      ).json()) as { id: number; name: string }[];
+      categoryId = categories.find((entry) => entry.name === "Haushalt")?.id;
+      return categoryId;
+    })
+    .toBeDefined();
+  await expect
+    .poll(async () => quests(request))
+    .toContainEqual(
+      expect.objectContaining({
+        title: "Wäsche waschen",
+        scheduledDate: tomorrow,
+        parentId: null,
+        categoryId,
+      }),
+    );
+});
+
 test("a long press on Plus opens Neue Quest with the title being dictated", async ({
   page,
   request,

@@ -1,4 +1,5 @@
 import type { HierarchyTodo, TodoProgress } from "../types/todo-hierarchy";
+import type { TodoResponse } from "../types/todo";
 
 /*
  * Progress is the server's (`todo-hierarchy.ts` in the backend): the quests
@@ -96,4 +97,20 @@ export function isCampaign(
       todo.icon !== null ||
       todo.weeklyTargetMinutes !== null)
   );
+}
+
+/** A just-created quest as a row of the tree, until the next load. */
+export function asHierarchyTodo(todo: TodoResponse): HierarchyTodo {
+  return {
+    ...todo,
+    progress: {
+      mode: "count",
+      completed: 0,
+      total: 0,
+      percentage: 0,
+      knownDurationMinutes: 0,
+      todoCount: 0,
+      doneCount: 0,
+    },
+  };
 }
