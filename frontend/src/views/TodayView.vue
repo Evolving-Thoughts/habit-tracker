@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onDeactivated, ref } from "vue";
 import { getToday, reorderDay } from "../api/day-planner.api";
+import { whileActive } from "../composables/useActive";
 import { useListFocus } from "../composables/useListFocus";
 import { useSortable } from "../composables/useSortable";
 import { useLoader } from "../composables/useLoader";
@@ -70,6 +71,15 @@ import {
   rowMenu as cardMenu,
   type MenuEntry,
 } from "../utils/row-actions";
+
+/*
+ * Heute stays alive while another view is shown (`<KeepAlive>` in App.vue,
+ * matched by this name), so coming back from the Fokus-Modus or a tab is
+ * instant: the cards, the pane and the scroll place are still there. It
+ * loads again quietly when shown (`useLoader`); its clock, keys and
+ * listeners rest meanwhile (`whileActive`). See docs/day-order.md › Frontend.
+ */
+defineOptions({ name: "TodayView" });
 
 type EditingTarget = {
   kind: "todo" | "habit";
@@ -269,8 +279,10 @@ const ticks = useTicks(writes.write, {
 });
 const { undo, undoLast, flushUndo } = ticks;
 /* Closing or reloading the page sends a held delete on its way. */
-onMounted(() => window.addEventListener("pagehide", flushUndo));
-onBeforeUnmount(() => window.removeEventListener("pagehide", flushUndo));
+whileActive(
+  () => window.addEventListener("pagehide", flushUndo),
+  () => window.removeEventListener("pagehide", flushUndo),
+);
 const { hiddenLogs, removeLog, restoreLog } = useLogRemoval(
   ticks.offerUndo,
   writes.write,
@@ -658,6 +670,23 @@ const focusTimer = computed(() => {
     focus.type === "todo" ? "todo" : "occurrence",
     focus.type === "todo" ? focus.todoId : focus.occurrenceId,
   );
+});
+
+/*
+ * Leaving for another view ends what belongs to this one, as unmounting
+ * did: an open dialog closes (its scroll lock with it), the campaign
+ * question says no, a held undo goes through and old notices go.
+ */
+onDeactivated(() => {
+  closeEditing();
+  closeMoving();
+  closeMenuDialog();
+  postponeOpen.value = false;
+  creationOpen.value = false;
+  creationMessage.value = null;
+  orderMessage.value = "";
+  ticks.answerCampaign(false);
+  flushUndo();
 });
 
 useShortcutHandlers(

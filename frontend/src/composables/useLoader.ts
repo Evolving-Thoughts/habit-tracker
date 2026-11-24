@@ -7,12 +7,15 @@ import {
   type WatchSource,
 } from "vue";
 import { onDataChanged } from "./data-sync";
+import { onShownAgain } from "./useActive";
 
 /**
  * Loads view data with the rules every view needs: only the latest request
  * may write its result, a background refresh keeps the page visible, and
  * the view refreshes after data changes elsewhere unless it is busy. A newer
- * request or leaving the view aborts the running one.
+ * request or leaving the view aborts the running one. A kept-alive view
+ * (Heute) refreshes quietly each time it is shown again, since it heard
+ * nothing while hidden.
  */
 export function useLoader<T>(
   load: (signal: AbortSignal) => Promise<T>,
@@ -68,6 +71,9 @@ export function useLoader<T>(
     onDataChanged(() => {
       if (refreshOnChange()) void reload(false);
     });
+  onShownAgain(() => {
+    if (!refreshOnChange || refreshOnChange()) void reload(false);
+  });
 
   return { data, isLoading, hasLoaded, errorMessage, reload };
 }

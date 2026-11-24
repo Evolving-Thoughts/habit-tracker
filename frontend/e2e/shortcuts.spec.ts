@@ -82,6 +82,15 @@ test("Tastenkürzel: N writes a new quest into the quick add, also from a view w
   await page.keyboard.press("n");
   await expect(page).toHaveURL(/#\/heute$/);
   await expect(field).toBeFocused();
+
+  // Heute stays alive behind the Kalender, but its keys rest there: N is
+  // the app's again and takes the way to Heute.
+  await openView(page, "Kalender");
+  await expect(page).toHaveURL(/#\/kalender/);
+  await page.locator("main").focus();
+  await page.keyboard.press("n");
+  await expect(page).toHaveURL(/#\/heute$/);
+  await expect(field).toBeFocused();
 });
 
 test("Tastenkürzel: X ticks the hovered quest with undo, D moves it to tomorrow, Space starts its stopwatch", async ({

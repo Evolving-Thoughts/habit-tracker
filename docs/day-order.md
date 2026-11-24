@@ -183,6 +183,23 @@ export only, as Logbuch events (see `logbook.md`).
   Plan puts one on top of every day.
 - "Auf morgen" moves everything open that only has its day to tomorrow, after
   asking. Appointments and dailies that cannot move stay.
+- Heute stays alive while another view is shown: `App.vue` wraps the
+  `RouterView` in `<KeepAlive include="TodayView">` (only Heute; the
+  Fokus-Modus must unmount, its sound stops by design). Coming back from the
+  Fokus-Modus or a tab puts the built page back instead of building it
+  again, so the cards are there at once, with the pane (Liste · Logbuch),
+  open "Nachholen", text in the quick add and the scroll place the router
+  keeps. While hidden, Heute rests: `composables/useActive.ts`
+  (`whileActive`) stops its data-change listener, day clocks (Heute, Das
+  Beste, the day calendar's now line), keys (`useShortcutHandlers`), the
+  plus button's scroll listener and the quick add's share of
+  `useInsertPlace`; each starts again when Heute is shown. `useLoader`
+  then loads quietly once (`onShownAgain`, no skeleton), Heute's data and
+  the day calendar's, so a quest completed elsewhere is there after the
+  reload. Leaving ends what belongs to the view, as unmounting did: open
+  dialogs close (their scroll lock with them), an open "…" menu and a
+  Logbuch drag end, dictation in the quick add stops, the campaign
+  question says no, a held undo goes through and old notices go.
 
 ## Migration
 

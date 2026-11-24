@@ -46,7 +46,9 @@ comma, the usual key for settings.
 
 `frontend/src/composables/useShortcuts.ts` keeps one `keydown` listener on
 the window while any handler is mounted. Components register handlers with
-`useShortcutHandlers({ id: handler })` for their lifetime:
+`useShortcutHandlers({ id: handler })` while they are in the page (Heute,
+kept alive behind other views, steps out while hidden and comes back on
+top, so its keys never act on a page no one sees):
 
 - `AppShortcuts.vue` (inside the signed-in shell only, so nothing fires on
   the sign-in page) registers the app-wide defaults as a `fallback` layer:

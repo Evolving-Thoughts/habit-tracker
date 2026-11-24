@@ -74,6 +74,14 @@ function readCalendarReturn(): void {
 }
 readCalendarReturn();
 
+/*
+ * Heute stays alive while another view is shown, so coming back (from the
+ * Fokus-Modus, or a tab) puts it back at once instead of building it again.
+ * Only Heute: every other view, the Fokus-Modus above all (its sound stops
+ * on leaving), unmounts as before. See docs/day-order.md › Frontend.
+ */
+const KEPT_ALIVE = ["TodayView"];
+
 // A new view starts at its top, with the keyboard and screen reader in it.
 // (A section asked for by address takes the focus right after; see
 // SettingsView.)
@@ -128,14 +136,16 @@ onUnmounted(() => {
     <AppShortcuts />
 
     <RouterView v-slot="{ Component }">
-      <component
-        :is="Component"
-        v-bind="
-          route.name === 'settings'
-            ? { email: user.email, onSignOut: signOut }
-            : {}
-        "
-      />
+      <KeepAlive :include="KEPT_ALIVE">
+        <component
+          :is="Component"
+          v-bind="
+            route.name === 'settings'
+              ? { email: user.email, onSignOut: signOut }
+              : {}
+          "
+        />
+      </KeepAlive>
     </RouterView>
   </TimerProvider>
 </template>

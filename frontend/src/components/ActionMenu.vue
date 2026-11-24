@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  useId,
+  watch,
+} from "vue";
 import AppIcon from "./AppIcon.vue";
 import KeyCombo from "./KeyCombo.vue";
 import {
@@ -168,6 +176,9 @@ watch(
     if (disabled) close({ restoreFocus: false });
   },
 );
+
+// Heute hidden behind another view (KeepAlive) takes its open menu along.
+onDeactivated(() => close({ restoreFocus: false }));
 
 onBeforeUnmount(() => {
   open.value = false;

@@ -7,6 +7,8 @@ import {
 } from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defineComponent, h, KeepAlive } from "vue";
+import { notifyDataChanged } from "../composables/data-sync";
 import {
   getToday,
   reorderDay,
@@ -1955,5 +1957,162 @@ describe("TodayView's Liste · Logbuch below the split", () => {
     expect(listShown(wrapper)).toBe(true);
     const calendar = wrapper.get(".today-view__calendar .day-calendar");
     expect(calendar.classes()).not.toContain("day-calendar--flow");
+  });
+});
+
+describe("TodayView kept alive behind other views", () => {
+  /*
+   * App.vue keeps Heute alive (`<KeepAlive include="TodayView">`); here a
+   * host does the same with another view that has a row of its own.
+   */
+  const Other = defineComponent({
+    name: "OtherView",
+    render: () =>
+      h("main", { class: "other-view" }, [
+        h("article", { "data-focus-key": "todo-2" }, "Zeile anderswo"),
+      ]),
+  });
+  const Host = defineComponent({
+    props: { shown: { type: Boolean, default: true } },
+    setup(props) {
+      return () =>
+        h(KeepAlive, { include: ["TodayView"] }, [
+          props.shown ? h(TodayView) : h(Other),
+        ]);
+    },
+  });
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
+    localStorage.clear();
+    reloadShortcutSettings();
+    getTodayMock.mockResolvedValue(
+      makePlanner([
+        makeTodo({ todoId: 1, title: "Erstens" }),
+        makeTodo({ todoId: 2, title: "Zweitens" }),
+      ]),
+    );
+    updateTodoMock.mockResolvedValue(undefined);
+    vi.mocked(rescheduleTodo).mockResolvedValue(undefined as never);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = "";
+  });
+
+  async function mountHost() {
+    const wrapper = mount(Host, { attachTo: document.body });
+    await flushPromises();
+    return wrapper;
+  }
+  async function show(
+    wrapper: Awaited<ReturnType<typeof mountHost>>,
+    shown: boolean,
+  ) {
+    await wrapper.setProps({ shown });
+    await flushPromises();
+  }
+  function press(key: string) {
+    const event = new KeyboardEvent("keydown", {
+      key,
+      bubbles: true,
+      cancelable: true,
+    });
+    document.body.dispatchEvent(event);
+    return event;
+  }
+  function hover(key: string) {
+    document
+      .querySelector(`[data-focus-key="${key}"]`)!
+      .dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+  }
+
+  it("comes back as it was and loads quietly, without the skeleton", async () => {
+    const wrapper = await mountHost();
+    const card = wrapper.get("#focus-title").element;
+    expect(getTodayMock).toHaveBeenCalledTimes(1);
+
+    await show(wrapper, false);
+    expect(wrapper.find(".today-view").exists()).toBe(false);
+    // Completed elsewhere meanwhile.
+    let answer!: (planner: DayPlannerResponse) => void;
+    getTodayMock.mockReturnValueOnce(
+      new Promise<DayPlannerResponse>((resolve) => (answer = resolve)),
+    );
+
+    await show(wrapper, true);
+    expect(getTodayMock).toHaveBeenCalledTimes(2);
+    // The same card, not a new one, and no skeleton while it loads.
+    expect(wrapper.get("#focus-title").element).toBe(card);
+    expect(
+      wrapper.find('[aria-label="Tagesplan wird geladen"]').exists(),
+    ).toBe(false);
+
+    answer(
+      makePlanner([
+        makeTodo({ todoId: 1, title: "Erstens", status: "completed" }),
+        makeTodo({ todoId: 2, title: "Zweitens" }),
+      ]),
+    );
+    await flushPromises();
+    expect(wrapper.get("#focus-title").text()).toBe("Zweitens");
+  });
+
+  it("hears no data changes while hidden", async () => {
+    const wrapper = await mountHost();
+    await show(wrapper, false);
+    notifyDataChanged();
+    await flushPromises();
+    expect(getTodayMock).toHaveBeenCalledTimes(1);
+    await show(wrapper, true);
+    expect(getTodayMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("handles no keys while another view is shown, and again once back", async () => {
+    const wrapper = await mountHost();
+    await show(wrapper, false);
+    hover("todo-2");
+    expect(press("x").defaultPrevented).toBe(false);
+    expect(press("d").defaultPrevented).toBe(false);
+    await flushPromises();
+    expect(updateTodoMock).not.toHaveBeenCalled();
+    expect(rescheduleTodo).not.toHaveBeenCalled();
+
+    await show(wrapper, true);
+    hover("todo-2");
+    expect(press("x").defaultPrevented).toBe(true);
+    await flushPromises();
+    expect(updateTodoMock).toHaveBeenCalledWith(2, true);
+  });
+
+  it("closes an open dialog and releases the page's scroll lock when left", async () => {
+    const wrapper = await mountHost();
+    await wrapper.get(".today-view__postpone").trigger("click");
+    await flushPromises();
+    expect(document.querySelector("dialog[open]")).not.toBeNull();
+    expect(document.body.style.position).toBe("fixed");
+
+    await show(wrapper, false);
+    expect(document.querySelector("dialog")).toBeNull();
+    expect(document.body.style.position).toBe("");
+
+    await show(wrapper, true);
+    expect(document.querySelector("dialog")).toBeNull();
+  });
+
+  it("ends the undo offer when left, as leaving always did", async () => {
+    const wrapper = await mountHost();
+    await wrapper.get('[aria-label="Erstens erledigen"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get(".today-view__toast").text()).toContain(
+      "„Erstens“ erledigt",
+    );
+    await show(wrapper, false);
+    await show(wrapper, true);
+    expect(wrapper.get(".today-view__toast").text()).not.toContain(
+      "„Erstens“ erledigt",
+    );
   });
 });

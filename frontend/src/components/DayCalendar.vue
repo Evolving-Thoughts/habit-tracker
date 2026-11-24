@@ -3,6 +3,7 @@ import {
   computed,
   nextTick,
   onBeforeUnmount,
+  onDeactivated,
   onMounted,
   ref,
   useId,
@@ -293,6 +294,11 @@ function onDragKey(event: KeyboardEvent): void {
   stopDrag();
 }
 onBeforeUnmount(stopDrag);
+// Heute hidden behind another view (KeepAlive): a drag ends, a dialog closes.
+onDeactivated(() => {
+  stopDrag();
+  dialog.value = null;
+});
 
 async function saveResize(done: Drag): Promise<void> {
   const { log } = done;

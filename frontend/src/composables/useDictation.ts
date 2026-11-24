@@ -1,6 +1,8 @@
 import {
   computed,
+  getCurrentInstance,
   getCurrentScope,
+  onDeactivated,
   onScopeDispose,
   readonly,
   ref,
@@ -366,6 +368,8 @@ export function useDictation(options: UseDictationOptions = {}) {
   }
 
   if (getCurrentScope()) onScopeDispose(cancel);
+  // Heute's quick add hidden behind another view (KeepAlive) stops listening.
+  if (getCurrentInstance()) onDeactivated(cancel);
 
   return {
     state: readonly(state),

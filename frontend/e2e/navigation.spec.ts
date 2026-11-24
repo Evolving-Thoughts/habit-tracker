@@ -1,5 +1,6 @@
-import { openView } from "./helpers";
+import { openView, today } from "./helpers";
 import { test, expect } from "./fixtures";
+import { API_URL } from "./environment";
 
 test("views have their own address: Back returns and a reload stays", async ({
   page,
@@ -22,6 +23,47 @@ test("views have their own address: Back returns and a reload stays", async ({
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Questlog");
   await page.goBack();
   await expect(page).toHaveURL(/#\/heute$/);
+});
+
+test("Heute stays alive: back from the Fokus-Modus it is there at once, with what changed meanwhile", async ({
+  page,
+  request,
+}) => {
+  const date = await today(request);
+  const ids: number[] = [];
+  for (const title of ["Erste Quest", "Zweite Quest"]) {
+    const response = await request.post(`${API_URL}/todos`, {
+      data: { title, scheduledDate: date },
+    });
+    expect(response.status()).toBe(201);
+    ids.push(((await response.json()) as { id: number }).id);
+  }
+  await page.goto("/");
+  await expect(page.locator("#focus-title")).toHaveText("Erste Quest");
+  // Half typed: only a view that was kept, not built again, still has it.
+  const quickAdd = page.locator('.today-view input[name="quickTitle"]');
+  await quickAdd.fill("Halb getippt");
+
+  await page
+    .locator(".focus")
+    .getByRole("link", { name: "Fokus-Modus", exact: true })
+    .click();
+  await expect(page).toHaveURL(/#\/fokus$/);
+  await expect(page.locator(".today-view")).toHaveCount(0);
+  // Done elsewhere (another device) while the Fokus-Modus is open.
+  const done = await request.patch(`${API_URL}/todos/${ids[0]}`, {
+    data: { completed: true },
+  });
+  expect(done.ok()).toBeTruthy();
+
+  await page.locator(".focus-view__back").click();
+  await expect(page).toHaveURL(/#\/heute$/);
+  await expect(quickAdd).toHaveValue("Halb getippt");
+  // It loaded again quietly on its return: the next quest is up.
+  await expect(page.locator("#focus-title")).toHaveText("Zweite Quest");
+  await expect(
+    page.getByRole("status", { name: "Tagesplan wird geladen" }),
+  ).toHaveCount(0);
 });
 
 test("an unknown address opens Heute", async ({ page }) => {

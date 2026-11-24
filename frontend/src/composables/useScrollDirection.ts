@@ -1,4 +1,5 @@
-import { onBeforeUnmount, onMounted, readonly, ref, type Ref } from "vue";
+import { readonly, ref, type Ref } from "vue";
+import { whileActive } from "./useActive";
 
 export type ScrollDirection = "up" | "down";
 
@@ -14,7 +15,8 @@ export const SCROLL_DIRECTION_TOP_PX = 48;
  * Small jitters do not count, the top of the page always reads as "up", and
  * the jumps of a dialog's scroll lock (the body pinned in place, then the
  * old offset restored) are ignored, so closing a dialog never hides the
- * button its focus returns to.
+ * button its focus returns to. In a kept-alive view (Heute) it rests while
+ * the view is hidden and starts afresh when it is shown again.
  */
 export function useScrollDirection(): Readonly<Ref<ScrollDirection>> {
   const direction = ref<ScrollDirection>("up");
@@ -46,11 +48,14 @@ export function useScrollDirection(): Readonly<Ref<ScrollDirection>> {
     anchor = y;
   }
 
-  onMounted(() => {
-    anchor = window.scrollY;
-    window.addEventListener("scroll", onScroll, { passive: true });
-  });
-  onBeforeUnmount(() => window.removeEventListener("scroll", onScroll));
+  whileActive(
+    () => {
+      direction.value = "up";
+      anchor = window.scrollY;
+      window.addEventListener("scroll", onScroll, { passive: true });
+    },
+    () => window.removeEventListener("scroll", onScroll),
+  );
 
   return readonly(direction);
 }

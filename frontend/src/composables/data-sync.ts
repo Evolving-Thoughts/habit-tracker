@@ -1,4 +1,4 @@
-import { onMounted, onUnmounted } from "vue";
+import { whileActive } from "./useActive";
 
 /**
  * The one channel that tells open views "server data changed". Writers call
@@ -20,10 +20,17 @@ export function notifyViewsChanged(): void {
   window.dispatchEvent(new Event(DATA_CHANGED));
 }
 
-/** Subscribes for the component's lifetime: views get every data change. */
+/**
+ * Subscribes while the component is in the page: views get every data
+ * change. A kept-alive view (Heute) stops listening while it is hidden and
+ * loads again when it comes back (`useLoader`), instead of fetching in the
+ * background for every write elsewhere.
+ */
 export function onDataChanged(handler: () => void): void {
-  onMounted(() => window.addEventListener(DATA_CHANGED, handler));
-  onUnmounted(() => window.removeEventListener(DATA_CHANGED, handler));
+  whileActive(
+    () => window.addEventListener(DATA_CHANGED, handler),
+    () => window.removeEventListener(DATA_CHANGED, handler),
+  );
 }
 
 /** Subscribes outside a component (a shared cache); returns the unsubscribe. */
@@ -34,6 +41,8 @@ export function listenDataChanged(handler: () => void): () => void {
 
 /** Subscribes for the component's lifetime: only target changes (timer provider). */
 export function onTargetsChanged(handler: () => void): void {
-  onMounted(() => window.addEventListener(TARGETS_CHANGED, handler));
-  onUnmounted(() => window.removeEventListener(TARGETS_CHANGED, handler));
+  whileActive(
+    () => window.addEventListener(TARGETS_CHANGED, handler),
+    () => window.removeEventListener(TARGETS_CHANGED, handler),
+  );
 }

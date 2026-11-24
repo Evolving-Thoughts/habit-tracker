@@ -8,6 +8,7 @@ vi.mock("./api/auth.api", () => ({
 }));
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defineComponent, h } from "vue";
 import { createMemoryHistory } from "vue-router";
 import App from "./App.vue";
 import { createAppRouter } from "./router";
@@ -165,6 +166,40 @@ it("opens the task hierarchy", async () => {
   await flushPromises();
   expect(wrapper.find('[data-view="hierarchy"]').exists()).toBe(true);
   expect(button.attributes("aria-current")).toBe("page");
+});
+
+describe("App keeps Heute alive", () => {
+  it("puts Heute back instead of building it again; the Fokus-Modus and the rest unmount", async () => {
+    const built = { today: 0, focus: 0, calendar: 0 };
+    const counted = (name: string, key: keyof typeof built) =>
+      defineComponent({
+        name,
+        setup() {
+          built[key] += 1;
+          return () => h("main", { "data-view": key });
+        },
+      });
+    const router = createAppRouter(createMemoryHistory());
+    const wrapper = mount(App, {
+      global: {
+        plugins: [router],
+        stubs: {
+          TodayView: counted("TodayView", "today"),
+          FocusView: counted("FocusView", "focus"),
+          CalendarView: counted("CalendarView", "calendar"),
+        },
+      },
+    });
+    await flushPromises();
+    const visits = ["focus", "today", "calendar", "today", "focus", "today"];
+    for (const name of visits) {
+      await router.push({ name });
+      await flushPromises();
+    }
+    expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
+    expect(wrapper.find('[data-view="focus"]').exists()).toBe(false);
+    expect(built).toEqual({ today: 1, focus: 2, calendar: 1 });
+  });
 });
 
 describe("Calendar navigation", () => {

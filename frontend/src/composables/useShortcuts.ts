@@ -1,11 +1,4 @@
-import {
-  computed,
-  onMounted,
-  onUnmounted,
-  ref,
-  shallowReactive,
-  type Ref,
-} from "vue";
+import { computed, ref, shallowReactive, type Ref } from "vue";
 import type { Command } from "../utils/command-filter";
 import {
   isInteractiveTarget,
@@ -13,6 +6,7 @@ import {
   matchShortcuts,
   type ShortcutId,
 } from "../utils/shortcuts";
+import { whileActive } from "./useActive";
 
 /**
  * Keyboard shortcuts at run time: one listener on the window that matches a
@@ -211,8 +205,10 @@ function listen(on: boolean): void {
 }
 
 /**
- * Handles shortcuts while the component is mounted. A view passes what it
- * can do; `fallback` marks the app-wide defaults below every view.
+ * Handles shortcuts while the component is in the page. A view passes what
+ * it can do; `fallback` marks the app-wide defaults below every view. A
+ * kept-alive view (Heute) steps out while another view is shown, so its
+ * keys never act on a page no one sees, and comes back on top.
  */
 export function useShortcutHandlers(
   handlers: Layer["handlers"],
@@ -223,15 +219,17 @@ export function useShortcutHandlers(
     commands: options.commands,
     fallback: options.fallback ?? false,
   };
-  onMounted(() => {
-    if (!layers.length) listen(true);
-    layers.push(layer);
-  });
-  onUnmounted(() => {
-    const index = layers.indexOf(layer);
-    if (index !== -1) layers.splice(index, 1);
-    if (!layers.length) listen(false);
-  });
+  whileActive(
+    () => {
+      if (!layers.length) listen(true);
+      layers.push(layer);
+    },
+    () => {
+      const index = layers.indexOf(layer);
+      if (index !== -1) layers.splice(index, 1);
+      if (!layers.length) listen(false);
+    },
+  );
 }
 
 /** What the present views add to the command menu, top layer first. */
