@@ -73,12 +73,19 @@ test("Logbuch: time added by hand shows in the day, the week and the month; a st
   // Drawn one line high, so its name reads; its gauge keeps the minute's
   // actual share of the 64 px hour.
   expect((await stretch.boundingBox())!.height).toBeLessThanOrEqual(24);
+  // The gauge is its minutes times the axis scale (the browser keeps the
+  // background-size as a formula, so read its two factors).
   expect(
-    await stretch.evaluate((block) =>
-      parseFloat(
-        getComputedStyle(block).backgroundSize.split(",")[0]!.trim().split(" ")[1]!,
-      ),
-    ),
+    await stretch.evaluate((block) => {
+      const style = getComputedStyle(block);
+      const minutes = parseFloat(style.getPropertyValue("--length"));
+      const probe = document.createElement("div");
+      probe.style.height = "var(--minute)";
+      block.append(probe);
+      const perMinute = probe.getBoundingClientRect().height;
+      probe.remove();
+      return minutes * perMinute;
+    }),
   ).toBeLessThanOrEqual(2);
   await stretch.click();
   const dialog = page.getByRole("dialog", { name: "Abschnitt korrigieren" });
@@ -120,10 +127,9 @@ test("Logbuch: time added by hand shows in the day, the week and the month; a st
   ).toBeVisible();
 
   await view.getByRole("button", { name: "Monat", exact: true }).click();
-  await expect(page.locator(`.month-day[data-date="${yesterday}"]`)).toHaveAttribute(
-    "aria-label",
-    /1 Std\. 30 Min\. im Logbuch$/,
-  );
+  await expect(
+    page.locator(`.month-day[data-date="${yesterday}"]`),
+  ).toHaveAttribute("aria-label", /1 Std\. 30 Min\. im Logbuch$/);
 });
 
 test("Logbuch: short stretches keep a readable one-line label, side by side when they follow each other", async ({
@@ -174,7 +180,9 @@ test("Logbuch: short stretches keep a readable one-line label, side by side when
 
   const measured = await blocks.evaluateAll((elements) =>
     elements.map((block) => {
-      const title = block.querySelector<HTMLElement>(".day-calendar__title-text")!;
+      const title = block.querySelector<HTMLElement>(
+        ".day-calendar__title-text",
+      )!;
       const style = getComputedStyle(title);
       const box = block.getBoundingClientRect();
       const label = title.getBoundingClientRect();
@@ -185,7 +193,12 @@ test("Logbuch: short stretches keep a readable one-line label, side by side when
         labelHeight: label.height,
         // The label lies wholly inside its block: nothing cut off above or below.
         inside: label.top >= box.top - 0.5 && label.bottom <= box.bottom + 0.5,
-        box: { top: box.top, bottom: box.bottom, left: box.left, right: box.right },
+        box: {
+          top: box.top,
+          bottom: box.bottom,
+          left: box.left,
+          right: box.right,
+        },
       };
     }),
   );
@@ -288,7 +301,10 @@ test("Logbuch: a stretch is resized by dragging its bottom edge, and Escape canc
   request,
   isMobile,
 }) => {
-  test.skip(isMobile, "The drag is a pointer gesture; the dialog covers phones.");
+  test.skip(
+    isMobile,
+    "The drag is a pointer gesture; the dialog covers phones.",
+  );
   const yesterday = daysAfter(await today(request), -1);
   const todo = (
     (await (
@@ -430,5 +446,7 @@ test("Logbuch: the axis reaches an early stretch and a completion, and time is a
       .locator(".day-calendar__hours > span:not(.day-calendar__now-time)")
       .first(),
   ).toHaveText(`${hour}:00`);
-  await expect(lane.getByRole("button", { name: /^Früh lesen, / })).toBeVisible();
+  await expect(
+    lane.getByRole("button", { name: /^Früh lesen, / }),
+  ).toBeVisible();
 });
