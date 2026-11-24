@@ -84,7 +84,9 @@ const KEPT_ALIVE = ["TodayView"];
 
 // A new view starts at its top, with the keyboard and screen reader in it.
 // (A section asked for by address takes the focus right after; see
-// SettingsView.)
+// SettingsView.) Something in the view that already has the focus keeps
+// it: N on another view puts it into Heute's quick add, and Heute, kept
+// alive, is back before this runs.
 watch(
   () => route.name,
   async () => {
@@ -92,6 +94,8 @@ watch(
     const main = document.querySelector<HTMLElement>("main");
     if (!main) return;
     main.tabIndex = -1;
+    const active = document.activeElement;
+    if (active && active !== main && main.contains(active)) return;
     main.focus({ preventScroll: true });
   },
 );
