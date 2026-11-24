@@ -8,12 +8,18 @@ describe("ReviewQuestSplit", () => {
     const wrapper = mount(ReviewQuestSplit, {
       props: { hours: questHours({ questMinutes: 270, otherMinutes: 90 }) },
     });
-    const rows = wrapper.findAll(".quest-split__legend li");
-    // "Kampagnen-Arbeit 75 %" is the key figure; the legend does not say it twice.
+    const rows = wrapper.findAll(".quest-split__labels li");
+    // "Kampagnen-Arbeit 75 %" is the key figure; the labels do not say it twice.
     expect(rows.map((row) => row.text())).toEqual([
       "Kampagnen-Arbeit4 Std. 30 Min.",
       "Sonstiges1 Std. 30 Min.",
     ]);
+    // Sonstiges is hatched in the bar and in its key, never told by colour alone.
+    expect(wrapper.get(".quest-split__part--other").classes()).toContain(
+      "series-other",
+    );
+    expect(rows[1]!.get(".quest-split__key").classes()).toContain("series-other");
+    expect(rows[1]!.classes()).toContain("quest-split__label--other");
     expect(wrapper.get('[role="img"]').attributes("aria-label")).toBe(
       "Kampagnen-Arbeit 4 Std. 30 Min., 75 %; Sonstiges 1 Std. 30 Min., 25 %",
     );

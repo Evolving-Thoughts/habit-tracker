@@ -11,7 +11,9 @@ import { ariaKeys, keyCaps, shortcutById } from "../utils/shortcuts";
  * with a mouse.
  *
  * On a phone four views are tabs and "Mehr", a disclosure (a button that
- * shows or hides a list of links, walked with Tab), holds the rest. From
+ * shows or hides a list of links, walked with Tab), holds the rest as a
+ * sheet from the bottom. Its first entry, "Suchen", opens the command menu
+ * with the field focused, the keyboard up on a touch screen too. From
  * 56rem every view is a labelled tab, in groups by intent, and the bar ends
  * on the right with the command button and Einstellungen, both as icons.
  * Below 75rem the tabs leave out their icons, so the names fit.
@@ -46,6 +48,15 @@ watch(
   () => route.name,
   () => close(),
 );
+
+/*
+ * The focus goes back to Mehr first, so it returns there when the menu
+ * closes; asking to search means typing, so the field takes the keyboard.
+ */
+function search(): void {
+  close(true);
+  overlay.value = "search";
+}
 
 /* Leaving the menu by Tab or by a click elsewhere closes it. */
 function onFocusOut(event: FocusEvent): void {
@@ -104,6 +115,15 @@ onUnmounted(() => {
           class="tab-bar__secondary"
           :data-open="open || undefined"
         >
+          <button
+            type="button"
+            class="tab-bar__tab tab-bar__search"
+            :aria-keyshortcuts="ariaKeys(menuShortcut, isMac)"
+            @click="search"
+          >
+            <AppIcon name="search" />
+            <span>Suchen</span>
+          </button>
           <RouterLink
             v-for="view in SECONDARY"
             :key="view.name"
@@ -215,21 +235,39 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+/* A sheet from the bottom, like the menu "Aktionen für …" on a phone. */
 .tab-bar__secondary {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + var(--space-2));
+  position: fixed;
+  inset: auto 0 0;
   display: none;
   flex-direction: column;
-  min-width: 14rem;
-  padding: var(--space-2);
-  border-radius: var(--radius-card);
+  gap: var(--space-1);
+  /* Never taller than the window: a long list scrolls inside itself. */
+  max-height: calc(100dvh - var(--space-6));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-3) var(--space-3)
+    calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
   background: var(--color-surface);
   box-shadow: var(--shadow-popover);
 }
 
 .tab-bar__secondary[data-open] {
   display: flex;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tab-bar__secondary[data-open] {
+    animation: more-sheet-in 240ms var(--ease-out);
+  }
+}
+
+@keyframes more-sheet-in {
+  from {
+    transform: translateY(1.5rem);
+    opacity: 0;
+  }
 }
 
 .tab-bar__secondary .tab-bar__tab {
@@ -241,6 +279,27 @@ onUnmounted(() => {
   padding: 0 var(--space-4);
   font-size: 1rem;
   letter-spacing: normal;
+}
+
+/* The open view: tinted as well as orange, never colour alone. */
+.tab-bar__secondary .tab-bar__tab[aria-current="page"] {
+  background: var(--color-action-tint);
+}
+
+/* Suchen is a step, the rest are places: a hairline sets it apart. */
+.tab-bar__search {
+  position: relative;
+  margin-bottom: var(--space-2);
+}
+
+.tab-bar__search::after {
+  position: absolute;
+  right: var(--space-2);
+  bottom: calc(-1 * var(--space-1) - 1px);
+  left: var(--space-2);
+  height: 1px;
+  background: var(--color-line);
+  content: "";
 }
 
 .tab-bar__scrim {

@@ -7,7 +7,7 @@ import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import { useTicks, type TickTarget } from "../composables/useTicks";
 import { useLogRemoval } from "../composables/useLogRemoval";
-import { useMediaQuery } from "../composables/useMediaQuery";
+import { SHEET_QUERY, useMediaQuery } from "../composables/useMediaQuery";
 import { timerStateOf, toggleTimer, useTimer } from "../composables/useTimer";
 import {
   focusWhenReady,
@@ -88,6 +88,8 @@ const campaignMoving = ref<{ todoId: number; title: string } | null>(null);
 const deleting = ref<DeleteTarget | null>(null);
 const postponeOpen = ref(false);
 const creationOpen = ref(false);
+/** Opened by a long press on Plus: the title is dictated at once. */
+const creationDictate = ref(false);
 const creationMessage = ref<string | null>(null);
 const catchUpOpen = ref(false);
 const resolvedOpen = ref(false);
@@ -164,6 +166,17 @@ const weekGoal = computed(() => {
 });
 /* Wide screens: the day calendar stands beside the list. */
 const wide = useMediaQuery("(min-width: 64rem)");
+/** On a phone "Auf morgen" waits in the header's "…"; the title keeps the line. */
+const phone = useMediaQuery(SHEET_QUERY);
+const headerMenu = computed<MenuEntry[]>(() => [
+  {
+    id: "postpone",
+    label: "Auf morgen",
+    ariaLabel: "Offenes auf morgen verschieben",
+    icon: "tomorrow",
+    run: () => (postponeOpen.value = true),
+  },
+]);
 const hasItems = computed(
   () =>
     (planner.value?.items.length ?? 0) > 0 ||
@@ -473,7 +486,7 @@ async function postponeAll(): Promise<void> {
       : `${items.length} Einträge stehen jetzt bei morgen.`;
 }
 
-function openCreation(): void {
+function openCreation(dictate = false): void {
   if (
     isLoading.value ||
     editorBusy.value ||
@@ -482,6 +495,7 @@ function openCreation(): void {
   )
     return;
   creationMessage.value = null;
+  creationDictate.value = dictate;
   creationOpen.value = true;
 }
 async function onCreated(kind: "todo" | "habit"): Promise<void> {
@@ -695,8 +709,15 @@ useShortcutHandlers(
             <span :style="{ width: `${weekGoal.filled}%` }" />
           </span>
         </div>
+        <ActionMenu
+          v-if="postponable.length && phone"
+          title="Heute"
+          label="Weitere Aktionen für heute"
+          :entries="headerMenu"
+          :disabled="isLoading || editorBusy || writes.busy.value"
+        />
         <button
-          v-if="postponable.length"
+          v-else-if="postponable.length"
           class="today-view__postpone"
           type="button"
           :disabled="isLoading || editorBusy || writes.busy.value"
@@ -709,6 +730,7 @@ useShortcutHandlers(
 
       <CreateItemDialog
         v-if="creationOpen"
+        :dictate="creationDictate"
         @close="creationOpen = false"
         @created="onCreated"
       />
@@ -905,18 +927,11 @@ useShortcutHandlers(
               <span v-if="focusGoal">{{ focusGoal }}</span>
               <CampaignChip v-if="focusCampaign" :campaign="focusCampaign" />
             </p>
+            <!-- The stopwatch is the primary step, Erledigt the secondary one. -->
             <div class="focus__actions">
-              <button
-                class="focus__done"
-                type="button"
-                :disabled="isUpdating(agenda.focus)"
-                :aria-label="`${agenda.focus.title} erledigen`"
-                @click="toggleItem(agenda.focus)"
-              >
-                <AppIcon name="check" />
-                <span>Erledigt</span>
-              </button>
               <ItemPlayButton
+                class="focus__play"
+                labelled
                 :kind="agenda.focus.type === 'todo' ? 'todo' : 'occurrence'"
                 :target-id="
                   agenda.focus.type === 'todo'
@@ -927,6 +942,16 @@ useShortcutHandlers(
                 :eligible="agenda.focus.timerEligible"
                 :disabled="isUpdating(agenda.focus)"
               />
+              <button
+                class="btn focus__done"
+                type="button"
+                :disabled="isUpdating(agenda.focus)"
+                :aria-label="`${agenda.focus.title} erledigen`"
+                @click="toggleItem(agenda.focus)"
+              >
+                <AppIcon name="check" />
+                <span>Erledigt</span>
+              </button>
               <!-- The Fokus-Modus has no Später or Überspringen for an appointment. -->
               <a
                 v-if="!focusSlot"
@@ -1159,7 +1184,8 @@ useShortcutHandlers(
       :disabled="
         isLoading || editorBusy || writes.busy.value || editingTarget !== null
       "
-      @click="openCreation"
+      @click="openCreation()"
+      @dictate="openCreation(true)"
     />
     <CampaignCompletionDialog
       v-if="ticks.campaignQuestion.value"
@@ -1223,6 +1249,35 @@ useShortcutHandlers(
 @media (min-width: 40rem) {
   .today-view__time-part {
     display: inline-block;
+  }
+}
+
+/*
+ * A phone keeps the head short: the day's count and the time run on as one
+ * quiet paragraph, the count first in ink, so the list starts higher up.
+ */
+@media (max-width: 39.99rem) {
+  .today-view__header {
+    margin-bottom: var(--space-4);
+  }
+
+  .today-view__title h1 {
+    margin-bottom: var(--space-1);
+  }
+
+  .today-view__progress,
+  .today-view__time {
+    display: inline;
+    font-size: 0.875rem;
+  }
+
+  .today-view__progress {
+    color: var(--color-ink);
+    font-weight: 700;
+  }
+
+  .today-view__progress + .today-view__time::before {
+    content: " · " / "";
   }
 }
 
@@ -1419,40 +1474,27 @@ useShortcutHandlers(
   height: 1rem;
 }
 
-/* One line on a phone: Erledigt takes the room, the round buttons follow. */
+/*
+ * The stopwatch leads: Starten (Pausieren, Fortsetzen) is the primary button,
+ * Erledigt a tinted pill with its word. On a phone the primary button takes
+ * its own line, and Erledigt, Fokus-Modus and "…" follow on the left, clear
+ * of the plus button resting on the right. From 40rem all share one line.
+ */
 .focus__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
   margin-top: var(--space-4);
 }
 
-.focus__done {
-  display: inline-flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  gap: var(--space-2);
-  align-items: center;
-  justify-content: center;
-  min-height: 3.25rem;
-  padding: 0 var(--space-5);
-  border: 0;
-  border-radius: var(--radius-control);
-  background: var(--color-action);
-  color: var(--color-on-action);
-  font-size: 1.0625rem;
-  font-weight: 800;
-  cursor: pointer;
-  transition:
-    transform 420ms var(--spring),
-    background-color 160ms var(--ease-out);
+.focus__play {
+  flex: 1 1 100%;
 }
 
-/* Wide screens keep Erledigt a button, not a bar across the card. */
-@media (min-width: 40rem) {
-  .focus__done {
-    flex: 0 1 18rem;
-  }
+.focus__done {
+  flex: none;
+  padding-inline: var(--space-4) var(--space-5);
 }
 
 .focus__done :deep(svg) {
@@ -1460,17 +1502,18 @@ useShortcutHandlers(
 }
 
 .focus__done:hover:not(:disabled) {
-  background: var(--color-action-strong);
+  background: var(--color-action-tint-hover);
 }
 
-.focus__done:active:not(:disabled) {
-  transform: var(--press);
-  transition-duration: 90ms;
-}
+@media (min-width: 40rem) {
+  .focus__actions {
+    flex-wrap: nowrap;
+  }
 
-.focus__done:disabled {
-  background: var(--color-ink-soft);
-  cursor: progress;
+  /* Wide screens keep the primary a button, not a bar across the card. */
+  .focus__play {
+    flex: 0 1 18rem;
+  }
 }
 
 /* The Fokus-Modus is a round icon button beside the stopwatch; its name is the tooltip. */

@@ -12,6 +12,32 @@ vi.mock("../api/auth.api", () => ({
 }));
 beforeEach(() => vi.resetAllMocks());
 describe("AuthView", () => {
+  it("shows and hides both password fields with one switch", async () => {
+    const wrapper = mount(AuthView);
+    const toggle = () => wrapper.get(".password-field__toggle");
+    const type = (name: string) =>
+      (wrapper.get(`[name=${name}]`).element as HTMLInputElement).type;
+    expect(type("password")).toBe("password");
+    expect(toggle().attributes("aria-pressed")).toBe("false");
+    expect(toggle().attributes("aria-label")).toBe("Passwort anzeigen");
+    await toggle().trigger("click");
+    expect(type("password")).toBe("text");
+    expect(toggle().attributes("aria-label")).toBe("Passwort verbergen");
+
+    // Registering: the repeat field follows the same switch, which starts off.
+    await wrapper
+      .findAll("button")
+      .find((button) => button.text() === "Konto erstellen")!
+      .trigger("click");
+    expect(type("password")).toBe("password");
+    expect(type("confirmation")).toBe("password");
+    await toggle().trigger("click");
+    expect(type("password")).toBe("text");
+    expect(type("confirmation")).toBe("text");
+    expect(toggle().attributes("aria-controls")).toBe(
+      "auth-password auth-confirm",
+    );
+  });
   it("logs in and clears the password", async () => {
     vi.mocked(auth.login).mockResolvedValue({
       id: "a",

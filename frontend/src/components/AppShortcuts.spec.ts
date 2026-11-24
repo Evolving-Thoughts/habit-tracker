@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import AppShortcuts from "./AppShortcuts.vue";
+import CommandMenu from "./CommandMenu.vue";
 import { search } from "../api/search.api";
 import { overlay } from "../composables/useShortcuts";
 import {
@@ -64,6 +65,19 @@ async function openMenu() {
     wrapper.findAll(".command-menu__label").map((label) => label.text());
   return { wrapper, labels, router };
 }
+
+describe("AppShortcuts: Suchen", () => {
+  it("opens the same command menu, asking for the keyboard", async () => {
+    const { wrapper } = await openMenu();
+    expect(wrapper.getComponent(CommandMenu).props("openKeyboard")).toBe(false);
+    overlay.value = "search";
+    await flushPromises();
+    expect(wrapper.getComponent(CommandMenu).props("openKeyboard")).toBe(true);
+    expect(document.activeElement).toBe(
+      wrapper.get(".command-menu__search").element,
+    );
+  });
+});
 
 describe("AppShortcuts: Darstellung in the command menu", () => {
   it("offers the two other looks as actions", async () => {

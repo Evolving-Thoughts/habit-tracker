@@ -8,7 +8,7 @@ import { today } from "./helpers";
  */
 test.use({ viewport: { width: 375, height: 812 } });
 
-test("Heute at 375 px: focus card in one action row, the next row in view, short rows, labels uncut", async ({
+test("Heute at 375 px: focus card led by Starten, its other actions clear of the plus button, the next row in view, short rows, labels uncut", async ({
   page,
   request,
 }, info) => {
@@ -27,17 +27,38 @@ test("Heute at 375 px: focus card in one action row, the next row in view, short
   const focus = page.locator(".focus");
   await expect(page.locator("#focus-title")).toHaveText("Steuer sortieren");
 
-  // One action row: Erledigt, the stopwatch, Fokus-Modus and the menu share a line.
-  const tops = await focus
+  // The stopwatch leads as the large primary button with its word, on a line
+  // of its own; Erledigt, Fokus-Modus and the menu share the next line on the
+  // left, where the resting plus button cannot cover them.
+  const play = focus.getByRole("button", {
+    name: "Stoppuhr für Steuer sortieren starten",
+    exact: true,
+  });
+  await expect(play).toHaveText("Starten");
+  const boxes = await focus
     .locator(".focus__actions > button, .focus__actions > a")
     .evaluateAll((elements) =>
       elements.map((element) => {
         const box = element.getBoundingClientRect();
-        return Math.round(box.top + box.height / 2);
+        return {
+          middle: Math.round(box.top + box.height / 2),
+          left: box.left,
+          right: box.right,
+          height: box.height,
+        };
       }),
     );
-  expect(tops.length).toBe(4);
-  expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(2);
+  expect(boxes.length).toBe(4);
+  const [primary, ...rest] = boxes;
+  expect(primary!.height).toBeGreaterThanOrEqual(52);
+  const middles = rest.map((box) => box.middle);
+  expect(Math.max(...middles) - Math.min(...middles)).toBeLessThanOrEqual(2);
+  expect(middles[0]!).toBeGreaterThan(primary!.middle);
+  await expect(
+    focus.getByRole("button", { name: "Steuer sortieren erledigen", exact: true }),
+  ).toHaveText("Erledigt");
+  const plusBox = (await page.locator(".create-button").boundingBox())!;
+  expect(Math.max(...rest.map((box) => box.right))).toBeLessThan(plusBox.x);
   await expect(
     focus.getByRole("link", { name: "Fokus-Modus", exact: true }),
   ).toBeVisible();

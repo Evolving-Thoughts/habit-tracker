@@ -2,6 +2,7 @@ import { TODO_FIELDS } from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTodo, reorderDay } from "../api/day-planner.api";
+import { MicStub, dictate } from "../test/mic-stub";
 import QuickAddQuest from "./QuickAddQuest.vue";
 
 vi.mock("../api/day-planner.api", () => ({
@@ -191,5 +192,129 @@ describe("QuickAddQuest", () => {
 
     expect(wrapper.emitted("created")).toHaveLength(1);
     expect(wrapper.get('[role="alert"]').text()).toBe("Offline");
+  });
+
+  describe("day and duration in the text", () => {
+    // Tuesday, 24 Nov 2026, in Berlin: "morgen" is Wednesday the 25th.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-24T10:00:00Z"));
+    });
+    afterEach(() => vi.useRealTimers());
+
+    function mountWithMic(date: string | null = "2026-11-24") {
+      return mount(QuickAddQuest, {
+        props: { date, order },
+        global: { stubs: { MicButton: MicStub } },
+      });
+    }
+    const chips = (wrapper: ReturnType<typeof mountWithMic>) =>
+      wrapper.findAll(".parse-chip").map((chip) => ({
+        text: chip.text(),
+        name: chip.attributes("aria-label"),
+      }));
+
+    it("shows what it read as chips and plans the quest for that day, with its duration", async () => {
+      const wrapper = mountWithMic();
+      await wrapper.get('button[aria-label="Oben einfügen"]').trigger("click");
+      const field = wrapper.get('input[name="quickTitle"]');
+      await field.setValue("Steuererklärung morgen 30 Minuten");
+      expect(chips(wrapper)).toEqual([
+        { text: "morgen", name: "Tag: morgen, entfernen" },
+        { text: "30 Min.", name: "Dauer: 30 Min., entfernen" },
+      ]);
+      // The text stays as typed until it is added.
+      expect((field.element as HTMLInputElement).value).toBe(
+        "Steuererklärung morgen 30 Minuten",
+      );
+
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+      expect(createTodo).toHaveBeenCalledWith({
+        title: "Steuererklärung",
+        scheduledDate: "2026-11-25",
+        timeOfDay: null,
+        plannedDurationMinutes: 30,
+      });
+      // Another day than this row's: its order is not touched.
+      expect(reorderDay).not.toHaveBeenCalled();
+      expect(wrapper.get(".quick-add__notice").text()).toBe(
+        "Für morgen eingeplant.",
+      );
+      expect(wrapper.findAll(".parse-chip")).toHaveLength(0);
+    });
+
+    it("keeps a discarded chip's words in the title and the row's day", async () => {
+      const wrapper = mountWithMic();
+      const field = wrapper.get('input[name="quickTitle"]');
+      await field.setValue("Wäsche morgen");
+      await wrapper.get('[aria-label="Tag: morgen, entfernen"]').trigger("click");
+      expect(wrapper.findAll(".parse-chip")).toHaveLength(0);
+      expect((field.element as HTMLInputElement).value).toBe("Wäsche morgen");
+      // Typing on does not bring the chip back.
+      await field.setValue("Wäsche morgen abholen");
+      expect(wrapper.findAll(".parse-chip")).toHaveLength(0);
+
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+      expect(createTodo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Wäsche morgen abholen",
+          scheduledDate: "2026-11-24",
+        }),
+      );
+    });
+
+    it("says a day typed into the Questlog plans the quest out of it", async () => {
+      const wrapper = mountWithMic(null);
+      await wrapper.get('input[name="quickTitle"]').setValue("Rasen mähen am 3.12.");
+      expect(chips(wrapper)).toEqual([
+        {
+          text: "→ Do., 3.12.",
+          name: "Tag: Do., 3.12., plant sie ein statt ins Questlog, entfernen",
+        },
+      ]);
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+      // Planned for the day, so no place in the Questlog is asked for.
+      expect(createTodo).toHaveBeenCalledWith({
+        title: "Rasen mähen",
+        scheduledDate: "2026-12-03",
+        timeOfDay: null,
+        plannedDurationMinutes: null,
+      });
+    });
+
+    it("takes a duration alone and keeps the row's day", async () => {
+      const wrapper = mountWithMic();
+      await wrapper.get('input[name="quickTitle"]').setValue("Lesen eine halbe Stunde");
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+      expect(createTodo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Lesen",
+          scheduledDate: "2026-11-24",
+          plannedDurationMinutes: 30,
+        }),
+      );
+      expect(wrapper.get(".quick-add__notice").text()).toBe("");
+    });
+
+    it("puts dictated text into the field, after what is typed", async () => {
+      const wrapper = mountWithMic();
+      const field = wrapper.get<HTMLInputElement>('input[name="quickTitle"]');
+      expect(wrapper.getComponent(MicStub).props()).toMatchObject({
+        mode: "short",
+        placement: "field",
+        label: "Quest diktieren",
+      });
+      await dictate(wrapper, "Steuererklärung morgen 30 Minuten");
+      expect(field.element.value).toBe("Steuererklärung morgen 30 Minuten");
+      expect(wrapper.findAll(".parse-chip")).toHaveLength(2);
+
+      await field.setValue("Steuer  ");
+      await dictate(wrapper, "sortieren");
+      expect(field.element.value).toBe("Steuer sortieren");
+    });
   });
 });

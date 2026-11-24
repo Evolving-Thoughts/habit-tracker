@@ -7,6 +7,7 @@ import {
   TIMER_MAX_MINUTES,
 } from "../utils/timer-duration";
 import { computed, onMounted, onUnmounted, provide, ref, watch } from "vue";
+import { useMediaQuery, WIDE_QUERY } from "../composables/useMediaQuery";
 import { createTimerController, timerKey } from "../composables/useTimer";
 import {
   createFocusBlockController,
@@ -26,10 +27,17 @@ import NoticeToast from "./NoticeToast.vue";
 /**
  * Holds the one stopwatch of the signed-in user for everything below it and
  * shows it in a bar that stays in view. A view that shows the stopwatch large
- * itself hides the bar; the dialogs stay available either way. On a phone
- * the bar is one line (title, time, pause or resume); Soll ändern,
- * erledigen and beenden wait in its menu. Reaching the Soll is announced
- * once on every view, with the bar or without it.
+ * itself hides the bar; the dialogs stay available either way. Reaching the
+ * Soll is announced once on every view, with the bar or without it.
+ *
+ * Where the tab bar is at the bottom (a phone, a touch tablet) the bar is
+ * docked right above it, like a music player, with its buttons on the right
+ * in the thumb's reach. Its height, gap included, is published as
+ * `--timer-bar-height` on the root element, so the page's bottom padding,
+ * the plus button and the toasts make room; it is 0 while there is no bar
+ * and in the wide tier, where the bar sticks to the top as before. Below
+ * 40rem it is one line (title, time, pause or resume); Soll ändern,
+ * erledigen and beenden wait in its menu.
  */
 defineProps<{ hideBar?: boolean }>();
 
@@ -64,6 +72,33 @@ watch(
   () => (editing.value = false),
 );
 const display = computed(() => formatStopwatch(elapsed.value));
+
+/* Docked at the bottom wherever the tab bar is; its height makes room. */
+const wide = useMediaQuery(WIDE_QUERY);
+const docked = computed(() => !wide.value);
+const bar = ref<HTMLElement | null>(null);
+const HEIGHT_PROPERTY = "--timer-bar-height";
+function publishHeight(): void {
+  const element = bar.value;
+  let height = 0;
+  if (element && docked.value) {
+    const gap = parseFloat(getComputedStyle(element).marginBottom) || 0;
+    height = Math.ceil(element.getBoundingClientRect().height + gap);
+  }
+  document.documentElement.style.setProperty(HEIGHT_PROPERTY, `${height}px`);
+}
+watch(
+  bar,
+  (element, _previous, onCleanup) => {
+    publishHeight();
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(publishHeight);
+    observer.observe(element);
+    onCleanup(() => observer.disconnect());
+  },
+  { flush: "post", immediate: true },
+);
+watch(docked, publishHeight, { flush: "post" });
 function openTarget(): void {
   editingId.value = timer.value?.id;
   minutes.value = timer.value?.targetMinutes ?? "";
@@ -162,6 +197,7 @@ onMounted(() => {
   document.addEventListener("visibilitychange", refreshFocus);
 });
 onUnmounted(() => {
+  document.documentElement.style.removeProperty(HEIGHT_PROPERTY);
   document.removeEventListener("visibilitychange", primeSounds);
   controller.dispose();
   focusBlock.dispose();
@@ -179,9 +215,11 @@ onUnmounted(() => {
 <template>
   <aside
     v-if="(timer || error) && !hideBar"
+    ref="bar"
     class="timer-bar"
     aria-label="Aktuelle Stoppuhr"
-    data-sticky-top
+    :data-sticky-top="docked ? undefined : ''"
+    :data-docked="docked ? '' : undefined"
   >
     <div v-if="timer" class="timer-bar__row">
       <div class="timer-bar__text">
@@ -314,27 +352,54 @@ onUnmounted(() => {
   </ModalDialog>
 </template>
 <style scoped>
+/*
+ * Docked on the tab bar at the bottom: a floating card one gap above it,
+ * as wide as the page column. The gap is its bottom margin, which the
+ * published height includes. Under the scrim of "Mehr", over the page.
+ */
 .timer-bar {
-  position: sticky;
-  top: max(0.5rem, env(safe-area-inset-top));
-  z-index: 20;
-  width: min(100% - 2rem, var(--page-width));
-  margin: 1rem auto 0;
-  padding: var(--space-4);
+  position: fixed;
+  right: 0;
+  bottom: calc(var(--tab-bar-height) + env(safe-area-inset-bottom, 0px));
+  left: 0;
+  z-index: 22;
+  width: min(
+    100% - 1rem - env(safe-area-inset-left, 0px) -
+      env(safe-area-inset-right, 0px),
+    var(--page-width)
+  );
+  margin: 0 auto var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   border-radius: var(--radius-card);
   background: var(--color-surface);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-popover);
 }
+/* Wide screens and mouse windows: a card that sticks below the top bar. */
 @media (min-width: 56rem), (hover: hover) and (pointer: fine) {
   .timer-bar {
+    position: sticky;
     top: calc(3.5rem + 0.5rem);
+    right: auto;
+    bottom: auto;
+    left: auto;
+    z-index: 20;
+    width: min(100% - 2rem, var(--page-width));
+    margin: 1rem auto 0;
+    padding: var(--space-4);
+    box-shadow: var(--shadow-card);
   }
 }
 .timer-bar__row {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.75rem;
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+}
+@media (min-width: 56rem), (hover: hover) and (pointer: fine) {
+  .timer-bar__row {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
 }
 .timer-bar__text {
   display: grid;
@@ -412,12 +477,14 @@ input {
  * A phone keeps the bar to one line: state and title (cut with an ellipsis),
  * the time, pause or resume, and the menu with the rarer steps.
  */
-@media (max-width: 39.99rem) {
+@media (hover: hover) and (pointer: fine) and (max-width: 39.99rem) {
   .timer-bar {
     width: calc(100% - 1rem);
     margin-top: 0.5rem;
     padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   }
+}
+@media (max-width: 39.99rem) {
   .timer-bar__row {
     flex-wrap: nowrap;
     gap: var(--space-2);

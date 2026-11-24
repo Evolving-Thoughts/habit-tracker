@@ -26,6 +26,9 @@ import {
   stepDrop,
   stepRunDrop,
   todayScroll,
+  planChips,
+  startColumn,
+  columnAt,
   type QuestlogQuest,
 } from "./week-plan";
 
@@ -559,5 +562,42 @@ describe("todayScroll", () => {
     expect(todayScroll({ start: 284, end: 508 }, { width: 380, sticky: 52 })).toBe(
       232,
     );
+  });
+});
+
+describe("the phone's board: chips, start column and the column in view", () => {
+  const today = "2026-11-24";
+  const days = ["2026-11-24", "2026-11-25", "2026-11-26"];
+
+  it("names every column in the board's order, today as Heute, the rest by weekday", () => {
+    expect(planChips({ overdue: true, days, today })).toEqual([
+      { key: "questlog", label: "Questlog", name: "Questlog" },
+      { key: "overdue", label: "Liegen geblieben", name: "Liegen geblieben" },
+      { key: "2026-11-24", label: "Heute", name: "Heute, Dienstag, 24. Nov." },
+      { key: "2026-11-25", label: "Mi", name: "Mittwoch, 25. Nov." },
+      { key: "2026-11-26", label: "Do", name: "Donnerstag, 26. Nov." },
+    ]);
+    expect(
+      planChips({ overdue: false, days, today }).map((chip) => chip.label),
+    ).toEqual(["Questlog", "Heute", "Mi", "Do"]);
+  });
+
+  it("opens on today, or on the first day when the board starts later", () => {
+    expect(startColumn(planChips({ overdue: true, days, today }), today)).toBe(2);
+    expect(startColumn(planChips({ overdue: false, days, today }), today)).toBe(1);
+    const later = planChips({ overdue: false, days: days.slice(1), today });
+    expect(later[1]!.label).toBe("Mi");
+    expect(startColumn(later, today)).toBe(1);
+    expect(startColumn([], today)).toBe(0);
+  });
+
+  it("counts the nearest column as the one in view, within the board", () => {
+    expect(columnAt(0, 340, 5)).toBe(0);
+    expect(columnAt(169, 340, 5)).toBe(0);
+    expect(columnAt(171, 340, 5)).toBe(1);
+    expect(columnAt(680, 340, 5)).toBe(2);
+    expect(columnAt(99_999, 340, 5)).toBe(4);
+    expect(columnAt(-20, 340, 5)).toBe(0);
+    expect(columnAt(100, 0, 5)).toBe(0);
   });
 });

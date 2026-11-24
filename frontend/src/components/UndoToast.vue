@@ -20,8 +20,10 @@ const emit = defineEmits<{ undo: [] }>();
 .undo-toast {
   position: fixed;
   right: 0;
+  /* Above the tab bar, a docked stopwatch bar and the plus button. */
   bottom: calc(
-    var(--tab-bar-height) + 5.25rem + env(safe-area-inset-bottom, 0px)
+    var(--tab-bar-height) + var(--timer-bar-height, 0px) + 5.25rem +
+      env(safe-area-inset-bottom, 0px)
   );
   left: 0;
   z-index: 40;

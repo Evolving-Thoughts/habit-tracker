@@ -200,6 +200,81 @@ describe("global Timer bar", () => {
     await flushPromises();
     expect(w.find("aside").exists()).toBe(false);
   });
+  it("publishes the docked bar's height for the page, the plus button and the toasts", async () => {
+    const observers: { callback: () => void; disconnected: boolean }[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        entry = { callback: () => undefined as void, disconnected: false };
+        constructor(callback: () => void) {
+          this.entry.callback = callback;
+          observers.push(this.entry);
+        }
+        observe() {}
+        disconnect() {
+          this.entry.disconnected = true;
+        }
+      },
+    );
+    let height = 64;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      () => ({ height }) as DOMRect,
+    );
+    const root = document.documentElement;
+    const w = mount(TimerProvider);
+    await flushPromises();
+    // Docked at the bottom (no wide tier in jsdom): never a top sticker.
+    const bar = w.get("aside");
+    expect(bar.attributes("data-docked")).toBeDefined();
+    expect(bar.attributes("data-sticky-top")).toBeUndefined();
+    expect(root.style.getPropertyValue("--timer-bar-height")).toBe("64px");
+    // Two lines of error text make it taller; the observer reports it.
+    height = 96.4;
+    observers.at(-1)!.callback();
+    expect(root.style.getPropertyValue("--timer-bar-height")).toBe("97px");
+    // No stopwatch, no bar: no room kept.
+    vi.mocked(timerAction).mockResolvedValue(none);
+    await w.get('button[aria-label="Stoppuhr beenden"]').trigger("click");
+    await flushPromises();
+    expect(w.find("aside").exists()).toBe(false);
+    expect(root.style.getPropertyValue("--timer-bar-height")).toBe("0px");
+    expect(observers.at(-1)!.disconnected).toBe(true);
+    w.unmount();
+    expect(root.style.getPropertyValue("--timer-bar-height")).toBe("");
+    vi.unstubAllGlobals();
+  });
+  it("keeps no room where a view hides the bar", async () => {
+    const w = mount(TimerProvider, { props: { hideBar: true } });
+    await flushPromises();
+    expect(w.find("aside").exists()).toBe(false);
+    expect(
+      document.documentElement.style.getPropertyValue("--timer-bar-height"),
+    ).toBe("0px");
+  });
+  it("sticks to the top in the wide tier and keeps no room at the bottom", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      (query: string) =>
+        ({
+          matches: query.includes("56rem"),
+          media: query,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+        }) as unknown as MediaQueryList,
+    );
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      height: 80,
+    } as DOMRect);
+    const w = mount(TimerProvider);
+    await flushPromises();
+    const bar = w.get("aside");
+    expect(bar.attributes("data-sticky-top")).toBeDefined();
+    expect(bar.attributes("data-docked")).toBeUndefined();
+    expect(
+      document.documentElement.style.getPropertyValue("--timer-bar-height"),
+    ).toBe("0px");
+    vi.unstubAllGlobals();
+  });
   it("polls and removes intervals/listeners after unmount", async () => {
     vi.useFakeTimers();
     const w = mount(TimerProvider);

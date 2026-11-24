@@ -64,10 +64,10 @@ describe("App navigation", () => {
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('[data-view="today"]').exists()).toBe(true);
-    // Nine view tabs (five of them for wide screens only), Mehr with the
-    // six views behind it on a phone, and the command button and the gear
-    // of wide screens.
-    expect(wrapper.findAll("nav a, nav button")).toHaveLength(18);
+    // Nine view tabs (five of them for wide screens only), Mehr with
+    // Suchen and the six views behind it on a phone, and the command button
+    // and the gear of wide screens.
+    expect(wrapper.findAll("nav a, nav button")).toHaveLength(19);
     expect(tab(wrapper, "Befehle").attributes("aria-keyshortcuts")).toBe(
       "Control+K",
     );

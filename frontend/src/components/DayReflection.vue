@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { getReflection, saveReflection } from "../api/reflections.api";
 import { useLoader } from "../composables/useLoader";
+import { insertAtCursor } from "../utils/insert-text";
+import MicButton from "./MicButton.vue";
+
+const MAX_LENGTH = 10000;
 
 const props = defineProps<{ date: string }>();
 
 const text = ref("");
+const field = ref<HTMLTextAreaElement | null>(null);
 const savedText = ref("");
 const saving = ref(false);
 const saved = ref(false);
@@ -53,6 +58,16 @@ watch(
     saveError.value = "";
   },
 );
+/** Dictated text goes in at the cursor; "Speichern" then appears as for typing. */
+async function onDictated(dictated: string): Promise<void> {
+  const insertion = insertAtCursor(field.value, text.value, dictated, MAX_LENGTH);
+  text.value = insertion.value;
+  saved.value = false;
+  await nextTick();
+  field.value?.focus();
+  field.value?.setSelectionRange(insertion.caret, insertion.caret);
+}
+
 watch(stored, (reflection) => {
   if (reflection) text.value = savedText.value = reflection.text;
 });
@@ -63,17 +78,27 @@ watch(stored, (reflection) => {
     <label class="day-reflection__label" for="day-reflection-text"
       >Reflexion</label
     >
-    <textarea
-      id="day-reflection-text"
-      v-model="text"
-      class="input"
-      name="reflection"
-      rows="3"
-      maxlength="10000"
-      :disabled="loading"
-      placeholder="Was hast du getan, wie lief es, was hat geholfen?"
-      @input="saved = false"
-    />
+    <div class="mic-field">
+      <textarea
+        id="day-reflection-text"
+        ref="field"
+        v-model="text"
+        class="input"
+        name="reflection"
+        rows="3"
+        :maxlength="MAX_LENGTH"
+        :disabled="loading"
+        placeholder="Was hast du getan, wie lief es, was hat geholfen?"
+        @input="saved = false"
+      />
+      <MicButton
+        v-if="!loading"
+        placement="field"
+        mode="long"
+        label="Reflexion diktieren"
+        @result="onDictated"
+      />
+    </div>
     <p v-if="error" class="form-error" role="alert">{{ error }}</p>
     <div v-if="saved || changed || saving" class="day-reflection__actions">
       <span v-if="saved" class="day-reflection__saved" role="status"

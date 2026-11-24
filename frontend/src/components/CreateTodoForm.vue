@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, nextTick, onMounted, ref, useId, watch } from "vue";
 import { createTodo } from "../api/day-planner.api";
 import type { CategoryResponse } from "../types/category";
 import type {
@@ -12,6 +12,7 @@ import { buildTodoInput } from "../utils/todo-input";
 import type { CampaignColor, CampaignIcon } from "../types/campaign";
 import { hoursToMinutes } from "../utils/quest-hours";
 import { categoryOfChoice, type ParentChoice } from "../utils/parent-choice";
+import { parseQuest, type QuestParseKind } from "../utils/quest-parse";
 import { whyBelow } from "../utils/why";
 import CampaignFields from "./CampaignFields.vue";
 import CategoryPicker from "./CategoryPicker.vue";
@@ -20,12 +21,16 @@ import PlanFields from "./PlanFields.vue";
 import AppointmentFields from "./AppointmentFields.vue";
 import FormDisclosure from "./FormDisclosure.vue";
 import WhyField from "./WhyField.vue";
+import MicButton from "./MicButton.vue";
+import QuestParseChips from "./QuestParseChips.vue";
 
 const props = defineProps<{
   /** Created from inside a campaign or quest: it starts below that one. */
   parent?: HierarchyTodo | null;
   /** A new campaign: colour, icon and weekly goal instead of day and duration. */
   campaign?: boolean;
+  /** Opened by a long press on Plus: dictation of the title starts at once. */
+  dictate?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -60,6 +65,58 @@ const weeklyTarget = ref<string | number>("");
 const isSubmitting = ref(false);
 const errorMessage = ref<string | null>(null);
 
+/*
+ * Day and duration in the title ("Steuererklärung morgen 30 Minuten") fill
+ * their fields while those are untouched, with the same chips as the quick
+ * add. A field set by hand keeps its value and leaves the words in the
+ * title; a discarded chip does the same. Only on creating do the applied
+ * words leave the title, so what is typed stays as typed.
+ */
+const titleId = useId();
+const mic = ref<InstanceType<typeof MicButton> | null>(null);
+const touched = ref<Record<QuestParseKind, boolean>>({
+  date: false,
+  duration: false,
+});
+const ignored = ref<QuestParseKind[]>([]);
+const parsed = computed(() =>
+  props.campaign
+    ? null
+    : parseQuest(title.value, {
+        ignore: [
+          ...ignored.value,
+          ...(["date", "duration"] as const).filter(
+            (kind) => touched.value[kind],
+          ),
+        ],
+      }),
+);
+watch(parsed, (result) => {
+  if (!result) return;
+  if (!touched.value.date) date.value = result.scheduledDate ?? "";
+  if (!touched.value.duration)
+    durationMinutes.value = result.plannedDurationMinutes ?? "";
+});
+function setDate(value: string): void {
+  touched.value.date = true;
+  date.value = value;
+}
+function discard(kind: QuestParseKind): void {
+  ignored.value = [...ignored.value, kind];
+}
+
+/** Dictated text joins what is typed, after a space. */
+function onDictated(text: string): void {
+  const typed = title.value.trimEnd();
+  title.value = (typed ? `${typed} ${text}` : text).slice(0, 200);
+}
+
+onMounted(async () => {
+  if (!props.dictate) return;
+  await nextTick();
+  void mic.value?.start();
+});
+
 /** A chosen place brings its reason (live, never copied) and its category. */
 function choose(choice: ParentChoice | null): void {
   inheritedWhy.value = choice ? whyBelow(choice.todo) : null;
@@ -75,7 +132,7 @@ function preset(choices: ParentChoice[]): void {
 
 function buildInput(): CreateTodoInput {
   return buildTodoInput({
-    title: title.value,
+    title: parsed.value?.title ?? title.value,
     date: props.campaign ? "" : date.value,
     time: props.campaign ? "" : time.value,
     duration: props.campaign ? "" : durationMinutes.value,
@@ -91,6 +148,8 @@ function resetForm(): void {
   color.value = null;
   icon.value = null;
   weeklyTarget.value = "";
+  touched.value = { date: false, duration: false };
+  ignored.value = [];
 }
 
 async function submit(): Promise<void> {
@@ -135,21 +194,35 @@ async function submit(): Promise<void> {
   <section class="create-todo">
     <form novalidate @submit.prevent="submit">
       <fieldset :disabled="isSubmitting">
-        <label class="field">
-          Titel
-          <input
-            v-model="title"
-            name="title"
-            type="text"
-            maxlength="200"
-            required
-            :placeholder="
-              campaign
-                ? 'Welches längere Ziel nimmst du dir vor?'
-                : 'Was möchtest du erledigen?'
-            "
+        <div class="field">
+          <label :for="titleId">Titel</label>
+          <div class="mic-field">
+            <input
+              :id="titleId"
+              v-model="title"
+              name="title"
+              type="text"
+              maxlength="200"
+              required
+              :placeholder="
+                campaign
+                  ? 'Welches längere Ziel nimmst du dir vor?'
+                  : 'Was möchtest du erledigen?'
+              "
+            />
+            <MicButton
+              ref="mic"
+              placement="field"
+              label="Titel diktieren"
+              @result="onDictated"
+            />
+          </div>
+          <QuestParseChips
+            v-if="parsed"
+            :matches="parsed.matches"
+            @remove="discard"
           />
-        </label>
+        </div>
 
         <p v-if="campaign" class="create-todo__hint">
           Eine oberste Quest wird zur Kampagne, sobald sie Unter-Quests hat oder
@@ -167,7 +240,7 @@ async function submit(): Promise<void> {
         </div>
 
         <template v-if="!campaign">
-          <PlanFields v-model:date="date" id-prefix="todo" />
+          <PlanFields :date="date" id-prefix="todo" @update:date="setDate" />
 
           <div class="create-todo__row">
             <label class="field">
@@ -179,6 +252,7 @@ async function submit(): Promise<void> {
                 min="1"
                 step="1"
                 placeholder="30"
+                @input="touched.duration = true"
               />
             </label>
           </div>

@@ -29,6 +29,13 @@ describe("ReviewWeekTrend", () => {
     expect(
       slots[7]!.get(".week-trend__part--other").attributes("style"),
     ).toContain("height: calc(25% - 2px)");
+    // Sonstiges is hatched in the columns and in its key, never colour alone.
+    expect(slots[7]!.get(".week-trend__part--other").classes()).toContain(
+      "series-other",
+    );
+    expect(
+      wrapper.get(".week-trend__legend .week-trend__part--other").classes(),
+    ).toContain("series-other");
     // A week without time draws nothing; one without other time no top part.
     expect(slots[2]!.findAll(".week-trend__part")).toHaveLength(0);
     expect(slots[1]!.find(".week-trend__part--other").exists()).toBe(false);

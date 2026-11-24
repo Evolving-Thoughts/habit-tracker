@@ -226,6 +226,13 @@ useSortable(list, {
   font-size: 0.9375rem;
 }
 
+/* A finger's field: 16px, so a phone does not zoom in on focus. */
+@media (max-width: 39.99rem), (pointer: coarse) {
+  .plan-day__add :deep(.input) {
+    font-size: 1rem;
+  }
+}
+
 .plan-day__add :deep(.input:focus) {
   border-color: var(--color-line);
   background: var(--color-surface);

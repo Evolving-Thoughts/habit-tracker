@@ -20,6 +20,9 @@ const mode = ref<
 const email = ref("");
 const password = ref("");
 const confirmation = ref("");
+/** One switch for both password fields: shown as text while it is on. */
+const showPassword = ref(false);
+const passwordType = computed(() => (showPassword.value ? "text" : "password"));
 const pending = ref(false);
 const error = ref("");
 const message = ref("");
@@ -43,8 +46,7 @@ const heading = computed(
 const intro = computed(
   () =>
     ({
-      login:
-        "Schön, dass du da bist. Deine Quests und Dailies, nur für dich.",
+      login: "Schön, dass du da bist. Deine Quests und Dailies, nur für dich.",
       register:
         "Ein Konto nur für dich. Danach schicken wir dir einen Link zur Bestätigung.",
       forgot:
@@ -59,6 +61,7 @@ function select(next: typeof mode.value): void {
   mode.value = next;
   password.value = "";
   confirmation.value = "";
+  showPassword.value = false;
   error.value = "";
   message.value = "";
   emit("link-cleared");
@@ -109,6 +112,7 @@ function selectAfter(next: typeof mode.value): void {
   mode.value = next;
   password.value = "";
   confirmation.value = "";
+  showPassword.value = false;
   emit("link-cleared");
 }
 </script>
@@ -138,22 +142,49 @@ function selectAfter(next: typeof mode.value): void {
               required
             />
           </label>
-          <label v-if="passwordMode" class="field" for="auth-password"
-            >{{ mode === "reset" ? "Neues Passwort" : "Passwort" }}
-            <input
-              id="auth-password"
-              v-model="password"
-              name="password"
-              type="password"
-              :autocomplete="
-                mode === 'login' ? 'current-password' : 'new-password'
-              "
-              minlength="12"
-              maxlength="128"
-              required
-              :aria-describedby="needsNewPassword ? 'password-help' : undefined"
-            />
-          </label>
+          <div v-if="passwordMode" class="field">
+            <label for="auth-password">{{
+              mode === "reset" ? "Neues Passwort" : "Passwort"
+            }}</label>
+            <div class="password-field">
+              <input
+                id="auth-password"
+                v-model="password"
+                name="password"
+                :type="passwordType"
+                :autocomplete="
+                  mode === 'login' ? 'current-password' : 'new-password'
+                "
+                autocapitalize="off"
+                spellcheck="false"
+                minlength="12"
+                maxlength="128"
+                required
+                :aria-describedby="
+                  needsNewPassword ? 'password-help' : undefined
+                "
+              />
+              <button
+                class="password-field__toggle"
+                type="button"
+                :aria-pressed="showPassword"
+                :aria-controls="
+                  needsNewPassword
+                    ? 'auth-password auth-confirm'
+                    : 'auth-password'
+                "
+                :aria-label="
+                  showPassword ? 'Passwort verbergen' : 'Passwort anzeigen'
+                "
+                :title="
+                  showPassword ? 'Passwort verbergen' : 'Passwort anzeigen'
+                "
+                @click="showPassword = !showPassword"
+              >
+                <AppIcon :name="showPassword ? 'eye-off' : 'eye'" />
+              </button>
+            </div>
+          </div>
           <p v-if="needsNewPassword" id="password-help" class="auth-form__hint">
             Mindestens 12 Zeichen. Ein langer, einzigartiger Satz eignet sich
             gut.
@@ -164,7 +195,9 @@ function selectAfter(next: typeof mode.value): void {
               id="auth-confirm"
               v-model="confirmation"
               name="confirmation"
-              type="password"
+              :type="passwordType"
+              autocapitalize="off"
+              spellcheck="false"
               autocomplete="new-password"
               minlength="12"
               maxlength="128"
@@ -309,6 +342,40 @@ function selectAfter(next: typeof mode.value): void {
   margin: 0;
   padding: 0;
   border: 0;
+}
+/* The eye sits inside the field's right edge, a full tap target. */
+.password-field {
+  position: relative;
+  display: grid;
+}
+.password-field input {
+  padding-right: calc(var(--tap) + var(--space-1));
+}
+.password-field__toggle {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.password-field__toggle:hover {
+  color: var(--color-ink);
+}
+.password-field__toggle[aria-pressed="true"] {
+  color: var(--color-ink);
+}
+.password-field__toggle .app-icon {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 .auth-form__hint {
   margin: calc(var(--space-2) * -1) 0 0;

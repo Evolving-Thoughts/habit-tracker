@@ -412,9 +412,13 @@ describe("CampaignsView", () => {
       await flushPromises();
       const value = (key: string) =>
         w.get(`[data-stat="${key}"] dd`).text().replace(/\s+/g, " ");
-      expect(w.get('[data-stat="week"] dt').text()).toBe(
+      expect(w.get('[data-stat="week"] .campaign-stats__label').text()).toBe(
         "Kampagnen-Stunden diese Woche",
       );
+      // A phone shows the short label; only the full one is spoken.
+      const short = w.get('[data-stat="week"] .campaign-stats__short');
+      expect(short.text()).toBe("Diese Woche");
+      expect(short.attributes("aria-hidden")).toBe("true");
       expect(value("week")).toBe("4 Std. 10 Min.");
       expect(value("total")).toBe("50 Std.");
       expect(value("active")).toBe("1");

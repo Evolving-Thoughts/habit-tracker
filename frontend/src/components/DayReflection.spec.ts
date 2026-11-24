@@ -1,6 +1,7 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getReflection, saveReflection } from "../api/reflections.api";
+import { MicStub, dictate } from "../test/mic-stub";
 import DayReflection from "./DayReflection.vue";
 
 vi.mock("../api/reflections.api", () => ({
@@ -80,5 +81,25 @@ describe("DayReflection", () => {
     expect(
       (wrapper.find("textarea").element as HTMLTextAreaElement).value,
     ).toBe("Wichtig");
+  });
+
+  it("puts dictated text in at the cursor, ready to save", async () => {
+    const wrapper = mount(DayReflection, {
+      props: { date: "2026-10-30" },
+      global: { stubs: { MicButton: MicStub } },
+    });
+    await flushPromises();
+    expect(wrapper.getComponent(MicStub).props("mode")).toBe("long");
+    await dictate(wrapper, "Morgens gelaufen.");
+    expect((wrapper.get("textarea").element as HTMLTextAreaElement).value).toBe(
+      "Alt Morgens gelaufen.",
+    );
+    expect(wrapper.get("button.btn--primary").text()).toBe("Speichern");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(saveReflection).toHaveBeenCalledWith(
+      "2026-10-30",
+      "Alt Morgens gelaufen.",
+    );
   });
 });

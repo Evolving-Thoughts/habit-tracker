@@ -22,8 +22,10 @@ const emit = defineEmits<{ close: [] }>();
 .notice-toast {
   position: fixed;
   right: 0;
+  /* One place above the undo toast, over a docked stopwatch bar too. */
   bottom: calc(
-    var(--tab-bar-height) + 9.25rem + env(safe-area-inset-bottom, 0px)
+    var(--tab-bar-height) + var(--timer-bar-height, 0px) + 9.25rem +
+      env(safe-area-inset-bottom, 0px)
   );
   left: 0;
   z-index: 40;

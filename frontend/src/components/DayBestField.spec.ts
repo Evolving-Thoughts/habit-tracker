@@ -1,6 +1,8 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { saveDayBest } from "../api/day-bests.api";
+import { DAY_BEST_MAX_LENGTH } from "../utils/day-best";
+import { MicStub, dictate } from "../test/mic-stub";
 import DayBestField from "./DayBestField.vue";
 
 vi.mock("../api/day-bests.api", () => ({ saveDayBest: vi.fn() }));
@@ -94,5 +96,51 @@ describe("DayBestField", () => {
     await flushPromises();
     expect(saveDayBest).toHaveBeenCalledTimes(2);
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+
+  describe("dictation", () => {
+    function renderWithMic(text = "", disabled = false) {
+      return mount(DayBestField, {
+        props: { date: "2026-11-23", text, label: "Das Beste von heute", disabled },
+        attachTo: document.body,
+        global: { stubs: { MicButton: MicStub } },
+      });
+    }
+
+    it("puts the dictated words in at the cursor and saves them when the field is left", async () => {
+      const wrapper = renderWithMic("Schnee Garten");
+      expect(wrapper.getComponent(MicStub).props()).toMatchObject({
+        mode: "long",
+        placement: "field",
+        label: "Das Beste von heute diktieren",
+      });
+      area(wrapper).setSelectionRange(6, 6);
+      await dictate(wrapper, "im");
+      expect(area(wrapper).value).toBe("Schnee im Garten");
+      expect(document.activeElement).toBe(area(wrapper));
+      expect(area(wrapper).selectionStart).toBe(9);
+      await wrapper.get("textarea").trigger("blur");
+      await flushPromises();
+      expect(saveDayBest).toHaveBeenCalledWith("2026-11-23", "Schnee im Garten");
+    });
+
+    it("cuts what does not fit and says so calmly", async () => {
+      const long = "a".repeat(DAY_BEST_MAX_LENGTH - 5);
+      const wrapper = renderWithMic(long);
+      area(wrapper).setSelectionRange(long.length, long.length);
+      await dictate(wrapper, "noch mehr Worte");
+      expect(area(wrapper).value).toBe(`${long} noch`);
+      expect(area(wrapper).value.length).toBeLessThanOrEqual(DAY_BEST_MAX_LENGTH);
+      expect(wrapper.get('[role="status"]').text()).toBe(
+        `Gekürzt auf ${DAY_BEST_MAX_LENGTH} Zeichen.`,
+      );
+      await wrapper.get("textarea").setValue(long);
+      expect(wrapper.get('[role="status"]').text()).toBe("");
+    });
+
+    it("offers no microphone while the field is disabled", () => {
+      const wrapper = renderWithMic("", true);
+      expect(wrapper.findComponent(MicStub).exists()).toBe(false);
+    });
   });
 });

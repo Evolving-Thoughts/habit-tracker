@@ -7,6 +7,7 @@ import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import type { TodoResponse } from "../types/todo";
 import { choose } from "../test/combobox";
 import { hierarchyTodo } from "../test/hierarchy";
+import { MicStub, dictate, micStart } from "../test/mic-stub";
 import CreateTodoForm from "./CreateTodoForm.vue";
 
 vi.mock("../api/day-planner.api", () => ({
@@ -362,5 +363,106 @@ describe("CreateTodoForm", () => {
     expect(wrapper.get<HTMLFieldSetElement>("fieldset").element.disabled).toBe(
       false,
     );
+  });
+
+  describe("day and duration from the title", () => {
+    // Tuesday, 24 Nov 2026, in Berlin: "morgen" is Wednesday the 25th.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-24T10:00:00Z"));
+    });
+    afterEach(() => vi.useRealTimers());
+
+    const mountForm = (props: Record<string, unknown> = {}) =>
+      mount(CreateTodoForm, {
+        props,
+        global: { stubs: { MicButton: MicStub } },
+      });
+    const value = (wrapper: ReturnType<typeof mountForm>, name: string) =>
+      wrapper.get<HTMLInputElement>(`input[name="${name}"]`).element.value;
+
+    it("fills untouched day and duration, shows chips, and takes the words out only on creating", async () => {
+      const wrapper = mountForm();
+      await wrapper.get('input[name="title"]').setValue("Arzt anrufen morgen 15 Minuten");
+      expect(value(wrapper, "scheduledDate")).toBe("2026-11-25");
+      expect(value(wrapper, "duration")).toBe("15");
+      expect(
+        wrapper.findAll(".parse-chip").map((chip) => chip.attributes("aria-label")),
+      ).toEqual(["Tag: morgen, entfernen", "Dauer: 15 Min., entfernen"]);
+      expect(value(wrapper, "title")).toBe("Arzt anrufen morgen 15 Minuten");
+
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+      expect(createTodoMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Arzt anrufen",
+          scheduledDate: "2026-11-25",
+          plannedDurationMinutes: 15,
+        }),
+      );
+    });
+
+    it("leaves a field set by hand alone, and its words in the title", async () => {
+      const wrapper = mountForm();
+      await wrapper.get('input[name="scheduledDate"]').setValue("2026-12-01");
+      await wrapper.get('input[name="title"]').setValue("Wäsche morgen 20 Minuten");
+      expect(value(wrapper, "scheduledDate")).toBe("2026-12-01");
+      expect(value(wrapper, "duration")).toBe("20");
+      expect(wrapper.findAll(".parse-chip").map((chip) => chip.text())).toEqual([
+        "20 Min.",
+      ]);
+
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+      expect(createTodoMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Wäsche morgen",
+          scheduledDate: "2026-12-01",
+          plannedDurationMinutes: 20,
+        }),
+      );
+    });
+
+    it("stops following the title once the duration is typed", async () => {
+      const wrapper = mountForm();
+      await wrapper.get('input[name="title"]').setValue("Laufen 20 Minuten");
+      await wrapper.get('input[name="duration"]').setValue("45");
+      await wrapper.get('input[name="title"]').setValue("Laufen 30 Minuten");
+      expect(value(wrapper, "duration")).toBe("45");
+    });
+
+    it("empties a filled field again when its chip is discarded", async () => {
+      const wrapper = mountForm();
+      await wrapper.get('input[name="title"]').setValue("Wäsche morgen");
+      expect(value(wrapper, "scheduledDate")).toBe("2026-11-25");
+      await wrapper.get('[aria-label="Tag: morgen, entfernen"]').trigger("click");
+      expect(value(wrapper, "scheduledDate")).toBe("");
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+      expect(createTodoMock).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Wäsche morgen", scheduledDate: null }),
+      );
+    });
+
+    it("reads nothing out of a campaign's title", async () => {
+      const wrapper = mountForm({ campaign: true });
+      await wrapper.get('input[name="title"]').setValue("Marathon in 3 Stunden");
+      expect(wrapper.find(".parse-chip").exists()).toBe(false);
+    });
+
+    it("dictates into the title, and starts at once when asked", async () => {
+      micStart.mockClear();
+      const quiet = mountForm();
+      await flushPromises();
+      expect(micStart).not.toHaveBeenCalled();
+      await quiet.get('input[name="title"]').setValue("Steuer");
+      await dictate(quiet, "erklärung morgen");
+      expect(value(quiet, "title")).toBe("Steuer erklärung morgen");
+      expect(value(quiet, "scheduledDate")).toBe("2026-11-25");
+
+      mountForm({ dictate: true });
+      await flushPromises();
+      expect(micStart).toHaveBeenCalledTimes(1);
+    });
   });
 });

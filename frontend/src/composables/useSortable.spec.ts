@@ -1,7 +1,7 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { defineComponent, h, nextTick, ref } from "vue";
-import { useSortable } from "./useSortable";
+import { LIFT_VIBRATION_MS, useSortable } from "./useSortable";
 
 type Handlers = {
   onStart: (event: { item: HTMLElement }) => void;
@@ -68,6 +68,25 @@ describe("useSortable", () => {
     expect(
       [...list.querySelectorAll("[data-key]")].map((node) => node.textContent),
     ).toEqual(["C", "A", "B"]);
+    wrapper.unmount();
+  });
+
+  it("buzzes briefly when a card lifts, where the device can", async () => {
+    const vibrate = vi.fn(() => true);
+    Object.defineProperty(navigator, "vibrate", {
+      configurable: true,
+      value: vibrate,
+    });
+    const wrapper = mount(List, { attachTo: document.body });
+    await nextTick();
+    const card = (wrapper.element as HTMLElement).querySelector<HTMLElement>(
+      '[data-key="A"]',
+    )!;
+    sortables.at(-1)!.onStart({ item: card });
+    expect(vibrate).toHaveBeenCalledWith(LIFT_VIBRATION_MS);
+    // Without the API (desktop browsers, iOS) lifting works all the same.
+    Reflect.deleteProperty(navigator, "vibrate");
+    expect(() => sortables.at(-1)!.onStart({ item: card })).not.toThrow();
     wrapper.unmount();
   });
 });

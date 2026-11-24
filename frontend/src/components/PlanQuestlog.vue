@@ -282,4 +282,31 @@ function menu(todo: QuestlogQuest): MenuEntry[] {
   transform: rotate(180deg);
   font-size: 0.875rem;
 }
+
+/*
+ * On a phone the Questlog is the board's first column like any other, a
+ * screen wide: it neither sticks nor folds away, the chips above reach it.
+ */
+@media (max-width: 39.99rem) {
+  .plan-questlog {
+    position: static;
+    padding: var(--space-3) 0.375rem 0.375rem;
+    box-shadow: none;
+  }
+
+  .plan-questlog__header {
+    min-height: var(--tap);
+  }
+
+  .plan-questlog__toggle {
+    display: none;
+  }
+}
+
+/* A finger's field: 16px, so a phone does not zoom in on focus. */
+@media (max-width: 39.99rem), (pointer: coarse) {
+  .plan-questlog__add :deep(.input) {
+    font-size: 1rem;
+  }
+}
 </style>

@@ -54,6 +54,8 @@ const dialogBusy = ref(false);
 const selectedTodo = computed(() => dialog.value?.todo ?? null);
 
 const creationOpen = ref(false);
+/** Opened by a long press on Plus: a quest, its title dictated at once. */
+const creationDictate = ref(false);
 
 /** Category names and marks for the meta line. */
 const { load: loadCategories, labelOf } = useCategoryLabels();
@@ -162,9 +164,10 @@ async function onDialogDone(message: string): Promise<void> {
   closeDialog();
 }
 
-function openCreation(): void {
+function openCreation(dictate = false): void {
   if (isBusy.value || selectedTodo.value) return;
   successMessage.value = null;
+  creationDictate.value = dictate;
   creationOpen.value = true;
 }
 async function onCreated(): Promise<void> {
@@ -317,6 +320,7 @@ useShortcutHandlers({
 
     <CreateItemDialog
       v-if="creationOpen"
+      :dictate="creationDictate"
       kind="todo"
       @close="creationOpen = false"
       @created="onCreated"
@@ -487,7 +491,8 @@ useShortcutHandlers({
     <CreateButton
       label="Quest erstellen"
       :disabled="isBusy || selectedTodo !== null"
-      @click="openCreation"
+      @click="openCreation()"
+      @dictate="openCreation(true)"
     />
   </main>
 </template>

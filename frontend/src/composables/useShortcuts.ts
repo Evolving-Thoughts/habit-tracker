@@ -95,8 +95,12 @@ export const isMac =
   typeof navigator !== "undefined" &&
   /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
-/** The command menu or the shortcut overview, opened from anywhere. */
-export const overlay = ref<"menu" | "overview" | null>(null);
+/**
+ * The command menu or the shortcut overview, opened from anywhere.
+ * "search" is the command menu opened to type (Suchen in Mehr): its field
+ * takes the focus even on a touch screen, where that opens the keyboard.
+ */
+export const overlay = ref<"menu" | "search" | "overview" | null>(null);
 
 /* The row under the pointer, kept as coordinates: rows move under a still mouse. */
 let pointer: { x: number; y: number } | null = null;

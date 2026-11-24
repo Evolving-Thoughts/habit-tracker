@@ -699,6 +699,14 @@ watch(
 .day-calendar__slot--short .log-handle--start { right: auto; }
 .day-calendar__slot--short .log-handle--end { left: auto; }
 .day-calendar__slot--short .log-block::after { content: ""; position: absolute; inset-inline: 24%; top: 50%; height: var(--tap); transform: translateY(-50%); }
+/*
+ * A finger reaches every stretch: an invisible field at least a tap high
+ * around its middle, the edges' handles stay on top. The block looks the
+ * same; only where it can be touched grows.
+ */
+@media (pointer: coarse) {
+  .day-calendar__slot--log .log-block::after { content: ""; position: absolute; inset-inline: 24%; top: 50%; height: max(100%, var(--tap)); transform: translateY(-50%); }
+}
 .day-calendar__slot--mark {
   height: calc(1.5rem + 2px);
 }

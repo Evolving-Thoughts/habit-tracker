@@ -487,6 +487,43 @@ describe("TodayView", () => {
     ]);
   });
 
+  it("keeps Auf morgen in the header's menu on a phone, with the same question", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      (query: string) =>
+        ({
+          matches: query === "(max-width: 39.99rem)",
+          media: query,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+        }) as unknown as MediaQueryList,
+    );
+    try {
+      getTodayMock.mockResolvedValue(
+        makePlanner([makeTodo(), makeTodo({ todoId: 2, title: "Bewerbung" })]),
+      );
+      const wrapper = mount(TodayView, { attachTo: document.body });
+      await flushPromises();
+
+      const header = wrapper.get(".today-view__header");
+      expect(header.find(".today-view__postpone").exists()).toBe(false);
+      await header
+        .get('[aria-label="Weitere Aktionen für heute"]')
+        .trigger("click");
+      const entry = wrapper.get(
+        '[role=menuitem][aria-label="Offenes auf morgen verschieben"]',
+      );
+      expect(entry.text()).toContain("Auf morgen");
+      await entry.trigger("click");
+      await flushPromises();
+      expect(document.body.textContent).toContain(
+        "2 offene Einträge wandern auf morgen",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("asks before completing a campaign planned for today with open quests", async () => {
     const book = { id: 1, title: "NestJS lernen", color: null, icon: null };
     getTodayMock.mockResolvedValue(makePlanner([makeTodo({ campaign: book })]));
@@ -1175,7 +1212,7 @@ describe("TodayView rows and focus card", () => {
     selector: string,
   ) => wrapper.findAll(selector).map((element) => element.text());
 
-  it("keeps the focus card to one action row: Erledigt, ▶, Fokus-Modus and its menu", async () => {
+  it("leads the focus card with the stopwatch: Starten, then Erledigt, Fokus-Modus and its menu", async () => {
     getTodayMock.mockResolvedValue(
       makePlanner([
         makeHabit({ moveUntil: "2026-10-04" }),
@@ -1192,11 +1229,20 @@ describe("TodayView rows and focus card", () => {
         .findAll("button, a")
         .map((control) => control.attributes("aria-label")),
     ).toEqual([
-      "Joggen erledigen",
       "Stoppuhr für Joggen starten",
+      "Joggen erledigen",
       "Fokus-Modus",
       "Aktionen für Joggen",
     ]);
+    // The stopwatch is the primary button and says its step; Erledigt a tinted pill with its word.
+    const play = actions.get('[aria-label="Stoppuhr für Joggen starten"]');
+    expect(play.classes()).toContain("item-play");
+    expect(play.text()).toBe("Starten");
+    const done = actions.get('[aria-label="Joggen erledigen"]');
+    expect(done.classes()).toEqual(expect.arrayContaining(["btn", "focus__done"]));
+    expect(done.classes()).not.toContain("btn--primary");
+    expect(done.text()).toBe("Erledigt");
+    expect(done.find("svg").exists()).toBe(true);
     // The Fokus-Modus is an icon link with its name as tooltip.
     const mode = actions.get('a[aria-label="Fokus-Modus"]');
     expect(mode.attributes("title")).toBe("Fokus-Modus");
@@ -1429,7 +1475,7 @@ describe("TodayView: an appointment's turn on the focus card", () => {
     expect(past.text()).toContain("Vorbei – erledigt?");
   });
 
-  it("keeps Erledigt, ▶ and Termin verschieben for an appointment, without the Fokus-Modus", async () => {
+  it("keeps Starten, Erledigt and Termin verschieben for an appointment, without the Fokus-Modus", async () => {
     vi.setSystemTime(new Date("2026-10-02T08:10:00Z"));
     getTodayMock.mockResolvedValue(day());
     const wrapper = mount(TodayView);
@@ -1440,8 +1486,8 @@ describe("TodayView: an appointment's turn on the focus card", () => {
         .findAll("button, a")
         .map((control) => control.attributes("aria-label")),
     ).toEqual([
-      "Teamrunde erledigen",
       "Stoppuhr für Teamrunde starten",
+      "Teamrunde erledigen",
       "Aktionen für Teamrunde",
     ]);
     // Not part of the order: the card does not drag.

@@ -122,13 +122,16 @@ test("Wochenrückblick: the week in numbers, its campaigns, what was done, and t
     ),
   ).toBe(0);
 
-  // Three answers, saved explicitly, still there after a reload.
+  // Three answers that save themselves, still there after a reload.
+  const answers = view.getByRole("region", { name: "Rückblick", exact: true });
   await view.locator('[name="wentWell"]').fill("Ein Kapitel fertig");
   await view.locator('[name="wentBadly"]').fill("Zu spät angefangen");
   await view.locator('[name="changeNext"]').fill("Morgens zuerst schreiben");
-  await view.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(
-    view.getByRole("status").filter({ hasText: "Gespeichert" }),
+    answers.getByRole("button", { name: "Speichern", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    answers.getByRole("status").filter({ hasText: "Gespeichert" }),
   ).toBeVisible();
   await page.reload();
   await expect(view.locator('[name="wentWell"]')).toHaveValue(

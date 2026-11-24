@@ -2,6 +2,7 @@ import type { Editor } from "@tiptap/vue-3";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { NotesDocument } from "../api/todo-notes.api";
+import { MicStub, dictate } from "../test/mic-stub";
 import RichTextEditor from "./RichTextEditor.vue";
 
 enableAutoUnmount(afterEach);
@@ -34,6 +35,7 @@ async function mountEditor(modelValue: NotesDocument | null = null) {
   const wrapper = mount(RichTextEditor, {
     props: { modelValue, label: "Notizen zur Quest", placeholder: "Los" },
     attachTo: document.body,
+    global: { stubs: { MicButton: MicStub } },
   });
   await flushPromises();
   const editor = wrapper
@@ -255,5 +257,35 @@ describe("RichTextEditor", () => {
     expect(emitted()).toEqual([]);
     await field.trigger("keydown", { key: "Escape" });
     expect(document.activeElement).not.toBe(field.element);
+  });
+
+  it("inserts a divider from the block select and shows the block type again", async () => {
+    const { wrapper, editor, emitted } = await mountEditor(
+      doc(paragraph("Oben")),
+    );
+    expect(wrapper.find('[data-tool="divider"]').exists()).toBe(false);
+    expect(wrapper.find('[data-tool="taskList"]').exists()).toBe(true);
+    const select = wrapper.get<HTMLSelectElement>("select");
+    const divider = select.get('optgroup[label="Einfügen"] option');
+    expect(divider.text()).toBe("Trennlinie");
+
+    editor.commands.setTextSelection(5);
+    await select.setValue("divider");
+    expect(JSON.stringify(emitted().at(-1))).toContain('"horizontalRule"');
+    expect(select.element.value).toBe("text");
+  });
+
+  it("dictates plain text in at the cursor, spaced from the words around it", async () => {
+    const { wrapper, editor, emitted } = await mountEditor(
+      doc(paragraph("Erst dann")),
+    );
+    expect(wrapper.getComponent(MicStub).props()).toMatchObject({
+      mode: "long",
+      label: "Notizen zur Quest diktieren",
+    });
+    // Between "Erst" and " dann".
+    editor.commands.setTextSelection(5);
+    await dictate(wrapper, "<b>das</b> hier");
+    expect(emitted().at(-1)).toEqual(doc(paragraph("Erst <b>das</b> hier dann")));
   });
 });

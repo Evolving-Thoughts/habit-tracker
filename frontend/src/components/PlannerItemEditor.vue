@@ -19,6 +19,7 @@ import AppIcon from "./AppIcon.vue";
 
 import { TIMER_MAX_MINUTES } from "../utils/timer-duration";
 import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { useMediaQuery } from "../composables/useMediaQuery";
 import type { CategoryResponse } from "../types/category";
 import {
   changeHabitSchedule,
@@ -85,6 +86,14 @@ const hasLoaded = ref(false);
 const errorMessage = ref<string | null>(null);
 const confirmDeletion = ref(false);
 const keepButton = ref<HTMLButtonElement | null>(null);
+/*
+ * In a sheet on a phone the sticky footer holds only Speichern and
+ * Abbrechen, right above the keyboard; the way to deletion waits at the end
+ * of the content, away from the thumb's save. From 40rem it stays at the
+ * far end of the footer.
+ */
+const wideDialog = useMediaQuery("(min-width: 40rem)");
+const deleteInContent = computed(() => !!props.embedded && !wideDialog.value);
 const {
   preview: deletionPreview,
   prepare: prepareDeletion,
@@ -894,6 +903,21 @@ onMounted(loadEntity);
           />
         </template>
 
+        <div
+          v-if="deleteInContent && !confirmDeletion"
+          class="item-editor__delete-row"
+        >
+          <button
+            class="btn btn--quiet item-editor__delete"
+            type="button"
+            data-test="request-delete"
+            @click="requestDeletion"
+          >
+            <AppIcon name="trash" />
+            {{ kind === "todo" ? "Quest löschen" : "Gesamtes Daily löschen" }}
+          </button>
+        </div>
+
         <!-- The last, quiet step asks right above the actions. -->
         <div
           v-if="confirmDeletion"
@@ -952,7 +976,7 @@ onMounted(loadEntity);
             </button>
 
             <button
-              v-if="!confirmDeletion"
+              v-if="!deleteInContent && !confirmDeletion"
               class="btn btn--quiet item-editor__delete"
               type="button"
               data-test="request-delete"
@@ -1101,6 +1125,16 @@ onMounted(loadEntity);
 /* The way to deletion: last in the actions, pushed to their far end. */
 .item-editor__delete {
   margin-left: auto;
+}
+
+/* In a phone's sheet: the end of the content, set apart by a hairline. */
+.item-editor__delete-row {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-line);
+}
+
+.item-editor__delete-row .item-editor__delete {
+  margin-left: 0;
 }
 
 .item-editor__confirm {
