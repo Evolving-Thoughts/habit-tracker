@@ -62,8 +62,13 @@ function onKeydown(event: KeyboardEvent): void {
   close();
 }
 
-function onPointerDown(event: PointerEvent): void {
-  if (!root.value?.contains(event.target as Node)) close(false);
+/*
+ * A finished tap beside the panel closes it, not the first touch: a touch on
+ * a line that a device reports elsewhere must not take the panel away before
+ * the line is chosen.
+ */
+function onOutsideClick(event: MouseEvent): void {
+  if (root.value && !event.composedPath().includes(root.value)) close(false);
 }
 
 function onFocusOut(event: FocusEvent): void {
@@ -72,11 +77,11 @@ function onFocusOut(event: FocusEvent): void {
 }
 
 watch(open, (isOpen) => {
-  if (isOpen) document.addEventListener("pointerdown", onPointerDown);
-  else document.removeEventListener("pointerdown", onPointerDown);
+  if (isOpen) document.addEventListener("click", onOutsideClick, true);
+  else document.removeEventListener("click", onOutsideClick, true);
 });
 onBeforeUnmount(() =>
-  document.removeEventListener("pointerdown", onPointerDown),
+  document.removeEventListener("click", onOutsideClick, true),
 );
 
 function onVolume(event: Event): void {

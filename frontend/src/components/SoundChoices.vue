@@ -17,12 +17,26 @@ defineProps<{
 }>();
 const emit = defineEmits<{ "update:modelValue": [id: string | null] }>();
 const name = `sound-${useId()}`;
+
+/*
+ * A tap anywhere on a line chooses it, the words included. The label's own
+ * activation is not relied on: on some touch devices a tap on the text never
+ * reached the radio, so the line picks itself and moves the focus there.
+ */
+function pick(event: MouseEvent, id: string | null): void {
+  const target = event.target as HTMLElement;
+  if (target instanceof HTMLInputElement) return;
+  event.preventDefault();
+  const input = (event.currentTarget as HTMLElement).querySelector("input");
+  input?.focus();
+  emit("update:modelValue", id);
+}
 </script>
 
 <template>
   <fieldset class="sound-choices">
     <legend class="sound-choices__legend">{{ label }}</legend>
-    <label class="sound-choices__option">
+    <label class="sound-choices__option" @click="pick($event, null)">
       <input
         type="radio"
         :name="name"
@@ -45,6 +59,7 @@ const name = `sound-${useId()}`;
           v-for="sound in group.sounds"
           :key="sound.id"
           class="sound-choices__option"
+          @click="pick($event, sound.id)"
         >
           <input
             type="radio"
@@ -98,6 +113,9 @@ const name = `sound-${useId()}`;
   border-radius: var(--radius-control);
   color: var(--color-ink);
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
 
 .sound-choices__option:hover {
