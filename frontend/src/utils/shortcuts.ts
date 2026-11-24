@@ -32,6 +32,7 @@ export type ShortcutId =
   | "focus.timer"
   | "focus.done"
   | "focus.leave"
+  | "focus.sound"
   | "menu.open"
   | "overview.open";
 
@@ -129,6 +130,15 @@ export const SHORTCUTS: readonly Shortcut[] = [
     key: "Escape",
     group: "Fokus-Modus",
     label: "Zurück zu Heute",
+  },
+  // M for "Musik"; it switches ambience the same way.
+  {
+    id: "focus.sound",
+    key: "m",
+    group: "Fokus-Modus",
+    label: "Klang an/aus",
+    // A held key would switch it on and off in turn.
+    writes: true,
   },
   {
     id: "menu.open",

@@ -15,6 +15,7 @@ import {
 import { hrefOf } from "../routes";
 import { useTargetNotice } from "../composables/useTargetNotice";
 import { writeDone } from "../composables/useTicks";
+import { primeMissingMilestones } from "../composables/action-sounds";
 import { formatStopwatch } from "../utils/stopwatch";
 import type { MenuEntry } from "../utils/row-actions";
 import ActionMenu from "./ActionMenu.vue";
@@ -141,8 +142,14 @@ function refreshFocus(): void {
 }
 onTargetsChanged(refreshFocus);
 onTargetsChanged(refresh);
+// Milestone readings ahead of the next tick, so it never waits for them.
+function primeSounds() {
+  if (document.visibilityState !== "hidden") primeMissingMilestones();
+}
 onMounted(() => {
   void controller.refresh();
+  primeSounds();
+  document.addEventListener("visibilitychange", primeSounds);
   ticker = setInterval(controller.pulse, 250);
   poller = setInterval(refresh, 3000);
   window.addEventListener("focus", refresh);
@@ -155,6 +162,7 @@ onMounted(() => {
   document.addEventListener("visibilitychange", refreshFocus);
 });
 onUnmounted(() => {
+  document.removeEventListener("visibilitychange", primeSounds);
   controller.dispose();
   focusBlock.dispose();
   stopOpenFocus?.();

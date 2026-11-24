@@ -11,6 +11,7 @@ import type {
   SaveDayBestDto,
   SaveDayBestSettingsDto,
 } from '../src/day-bests/day-best.dto';
+import type { SoundsResponse } from '../src/sounds/sound.dto';
 import type { DayPlannerResponseDto } from '../src/day-planner/dto/day-planner-response.dto';
 import type {
   AddFocusEntryDto,
@@ -63,6 +64,7 @@ import type {
   CAMPAIGN_ICONS,
 } from '../../frontend/src/types/campaign';
 import type { CategoryResponse } from '../../frontend/src/types/category';
+import type { SoundListResponse } from '../../frontend/src/types/sound';
 import type {
   DayBest,
   DayBestMonths,
@@ -125,6 +127,7 @@ type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 export type Contract = [
   Assert<Reads<TodoResponseDto, TodoResponse>>,
   Assert<Reads<CategoryResponseDto, CategoryResponse>>,
+  Assert<Reads<SoundsResponse, SoundListResponse>>,
   Assert<Reads<HabitResponseDto, HabitResponse>>,
   Assert<Reads<HabitOccurrenceResponseDto, HabitOccurrenceResponse>>,
   Assert<Reads<DayPlannerResponseDto, DayPlannerResponse>>,

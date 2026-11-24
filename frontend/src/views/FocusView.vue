@@ -9,6 +9,8 @@ import {
 import { writeDone } from "../composables/useTicks";
 import { postponedToEnd } from "../utils/today-order";
 import AppIcon from "../components/AppIcon.vue";
+import FocusSoundMenu from "../components/FocusSoundMenu.vue";
+import { useFocusSound } from "../composables/useFocusSound";
 import ModalDialog from "../components/ModalDialog.vue";
 import { useFocusBlock } from "../composables/useFocusBlock";
 import type { FocusBlockMode } from "../types/focus-block";
@@ -103,6 +105,17 @@ const stateLabel = computed(() => {
   if (!running.value) return "Pausiert";
   return timer?.reached.value ? "Soll erreicht" : "Läuft";
 });
+/*
+ * Fokus-Klänge: the chosen sound plays while this stopwatch runs, once
+ * started from here (useFocusSound has the rule); leaving the view ends it.
+ */
+const sound = useFocusSound({
+  timerKey: () =>
+    `${timer?.timer.value?.id ?? ""}:${timer?.timer.value?.state ?? ""}`,
+  running: () => running.value,
+  reached: () => running.value && !!timer?.reached.value,
+});
+
 const facts = computed(() => {
   const item = current.value;
   if (!item) return [];
@@ -221,6 +234,8 @@ onBeforeRouteLeave((to) => {
 function toggleStopwatch(): boolean {
   const item = current.value;
   if (!item || busy.value) return false;
+  // Starting or resuming here lets the chosen sound start with it.
+  if (!running.value) sound.gesture();
   // Without the Fokus-Sperre (no provider) the stopwatch starts as anywhere.
   const focus =
     !focusBlock || activeBlock.value ? undefined : { mode: blockMode.value };
@@ -283,7 +298,10 @@ function postpone(): Promise<void> {
   }, "Das Verschieben hat nicht geklappt.");
 }
 
-/* Space and Ctrl+Enter do what the two big buttons do; Escape leads back. */
+/*
+ * Space and Ctrl+Enter do what the two big buttons do; Escape leads back;
+ * M switches the sound on or off.
+ */
 useShortcutHandlers({
   "focus.timer": () => toggleStopwatch(),
   "focus.done": () => {
@@ -293,6 +311,7 @@ useShortcutHandlers({
   "focus.leave": () => {
     window.location.hash = hrefOf("today");
   },
+  "focus.sound": () => sound.toggle(),
 });
 </script>
 
@@ -304,6 +323,15 @@ useShortcutHandlers({
         <span>Heute</span>
       </a>
       <p class="focus-view__eyebrow">Fokus-Modus</p>
+      <FocusSoundMenu :sound="sound" />
+      <!--
+        Calm, not an error, and in the bar so the stage keeps its row: the
+        Fokus-Modus works on without the sound.
+      -->
+      <p v-if="sound.loadFailed.value" class="focus-view__note" role="status">
+        Der Klang konnte nicht geladen werden. Der Fokus-Modus läuft ohne ihn
+        weiter.
+      </p>
     </header>
 
     <p v-if="errorMessage || actionError" class="focus-view__error" role="alert">
@@ -554,6 +582,8 @@ useShortcutHandlers({
 
 .focus-view__bar {
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   align-items: center;
   justify-content: space-between;
 }
@@ -576,10 +606,22 @@ useShortcutHandlers({
 }
 
 .focus-view__eyebrow {
-  margin: 0;
+  margin: 0 0 0 auto;
   color: var(--color-ink-muted);
   font-size: 0.875rem;
   font-weight: 700;
+}
+
+/* On a phone the bar keeps "Heute" and the sound; the view names itself. */
+@media (max-width: 39.99rem) {
+  .focus-view__eyebrow {
+    display: none;
+  }
+
+  /* The sound button's root carries this view's scope, so it can be placed. */
+  .focus-view__bar > .focus-sound {
+    margin-left: auto;
+  }
 }
 
 .focus-view__error {
@@ -588,6 +630,16 @@ useShortcutHandlers({
   border-radius: var(--radius-control);
   background: var(--color-danger-tint);
   color: var(--color-danger);
+}
+
+.focus-view__note {
+  flex: 1 0 100%;
+  margin: var(--space-1) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-quiet);
+  color: var(--color-ink);
+  font-size: 0.875rem;
 }
 
 .focus-view__stage {

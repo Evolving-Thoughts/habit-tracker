@@ -4,6 +4,12 @@ import { config } from "@vue/test-utils";
 // wrapper finds them like any other part of the component.
 config.global.stubs = { ...config.global.stubs, teleport: true };
 
+// The short sounds ("Töne") read the milestones around every completion.
+// Specs start with the switch off, so no completion reaches for those
+// requests; the sound specs switch it on themselves.
+if (typeof localStorage !== "undefined")
+  localStorage.setItem("sounds:effects", JSON.stringify({ enabled: false }));
+
 // Browser mocks are not needed by Node-environment IndexedDB tests.
 if (typeof HTMLDialogElement !== "undefined") {
   // jsdom has no native top layer. Browser QA verifies real modal/focus behavior.

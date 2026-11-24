@@ -161,6 +161,12 @@ describe("matchShortcuts", () => {
     expect(ids(press("Enter", { ctrlKey: true, repeat: true }))).toEqual([]);
   });
 
+  it("switches the Fokus-Klang with M, once per press and only with single keys on", () => {
+    expect(ids(press("m"))).toEqual(["focus.sound"]);
+    expect(ids(press("m", { repeat: true }))).toEqual([]);
+    expect(ids(press("m"), { singleKeys: false })).toEqual([]);
+  });
+
   it("leaves Space to a focused control", () => {
     expect(ids(press(" "))).toEqual(["row.timer", "focus.timer"]);
     expect(ids(press(" "), { interactive: true })).toEqual([]);

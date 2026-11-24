@@ -61,3 +61,7 @@ Desktop.ini
 # Impeccable: local hooks and platform binaries (reinstall with npx impeccable install)
 .claude/settings.local.json
 .claude/skills/impeccable/scripts/bin/
+
+# Focus sounds (ElevenLabs output must not be published)
+/sounds-raw/
+/sounds/

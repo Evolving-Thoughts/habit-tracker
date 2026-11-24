@@ -9,6 +9,11 @@ import {
   type TimerTarget,
   type TimerResponse,
 } from "../api/timers.api";
+import {
+  primeMilestones,
+  RUNNING_STOPWATCH_MS,
+  withActionSound,
+} from "./action-sounds";
 import { notifyDataChanged, notifyViewsChanged } from "./data-sync";
 import type { FocusBlockRequest } from "../types/focus-block";
 export function createTimerController() {
@@ -31,6 +36,13 @@ export function createTimerController() {
     remote = false,
   ): void {
     const previous = timer.value;
+    // Running now: read the quest hours ahead for the milestone sound at
+    // its pause, stop or completion (`action-sounds.ts`).
+    if (
+      response.timer?.state === "running" &&
+      (previous?.id !== response.timer.id || previous.state !== "running")
+    )
+      primeMilestones(["quest-hours"], RUNNING_STOPWATCH_MS);
     const receivedAt = performance.now();
     sampledAt = receivedAt;
     // The server answered about halfway through the request.
@@ -109,7 +121,17 @@ export function createTimerController() {
     replaceTimerId?: string,
   ): Promise<void> {
     try {
-      if (await mutate(() => startTimer(target, replaceTimerId), true))
+      if (
+        await withActionSound(
+          () => mutate(() => startTimer(target, replaceTimerId), true),
+          // Replacing ends the other stopwatch: its time may reach the goal.
+          {
+            sound: null,
+            kinds: replaceTimerId ? ["quest-hours"] : [],
+            ok: (done) => done,
+          },
+        )
+      )
         switching.value = null;
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === "ACTIVE_TIMER_EXISTS") {
@@ -130,12 +152,21 @@ export function createTimerController() {
       error.value = "Die Stoppuhr hat sich auf einem anderen Gerät geändert.";
       return false;
     }
-    try {
-      return await mutate(() =>
+    const run = () =>
+      mutate(() =>
         kind === "resume" && focusBlock
           ? timerAction(current.id, kind, focusBlock)
           : timerAction(current.id, kind),
       );
+    try {
+      // Pausing or stopping logs the time: it may reach the weekly goal.
+      return await (kind === "resume"
+        ? run()
+        : withActionSound(run, {
+            sound: null,
+            kinds: ["quest-hours"],
+            ok: (done) => done,
+          }));
     } catch {
       return false;
     }

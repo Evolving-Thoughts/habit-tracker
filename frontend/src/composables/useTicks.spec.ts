@@ -8,7 +8,8 @@ import {
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { getTodoHierarchy } from "../api/todo-hierarchy.api";
-import { useTicks, type TickTarget } from "./useTicks";
+import { withActionSound } from "./action-sounds";
+import { useTicks, writeDone, type TickTarget } from "./useTicks";
 
 vi.mock("../api/day-planner.api", () => ({
   rescheduleOccurrence: vi.fn(),
@@ -17,6 +18,9 @@ vi.mock("../api/day-planner.api", () => ({
   updateTodoCompletion: vi.fn(),
 }));
 vi.mock("../api/todo-hierarchy.api", () => ({ getTodoHierarchy: vi.fn() }));
+vi.mock("./action-sounds", () => ({
+  withActionSound: vi.fn((action: () => Promise<unknown>) => action()),
+}));
 
 const quest: TickTarget = { kind: "todo", id: 7, title: "Steuer" };
 const run: TickTarget = { kind: "occurrence", id: 3, title: "Laufen" };
@@ -130,5 +134,42 @@ describe("useTicks", () => {
     await api.undoLast();
     expect(onOtherUndo).toHaveBeenCalledWith({ kind: "log", id: 9 });
     expect(updateTodoCompletion).not.toHaveBeenCalled();
+  });
+
+  describe("the Erledigt sound", () => {
+    it("sounds every completion through writeDone, with the milestones it can reach", async () => {
+      const { api } = setup();
+      await api.complete(quest);
+      await api.complete(run);
+      await writeDone(quest, true);
+      expect(vi.mocked(withActionSound).mock.calls.map(([, options]) => options)).toEqual([
+        {
+          sound: "chime-done",
+          kinds: ["perfect-week", "quest-hours"],
+        },
+        {
+          sound: "chime-done",
+          kinds: ["perfect-week", "month-challenge", "quest-hours"],
+        },
+        {
+          sound: "chime-done",
+          kinds: ["perfect-week", "quest-hours"],
+        },
+      ]);
+      expect(updateTodoCompletion).toHaveBeenCalledTimes(2);
+      expect(updateOccurrenceStatus).toHaveBeenCalledWith(3, "completed");
+    });
+
+    it("stays silent for opening again, undo and skipping", async () => {
+      const { api } = setup();
+      await api.complete(run);
+      vi.mocked(withActionSound).mockClear();
+      await api.undoLast();
+      await api.reopen(quest);
+      await api.skip(run);
+      await writeDone(run, false);
+      expect(withActionSound).not.toHaveBeenCalled();
+      expect(updateOccurrenceStatus).toHaveBeenLastCalledWith(3, "pending");
+    });
   });
 });
