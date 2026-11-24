@@ -162,12 +162,22 @@ export function useFocusSound(options: FocusSoundOptions) {
   let armedFor: string | null = null;
   /** The stopwatch whose "Soll erreicht" already chimed. */
   let chimedFor: string | null = null;
-  const runningId = options.running() ? timerIdOf(options.timerKey()) : null;
-  if (carried && carried.armedFor === runningId) {
-    armedFor = carried.armedFor;
-    chimedFor = carried.chimedFor;
-  }
+  /*
+   * The go-ahead carried from the last visit waits for its stopwatch: when
+   * the view opens, the day (and so which stopwatch belongs to the quest in
+   * view) may still be loading.
+   */
+  let waiting = carried;
   carried = null;
+  function takeCarried(): void {
+    if (!waiting || !options.running()) return;
+    if (waiting.armedFor === timerIdOf(options.timerKey())) {
+      armedFor = waiting.armedFor;
+      chimedFor = waiting.chimedFor;
+    }
+    waiting = null;
+  }
+  takeCarried();
   /** When Start or Fortsetzen was pressed here, waiting for the stopwatch to run. */
   let gestureAt = Number.NEGATIVE_INFINITY;
   /** A Start or Pause pressed here that the server has not confirmed yet. */
@@ -244,6 +254,7 @@ export function useFocusSound(options: FocusSoundOptions) {
       if (key !== oldKey || running !== wasRunning) {
         // The server answered the press here.
         if (pending && pending.running === running) pending = null;
+        if (running) takeCarried();
         if (!running) armedFor = null;
         else if (now() - gestureAt <= GESTURE_MS) {
           // The start pressed here: this stopwatch may sound.

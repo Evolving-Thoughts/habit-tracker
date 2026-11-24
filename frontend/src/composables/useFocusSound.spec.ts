@@ -126,6 +126,20 @@ describe("useFocusSound", () => {
     other.scope.stop();
   });
 
+  it("plays on once the day has loaded and its running stopwatch shows", async () => {
+    updateFocusSound({ soundId: "rain" });
+    const first = await setup();
+    first.focus.gesture();
+    await first.set({ id: "t1", state: "running" });
+    first.scope.stop();
+    // Back while the day still loads: no stopwatch in view yet.
+    const back = await setup();
+    expect(back.played()).toEqual([]);
+    await back.set({ id: "t1", state: "running" });
+    expect(back.played()).toEqual(["rain"]);
+    back.scope.stop();
+  });
+
   it("does not carry the sound over a pause made in the view", async () => {
     updateFocusSound({ soundId: "rain" });
     const first = await setup();
