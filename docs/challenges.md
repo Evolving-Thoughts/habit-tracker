@@ -5,9 +5,10 @@ challenge, a reference to a Daily plus the month. It is done only when every
 run the Daily's own rhythm made due in the month was done; otherwise the
 result is an honest percentage ("90 % geschafft (27 von 30)"), never a
 warning. The code lives in `backend/src/month-challenges/`; the UI in
-`MonthChallengeCard.vue` (Heute), `MonthChallengeSection.vue` and
-`MonthChallengeDialog.vue` (Dailies), `ChallengeMark.vue` (the rows' marker)
-and the words in `utils/month-challenge.ts`.
+`MonthChallengeSection.vue` and `MonthChallengeDialog.vue` (Dailies),
+`ChallengeMark.vue` (the rows' marker), today's run in Heute's order
+(`TodayView.vue`, `PlannerItem.vue`, the evening place in
+`utils/today-agenda.ts`) and the words in `utils/month-challenge.ts`.
 
 ## Data
 
@@ -97,6 +98,36 @@ counts neither way). Status:
 (also one carried over into today, not one moved to a later day), else
 `done` when a run was done today, else `none`.
 
+## Heute
+
+The challenge has no card of its own on Heute: today's run stands in the
+order of the day like any other item, and the focus card always heads the
+list. The run's meta line names the challenge in words right after "Daily":
+"Monats-Challenge · Tag 2 · noch 4" (`runLine`, the progress as
+`progressLine`), on the focus card too when the run is the focus, and on
+the done row with the new count; a run carried over into today that is
+today's run carries it in "Nachholen". Other runs of the Daily wear only
+the marker.
+The open run's "…" has "Zur Monats-Challenge", which goes to
+`#/dailies?abschnitt=challenge`. Without a run today (a weekly target not
+due today, say) Heute shows nothing about it.
+
+**In the evening** (`arrangeToday` → `eveningChallenge`): from the
+challenge's reminder time, or 19:00 (`CHALLENGE_EVENING_MINUTES`) without
+one, Berlin time, today's open run (`todayOccurrenceId`) stands second,
+right below the focus card, until it is done or skipped; a run carried over
+from an earlier day (a weekly target's, say) comes up out of "Nachholen"
+for it; then it goes to the done items. When it is the focus itself it
+simply stays the focus card. `nextChangeAt` names that minute, so the page
+moves it on time. The promotion is display only: the stored order
+(`sequence`) is unchanged. The run still drags like any card and the drag
+stores its place (a drag of it, or onto it, sorts by what is on screen, as
+for the focus card), but while it is open in the evening it shows second
+regardless; its menu then offers only "Nach oben" (to the head, where it
+becomes the focus), and the other rows step over it. A carried-over run
+has no place in today's order: it neither drags nor steps, and the order
+written around it leaves it out.
+
 ## API
 
 All routes need a session and only touch the signed-in person's rows.
@@ -118,8 +149,9 @@ run is stored; closed results are frozen on the way.
 Beside its own routes:
 
 - `GET /day-planner/today` carries the running challenge as
-  `monthChallenge` (null without one) for Heute's card, and every habit item
-  says `monthChallenge: true` when its Daily carries it (the marker);
+  `monthChallenge` (null without one) for its run's line and evening place
+  on Heute, and every habit item says `monthChallenge: true` when its Daily
+  carries it (the marker);
 - `GET /day-planner/plan` marks runs of that Daily within its month, `GET
   /habits` and `GET /habits/:id` mark the Daily;
 - `GET /week-review` answers `monthChallenge: { title, done, due }`: the
@@ -174,7 +206,11 @@ Challenge" / "Sport ist heute noch offen." with the tag
   incl. daylight saving;
 - `backend/test/month-challenges.e2e-spec.ts`: the API with a fake clock;
   `backend/test/push.e2e-spec.ts` ("daily reminder of the Monats-Challenge");
-- `frontend/src/utils/month-challenge.spec.ts`, `MonthChallengeCard.spec.ts`,
+- `frontend/src/utils/month-challenge.spec.ts`,
   `MonthChallengeSection.spec.ts`, `scripts/push-worker.test.mjs`;
+- `frontend/src/utils/today-agenda.spec.ts` and `today-order.spec.ts`: the
+  evening place (before and after the threshold, own reminder time, none →
+  19:00, done or skipped, run as focus, no run today, carried over, drag and
+  steps); `TodayView.spec.ts`: the row's line, the focus card, the menu link;
 - `frontend/e2e/month-challenge.spec.ts`: started on a Daily in the
-  Dailies, shown on Heute with its progress, ticked there.
+  Dailies, its run on Heute with its progress, the menu link, ticked there.

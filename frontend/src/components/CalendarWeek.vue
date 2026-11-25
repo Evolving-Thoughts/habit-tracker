@@ -204,14 +204,17 @@ watch(() => props.result.startDate, scrollToStart);
 <style scoped>
 /*
  * One board scrolls both ways: down through the hours, sideways where seven
- * columns do not fit. The heads stay on top, the hours on the left.
+ * columns do not fit. The heads stay on top, the hours on the left. Paint
+ * containment makes it the box of everything positioned inside: the hidden
+ * status lines of the far columns once widened the page to 789px at 375.
  */
 .calendar-week {
   display: grid;
   grid-template-columns: 3rem repeat(7, minmax(7.5rem, 1fr));
   grid-template-rows: auto auto;
-  height: max(24rem, calc(100dvh - var(--tab-bar-height) - 14rem));
+  height: max(24rem, calc(100dvh - var(--tab-bar-height) - var(--timer-bar-height, 0px) - 14rem));
   overflow: auto;
+  contain: paint;
   overscroll-behavior: contain;
 }
 

@@ -35,9 +35,15 @@ const icon = computed(() =>
 </template>
 
 <style scoped>
-/* A pill on the card's own white, so the badge always sits on surface. */
+/*
+ * A pill on the card's own white, so the badge always sits on surface. In a
+ * line that wraps it keeps icon and name and moves on to the next line
+ * rather than shrinking to its badge; only a name longer than the whole
+ * line ends in an ellipsis.
+ */
 .campaign-chip {
   display: inline-flex;
+  flex-shrink: 0;
   gap: 0.3125rem;
   align-items: center;
   min-width: 0;

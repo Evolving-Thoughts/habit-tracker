@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, watch } from "vue";
+import { computed, nextTick, watch } from "vue";
 import { useRoute } from "vue-router";
 import AppIcon from "../components/AppIcon.vue";
 import CalendarConnection from "../components/CalendarConnection.vue";
@@ -12,13 +12,60 @@ import QuestTargetSetting from "../components/QuestTargetSetting.vue";
 import ShortcutSettings from "../components/ShortcutSettings.vue";
 import SoundEffectSettings from "../components/SoundEffectSettings.vue";
 import ThemeSetting from "../components/ThemeSetting.vue";
+import VoiceInputSettings from "../components/VoiceInputSettings.vue";
 import { useKeyboardLikely } from "../composables/useShortcuts";
-import { SECTION_QUERY, sectionId } from "../routes";
+import { useMediaQuery } from "../composables/useMediaQuery";
+import { hrefOf, SECTION_QUERY, sectionId } from "../routes";
 
 defineProps<{ email: string }>();
 defineEmits<{ signOut: [] }>();
 // Only where a keyboard is likely; a phone has no keys to switch off.
 const keyboardLikely = useKeyboardLikely();
+
+/*
+ * The jump list on top: every section by a short name, in the page's
+ * order. A tap scrolls to the section and puts the focus on its title,
+ * the same as opening it by address (?abschnitt=…).
+ */
+const SECTIONS = [
+  { name: "wochenziel", label: "Wochenziel" },
+  { name: "kategorien", label: "Kategorien" },
+  { name: "darstellung", label: "Darstellung" },
+  { name: "das-beste", label: "Das Beste" },
+  { name: "fokus-sperre", label: "Fokus-Sperre" },
+  { name: "fokus-klaenge", label: "Fokus-Klänge" },
+  { name: "toene", label: "Töne" },
+  { name: "spracheingabe", label: "Spracheingabe" },
+  { name: "benachrichtigungen", label: "Benachrichtigungen" },
+  { name: "google-kalender", label: "Google Kalender" },
+  { name: "tastatur", label: "Tastatur" },
+  { name: "konto", label: "Konto" },
+] as const;
+const jumps = computed(() =>
+  SECTIONS.filter(
+    (section) => section.name !== "tastatur" || keyboardLikely.value,
+  ),
+);
+const sectionHref = (name: string) =>
+  `${hrefOf("settings")}?${SECTION_QUERY}=${name}`;
+const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+
+function focusTitle(name: string): HTMLElement | null {
+  const title = document.querySelector<HTMLElement>(`#${sectionId(name)} h2`);
+  if (!title) return null;
+  title.tabIndex = -1;
+  title.focus({ preventScroll: true });
+  return title;
+}
+function jump(name: string): void {
+  const section = document.getElementById(sectionId(name));
+  if (!section) return;
+  section.scrollIntoView?.({
+    behavior: reducedMotion.value ? "auto" : "smooth",
+    block: "start",
+  });
+  focusTitle(name);
+}
 
 /*
  * "?abschnitt=kategorien" (also where #/kategorien leads): the router scrolls
@@ -30,12 +77,7 @@ watch(
   async (name) => {
     if (typeof name !== "string") return;
     await nextTick();
-    const title = document.querySelector<HTMLElement>(
-      `#${sectionId(name)} h2`,
-    );
-    if (!title) return;
-    title.tabIndex = -1;
-    title.focus({ preventScroll: true });
+    focusTitle(name);
   },
   { immediate: true },
 );
@@ -47,8 +89,25 @@ watch(
       <h1 class="page-title">Einstellungen</h1>
     </header>
 
+    <nav class="settings-view__jump" aria-label="Abschnitte der Einstellungen">
+      <ul class="settings-view__chips">
+        <li v-for="section in jumps" :key="section.name">
+          <a
+            class="chip settings-view__chip"
+            :href="sectionHref(section.name)"
+            @click.prevent="jump(section.name)"
+            >{{ section.label }}</a
+          >
+        </li>
+      </ul>
+    </nav>
+
     <div class="settings-view__sections">
-      <section class="card" aria-labelledby="settings-quest-hours">
+      <section
+        :id="sectionId('wochenziel')"
+        class="card"
+        aria-labelledby="settings-quest-hours"
+      >
         <h2 id="settings-quest-hours" class="section-title">
           Wochenziel Kampagnen-Stunden
         </h2>
@@ -64,7 +123,11 @@ watch(
         <CategorySettings />
       </section>
 
-      <section class="card" aria-labelledby="settings-theme">
+      <section
+        :id="sectionId('darstellung')"
+        class="card"
+        aria-labelledby="settings-theme"
+      >
         <h2 id="settings-theme" class="section-title">Darstellung</h2>
         <ThemeSetting />
       </section>
@@ -107,18 +170,36 @@ watch(
         <SoundEffectSettings />
       </section>
 
-      <section class="card" aria-labelledby="settings-push">
+      <section
+        :id="sectionId('spracheingabe')"
+        class="card"
+        aria-labelledby="settings-voice-input"
+      >
+        <h2 id="settings-voice-input" class="section-title">Spracheingabe</h2>
+        <VoiceInputSettings />
+      </section>
+
+      <section
+        :id="sectionId('benachrichtigungen')"
+        class="card"
+        aria-labelledby="settings-push"
+      >
         <h2 id="settings-push" class="section-title">Benachrichtigungen</h2>
         <PushSettings />
       </section>
 
-      <section class="card" aria-labelledby="settings-calendar">
+      <section
+        :id="sectionId('google-kalender')"
+        class="card"
+        aria-labelledby="settings-calendar"
+      >
         <h2 id="settings-calendar" class="section-title">Google Kalender</h2>
         <CalendarConnection />
       </section>
 
       <section
         v-if="keyboardLikely"
+        :id="sectionId('tastatur')"
         class="card"
         aria-labelledby="settings-shortcuts"
       >
@@ -126,7 +207,11 @@ watch(
         <ShortcutSettings />
       </section>
 
-      <section class="card" aria-labelledby="settings-account">
+      <section
+        :id="sectionId('konto')"
+        class="card"
+        aria-labelledby="settings-account"
+      >
         <h2 id="settings-account" class="section-title">Konto</h2>
         <div class="settings-view__account">
           <p class="settings-view__email">
@@ -152,10 +237,71 @@ watch(
   gap: var(--space-3);
 }
 
+/*
+ * The jump list: filter chips as links. A phone keeps them on one line that
+ * scrolls sideways in itself; wider, they wrap.
+ */
+.settings-view__jump {
+  margin: calc(var(--space-2) - var(--space-5)) -1rem var(--space-4);
+}
+
+.settings-view__chips {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-1) 1rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  list-style: none;
+  scrollbar-width: none;
+}
+
+.settings-view__chips > li {
+  flex: none;
+}
+
+.settings-view__chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.9375rem;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: transform 420ms var(--spring);
+}
+
+.settings-view__chip:hover {
+  border-color: var(--color-line-strong);
+  color: var(--color-ink);
+}
+
+.settings-view__chip:active {
+  transform: var(--press);
+  transition-duration: 90ms;
+}
+
+@media (min-width: 40rem) {
+  .settings-view__jump {
+    margin-inline: 0;
+  }
+
+  .settings-view__chips {
+    flex-wrap: wrap;
+    padding-inline: 0;
+    overflow: visible;
+  }
+}
+
 .settings-view__sections > .card {
   padding: var(--space-5);
-  /* A section opened by address stops a little below the page's top. */
+  /*
+   * A section opened by address or the jump list stops a little below the
+   * page's top. On a phone the stopwatch bar sits at the bottom, over the
+   * tab bar, so only the top's safe area counts here.
+   */
   scroll-margin-top: calc(env(safe-area-inset-top, 0px) + var(--space-4));
+  scroll-margin-bottom: calc(
+    var(--tab-bar-height) + var(--timer-bar-height) + var(--space-4)
+  );
 }
 
 .settings-view .section-title {

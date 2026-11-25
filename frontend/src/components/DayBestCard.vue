@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
 import { getDayBest, getDayBestSettings } from "../api/day-bests.api";
+import { onShownAgain } from "../composables/useActive";
 import { useDayClock } from "../composables/useDayClock";
 import { hrefOf } from "../routes";
 import type { DayBest, DayBestSettings } from "../types/day-best";
@@ -31,6 +32,9 @@ async function loadSettings(): Promise<void> {
   }
 }
 void loadSettings();
+// Heute stays alive behind other views: the card time may have changed in
+// Einstellungen meanwhile.
+onShownAgain(() => void loadSettings());
 
 /* The clock wakes exactly when the card is due, while the page stays open. */
 const now = useDayClock((minutes) =>

@@ -33,7 +33,7 @@ import UndoToast from "../components/UndoToast.vue";
 import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
 import { useListFocus } from "../composables/useListFocus";
 import { useLoader } from "../composables/useLoader";
-import { useMediaQuery } from "../composables/useMediaQuery";
+import { SHEET_QUERY, useMediaQuery } from "../composables/useMediaQuery";
 import {
   focusWhenReady,
   useShortcutHandlers,
@@ -64,6 +64,7 @@ import {
 import {
   BOARD,
   boardColumns,
+  columnAt,
   dropOnDay,
   dropRunOnDay,
   entryKey,
@@ -73,12 +74,15 @@ import {
   isMovableRun,
   MAX_PLAN_DAYS,
   openEntries,
+  PHONE_PLAN_DAYS,
+  planChips,
   planQuery,
   questlogEntry,
   questlogStartsOpen,
   shelveQuest,
   runMayMoveTo,
   shiftedStart,
+  startColumn,
   stepDrop,
   stepRunDrop,
   todayScroll,
@@ -166,6 +170,11 @@ onMounted(() => {
 onBeforeUnmount(() => resizeObserver?.disconnect());
 
 const wide = useMediaQuery("(min-width: 56rem)");
+/**
+ * Below 40rem every column is a screen wide and snaps into place, the
+ * Questlog among them; chips above jump between the columns.
+ */
+const phone = useMediaQuery(SHEET_QUERY);
 const QUESTLOG_KEY = "plan:questlog";
 function readQuestlogChoice(): string | null {
   try {
@@ -184,6 +193,8 @@ function readOverdueOpen(): boolean {
   }
 }
 const overdueOpen = ref(readOverdueOpen());
+/** A phone shows it open: a column of its own needs no folding. */
+const overdueShown = computed(() => phone.value || overdueOpen.value);
 function toggleOverdue(): void {
   overdueOpen.value = !overdueOpen.value;
   try {
@@ -195,6 +206,7 @@ function toggleOverdue(): void {
 /** A choice made on this device; until then the window's width decides. */
 const questlogChoice = ref<string | null>(readQuestlogChoice());
 const questlogOpen = computed(() =>
+  phone.value ||
   questlogStartsOpen(questlogChoice.value, frameWidth.value ? frameWidth.value >= BOARD.questlogOpen + BOARD.column + BOARD.gap : wide.value),
 );
 function toggleQuestlog(): void {
@@ -209,11 +221,12 @@ function toggleQuestlog(): void {
 
 /** The days that fit, with or without the column of what was left behind. */
 function daysThatFit(overdue: boolean): number {
+  if (phone.value) return PHONE_PLAN_DAYS;
   return frameWidth.value > 0
     ? fittingDays(frameWidth.value, {
         questlogOpen: questlogOpen.value,
         overdue,
-        overdueOpen: overdueOpen.value,
+        overdueOpen: overdueShown.value,
         least: wide.value ? 2 : 1,
       })
     : WITHOUT_LAYOUT_DAYS;
@@ -258,12 +271,24 @@ const shownPlan = computed<WeekPlanResponse | null>(() =>
   plan.value ? { ...plan.value, days: shownDays.value } : null,
 );
 const columns = computed(() =>
-  boardColumns({
-    questlogOpen: questlogOpen.value,
-    overdue: hasOverdue.value,
-    overdueOpen: overdueOpen.value,
-    days: shownCount.value,
-  }),
+  phone.value
+    ? `repeat(${chips.value.length}, 100%)`
+    : boardColumns({
+        questlogOpen: questlogOpen.value,
+        overdue: hasOverdue.value,
+        overdueOpen: overdueShown.value,
+        days: shownCount.value,
+      }),
+);
+/** The phone's strip: one chip per column, Questlog · Liegen geblieben · Heute · Mi … */
+const chips = computed(() =>
+  plan.value
+    ? planChips({
+        overdue: hasOverdue.value,
+        days: shownDays.value.map((day) => day.date),
+        today: plan.value.today,
+      })
+    : [],
 );
 const rangeTitle = computed(() =>
   rangeLabel(first.value, addDays(first.value, shownCount.value - 1)),
@@ -645,31 +670,95 @@ async function onDialogDone(): Promise<void> {
 }
 
 /*
- * A freshly shown board starts at its first column while today is in view
- * from there; otherwise (a phone with the Questlog open, the column of
- * what was left behind) it scrolls just far enough for today to stand
- * beside the Questlog column, which stays in place.
+ * On a phone the board shows one column at a time; the chip of the column
+ * in view is marked, and a tap on a chip brings its column.
  */
+const current = ref(0);
+const chipStrip = ref<HTMLElement | null>(null);
+function columnStep(scroller: HTMLElement): number {
+  const gap = parseFloat(getComputedStyle(scroller).columnGap) || 0;
+  return scroller.clientWidth + gap;
+}
+let scrollFrame = 0;
+function onBoardScroll(): void {
+  if (!phone.value || scrollFrame) return;
+  scrollFrame = requestAnimationFrame(() => {
+    scrollFrame = 0;
+    const scroller = board.value;
+    if (scroller)
+      current.value = columnAt(
+        scroller.scrollLeft,
+        columnStep(scroller),
+        chips.value.length,
+      );
+  });
+}
+onBeforeUnmount(() => cancelAnimationFrame(scrollFrame));
+const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+function showColumn(index: number, smooth = true): void {
+  const scroller = board.value;
+  const column = scroller?.children[index];
+  if (!scroller || !(column instanceof HTMLElement)) return;
+  current.value = index;
+  if (typeof scroller.scrollTo !== "function") {
+    scroller.scrollLeft = column.offsetLeft;
+    return;
+  }
+  scroller.scrollTo({
+    left: column.offsetLeft,
+    behavior: smooth && !reducedMotion.value ? "smooth" : "auto",
+  });
+}
+/* The marked chip stays in sight in its own strip. */
 watch(
-  board,
-  (scroller) => {
-    if (!scroller || !plan.value) return;
-    const todayColumn = scroller.querySelector<HTMLElement>(
-      `.plan-day[data-date="${plan.value.today}"]`,
-    );
-    const questlog = scroller.querySelector<HTMLElement>(".plan-questlog");
-    if (!todayColumn || !questlog) return;
-    const gap = parseFloat(getComputedStyle(scroller).columnGap) || 0;
-    scroller.scrollLeft = todayScroll(
-      {
-        start: todayColumn.offsetLeft,
-        end: todayColumn.offsetLeft + todayColumn.offsetWidth,
-      },
-      { width: scroller.clientWidth, sticky: questlog.offsetWidth + gap },
-    );
+  current,
+  (index) => {
+    const strip = chipStrip.value;
+    const chip = strip?.children[index];
+    if (!strip || !(chip instanceof HTMLElement)) return;
+    const edge = 16;
+    if (chip.offsetLeft - edge < strip.scrollLeft)
+      strip.scrollLeft = chip.offsetLeft - edge;
+    else if (
+      chip.offsetLeft + chip.offsetWidth + edge >
+      strip.scrollLeft + strip.clientWidth
+    )
+      strip.scrollLeft =
+        chip.offsetLeft + chip.offsetWidth + edge - strip.clientWidth;
   },
   { flush: "post" },
 );
+
+/*
+ * A freshly shown board opens on today. On a phone that is today's column
+ * (or the first day's, when the board starts later). Wider, the board starts
+ * at its first column while today is in view from there; otherwise (the
+ * Questlog open in a narrow window, the column of what was left behind) it
+ * scrolls just far enough for today to stand beside the Questlog column,
+ * which stays in place.
+ */
+function openOnToday(scroller: HTMLElement | null): void {
+  if (!scroller || !plan.value) return;
+  if (phone.value) {
+    showColumn(startColumn(chips.value, plan.value.today), false);
+    return;
+  }
+  const todayColumn = scroller.querySelector<HTMLElement>(
+    `.plan-day[data-date="${plan.value.today}"]`,
+  );
+  const questlog = scroller.querySelector<HTMLElement>(".plan-questlog");
+  if (!todayColumn || !questlog) return;
+  const gap = parseFloat(getComputedStyle(scroller).columnGap) || 0;
+  scroller.scrollLeft = todayScroll(
+    {
+      start: todayColumn.offsetLeft,
+      end: todayColumn.offsetLeft + todayColumn.offsetWidth,
+    },
+    { width: scroller.clientWidth, sticky: questlog.offsetWidth + gap },
+  );
+}
+watch(board, openOnToday, { flush: "post" });
+watch(phone, () => openOnToday(board.value), { flush: "post" });
 
 /* Ticking with X, its undo toast and the campaign question: `useTicks`. */
 const ticks = useTicks(writes.write);
@@ -1122,6 +1211,29 @@ useShortcutHandlers({
     <p class="visually-hidden" role="status">{{ status }}</p>
     <p v-if="notice" class="plan-view__notice" role="status">{{ notice }}</p>
 
+    <!--
+      A phone's chips: one per column, the one in view marked by its frame and
+      weight (aria-current); a tap brings its column.
+    -->
+    <nav
+      v-if="phone && plan && !isLoading && !loadError"
+      ref="chipStrip"
+      class="plan-view__chips"
+      aria-label="Spalten des Plans"
+    >
+      <button
+        v-for="(chip, index) in chips"
+        :key="chip.key"
+        type="button"
+        class="plan-view__chip"
+        :aria-current="index === current ? 'true' : undefined"
+        :aria-label="chip.name === chip.label ? undefined : chip.name"
+        @click="showColumn(index)"
+      >
+        {{ chip.label }}
+      </button>
+    </nav>
+
     <!-- Measured for the columns that fit; always there, whatever it holds. -->
     <div ref="frame" class="plan-view__frame">
       <!-- Bones in the board's own layout; they never scroll sideways. -->
@@ -1129,11 +1241,13 @@ useShortcutHandlers({
         v-if="isLoading"
         class="plan-view__skeleton"
         :style="{
-          gridTemplateColumns: boardColumns({
-            questlogOpen,
-            overdue: false,
-            days: shownCount,
-          }),
+          gridTemplateColumns: phone
+            ? '100%'
+            : boardColumns({
+                questlogOpen,
+                overdue: false,
+                days: shownCount,
+              }),
         }"
         role="status"
         aria-label="Plan wird geladen"
@@ -1151,7 +1265,9 @@ useShortcutHandlers({
         v-else-if="plan"
         ref="board"
         class="plan-view__board"
+        :class="{ 'plan-view__board--phone': phone }"
         :style="{ gridTemplateColumns: columns }"
+        @scroll.passive="onBoardScroll"
       >
         <PlanQuestlog
           :todos="backlog"
@@ -1176,7 +1292,7 @@ useShortcutHandlers({
         <PlanOverdue
           v-if="hasOverdue"
           :entries="plan.overdue"
-          :open="overdueOpen"
+          :open="overdueShown"
           @toggle="toggleOverdue"
           :busy="writes.busy.value || dialogBusy"
           :menu="(entry) => entryMenu(entry, null)"
@@ -1247,6 +1363,74 @@ useShortcutHandlers({
   overflow-x: auto;
   overscroll-behavior-x: contain;
   padding-bottom: var(--space-2);
+}
+
+/*
+ * A phone: every column a screen wide, snapping into place. While a card is
+ * carried (Sortable's floating copy is in the board), the board scrolls
+ * freely, so it can glide under the card near the edges.
+ */
+.plan-view__board--phone {
+  gap: var(--space-3);
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.plan-view__board--phone > * {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.plan-view__board--phone:has(.sortable-fallback) {
+  scroll-snap-type: none;
+}
+
+/*
+ * The chips stay at the top while the columns scroll down; they scroll
+ * sideways in themselves when they do not all fit.
+ */
+.plan-view__chips {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 2;
+  display: flex;
+  gap: var(--space-2);
+  margin: calc(-1 * var(--space-2)) -1rem var(--space-2);
+  padding: var(--space-2) 1rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  background: var(--color-ground);
+  scrollbar-width: none;
+}
+
+.plan-view__chip {
+  flex: none;
+  min-height: var(--tap);
+  padding: 0 var(--space-4);
+  border: 1.5px solid var(--color-line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-ink-muted);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 420ms var(--spring);
+}
+
+.plan-view__chip:active {
+  transform: var(--press);
+  transition-duration: 90ms;
+}
+
+/* The column in view: ink on white in an ink frame, heavier, never a colour alone. */
+.plan-view__chip[aria-current="true"] {
+  border-color: var(--color-ink);
+  background: var(--color-surface);
+  box-shadow: inset 0 0 0 1px var(--color-ink);
+  color: var(--color-ink);
+  font-weight: 800;
 }
 
 /* The bones take the board's columns but are clipped, never scrolled. */

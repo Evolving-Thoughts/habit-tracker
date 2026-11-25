@@ -7,6 +7,8 @@ import {
 } from "../types/fixtures";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defineComponent, h, KeepAlive } from "vue";
+import { notifyDataChanged } from "../composables/data-sync";
 import {
   getToday,
   reorderDay,
@@ -24,6 +26,7 @@ import type {
   DayPlannerResponse,
   DayPlannerTodoItem,
 } from "../types/day-planner";
+import type { MonthChallenge } from "../types/month-challenge";
 import TodayView from "./TodayView.vue";
 import { getHistory } from "../api/history.api";
 import { deleteWorkLog } from "../api/work-logs.api";
@@ -39,6 +42,11 @@ import {
   type TimerController,
 } from "../composables/useTimer";
 
+const routerPush = vi.hoisted(() => vi.fn());
+vi.mock("vue-router", async (original) => ({
+  ...(await original<typeof import("vue-router")>()),
+  useRouter: () => ({ push: routerPush }),
+}));
 vi.mock("../api/history.api", () => ({ getHistory: vi.fn() }));
 vi.mock("../api/work-logs.api", () => ({
   createWorkLog: vi.fn(),
@@ -485,6 +493,43 @@ describe("TodayView", () => {
       [1, "2026-10-03", false],
       [2, "2026-10-03", false],
     ]);
+  });
+
+  it("keeps Auf morgen in the header's menu on a phone, with the same question", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      (query: string) =>
+        ({
+          matches: query === "(max-width: 39.99rem)",
+          media: query,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+        }) as unknown as MediaQueryList,
+    );
+    try {
+      getTodayMock.mockResolvedValue(
+        makePlanner([makeTodo(), makeTodo({ todoId: 2, title: "Bewerbung" })]),
+      );
+      const wrapper = mount(TodayView, { attachTo: document.body });
+      await flushPromises();
+
+      const header = wrapper.get(".today-view__header");
+      expect(header.find(".today-view__postpone").exists()).toBe(false);
+      await header
+        .get('[aria-label="Weitere Aktionen für heute"]')
+        .trigger("click");
+      const entry = wrapper.get(
+        '[role=menuitem][aria-label="Offenes auf morgen verschieben"]',
+      );
+      expect(entry.text()).toContain("Auf morgen");
+      await entry.trigger("click");
+      await flushPromises();
+      expect(document.body.textContent).toContain(
+        "2 offene Einträge wandern auf morgen",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("asks before completing a campaign planned for today with open quests", async () => {
@@ -1175,7 +1220,7 @@ describe("TodayView rows and focus card", () => {
     selector: string,
   ) => wrapper.findAll(selector).map((element) => element.text());
 
-  it("keeps the focus card to one action row: Erledigt, ▶, Fokus-Modus and its menu", async () => {
+  it("leads the focus card with the stopwatch: Starten, then Erledigt, Fokus-Modus and its menu", async () => {
     getTodayMock.mockResolvedValue(
       makePlanner([
         makeHabit({ moveUntil: "2026-10-04" }),
@@ -1192,11 +1237,20 @@ describe("TodayView rows and focus card", () => {
         .findAll("button, a")
         .map((control) => control.attributes("aria-label")),
     ).toEqual([
-      "Joggen erledigen",
       "Stoppuhr für Joggen starten",
+      "Joggen erledigen",
       "Fokus-Modus",
       "Aktionen für Joggen",
     ]);
+    // The stopwatch is the primary button and says its step; Erledigt a tinted pill with its word.
+    const play = actions.get('[aria-label="Stoppuhr für Joggen starten"]');
+    expect(play.classes()).toContain("item-play");
+    expect(play.text()).toBe("Starten");
+    const done = actions.get('[aria-label="Joggen erledigen"]');
+    expect(done.classes()).toEqual(expect.arrayContaining(["btn", "focus__done"]));
+    expect(done.classes()).not.toContain("btn--primary");
+    expect(done.text()).toBe("Erledigt");
+    expect(done.find("svg").exists()).toBe(true);
     // The Fokus-Modus is an icon link with its name as tooltip.
     const mode = actions.get('a[aria-label="Fokus-Modus"]');
     expect(mode.attributes("title")).toBe("Fokus-Modus");
@@ -1429,7 +1483,7 @@ describe("TodayView: an appointment's turn on the focus card", () => {
     expect(past.text()).toContain("Vorbei – erledigt?");
   });
 
-  it("keeps Erledigt, ▶ and Termin verschieben for an appointment, without the Fokus-Modus", async () => {
+  it("keeps Starten, Erledigt and Termin verschieben for an appointment, without the Fokus-Modus", async () => {
     vi.setSystemTime(new Date("2026-10-02T08:10:00Z"));
     getTodayMock.mockResolvedValue(day());
     const wrapper = mount(TodayView);
@@ -1440,8 +1494,8 @@ describe("TodayView: an appointment's turn on the focus card", () => {
         .findAll("button, a")
         .map((control) => control.attributes("aria-label")),
     ).toEqual([
-      "Teamrunde erledigen",
       "Stoppuhr für Teamrunde starten",
+      "Teamrunde erledigen",
       "Aktionen für Teamrunde",
     ]);
     // Not part of the order: the card does not drag.
@@ -1553,6 +1607,157 @@ describe("TodayView: rows say what they are and what they are for", () => {
   });
 });
 
+describe("TodayView: the Monats-Challenge's run in the day", () => {
+  const challenge: MonthChallenge = {
+    id: 1,
+    month: "2026-10",
+    startDate: "2026-10-01",
+    endDate: "2026-10-31",
+    habitId: 7,
+    title: "Sport",
+    reminderTime: "19:00",
+    status: "running",
+    endedAt: null,
+    day: 2,
+    days: 31,
+    done: 1,
+    missed: 0,
+    remaining: 30,
+    total: 31,
+    percent: 3,
+    todayRun: "open",
+    todayOccurrenceId: 70,
+  };
+  const run = (overrides: Partial<DayPlannerHabitItem> = {}) =>
+    makeHabit({
+      occurrenceId: 70,
+      habitId: 7,
+      title: "Sport",
+      monthChallenge: true,
+      ...overrides,
+    });
+  const day = (items: DayPlannerResponse["items"]) => ({
+    ...makePlanner(items),
+    monthChallenge: challenge,
+  });
+  const titles = (wrapper: ReturnType<typeof mount>) =>
+    wrapper
+      .findAll(".order > [data-sort-key]")
+      .map((card) => card.attributes("data-sort-key"));
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // 08:00 in Berlin.
+    vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = "";
+  });
+
+  it("has no card of its own: the focus card heads the day, the run keeps its place", async () => {
+    getTodayMock.mockResolvedValue(
+      day([
+        makeTodo({ todoId: 1, title: "Erstens" }),
+        makeTodo({ todoId: 2, title: "Zweitens" }),
+        run(),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.find(".challenge-card").exists()).toBe(false);
+    expect(wrapper.get(".order > :first-child").classes()).toContain("focus");
+    expect(titles(wrapper)).toEqual(["todo-1", "todo-2", "habit-70"]);
+    // Its row names the challenge and where it stands, in words.
+    const row = wrapper.get('[data-focus-key="habit-70"]');
+    expect(row.get(".planner-item__challenge").text()).toBe(
+      "Monats-Challenge · Tag 2 · 1 von 1 geschafft · noch 30",
+    );
+    // Its meta line wraps on a phone, so the progress is never cut off.
+    expect(row.classes()).toContain("item-row--wrap-meta");
+  });
+
+  it("moves the open run right below the focus card from its reminder time", async () => {
+    // 19:30 in Berlin.
+    vi.setSystemTime(new Date("2026-10-02T17:30:00Z"));
+    getTodayMock.mockResolvedValue(
+      day([
+        makeTodo({ todoId: 1, title: "Erstens" }),
+        makeTodo({ todoId: 2, title: "Zweitens" }),
+        run(),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(titles(wrapper)).toEqual(["todo-1", "habit-70", "todo-2"]);
+    // It stays where it is stored: it does not step down.
+    await wrapper.get('[aria-label="Aktionen für Sport"]').trigger("click");
+    const labels = wrapper
+      .findAll("[role=menuitem] .action-menu__label")
+      .map((entry) => entry.text());
+    expect(labels).toContain("Nach oben");
+    expect(labels).not.toContain("Nach unten");
+  });
+
+  it("brings a run carried over from an earlier day up out of Nachholen in the evening", async () => {
+    // 19:30 in Berlin.
+    vi.setSystemTime(new Date("2026-10-02T17:30:00Z"));
+    getTodayMock.mockResolvedValue(
+      day([
+        run({ isOverdue: true, scheduledDate: "2026-09-30" }),
+        makeTodo({ todoId: 1, title: "Erstens", status: "completed" }),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(titles(wrapper)).toEqual(["habit-70"]);
+    expect(wrapper.find(".catch-up").exists()).toBe(false);
+    // It is still open, so the day is not done.
+    expect(wrapper.text()).not.toContain("Alles für heute erledigt.");
+    expect(
+      wrapper.get('[data-focus-key="habit-70"] .planner-item__challenge').text(),
+    ).toBe("Monats-Challenge · Tag 2 · 1 von 1 geschafft · noch 30");
+  });
+
+  it("puts the challenge on the focus card when its run is the focus", async () => {
+    getTodayMock.mockResolvedValue(
+      day([run(), makeTodo({ todoId: 2, title: "Danach" })]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.get(".focus__challenge").text()).toBe(
+      "Monats-Challenge · Tag 2 · 1 von 1 geschafft · noch 30",
+    );
+    expect(wrapper.find(".planner-item__challenge").exists()).toBe(false);
+  });
+
+  it("leads from the run's menu to the challenge in the Dailies", async () => {
+    getTodayMock.mockResolvedValue(
+      day([makeTodo({ todoId: 1, title: "Erstens" }), run()]),
+    );
+    const wrapper = mount(TodayView, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.get('[aria-label="Aktionen für Sport"]').trigger("click");
+    const entry = wrapper
+      .findAll("[role=menuitem]")
+      .find((item) => item.text().includes("Zur Monats-Challenge"))!;
+    await entry.trigger("click");
+    expect(routerPush).toHaveBeenCalledWith("/dailies?abschnitt=challenge");
+  });
+
+  it("shows nothing extra on a day without a run of the challenge", async () => {
+    getTodayMock.mockResolvedValue({
+      ...day([makeTodo({ todoId: 1, title: "Erstens" })]),
+      monthChallenge: { ...challenge, todayRun: "none", todayOccurrenceId: null },
+    });
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("Monats-Challenge");
+    expect(titles(wrapper)).toEqual(["todo-1"]);
+  });
+});
+
 describe("TodayView on wide screens", () => {
   const original = window.matchMedia;
   const stretch: HistoryWorkLog = {
@@ -1637,5 +1842,277 @@ describe("TodayView on wide screens", () => {
     expect(wrapper.find("button.log-block").exists()).toBe(true);
     wrapper.unmount();
     expect(deleteWorkLog).not.toHaveBeenCalled();
+  });
+});
+
+describe("TodayView's Liste · Logbuch below the split", () => {
+  const original = window.matchMedia;
+  const stretch: HistoryWorkLog = {
+    id: 3,
+    title: "Kapitel",
+    startedAt: "2026-10-02T05:00:00.000Z",
+    endedAt: "2026-10-02T05:30:00.000Z",
+    minutes: 30,
+    source: "timer",
+    todoId: 1,
+    occurrenceId: null,
+    habitId: null,
+    campaign: null,
+  };
+  const choice = (wrapper: ReturnType<typeof mount>) =>
+    wrapper
+      .findAll('[role="radiogroup"][aria-label="Ansicht"] input')
+      .map((input) => [
+        input.element.parentElement!.textContent!.trim(),
+        (input.element as HTMLInputElement).checked,
+      ]);
+  const listShown = (wrapper: ReturnType<typeof mount>) =>
+    wrapper.get<HTMLElement>(".today-view__day").element.style.display !==
+    "none";
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    localStorage.removeItem("today:pane");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
+    getTodayMock.mockResolvedValue(makePlanner([makeTodo()]));
+    vi.mocked(getHistory).mockResolvedValue({
+      today: "2026-10-02",
+      timeZone: "Europe/Berlin",
+      startDate: "2026-10-02",
+      endDate: "2026-10-02",
+      days: [
+        {
+          date: "2026-10-02",
+          items: [],
+          planned: [],
+          external: [],
+          work: { minutes: 30, campaigns: [], logs: [stretch] },
+        },
+      ],
+    });
+  });
+  afterEach(() => {
+    window.matchMedia = original;
+    localStorage.removeItem("today:pane");
+    vi.useRealTimers();
+  });
+
+  it("starts with the list and does not load the day calendar", async () => {
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(choice(wrapper)).toEqual([
+      ["Liste", true],
+      ["Logbuch", false],
+    ]);
+    expect(listShown(wrapper)).toBe(true);
+    expect(wrapper.find("#focus-title").exists()).toBe(true);
+    expect(wrapper.find(".today-view__calendar").exists()).toBe(false);
+    expect(getHistory).not.toHaveBeenCalled();
+  });
+
+  it("shows the day calendar instead of the list and remembers the choice on this device", async () => {
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    await wrapper.findAll('input[name="todayPane"]')[1]!.setValue(true);
+    await flushPromises();
+    expect(localStorage.getItem("today:pane")).toBe("logbook");
+    expect(listShown(wrapper)).toBe(false);
+    const calendar = wrapper.get(".today-view__calendar .day-calendar");
+    // In the page's flow: no scroll area of its own inside the page.
+    expect(calendar.classes()).toContain("day-calendar--flow");
+    expect(calendar.get("h2").text()).toBe("Logbuch 30 Min.");
+    expect(calendar.get("button.log-block").attributes("aria-label")).toBe(
+      "Kapitel, 07:00 bis 07:30, 30 Min., ohne Kampagne, korrigieren",
+    );
+    wrapper.unmount();
+
+    const again = mount(TodayView);
+    await flushPromises();
+    expect(choice(again)).toEqual([
+      ["Liste", false],
+      ["Logbuch", true],
+    ]);
+    expect(again.find(".today-view__calendar .day-calendar").exists()).toBe(
+      true,
+    );
+
+    await again.findAll('input[name="todayPane"]')[0]!.setValue(true);
+    await flushPromises();
+    expect(localStorage.getItem("today:pane")).toBe("list");
+    expect(listShown(again)).toBe(true);
+    expect(again.find(".today-view__calendar").exists()).toBe(false);
+  });
+
+  it("shows both side by side on wide screens, whatever was chosen", async () => {
+    localStorage.setItem("today:pane", "logbook");
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("64rem"),
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.find('input[name="todayPane"]').exists()).toBe(false);
+    expect(listShown(wrapper)).toBe(true);
+    const calendar = wrapper.get(".today-view__calendar .day-calendar");
+    expect(calendar.classes()).not.toContain("day-calendar--flow");
+  });
+});
+
+describe("TodayView kept alive behind other views", () => {
+  /*
+   * App.vue keeps Heute alive (`<KeepAlive include="TodayView">`); here a
+   * host does the same with another view that has a row of its own.
+   */
+  const Other = defineComponent({
+    name: "OtherView",
+    render: () =>
+      h("main", { class: "other-view" }, [
+        h("article", { "data-focus-key": "todo-2" }, "Zeile anderswo"),
+      ]),
+  });
+  const Host = defineComponent({
+    props: { shown: { type: Boolean, default: true } },
+    setup(props) {
+      return () =>
+        h(KeepAlive, { include: ["TodayView"] }, [
+          props.shown ? h(TodayView) : h(Other),
+        ]);
+    },
+  });
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
+    localStorage.clear();
+    reloadShortcutSettings();
+    getTodayMock.mockResolvedValue(
+      makePlanner([
+        makeTodo({ todoId: 1, title: "Erstens" }),
+        makeTodo({ todoId: 2, title: "Zweitens" }),
+      ]),
+    );
+    updateTodoMock.mockResolvedValue(undefined);
+    vi.mocked(rescheduleTodo).mockResolvedValue(undefined as never);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = "";
+  });
+
+  async function mountHost() {
+    const wrapper = mount(Host, { attachTo: document.body });
+    await flushPromises();
+    return wrapper;
+  }
+  async function show(
+    wrapper: Awaited<ReturnType<typeof mountHost>>,
+    shown: boolean,
+  ) {
+    await wrapper.setProps({ shown });
+    await flushPromises();
+  }
+  function press(key: string) {
+    const event = new KeyboardEvent("keydown", {
+      key,
+      bubbles: true,
+      cancelable: true,
+    });
+    document.body.dispatchEvent(event);
+    return event;
+  }
+  function hover(key: string) {
+    document
+      .querySelector(`[data-focus-key="${key}"]`)!
+      .dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+  }
+
+  it("comes back as it was and loads quietly, without the skeleton", async () => {
+    const wrapper = await mountHost();
+    const card = wrapper.get("#focus-title").element;
+    expect(getTodayMock).toHaveBeenCalledTimes(1);
+
+    await show(wrapper, false);
+    expect(wrapper.find(".today-view").exists()).toBe(false);
+    // Completed elsewhere meanwhile.
+    let answer!: (planner: DayPlannerResponse) => void;
+    getTodayMock.mockReturnValueOnce(
+      new Promise<DayPlannerResponse>((resolve) => (answer = resolve)),
+    );
+
+    await show(wrapper, true);
+    expect(getTodayMock).toHaveBeenCalledTimes(2);
+    // The same card, not a new one, and no skeleton while it loads.
+    expect(wrapper.get("#focus-title").element).toBe(card);
+    expect(
+      wrapper.find('[aria-label="Tagesplan wird geladen"]').exists(),
+    ).toBe(false);
+
+    answer(
+      makePlanner([
+        makeTodo({ todoId: 1, title: "Erstens", status: "completed" }),
+        makeTodo({ todoId: 2, title: "Zweitens" }),
+      ]),
+    );
+    await flushPromises();
+    expect(wrapper.get("#focus-title").text()).toBe("Zweitens");
+  });
+
+  it("hears no data changes while hidden", async () => {
+    const wrapper = await mountHost();
+    await show(wrapper, false);
+    notifyDataChanged();
+    await flushPromises();
+    expect(getTodayMock).toHaveBeenCalledTimes(1);
+    await show(wrapper, true);
+    expect(getTodayMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("handles no keys while another view is shown, and again once back", async () => {
+    const wrapper = await mountHost();
+    await show(wrapper, false);
+    hover("todo-2");
+    expect(press("x").defaultPrevented).toBe(false);
+    expect(press("d").defaultPrevented).toBe(false);
+    await flushPromises();
+    expect(updateTodoMock).not.toHaveBeenCalled();
+    expect(rescheduleTodo).not.toHaveBeenCalled();
+
+    await show(wrapper, true);
+    hover("todo-2");
+    expect(press("x").defaultPrevented).toBe(true);
+    await flushPromises();
+    expect(updateTodoMock).toHaveBeenCalledWith(2, true);
+  });
+
+  it("closes an open dialog and releases the page's scroll lock when left", async () => {
+    const wrapper = await mountHost();
+    await wrapper.get(".today-view__postpone").trigger("click");
+    await flushPromises();
+    expect(document.querySelector("dialog[open]")).not.toBeNull();
+    expect(document.body.style.position).toBe("fixed");
+
+    await show(wrapper, false);
+    expect(document.querySelector("dialog")).toBeNull();
+    expect(document.body.style.position).toBe("");
+
+    await show(wrapper, true);
+    expect(document.querySelector("dialog")).toBeNull();
+  });
+
+  it("ends the undo offer when left, as leaving always did", async () => {
+    const wrapper = await mountHost();
+    await wrapper.get('[aria-label="Erstens erledigen"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get(".today-view__toast").text()).toContain(
+      "„Erstens“ erledigt",
+    );
+    await show(wrapper, false);
+    await show(wrapper, true);
+    expect(wrapper.get(".today-view__toast").text()).not.toContain(
+      "„Erstens“ erledigt",
+    );
   });
 });

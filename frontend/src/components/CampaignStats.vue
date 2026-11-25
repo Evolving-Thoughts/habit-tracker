@@ -23,19 +23,35 @@ const count = (value: number): FigurePart[] => [
   { value: String(value), unit: "" },
 ];
 
+/*
+ * A phone shows the short label, one line each, so the strip stays two
+ * short rows; screen readers always hear the full one.
+ */
 const cells = computed(() => [
   {
     key: "week",
     label: "Kampagnen-Stunden diese Woche",
+    short: "Diese Woche",
     parts: hours(props.weekMinutes),
   },
   {
     key: "total",
     label: "Kampagnen-Stunden insgesamt",
+    short: "Insgesamt",
     parts: hours(props.totalMinutes),
   },
-  { key: "active", label: "Kampagnen aktiv", parts: count(props.active) },
-  { key: "done", label: "Kampagnen abgeschlossen", parts: count(props.done) },
+  {
+    key: "active",
+    label: "Kampagnen aktiv",
+    short: "Aktiv",
+    parts: count(props.active),
+  },
+  {
+    key: "done",
+    label: "Kampagnen abgeschlossen",
+    short: "Abgeschlossen",
+    parts: count(props.done),
+  },
 ]);
 </script>
 
@@ -51,7 +67,12 @@ const cells = computed(() => [
         class="campaign-stats__cell"
         :data-stat="cell.key"
       >
-        <dt class="card-title">{{ cell.label }}</dt>
+        <dt class="card-title">
+          <span class="campaign-stats__label">{{ cell.label }}</span
+          ><span class="campaign-stats__short" aria-hidden="true">{{
+            cell.short
+          }}</span>
+        </dt>
         <!-- "43 Std. 20 Min.": a line may break between the parts, never inside one. -->
         <dd class="campaign-stats__value">
           <template v-for="(part, index) in cell.parts" :key="index"
@@ -100,6 +121,38 @@ const cells = computed(() => [
 
 .campaign-stats__cell .card-title {
   margin: 0;
+}
+
+/* The full label from 40rem; below, the short one in its place. */
+.campaign-stats__short {
+  display: none;
+}
+
+@media (max-width: 39.99rem) {
+  .campaign-stats__cell {
+    gap: 0.125rem;
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .campaign-stats__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .campaign-stats__short {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .campaign-stats__value {
+    font-size: 1.375rem;
+  }
 }
 
 .campaign-stats__value {

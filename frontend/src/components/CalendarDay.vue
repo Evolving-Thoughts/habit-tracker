@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useMediaQuery } from "../composables/useMediaQuery";
 import DayBestDay from "./DayBestDay.vue";
 import DayCalendar from "./DayCalendar.vue";
 import DayReflection from "./DayReflection.vue";
@@ -62,13 +63,20 @@ const isEmpty = computed(
 );
 /** Only what has begun can be reflected on, or have had its best. */
 const isPastOrToday = computed(() => props.day.date <= props.today);
+/**
+ * Beside its calendar (from 56rem) the day opens with its reflection; on a
+ * phone its plan comes first, then the reflection and the day's best.
+ */
+const wide = useMediaQuery("(min-width: 56rem)");
 </script>
 
 <template>
   <div class="calendar-day">
     <div class="calendar-day__list">
-      <DayReflection v-if="isPastOrToday" :date="day.date" />
-      <DayBestDay v-if="isPastOrToday" :date="day.date" />
+      <template v-if="wide && isPastOrToday">
+        <DayReflection :date="day.date" />
+        <DayBestDay :date="day.date" />
+      </template>
 
       <div v-if="isEmpty" class="empty-state calendar-day__empty">
         <strong>Für diesen Zeitraum gibt es nichts.</strong>
@@ -119,6 +127,14 @@ const isPastOrToday = computed(() => props.day.date <= props.today);
         </ul>
       </section>
 
+      <div
+        v-if="!wide && isPastOrToday"
+        class="calendar-day__reflection"
+      >
+        <DayReflection :date="day.date" />
+        <DayBestDay :date="day.date" />
+      </div>
+
       <WeeklyTargets v-if="weeklyTargets.length" :targets="weeklyTargets" />
     </div>
 
@@ -145,8 +161,14 @@ const isPastOrToday = computed(() => props.day.date <= props.today);
 }
 
 /* The day's best right below the reflection, as its companion. */
-.calendar-day__list > .day-best-day {
+.calendar-day__list > .day-best-day,
+.calendar-day__reflection > .day-best-day {
   margin-top: var(--space-2);
+}
+
+/* After the day's plan on a phone, set apart like a section. */
+.calendar-day__reflection {
+  margin-top: var(--space-6);
 }
 
 .calendar-day__tally {
@@ -164,9 +186,16 @@ const isPastOrToday = computed(() => props.day.date <= props.today);
   list-style: none;
 }
 
-/* Below the list on a phone: a window onto the day that scrolls in itself. */
+/*
+ * Below the list on a phone the day's calendar takes its natural height and
+ * scrolls with the page: no scroll area inside the scrolling page.
+ */
 .calendar-day__calendar {
-  height: min(75dvh, 40rem);
+  height: auto;
+}
+
+.calendar-day__calendar :deep(.day-calendar__scroller) {
+  overflow: clip;
 }
 
 /*
@@ -183,6 +212,10 @@ const isPastOrToday = computed(() => props.day.date <= props.today);
     position: sticky;
     top: calc(3.5rem + var(--space-4));
     height: calc(100dvh - 3.5rem - var(--space-6));
+  }
+
+  .calendar-day__calendar :deep(.day-calendar__scroller) {
+    overflow-y: auto;
   }
 }
 </style>

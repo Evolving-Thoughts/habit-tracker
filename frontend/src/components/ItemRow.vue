@@ -44,6 +44,11 @@ const props = withDefaults(
     } | null;
     menu?: MenuEntry[];
     menuKey?: string | number;
+    /**
+     * The meta line wraps on a phone too, instead of ending in one line:
+     * for lists where every part counts (the Kalender's day lists).
+     */
+    wrapMeta?: boolean;
   }>(),
   {
     headingLevel: 3,
@@ -59,6 +64,7 @@ const props = withDefaults(
     measure: null,
     menu: () => [],
     menuKey: undefined,
+    wrapMeta: false,
   },
 );
 
@@ -94,6 +100,7 @@ const timerState = computed(() =>
       'item-row--skipped': state === 'skipped',
       'item-row--campaign': campaignMark,
       'item-row--leading': $slots.leading,
+      'item-row--wrap-meta': wrapMeta,
       'card-target': editable,
       'card-drag': draggable,
     }"
@@ -260,6 +267,22 @@ const timerState = computed(() =>
   cursor: progress;
 }
 
+/*
+ * A finger's target: the title button reaches a tap high around its line,
+ * invisibly (the whole card opens the editor too; this is the button's own).
+ */
+@media (pointer: coarse) {
+  .item-row__title {
+    position: relative;
+  }
+
+  .item-row__title::after {
+    position: absolute;
+    inset: calc((var(--tap) - 1lh) / -2) 0;
+    content: "";
+  }
+}
+
 .item-row__meta {
   display: flex;
   flex-wrap: wrap;
@@ -275,7 +298,7 @@ const timerState = computed(() =>
  * part (usually the campaign, also named by the stripe) ends in an ellipsis.
  */
 @media (max-width: 39.99rem) {
-  .item-row__meta {
+  .item-row:not(.item-row--wrap-meta) .item-row__meta {
     flex-wrap: nowrap;
     overflow: hidden;
     white-space: nowrap;
@@ -283,12 +306,12 @@ const timerState = computed(() =>
     contain: inline-size;
   }
 
-  .item-row__meta > *,
-  .item-row__meta :slotted(*) {
+  .item-row:not(.item-row--wrap-meta) .item-row__meta > *,
+  .item-row:not(.item-row--wrap-meta) .item-row__meta :slotted(*) {
     flex: none;
   }
 
-  .item-row__meta :slotted(:last-child) {
+  .item-row:not(.item-row--wrap-meta) .item-row__meta :slotted(:last-child) {
     flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;

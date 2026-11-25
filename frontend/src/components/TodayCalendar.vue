@@ -5,15 +5,18 @@ import { useLoader } from "../composables/useLoader";
 import type { HistoryResponse, HistoryWorkLog } from "../types/history";
 
 /**
- * Heute's day calendar on wide screens: today as the Kalender reads it
- * (`GET /history`, day), so appointments, Google events, completions and the
- * Logbuch stand on one hour axis beside the list. It loads again whenever
- * data changes elsewhere, like every view.
+ * Heute's day calendar: today as the Kalender reads it (`GET /history`,
+ * day), so appointments, Google events, completions and the Logbuch stand
+ * on one hour axis, beside the list on wide screens and as the "Logbuch"
+ * pane below. It loads again whenever data changes elsewhere, like every
+ * view.
  */
 const props = defineProps<{
   date: string;
   /** Stretches whose delete waits behind Heute's undo toast. */
   hiddenLogs?: ReadonlySet<number>;
+  /** In the page's flow at its natural height (the pane on a phone). */
+  flow?: boolean;
 }>();
 const emit = defineEmits<{ removeLog: [log: HistoryWorkLog] }>();
 
@@ -29,7 +32,7 @@ const { data, errorMessage, reload } = useLoader<HistoryResponse | null>(
 </script>
 
 <template>
-  <div class="today-calendar">
+  <div class="today-calendar" :class="{ 'today-calendar--flow': flow }">
     <DayCalendar
       v-if="data?.days[0]"
       class="today-calendar__day"
@@ -37,6 +40,7 @@ const { data, errorMessage, reload } = useLoader<HistoryResponse | null>(
       :today="data.today"
       :reload="reload"
       :hidden-logs="hiddenLogs"
+      :flow="flow"
       @remove-log="emit('removeLog', $event)"
     />
     <div v-else-if="errorMessage" class="alert">
@@ -69,5 +73,10 @@ const { data, errorMessage, reload } = useLoader<HistoryResponse | null>(
   flex: 1 1 auto;
   border-radius: var(--radius-card);
   background: var(--color-surface-flat);
+}
+
+/* Without a height to fill, the placeholder holds a screen's worth. */
+.today-calendar--flow .today-calendar__loading {
+  min-height: 24rem;
 }
 </style>

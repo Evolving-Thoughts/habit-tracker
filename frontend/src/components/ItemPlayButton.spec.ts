@@ -81,3 +81,59 @@ describe("Item timer play", () => {
     c.dispose();
   });
 });
+
+describe("the focus card's labelled stopwatch button", () => {
+  function mountLabelled(c: ReturnType<typeof createTimerController>, eligible = true) {
+    return mount(ItemPlayButton, {
+      props: { kind: "todo", targetId: 7, title: "Steuer", eligible, labelled: true },
+      global: { provide: { [timerKey as symbol]: c } },
+    });
+  }
+  const timerOf = (state: "running" | "paused") => ({
+    id: "t",
+    kind: "todo" as const,
+    targetId: 7,
+    title: "Steuer",
+    state,
+    elapsedMilliseconds: 1,
+    targetMinutes: 25,
+    targetReachedAt: null,
+  });
+
+  it("says its next step beside the icon: Starten, Pausieren, Fortsetzen", async () => {
+    const c = createTimerController();
+    vi.spyOn(c, "action").mockResolvedValue(true as never);
+    const w = mountLabelled(c);
+    const button = w.get("button");
+    expect(button.classes()).toContain("item-play");
+    expect(button.text()).toBe("Starten");
+    expect(button.attributes("aria-label")).toBe("Stoppuhr für Steuer starten");
+    expect(button.find("svg").attributes("aria-hidden")).toBe("true");
+
+    c.timer.value = timerOf("running");
+    await w.vm.$nextTick();
+    expect(button.text()).toBe("Pausieren");
+    expect(button.attributes("aria-label")).toBe(
+      "Stoppuhr für Steuer läuft, pausieren",
+    );
+    await button.trigger("click");
+    expect(c.action).toHaveBeenCalledWith("pause");
+
+    c.timer.value = timerOf("paused");
+    await w.vm.$nextTick();
+    expect(button.text()).toBe("Fortsetzen");
+    c.dispose();
+  });
+
+  it("starts the stopwatch and stays calm while nothing can be measured", async () => {
+    const c = createTimerController();
+    const start = vi.spyOn(c, "start").mockResolvedValue();
+    const w = mountLabelled(c);
+    await w.get("button").trigger("click");
+    expect(start).toHaveBeenCalledWith({ kind: "todo", targetId: 7, title: "Steuer" });
+    const unavailable = mountLabelled(c, false);
+    expect(unavailable.get("button").attributes("disabled")).toBeDefined();
+    expect(unavailable.get("button").text()).toBe("Starten");
+    c.dispose();
+  });
+});

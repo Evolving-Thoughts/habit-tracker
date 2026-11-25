@@ -12,6 +12,7 @@ import android.net.ConnectivityManager;
 import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.net.NetworkRequest;
 import android.net.VpnService;
 import android.os.Build;
 import android.os.Handler;
@@ -24,10 +25,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -71,7 +72,10 @@ public class FocusVpnService extends VpnService {
     private ParcelFileDescriptor tun;
     private Thread reader;
     private ExecutorService lookups;
-    private volatile List<InetAddress> upstream = new ArrayList<InetAddress>();
+    private final Object upstreamLock = new Object();
+    /** Replaced as a whole on network changes; read without a lock. */
+    private volatile List<InetAddress> upstream = Collections.singletonList(UpstreamDns.FALLBACK);
+    private volatile ConnectivityManager.NetworkCallback networkCallback;
 
     public static boolean isRunning() {
         return running;
@@ -130,7 +134,7 @@ public class FocusVpnService extends VpnService {
 
     private boolean establish() {
         if (tun != null) return true;
-        upstream = systemDnsServers();
+        refreshUpstream();
         Builder builder = new Builder()
             .setSession(getString(R.string.focus_vpn_session))
             .addAddress(TUN_ADDRESS, 32)
@@ -161,6 +165,7 @@ public class FocusVpnService extends VpnService {
         lookups = Executors.newFixedThreadPool(4);
         reader = new Thread(this::readLoop, "focus-dns");
         reader.start();
+        watchNetworks();
         FocusBlockStore.addListener(onChange);
         FocusBlockSync.start(this);
         handler.postDelayed(check, CHECK_MS);
@@ -200,7 +205,9 @@ public class FocusVpnService extends VpnService {
 
     /** Asks the network's own DNS server and hands its answer back unchanged. */
     private void forward(FileOutputStream out, DnsPacket.Query query) {
-        for (InetAddress server : upstream) {
+        // One snapshot: a network change swaps the whole list, never edits it.
+        List<InetAddress> servers = upstream;
+        for (InetAddress server : servers) {
             try (DatagramSocket socket = new DatagramSocket()) {
                 // Outside the VPN, so the question does not come back here.
                 protect(socket);
@@ -229,38 +236,101 @@ public class FocusVpnService extends VpnService {
         }
     }
 
-    /** The DNS servers of the network in use (not this VPN), IPv4 first. */
-    private List<InetAddress> systemDnsServers() {
-        List<InetAddress> result = new ArrayList<InetAddress>();
+    /**
+     * Reads the DNS servers of the networks in use (not this VPN) again,
+     * see UpstreamDns. Called at the start and on every network change, so
+     * moving from Wi-Fi to mobile data never leaves lookups at a dead server.
+     */
+    private void refreshUpstream() {
+        synchronized (upstreamLock) {
+            upstream = UpstreamDns.select(currentNetworks());
+        }
+    }
+
+    private List<UpstreamDns.Network> currentNetworks() {
+        List<UpstreamDns.Network> result = new ArrayList<UpstreamDns.Network>();
         ConnectivityManager connectivity = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-        if (connectivity != null) {
+        if (connectivity == null) return result;
+        try {
             for (Network network : connectivity.getAllNetworks()) {
                 NetworkCapabilities capabilities = connectivity.getNetworkCapabilities(network);
-                if (capabilities == null || capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) continue;
-                if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) continue;
                 LinkProperties link = connectivity.getLinkProperties(network);
-                if (link == null) continue;
-                for (InetAddress address : link.getDnsServers()) {
-                    if (address instanceof Inet4Address) result.add(0, address);
-                    else result.add(address);
-                }
+                if (capabilities == null || link == null) continue;
+                result.add(new UpstreamDns.Network(
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN),
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
+                    link.getDnsServers()
+                ));
             }
-        }
-        if (result.isEmpty()) {
-            // No network DNS known (rare): one public resolver, see docs/focus-block.md.
-            try {
-                result.add(InetAddress.getByName("1.1.1.1"));
-            } catch (IOException ignored) {
-                // Unreachable for a literal address.
-            }
+        } catch (RuntimeException error) {
+            // A network vanished while being read; the next change reads again.
+            Log.w(TAG, "Could not read the networks", error);
         }
         return result;
+    }
+
+    /** Re-reads the DNS servers whenever the network changes. */
+    private void watchNetworks() {
+        if (networkCallback != null) return;
+        ConnectivityManager connectivity = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivity == null) return;
+        ConnectivityManager.NetworkCallback callback = new ConnectivityManager.NetworkCallback() {
+            @Override
+            public void onAvailable(Network network) {
+                refreshUpstream();
+            }
+
+            @Override
+            public void onLost(Network network) {
+                refreshUpstream();
+            }
+
+            @Override
+            public void onLinkPropertiesChanged(Network network, LinkProperties link) {
+                refreshUpstream();
+            }
+
+            @Override
+            public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
+                refreshUpstream();
+            }
+        };
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                // The app itself is not inside its VPN, so this is the real network.
+                connectivity.registerDefaultNetworkCallback(callback);
+            } else {
+                NetworkRequest request = new NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                    .build();
+                connectivity.registerNetworkCallback(request, callback);
+            }
+            networkCallback = callback;
+        } catch (RuntimeException error) {
+            // Without it the servers read at the start stay in use.
+            Log.w(TAG, "Could not watch network changes", error);
+        }
+    }
+
+    private void unwatchNetworks() {
+        ConnectivityManager.NetworkCallback callback = networkCallback;
+        networkCallback = null;
+        if (callback == null) return;
+        ConnectivityManager connectivity = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivity == null) return;
+        try {
+            connectivity.unregisterNetworkCallback(callback);
+        } catch (RuntimeException ignored) {
+            // Not registered (any more).
+        }
     }
 
     private void shutDown() {
         running = false;
         handler.removeCallbacks(check);
         FocusBlockStore.removeListener(onChange);
+        unwatchNetworks();
         if (tun != null) {
             FocusBlockSync.stop();
             try {

@@ -107,6 +107,12 @@
   --fab-size: 3.5rem;
   --fab-offset: 1rem;
   --fab-clearance: calc(var(--fab-size) + var(--fab-offset) + var(--space-5));
+  /*
+   * The room the stopwatch bar takes when it is docked above the bottom tab
+   * bar, its gap included. TimerProvider measures and sets it on the root
+   * element; it is 0 without a bar and in the wide tier.
+   */
+  --timer-bar-height: 0px;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   /* A light spring: overshoots a touch on release, then settles. */
@@ -288,10 +294,11 @@ main:focus {
   min-height: 100vh;
 }
 
-/* Keep page content clear of the fixed tab bar. */
+/* Keep page content clear of the fixed tab bar and a stopwatch bar on it. */
 body:has(.tab-bar) {
   padding-bottom: calc(
-    var(--tab-bar-height) + env(safe-area-inset-bottom, 0px)
+    var(--tab-bar-height) + var(--timer-bar-height) +
+      env(safe-area-inset-bottom, 0px)
   );
 }
 
@@ -487,21 +494,47 @@ textarea.input {
 }
 
 /*
+ * A field with a microphone in its right edge (MicButton placement
+ * "field", docs/voice-input.md). Only while the microphone shows does the
+ * text keep clear of it; without one the field is as wide as ever.
+ */
+.mic-field {
+  position: relative;
+  min-width: 0;
+}
+
+.mic-field > :is(input, textarea) {
+  display: block;
+}
+
+/* Important: dialogs restyle every field in them, and this room is not optional. */
+.mic-field:has(> .mic) > :is(input, textarea) {
+  padding-right: calc(var(--tap) + var(--space-1)) !important;
+}
+
+/*
  * A form's actions inside a dialog (editor, Neue Quest, Neues Daily): they
  * stick to the dialog's bottom edge, flush across its padding, so saving
  * never needs a scroll and nothing shows below them. A sticky box keeps
  * clear of its scroller's padding, so the offsets undo it; the negative
  * margin lets it end on the edge when scrolled to the end as well.
- * --dialog-padding comes from ModalDialog.
+ * --dialog-padding and --dialog-padding-bottom come from ModalDialog; on a
+ * phone the bottom one adds the safe area. There the dialog is a sheet that
+ * is never taller than what an on-screen keyboard leaves, so the actions
+ * stay right above the keyboard.
  */
 .modal-dialog .sticky-actions {
+  --sticky-actions-bottom: var(
+    --dialog-padding-bottom,
+    var(--dialog-padding, 0px)
+  );
   position: sticky;
-  bottom: calc(-1 * var(--dialog-padding, 0px));
+  bottom: calc(-1 * var(--sticky-actions-bottom));
   z-index: 2;
   margin: 0 calc(-1 * var(--dialog-padding, 0px))
-    calc(-1 * var(--dialog-padding, 0px));
+    calc(-1 * var(--sticky-actions-bottom));
   padding: var(--space-3) var(--dialog-padding, 0px)
-    var(--dialog-padding, 0px);
+    var(--sticky-actions-bottom);
   border-top: 1px solid var(--color-line);
   background: var(--color-surface);
 }
@@ -567,6 +600,14 @@ textarea.input {
 .segmented > label:has(input:focus-visible) {
   outline: 3px solid var(--color-action-strong);
   outline-offset: 2px;
+}
+
+/* A finger gets a full tap height per option; a mouse keeps the slimmer track. */
+@media (pointer: coarse) {
+  .segmented > button,
+  .segmented > label {
+    min-height: var(--tap);
+  }
 }
 
 /* Filter chips. */
@@ -666,6 +707,19 @@ textarea.input {
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
+}
+
+/*
+ * The second series of a chart ("Sonstiges" beside Kampagnen-Arbeit): fine
+ * diagonal hatching in mark-none on the card's white. Pattern and lightness
+ * tell it from the solid bar, never the colour alone (palette.spec.ts).
+ */
+.series-other {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--color-mark-none) 0 0.1875rem,
+    var(--color-surface) 0.1875rem 0.3125rem
+  );
 }
 
 /* Cards: white, soft corners, no border. */

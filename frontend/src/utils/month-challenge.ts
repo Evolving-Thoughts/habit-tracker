@@ -62,6 +62,15 @@ export function progressLine(challenge: MonthChallenge): string {
   return parts.join(" · ");
 }
 
+/**
+ * The challenge in the meta line of its run on Heute (row and focus card):
+ * "Monats-Challenge · Tag 2 · noch 4", the progress as `progressLine` has it.
+ */
+export function runLine(challenge: MonthChallenge): string {
+  const progress = progressLine(challenge);
+  return progress ? `Monats-Challenge · ${progress}` : "Monats-Challenge";
+}
+
 /** "1 Lauf", "3 Läufe". */
 function runs(count: number): string {
   return `${count} ${count === 1 ? "Lauf" : "Läufe"}`;

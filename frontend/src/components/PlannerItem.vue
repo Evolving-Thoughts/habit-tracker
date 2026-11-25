@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import AppIcon from "./AppIcon.vue";
 import CampaignChip from "./CampaignChip.vue";
+import ChallengeLine from "./ChallengeLine.vue";
 import ChallengeMark from "./ChallengeMark.vue";
 import ItemRow from "./ItemRow.vue";
 import { campaignMark as markOf, categoryMark } from "../utils/category-mark";
@@ -40,6 +41,11 @@ const props = defineProps<{
    */
   past?: boolean;
   movable?: boolean;
+  /**
+   * Today's run of the Monats-Challenge: "Monats-Challenge · Tag 2 · noch 4"
+   * in words in the meta line, which then wraps on a phone too.
+   */
+  challenge?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -121,6 +127,7 @@ const measure = computed(() =>
     :campaign-mark="campaignMark"
     :measure="measure"
     :menu="compact || state !== 'open' ? [] : (menu ?? [])"
+    :wrap-meta="!!challenge"
     @toggle="emit('toggle', item)"
     @edit="emit('edit', item)"
   >
@@ -140,7 +147,15 @@ const measure = computed(() =>
       <span v-if="item.type === 'habit'" class="planner-item__daily">
         <AppIcon name="dailies" />Daily
       </span>
-      <ChallengeMark v-if="item.type === 'habit' && item.monthChallenge" />
+      <!-- Today's run names the challenge and where it stands; other runs wear the mark. -->
+      <ChallengeLine
+        v-if="challenge"
+        class="planner-item__challenge"
+        :line="challenge"
+      />
+      <ChallengeMark
+        v-else-if="item.type === 'habit' && item.monthChallenge"
+      />
       <span v-if="item.categoryName" class="planner-item__category">
         <i
           class="category-mark"
@@ -198,6 +213,7 @@ const measure = computed(() =>
   width: 0.875rem;
   height: 0.875rem;
 }
+
 
 /* One quiet line; its unbroken text must not widen the list it sits in. */
 .planner-item__why {

@@ -246,6 +246,101 @@ describe("DayCalendar", () => {
     expect([value("from"), value("to")]).toEqual(["08:00", "08:30"]);
   });
 
+  describe("short stretches", () => {
+    /* Stretches from 10:00 Berlin, each `minutes` long, one after the other. */
+    const run = (...lengths: number[]) => {
+      let at = Date.parse("2026-10-07T08:00:00.000Z");
+      return lengths.map((minutes, index) => {
+        const startedAt = new Date(at).toISOString();
+        at += minutes * 60_000;
+        return log({
+          id: index + 1,
+          title: `Abschnitt ${index + 1}`,
+          startedAt,
+          endedAt: new Date(at).toISOString(),
+          minutes,
+        });
+      });
+    };
+    /* What a block reads: its title, then its times or its length. */
+    const words = (element: Pick<Wrapper, "findAll">) =>
+      element
+        .findAll(".day-calendar__title-text, .day-calendar__meta")
+        .map((part) => part.text().replace(/\s+/g, " "))
+        .join(" ");
+    const slots = (wrapper: Wrapper) =>
+      wrapper.findAll("li.day-calendar__slot--log").map((slot) => ({
+        mode: slot.classes("day-calendar__slot--chip")
+          ? "chip"
+          : slot.classes("day-calendar__slot--line")
+            ? "line"
+            : "full",
+        text: words(slot),
+        style: slot.attributes("style"),
+      }));
+
+    it("name themselves on one line under half an hour, title and times above", () => {
+      const wrapper = render({
+        day: day({ work: { minutes: 90, logs: run(45, 25, 5) } }),
+      });
+      expect(slots(wrapper).map(({ mode, text }) => [mode, text])).toEqual([
+        ["full", "Abschnitt 1 10:00–10:45"],
+        ["line", "Abschnitt 2 · 25 Min."],
+        ["chip", "Abschnitt 3 · 5 Min."],
+      ]);
+      // The whole stretch is always there for the pointer and screen readers.
+      const short = wrapper.findAll("button.log-block")[2]!;
+      expect(short.attributes("title")).toBe(
+        "Abschnitt 3, 11:10 bis 11:15, 5 Min., Kampagne Buch",
+      );
+      expect(short.attributes("aria-label")).toBe(
+        "Abschnitt 3, 11:10 bis 11:15, 5 Min., Kampagne Buch, korrigieren",
+      );
+    });
+
+    it("stand side by side when they follow each other, each a line high", () => {
+      const wrapper = render({
+        day: day({ work: { minutes: 18, logs: run(3, 5, 10) } }),
+      });
+      const placed = slots(wrapper);
+      expect(placed.map(({ mode }) => mode)).toEqual(["chip", "chip", "chip"]);
+      expect(placed.map(({ style }) => style)).toEqual([
+        expect.stringContaining("--column: 0; --columns: 3"),
+        expect.stringContaining("--column: 1; --columns: 3"),
+        expect.stringContaining("--column: 2; --columns: 3"),
+      ]);
+      // Sharing the width, the title alone tells them apart.
+      expect(placed.map(({ text }) => text)).toEqual([
+        "Abschnitt 1",
+        "Abschnitt 2",
+        "Abschnitt 3",
+      ]);
+      // The real length stays on the axis for the gauge: 3 minutes are 3.
+      expect(placed[0]!.style).toContain("--length: 3");
+    });
+
+    it("leave the length out in a column of the week, but say the times while dragged", async () => {
+      const wrapper = render({
+        compact: true,
+        day: day({ work: { minutes: 25, logs: run(25) } }),
+      });
+      expect(block(wrapper).text()).toBe("Abschnitt 1");
+      const handle = wrapper.get(".log-handle--end");
+      await handle.trigger("pointerdown", {
+        button: 0,
+        pointerId: 1,
+        clientY: 100,
+      });
+      await handle.trigger("pointermove", {
+        pointerId: 1,
+        clientY: 100 - 10 * PX_PER_MINUTE,
+      });
+      // Now 15 minutes: drawn a line high, the handles at its sides.
+      expect(wrapper.get("li").classes()).toContain("day-calendar__slot--chip");
+      expect(words(block(wrapper))).toBe("Abschnitt 1 · 10:00–10:15");
+    });
+  });
+
   it("lays out a column of the week without its own head or hour labels", () => {
     const wrapper = render({ compact: true, hours: { from: 5, to: 24 } });
     expect(wrapper.find("h2").exists()).toBe(false);

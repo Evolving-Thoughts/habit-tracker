@@ -10,6 +10,7 @@ import {
   nextMonthKey,
   progressLine,
   resultLabel,
+  runLine,
   statusLine,
 } from "./month-challenge";
 
@@ -47,6 +48,18 @@ describe("month challenge words", () => {
     expect(
       progressLine(challenge({ day: 30, done: 29, missed: 1, remaining: 0 })),
     ).toBe("Tag 30 · 29 von 30 geschafft");
+  });
+
+  it("names the challenge in its run's meta line on Heute", () => {
+    expect(
+      runLine(challenge({ day: 2, done: 0, missed: 0, remaining: 4 })),
+    ).toBe("Monats-Challenge · Tag 2 · noch 4");
+    expect(runLine(challenge())).toBe(
+      "Monats-Challenge · Tag 12 · 11 von 12 geschafft · noch 18",
+    );
+    expect(
+      runLine(challenge({ day: null, done: 0, missed: 0, remaining: 0 })),
+    ).toBe("Monats-Challenge");
   });
 
   it("names the result honestly once closed", () => {

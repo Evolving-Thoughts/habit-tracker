@@ -1,6 +1,13 @@
 import { test, expect } from "./fixtures";
 import { API_URL } from "./environment";
-import { openView, shortDate, today, visit } from "./helpers";
+import {
+  cardMenu,
+  openView,
+  shortDate,
+  showResolved,
+  today,
+  visit,
+} from "./helpers";
 
 /** Days left in the month of `date`, `date` included. */
 function daysLeft(date: string): number {
@@ -9,7 +16,7 @@ function daysLeft(date: string): number {
   return last - day! + 1;
 }
 
-test("Monats-Challenge: started on a Daily, at the top of Heute, ticked there", async ({
+test("Monats-Challenge: started on a Daily, its run in Heute's order, ticked there", async ({
   page,
   request,
 }) => {
@@ -68,44 +75,40 @@ test("Monats-Challenge: started on a Daily, at the top of Heute, ticked there", 
     card.getByRole("img", { name: "Monats-Challenge" }),
   ).toBeVisible();
 
-  // Heute: the card sits at the top with its progress and today's ring.
+  // Heute: no card of its own. The run is the day's only item, so it is the
+  // focus card, which names the challenge and where it stands.
   await openView(page, "Heute");
-  const challenge = page.locator(".challenge-card");
+  await expect(page.locator(".challenge-card")).toHaveCount(0);
+  const focus = page.locator(".focus");
   await expect(
-    challenge.getByRole("heading", { name: "Sport", exact: true }),
+    focus.getByRole("heading", { name: "Sport", exact: true }),
   ).toBeVisible();
-  await expect(challenge.locator(".challenge-card__progress")).toHaveText(
+  await expect(focus.locator(".focus__challenge")).toHaveText(
+    `Monats-Challenge · Tag 1 · noch ${left}`,
+  );
+
+  // Its menu leads to the challenges in the Dailies.
+  await cardMenu(page, "Sport", "Zur Monats-Challenge");
+  await expect(page).toHaveURL(/#\/dailies\?abschnitt=challenge$/);
+  await expect(section.locator(".challenge-item").first()).toContainText(
     `Tag 1 · noch ${left}`,
   );
-  // Its run in the day's list carries the marker too.
-  await expect(
-    page
-      .locator(".today-view")
-      .getByRole("img", { name: "Monats-Challenge" })
-      .first(),
-  ).toBeVisible();
 
-  await challenge
-    .getByRole("button", { name: "Sport heute erledigen", exact: true })
+  // Ticked on Heute, the run goes to the done items with the new count.
+  await openView(page, "Heute");
+  await focus
+    .getByRole("button", { name: "Sport erledigen", exact: true })
     .click();
-  await expect(challenge.locator(".challenge-card__progress")).toHaveText(
+  await showResolved(page);
+  await expect(
+    page.locator(".resolved .planner-item__challenge"),
+  ).toHaveText(
     left > 1
-      ? `Tag 1 · 1 von 1 geschafft · noch ${left - 1}`
-      : "Tag 1 · 1 von 1 geschafft",
+      ? `Monats-Challenge · Tag 1 · 1 von 1 geschafft · noch ${left - 1}`
+      : "Monats-Challenge · Tag 1 · 1 von 1 geschafft",
   );
-  await expect(
-    challenge.getByRole("button", {
-      name: "Sport heute wieder öffnen",
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(
-    challenge.getByRole("progressbar", { name: "Monats-Challenge Sport" }),
-  ).toHaveAttribute("aria-valuenow", "1");
 
-  // The card leads to the challenges in the Dailies.
-  await challenge.getByRole("link", { name: "Challenges" }).click();
-  await expect(page).toHaveURL(/#\/dailies\?abschnitt=challenge$/);
+  await openView(page, "Dailies");
   await expect(section.locator(".challenge-item").first()).toContainText(
     "1 von 1 geschafft",
   );

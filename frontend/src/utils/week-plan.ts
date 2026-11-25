@@ -615,3 +615,89 @@ export function todayScroll(
   if (today.end <= view.width) return 0;
   return Math.max(0, today.start - view.sticky);
 }
+
+/*
+ * On a phone (below 40rem) every column of the board is as wide as the
+ * screen and snaps into place; a strip of chips above names the columns
+ * and jumps to them. A week of days to swipe through, after the Questlog
+ * and what was left behind.
+ */
+export const PHONE_PLAN_DAYS = 7;
+
+/** A chip of the phone's strip: one per column, in the board's order. */
+export type PlanChip = {
+  /** "questlog", "overdue" or the day's date. */
+  key: string;
+  /** What the chip says: "Questlog", "Liegen geblieben", "Heute", "Mi". */
+  label: string;
+  /** Its spoken name, a day with its date: "Mittwoch, 26. Nov.". */
+  name: string;
+};
+
+const SHORT_WEEKDAYS = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"] as const;
+const LONG_WEEKDAYS = [
+  "Sonntag",
+  "Montag",
+  "Dienstag",
+  "Mittwoch",
+  "Donnerstag",
+  "Freitag",
+  "Samstag",
+] as const;
+const MONTHS = [
+  "Jan.",
+  "Feb.",
+  "März",
+  "Apr.",
+  "Mai",
+  "Juni",
+  "Juli",
+  "Aug.",
+  "Sept.",
+  "Okt.",
+  "Nov.",
+  "Dez.",
+] as const;
+
+/** The columns of the board as chips: Questlog · Liegen geblieben · Heute · Mi … */
+export function planChips(board: {
+  overdue: boolean;
+  days: readonly string[];
+  today: string;
+}): PlanChip[] {
+  const days = board.days.map((date): PlanChip => {
+    const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+    const spoken = `${LONG_WEEKDAYS[weekday]}, ${Number(date.slice(8, 10))}. ${
+      MONTHS[Number(date.slice(5, 7)) - 1]
+    }`;
+    return date === board.today
+      ? { key: date, label: "Heute", name: `Heute, ${spoken}` }
+      : { key: date, label: SHORT_WEEKDAYS[weekday]!, name: spoken };
+  });
+  return [
+    { key: "questlog", label: "Questlog", name: "Questlog" },
+    ...(board.overdue
+      ? [{ key: "overdue", label: "Liegen geblieben", name: "Liegen geblieben" }]
+      : []),
+    ...days,
+  ];
+}
+
+/** Where the phone's board opens: on today, else on its first day. */
+export function startColumn(chips: readonly PlanChip[], today: string): number {
+  const todayIndex = chips.findIndex((chip) => chip.key === today);
+  if (todayIndex >= 0) return todayIndex;
+  const firstDay = chips.findIndex(
+    (chip) => chip.key !== "questlog" && chip.key !== "overdue",
+  );
+  return Math.max(0, firstDay);
+}
+
+/**
+ * The column in view on the phone's board: each column is one `step` wide
+ * (the board's width plus the gap), the nearest one counts.
+ */
+export function columnAt(scrollLeft: number, step: number, count: number): number {
+  if (step <= 0 || count <= 0) return 0;
+  return Math.min(count - 1, Math.max(0, Math.round(scrollLeft / step)));
+}

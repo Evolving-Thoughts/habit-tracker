@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, useId, watch } from "vue";
+import { computed, nextTick, onMounted, ref, useId, watch } from "vue";
 import { saveDayBest } from "../api/day-bests.api";
 import type { DayBest } from "../types/day-best";
 import {
@@ -8,12 +8,15 @@ import {
   DAY_BEST_MAX_LENGTH,
   normalizeLine,
 } from "../utils/day-best";
+import { insertAtCursor } from "../utils/insert-text";
+import MicButton from "./MicButton.vue";
 
 /**
  * The one field for a day's best, in Heute, the Kalender and the timeline:
  * one short line that saves itself on Enter or when the field is left, like
  * the notes, and says so quietly. Escape gives up what was typed. Near the
- * limit a counter shows how much is left.
+ * limit a counter shows how much is left. Dictated text goes in at the
+ * cursor; what no longer fits the limit is cut, and a quiet line says so.
  */
 const props = withDefaults(
   defineProps<{
@@ -40,6 +43,8 @@ const draft = ref(props.text);
 const stored = ref(props.text);
 const state = ref<"idle" | "saving" | "saved" | "failed">("idle");
 const error = ref("");
+/** Set when a dictation was cut to the limit; cleared by the next edit. */
+const cut = ref(false);
 /** Counts edits, so an answer to an older save does not report "saved". */
 let revision = 0;
 
@@ -65,7 +70,9 @@ const changed = computed(
 );
 const counter = computed(() => counterText(draft.value.length));
 const status = computed(() =>
-  state.value === "saving"
+  cut.value
+    ? `Gekürzt auf ${DAY_BEST_MAX_LENGTH} Zeichen.`
+    : state.value === "saving"
     ? "Speichert …"
     : state.value === "saved"
       ? "Gespeichert"
@@ -99,7 +106,23 @@ async function save(): Promise<void> {
 
 function onInput(): void {
   revision += 1;
+  cut.value = false;
   if (state.value !== "saving") state.value = "idle";
+}
+
+async function onDictated(text: string): Promise<void> {
+  const insertion = insertAtCursor(
+    field.value,
+    draft.value,
+    text,
+    DAY_BEST_MAX_LENGTH,
+  );
+  draft.value = insertion.value;
+  onInput();
+  cut.value = insertion.truncated;
+  await nextTick();
+  field.value?.focus();
+  field.value?.setSelectionRange(insertion.caret, insertion.caret);
 }
 
 /* One line: Enter saves instead of breaking it. */
@@ -132,23 +155,32 @@ defineExpose({ focus: () => field.value?.focus() });
       :class="{ 'visually-hidden': hideLabel }"
       >{{ label }}</label
     >
-    <textarea
-      :id="`${id}-text`"
-      ref="field"
-      v-model="draft"
-      class="input day-best-field__input"
-      name="dayBest"
-      rows="2"
-      :maxlength="DAY_BEST_MAX_LENGTH"
-      enterkeyhint="done"
-      :placeholder="placeholder"
-      :disabled="disabled"
-      :aria-describedby="counter ? `${id}-count` : undefined"
-      @input="onInput"
-      @keydown.enter="onEnter"
-      @keydown.esc="onEscape"
-      @blur="save"
-    />
+    <div class="mic-field">
+      <textarea
+        :id="`${id}-text`"
+        ref="field"
+        v-model="draft"
+        class="input day-best-field__input"
+        name="dayBest"
+        rows="2"
+        :maxlength="DAY_BEST_MAX_LENGTH"
+        enterkeyhint="done"
+        :placeholder="placeholder"
+        :disabled="disabled"
+        :aria-describedby="counter ? `${id}-count` : undefined"
+        @input="onInput"
+        @keydown.enter="onEnter"
+        @keydown.esc="onEscape"
+        @blur="save"
+      />
+      <MicButton
+        v-if="!disabled"
+        placement="field"
+        mode="long"
+        :label="`${label} diktieren`"
+        @result="onDictated"
+      />
+    </div>
     <div class="day-best-field__foot">
       <p class="day-best-field__status" role="status">{{ status }}</p>
       <p v-if="counter" :id="`${id}-count`" class="day-best-field__count">

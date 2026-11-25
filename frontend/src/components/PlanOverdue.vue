@@ -128,4 +128,8 @@ useSortable(list, {
 .plan-overdue__toggle { float: right; }
 .plan-overdue--closed, .plan-overdue--closed .plan-overdue__header { padding-inline: 0; }
 .plan-overdue--closed .plan-overdue__title { writing-mode: vertical-rl; margin: var(--space-2) auto; clear: both; }
+/* On a phone every column is a screen of its own: nothing to fold away. */
+@media (max-width: 39.99rem) {
+  .plan-overdue__toggle { display: none; }
+}
 </style>

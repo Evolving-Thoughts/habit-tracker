@@ -10,11 +10,16 @@ import ModalDialog from "./ModalDialog.vue";
  * switch only swaps the form; each keeps what was typed while the other is
  * shown, and nothing is saved before "… erstellen".
  */
-const props = withDefaults(defineProps<{ kind?: "todo" | "habit" }>(), {
-  kind: "todo",
-});
+const props = withDefaults(
+  defineProps<{
+    kind?: "todo" | "habit";
+    /** A long press on Plus: the quest form with its title being dictated. */
+    dictate?: boolean;
+  }>(),
+  { kind: "todo", dictate: false },
+);
 const emit = defineEmits<{ close: []; created: [kind: "todo" | "habit"] }>();
-const current = ref<"todo" | "habit">(props.kind);
+const current = ref<"todo" | "habit">(props.dictate ? "todo" : props.kind);
 const formBusy = ref(false);
 const refreshing = ref(false);
 const busy = computed(() => formBusy.value || refreshing.value);
@@ -55,6 +60,7 @@ function created(kind: "todo" | "habit"): void {
       <KeepAlive>
         <CreateTodoForm
           v-if="current === 'todo'"
+          :dictate="dictate"
           @busy="formBusy = $event"
           @created="created('todo')"
           @cancel="close"

@@ -114,13 +114,25 @@ export async function pick(field: Locator, text: string) {
   await field.press("Enter");
   await expect(field).toHaveAttribute("aria-expanded", "false");
 }
+/**
+ * The plus button, in reach: on a phone it steps aside while the page
+ * scrolls down, and a short scroll up brings it back.
+ */
+export async function plusButton(page: Page): Promise<Locator> {
+  const plus = page.locator(".create-button");
+  if (await plus.evaluate((button) => button.hasAttribute("data-hidden"))) {
+    await page.evaluate(() => window.scrollBy(0, -120));
+    await expect(plus).not.toHaveAttribute("data-hidden");
+  }
+  return plus;
+}
 export async function createTodo(
   page: Page,
   title: string,
   /** YYYY-MM-DD; without it the quest goes to the Questlog. */
   date?: string,
 ) {
-  await page.locator(".create-button").click();
+  await (await plusButton(page)).click();
   const dialog = page.getByRole("dialog");
   // The dialog opens on "Quest" (Questlog, Heute); Dailies opens on "Daily".
   await dialog.getByRole("radio", { name: "Quest", exact: true }).check();
@@ -138,7 +150,7 @@ export async function createHabit(
   type: "interval" | "fixed_weekdays" | "weekly_target" = "interval",
   startDate?: string,
 ) {
-  await page.locator(".create-button").click();
+  await (await plusButton(page)).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("radio", { name: "Daily", exact: true }).check();
   await dialog.locator('[name="title"]').fill(title);

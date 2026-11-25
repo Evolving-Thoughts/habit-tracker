@@ -3,6 +3,8 @@ import { HISTORY_ITEM_FIELDS, PLANNED_FIELDS } from "../types/fixtures";
 import type { HistoryWorkLog } from "../types/history";
 import {
   DONE_MARK_MINUTES,
+  LOG_FULL_MINUTES,
+  LOG_LINE_MINUTES,
   axisHours,
   calendarBlocks,
   clockLabel,
@@ -11,6 +13,7 @@ import {
   layoutLane,
   logBlocks,
   logLabel,
+  logLabelMode,
   minuteOfDay,
   planBlocks,
   resizedEdge,
@@ -52,7 +55,7 @@ describe("blocks of a day", () => {
       endedAt: "2026-11-16T23:45:00.000Z",
     });
     expect(logBlocks({ minutes: 45, logs: [night] }, DAY)).toEqual([
-      { key: "log:1", log: night, start: 0, end: 45, minLength: 0 },
+      { key: "log:1", log: night, start: 0, end: 45, minLength: LOG_LINE_MINUTES },
     ]);
   });
 
@@ -234,6 +237,54 @@ describe("layoutLane", () => {
     expect(placed.map(({ column, columns }) => [column, columns])).toEqual([
       [0, 2],
       [1, 2],
+    ]);
+  });
+});
+
+describe("short stretches", () => {
+  it("label themselves by their length: one line below half an hour, drawn a line high below about 21 minutes", () => {
+    // One line is 1.375rem of the 4rem hour, two lines 2rem.
+    expect(LOG_LINE_MINUTES).toBeCloseTo(20.625);
+    expect(LOG_FULL_MINUTES).toBe(30);
+    expect([1, 5, 20, 21, 29, 30, 90].map(logLabelMode)).toEqual([
+      "chip",
+      "chip",
+      "chip",
+      "line",
+      "line",
+      "full",
+      "full",
+    ]);
+  });
+
+  it("stand side by side when they follow each other, each with room for its line", () => {
+    // 10:00–10:03, 10:03–10:08 and 10:08–10:18 in Berlin, then an hour later.
+    const at = (from: string, to: string, id: number) =>
+      log({
+        id,
+        startedAt: `2026-11-17T${from}:00.000Z`,
+        endedAt: `2026-11-17T${to}:00.000Z`,
+      });
+    const placed = calendarBlocks(
+      [],
+      logBlocks(
+        {
+          minutes: 18,
+          logs: [
+            at("09:00", "09:03", 1),
+            at("09:03", "09:08", 2),
+            at("09:08", "09:18", 3),
+            at("10:30", "10:35", 4),
+          ],
+        },
+        DAY,
+      ),
+    );
+    expect(placed.map(({ column, columns }) => [column, columns])).toEqual([
+      [0, 3],
+      [1, 3],
+      [2, 3],
+      [0, 1],
     ]);
   });
 });

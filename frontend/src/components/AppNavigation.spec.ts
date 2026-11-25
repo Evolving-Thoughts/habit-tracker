@@ -108,6 +108,24 @@ describe("AppNavigation: Mehr", () => {
     expect(more.attributes("data-active")).toBeDefined();
   });
 
+  it("starts with Suchen, which closes the sheet and opens the command menu to type", async () => {
+    const { wrapper, more, menu } = await mountNavigation();
+    await more.trigger("click");
+    const entries = menu.findAll(".tab-bar__tab");
+    expect(entries[0]!.element.tagName).toBe("BUTTON");
+    expect(entries[0]!.text()).toBe("Suchen");
+    expect(entries[0]!.find("svg").exists()).toBe(true);
+    expect(entries[0]!.attributes("aria-keyshortcuts")).toBe("Control+K");
+    await entries[0]!.trigger("click");
+    // "search" focuses the field even on a touch screen.
+    expect(overlay.value).toBe("search");
+    expect(more.attributes("aria-expanded")).toBe("false");
+    // The focus waits on Mehr, so it returns there when the menu closes.
+    expect(document.activeElement).toBe(more.element);
+    expect(wrapper.find(".tab-bar__scrim").exists()).toBe(false);
+    overlay.value = null;
+  });
+
   it("is not current for a view with its own tab on the phone", async () => {
     const { more } = await mountNavigation("/kalender");
     expect(more.attributes("data-active")).toBeUndefined();

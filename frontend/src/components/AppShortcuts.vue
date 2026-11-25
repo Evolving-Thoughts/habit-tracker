@@ -277,8 +277,9 @@ function itemCreated(kind: "todo" | "habit"): void {
 
 <template>
   <CommandMenu
-    v-if="overlay === 'menu'"
+    v-if="overlay === 'menu' || overlay === 'search'"
     :commands="commands"
+    :open-keyboard="overlay === 'search'"
     @run="run"
     @open="open"
     @close="overlay = null"

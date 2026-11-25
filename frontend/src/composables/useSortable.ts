@@ -31,6 +31,8 @@ type SortableOptions = {
 export const TOUCH_HOLD_MS = 300;
 /** A mouse or pen has to move this far before a press becomes a drag. */
 export const DRAG_DISTANCE_PX = 6;
+/** How long the device buzzes when a card lifts, where it can. */
+export const LIFT_VIBRATION_MS = 10;
 
 /**
  * Drag sorting for a list that Vue renders. A card drags from anywhere but
@@ -87,6 +89,8 @@ export function useSortable(
         fallbackTolerance: DRAG_DISTANCE_PX,
         onStart({ item }) {
           lifted = true;
+          // A short buzz where the device can: the card is in the hand.
+          navigator.vibrate?.(LIFT_VIBRATION_MS);
           home = item.parentNode
             ? { parent: item.parentNode, next: item.nextSibling }
             : null;

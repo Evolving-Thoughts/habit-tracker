@@ -137,6 +137,14 @@ const timerIdOf = (key: string): string | null =>
  * and takes the gesture back. Only `timerKey` and `running` drive this, so
  * the poll that replaces the timer object every 3 seconds changes nothing.
  */
+/*
+ * Leaving the Fokus-Modus stops the sound, but the go-ahead of a stopwatch
+ * that keeps running survives the visit elsewhere: coming back while it
+ * still runs, its sound plays on (the tap that leads back is the gesture
+ * browsers ask for). A pause or stop takes it back.
+ */
+let carried: { armedFor: string; chimedFor: string | null } | null = null;
+
 export function useFocusSound(options: FocusSoundOptions) {
   const now = options.now ?? (() => Date.now());
   const { settings, update } = useFocusSoundSettings();
@@ -152,10 +160,26 @@ export function useFocusSound(options: FocusSoundOptions) {
   const stoppedOutside = ref(false);
   /** The stopwatch started or approved from this tab. */
   let armedFor: string | null = null;
-  /** When Start or Fortsetzen was pressed here, waiting for the stopwatch to run. */
-  let gestureAt = Number.NEGATIVE_INFINITY;
   /** The stopwatch whose "Soll erreicht" already chimed. */
   let chimedFor: string | null = null;
+  /*
+   * The go-ahead carried from the last visit waits for its stopwatch: when
+   * the view opens, the day (and so which stopwatch belongs to the quest in
+   * view) may still be loading.
+   */
+  let waiting = carried;
+  carried = null;
+  function takeCarried(): void {
+    if (!waiting || !options.running()) return;
+    if (waiting.armedFor === timerIdOf(options.timerKey())) {
+      armedFor = waiting.armedFor;
+      chimedFor = waiting.chimedFor;
+    }
+    waiting = null;
+  }
+  takeCarried();
+  /** When Start or Fortsetzen was pressed here, waiting for the stopwatch to run. */
+  let gestureAt = Number.NEGATIVE_INFINITY;
   /** A Start or Pause pressed here that the server has not confirmed yet. */
   let pending: { running: boolean; until: number } | null = null;
   let pendingCheck: ReturnType<typeof setTimeout> | null = null;
@@ -230,6 +254,7 @@ export function useFocusSound(options: FocusSoundOptions) {
       if (key !== oldKey || running !== wasRunning) {
         // The server answered the press here.
         if (pending && pending.running === running) pending = null;
+        if (running) takeCarried();
         if (!running) armedFor = null;
         else if (now() - gestureAt <= GESTURE_MS) {
           // The start pressed here: this stopwatch may sound.
@@ -254,7 +279,11 @@ export function useFocusSound(options: FocusSoundOptions) {
     playingId.value = null;
     stoppedOutside.value = true;
   });
+  // Back in the view while its stopwatch still runs: on with the sound.
+  if (armedFor) sync();
   onScopeDispose(() => {
+    carried =
+      armed() && options.running() && armedFor ? { armedFor, chimedFor } : null;
     if (pendingCheck !== null) clearTimeout(pendingCheck);
     stopListening?.();
     silence();

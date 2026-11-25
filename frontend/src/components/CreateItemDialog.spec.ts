@@ -74,6 +74,16 @@ describe("CreateItemDialog", () => {
     ).toBe("Lesen");
     expect(createTodo).not.toHaveBeenCalled();
   });
+  it("opens on the quest form for a long press, even from Dailies", async () => {
+    const wrapper = mount(CreateItemDialog, {
+      props: { kind: "habit", dictate: true },
+    });
+    await flushPromises();
+    expect(wrapper.find(".create-todo").exists()).toBe(true);
+    expect(
+      wrapper.getComponent({ name: "CreateTodoForm" }).props("dictate"),
+    ).toBe(true);
+  });
   it("opens on the daily form when asked to", async () => {
     const wrapper = mount(CreateItemDialog, { props: { kind: "habit" } });
     await flushPromises();

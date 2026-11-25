@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { today, visit } from "./helpers";
+import { plusButton, today, visit } from "./helpers";
 import { API_URL } from "./environment";
 
 for (const view of ["Questlog", "Heute", "Dailies"] as const) {
@@ -37,6 +37,13 @@ for (const view of ["Questlog", "Heute", "Dailies"] as const) {
     await page.evaluate(() =>
       window.scrollTo(0, document.documentElement.scrollHeight),
     );
+    if (isMobile) {
+      // A phone's plus button steps aside while the page scrolls down and
+      // comes back, at the same place, on the way up.
+      await expect(plus).toHaveAttribute("data-hidden");
+      await page.evaluate(() => window.scrollBy(0, -120));
+      await expect(plus).not.toHaveAttribute("data-hidden");
+    }
     await expect
       .poll(async () => Math.round((await plus.boundingBox())!.y))
       .toBe(Math.round(top!.y));
@@ -66,11 +73,15 @@ for (const view of ["Questlog", "Heute", "Dailies"] as const) {
         : dialog.locator('[name="title"]'),
     ).toBeFocused();
     expect(await dialog.evaluate((el) => el.matches(":modal"))).toBe(true);
-    const box = await dialog.boundingBox();
-    expect(box!.y).toBeGreaterThanOrEqual(0);
-    expect(box!.y + box!.height).toBeLessThanOrEqual(
-      page.viewportSize()!.height + 1,
-    );
+    // Whole in the window, once a phone's sheet has slid up.
+    await expect
+      .poll(async () => {
+        const box = (await dialog.boundingBox())!;
+        return (
+          box.y >= 0 && box.y + box.height <= page.viewportSize()!.height + 1
+        );
+      })
+      .toBe(true);
     // Chromium may briefly focus browser chrome (activeElement === body).
     // It must never focus a control in the inert background page.
     for (let i = 0; i < 14; i++) {
@@ -91,7 +102,7 @@ for (const view of ["Questlog", "Heute", "Dailies"] as const) {
     await expect(dialog).not.toBeVisible();
     await expect(edit).toBeFocused();
     expect(await page.evaluate(() => scrollY)).toBeCloseTo(scroll, 0);
-    await plus.click();
+    await (await plusButton(page)).click();
     await expect(
       page.getByRole("dialog", {
         name: view === "Dailies" ? "Neues Daily" : "Neue Quest",

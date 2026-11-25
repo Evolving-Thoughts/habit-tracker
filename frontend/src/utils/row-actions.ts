@@ -28,7 +28,8 @@ export type MenuIcon =
   | "focus"
   | "arrow-up"
   | "arrow-down"
-  | "campaigns";
+  | "campaigns"
+  | "challenge";
 
 /** One entry of an action menu. */
 export type MenuEntry = {
@@ -159,6 +160,8 @@ export type RowMenuSteps = {
   child?: () => void;
   /** "In Kampagne verschieben …": below a campaign or one of its quests. */
   reparent?: () => void;
+  /** "Zur Monats-Challenge": the Daily that carries this month's challenge. */
+  challenge?: () => void;
   up?: () => void;
   down?: () => void;
   remove?: { run: () => void; ariaLabel?: string };
@@ -167,7 +170,8 @@ export type RowMenuSteps = {
 /**
  * Every card's menu in the one order: quick moves, "Anderer Tag …",
  * Überspringen, Bearbeiten, Fokus-Modus, Stoppuhr, Unter-Quest,
- * "In Kampagne verschieben …", Nach oben / Nach unten, and Löschen last,
+ * "In Kampagne verschieben …", "Zur Monats-Challenge", Nach oben / Nach
+ * unten, and Löschen last,
  * set apart (every view offers it, with the editor's confirmation).
  */
 export function rowMenu(
@@ -230,6 +234,13 @@ export function rowMenu(
       icon: "campaigns",
       ariaLabel: `${title} in eine Kampagne verschieben`,
       run: steps.reparent,
+    });
+  if (steps.challenge)
+    add({
+      id: "challenge",
+      label: "Zur Monats-Challenge",
+      icon: "challenge",
+      run: steps.challenge,
     });
   if (steps.up)
     add({

@@ -6,11 +6,13 @@ import { EditorContent, useEditor, type Editor } from "@tiptap/vue-3";
 import { computed, nextTick, ref, toRaw, watch } from "vue";
 import type { NotesDocument } from "../api/todo-notes.api";
 import AppIcon from "./AppIcon.vue";
+import MicButton from "./MicButton.vue";
 
 /**
  * A rich-text field: headings, lists, check lists, quotes, code and links.
  * Its value is the editor's own document, or null when nothing is written.
  * What the toolbar offers is what the server keeps (backend todo-notes.ts).
+ * The microphone in the bar dictates plain text in at the cursor.
  */
 const props = defineProps<{
   modelValue: NotesDocument | null;
@@ -72,8 +74,13 @@ watch(
   },
 );
 
-/* Block type: one choice for the paragraph the cursor is in. */
+/*
+ * Block type: one choice for the paragraph the cursor is in. The same
+ * select also inserts a divider (an action, not a type), which keeps the
+ * tool row short enough for a phone.
+ */
 type Block = "text" | "h1" | "h2" | "h3" | "quote" | "code";
+const DIVIDER = "divider";
 const BLOCKS: { value: Block; label: string }[] = [
   { value: "text", label: "Text" },
   { value: "h1", label: "Überschrift 1" },
@@ -97,6 +104,11 @@ function setBlock(event: Event): void {
   const current = editor.value;
   const select = event.target as HTMLSelectElement;
   if (!current) return;
+  if (select.value === DIVIDER) {
+    current.chain().focus().setHorizontalRule().run();
+    select.value = blockOf(current);
+    return;
+  }
   const value = select.value as Block;
   let chain = current.chain().focus();
   if (value !== "quote" && current.isActive("blockquote"))
@@ -118,7 +130,7 @@ type Tool = {
   name: string;
   label: string;
   glyph?: string;
-  icon?: "code" | "link" | "list" | "list-ordered" | "list-check" | "divider";
+  icon?: "code" | "link" | "list" | "list-ordered" | "list-check";
   active: (current: Editor) => boolean;
   run: (current: Editor) => void;
 };
@@ -179,14 +191,23 @@ const TOOLS: Tool[] = [
     active: (current) => current.isActive("taskList"),
     run: (current) => current.chain().focus().toggleTaskList().run(),
   },
-  {
-    name: "divider",
-    label: "Trennlinie",
-    icon: "divider",
-    active: () => false,
-    run: (current) => current.chain().focus().setHorizontalRule().run(),
-  },
 ];
+
+/** Dictated text goes in at the cursor as plain text, spaced from its neighbours. */
+function insertDictation(text: string): void {
+  const current = editor.value;
+  if (!current) return;
+  const { from, to } = current.state.selection;
+  const { doc } = current.state;
+  // Across a block boundary textBetween is "": no space needed there.
+  const before = doc.textBetween(Math.max(0, from - 1), from);
+  const after = doc.textBetween(to, Math.min(doc.content.size, to + 1));
+  const spaced =
+    (before && !/\s/.test(before) ? " " : "") +
+    text +
+    (after && !/\s/.test(after) ? " " : "");
+  current.chain().focus().insertContent({ type: "text", text: spaced }).run();
+}
 
 const toolbar = ref<HTMLElement | null>(null);
 const roving = ref(0);
@@ -292,7 +313,16 @@ function removeLink(): void {
         <option v-for="option in BLOCKS" :key="option.value" :value="option.value">
           {{ option.label }}
         </option>
+        <optgroup label="Einfügen">
+          <option :value="DIVIDER">Trennlinie</option>
+        </optgroup>
       </select>
+      <MicButton
+        class="rich-text__mic"
+        mode="long"
+        :label="`${label} diktieren`"
+        @result="insertDictation"
+      />
       <div
         ref="toolbar"
         class="rich-text__tools"
@@ -310,9 +340,7 @@ function removeLink(): void {
           :tabindex="index === roving ? 0 : -1"
           :aria-label="tool.label"
           :title="tool.label"
-          :aria-pressed="
-            tool.name === 'divider' ? undefined : !!editor && tool.active(editor)
-          "
+          :aria-pressed="!!editor && tool.active(editor)"
           :aria-expanded="tool.name === 'link' ? linkOpen : undefined"
           :disabled="!editor"
           @mousedown.prevent
@@ -366,6 +394,7 @@ function removeLink(): void {
 
 <style scoped>
 .rich-text {
+  container: rich-text / inline-size;
   border: 1.5px solid var(--color-line-strong);
   border-radius: var(--radius-control);
   background: var(--color-surface);
@@ -408,8 +437,24 @@ function removeLink(): void {
 /* One row of tools: beside the block type when there is room, below it on a phone. */
 .rich-text__tools {
   display: flex;
-  flex: 1 1 20rem;
+  flex: 1 1 18rem;
+  order: 2;
   min-width: 0;
+}
+
+/*
+ * The microphone ends the bar; where the tools take a row of their own it
+ * stays up beside the block type, at the right edge.
+ */
+.rich-text__mic {
+  order: 3;
+  margin-inline-start: auto;
+}
+
+@container rich-text (max-width: 30rem) {
+  .rich-text__mic {
+    order: 1;
+  }
 }
 
 .rich-text .rich-text__tool {
@@ -433,6 +478,18 @@ function removeLink(): void {
 .rich-text__tool :deep(svg) {
   width: 1.25rem;
   height: 1.25rem;
+}
+
+/* A finger gets a full tap per tool; the row wraps rather than squeezing them. */
+@media (pointer: coarse) {
+  .rich-text__tools {
+    flex-wrap: wrap;
+  }
+
+  .rich-text .rich-text__tool {
+    flex: 0 0 var(--tap);
+    min-width: var(--tap);
+  }
 }
 
 .rich-text__tool--italic {

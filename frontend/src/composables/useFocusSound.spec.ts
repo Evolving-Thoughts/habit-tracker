@@ -44,9 +44,13 @@ const CATALOG = [
 ];
 
 /** The composable with a stopwatch the test moves by hand. */
-async function setup() {
+async function setup(
+  initial: { id: string; state: "running" | "paused" } | null = null,
+) {
   let clock = 0;
-  const timer = ref<{ id: string; state: "running" | "paused" } | null>(null);
+  const timer = ref<{ id: string; state: "running" | "paused" } | null>(
+    initial,
+  );
   const reached = ref(false);
   let stopped: (() => void) | null = null;
   let failed: (() => void) | null = null;
@@ -101,6 +105,54 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("useFocusSound", () => {
+  it("plays on when the Fokus-Modus is opened again while its stopwatch still runs", async () => {
+    updateFocusSound({ soundId: "rain" });
+    const first = await setup();
+    first.focus.gesture();
+    await first.set({ id: "t1", state: "running" });
+    expect(first.played()).toEqual(["rain"]);
+    // Off to Heute: the sound stops with the view.
+    first.scope.stop();
+    expect(first.output.stop).toHaveBeenCalled();
+
+    // Back, the same stopwatch still running: no new tap needed.
+    const back = await setup({ id: "t1", state: "running" });
+    expect(back.played()).toEqual(["rain"]);
+    back.scope.stop();
+
+    // A different stopwatch running meanwhile stays silent.
+    const other = await setup({ id: "t2", state: "running" });
+    expect(other.played()).toEqual([]);
+    other.scope.stop();
+  });
+
+  it("plays on once the day has loaded and its running stopwatch shows", async () => {
+    updateFocusSound({ soundId: "rain" });
+    const first = await setup();
+    first.focus.gesture();
+    await first.set({ id: "t1", state: "running" });
+    first.scope.stop();
+    // Back while the day still loads: no stopwatch in view yet.
+    const back = await setup();
+    expect(back.played()).toEqual([]);
+    await back.set({ id: "t1", state: "running" });
+    expect(back.played()).toEqual(["rain"]);
+    back.scope.stop();
+  });
+
+  it("does not carry the sound over a pause made in the view", async () => {
+    updateFocusSound({ soundId: "rain" });
+    const first = await setup();
+    first.focus.gesture();
+    await first.set({ id: "t1", state: "running" });
+    await first.set({ id: "t1", state: "paused" });
+    first.scope.stop();
+    // Resumed elsewhere, then back: it waits for a tap here again.
+    const back = await setup({ id: "t1", state: "running" });
+    expect(back.played()).toEqual([]);
+    back.scope.stop();
+  });
+
   it("follows Start and Pause pressed here at once, before the server answers", async () => {
     vi.useFakeTimers();
     try {
@@ -378,7 +430,9 @@ describe("useFocusSound", () => {
     await set({ id: "t1", state: "running" });
     expect(output.play).toHaveBeenCalledTimes(1);
     // Stored for the next time; M brings it back now.
-    expect(JSON.parse(localStorage.getItem("focus:sound")!).soundId).toBe("rain");
+    expect(JSON.parse(localStorage.getItem("focus:sound")!).soundId).toBe(
+      "rain",
+    );
     focus.toggle();
     expect(focus.state.value).toBe("playing");
     expect(output.play).toHaveBeenCalledTimes(2);
@@ -495,7 +549,9 @@ describe("useFocusSound on Android", () => {
     expect(focus.note.value).toBeNull();
 
     await set({ id: "t1", state: "paused" });
-    plays[1]!.reject(Object.assign(new Error("abgebrochen"), { code: "CANCELLED" }));
+    plays[1]!.reject(
+      Object.assign(new Error("abgebrochen"), { code: "CANCELLED" }),
+    );
     await flushPromises();
     expect(focus.loadFailed.value).toBe(false);
 

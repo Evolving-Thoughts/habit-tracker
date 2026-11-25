@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { HabitResponse } from "../types/habit";
 import { formatDateForGermanDisplay } from "../utils/date";
 
 type Days = NonNullable<HabitResponse["streak"]["recentDays"]>;
-defineProps<{ days: Days }>();
+const props = defineProps<{ days: Days }>();
 const marks = {
   done: ["✓", "Erledigt"],
   missed: ["−", "Verpasst"],
@@ -11,12 +12,49 @@ const marks = {
   skipped: ["↷", "Übersprungen"],
   free: ["·", "Kein Eintrag"],
 } as const;
+
+/*
+ * Where the fourteen days do not fit, the strip scrolls in itself and starts
+ * at its right end, so today and yesterday are in view. Only then is it a
+ * tab stop, scrolled with the arrow keys like any scroll area.
+ */
+const list = ref<HTMLOListElement | null>(null);
+const scrollable = ref(false);
+function measure(): void {
+  const element = list.value;
+  scrollable.value =
+    !!element && element.scrollWidth > element.clientWidth + 1;
+}
+async function showToday(): Promise<void> {
+  await nextTick();
+  const element = list.value;
+  if (!element) return;
+  element.scrollLeft = element.scrollWidth;
+  measure();
+}
+let observer: ResizeObserver | null = null;
+onMounted(() => {
+  void showToday();
+  if (typeof ResizeObserver === "function" && list.value) {
+    observer = new ResizeObserver(measure);
+    observer.observe(list.value);
+  }
+});
+onBeforeUnmount(() => observer?.disconnect());
+watch(
+  () => props.days.at(-1)?.date,
+  () => void showToday(),
+);
 </script>
 
 <template>
   <div class="history">
     <p class="caption">Letzte 14 Tage</p>
-    <ol aria-label="Verlauf der letzten 14 Tage">
+    <ol
+      ref="list"
+      aria-label="Verlauf der letzten 14 Tage"
+      :tabindex="scrollable ? 0 : undefined"
+    >
       <li
         v-for="day in days"
         :key="day.date"
@@ -46,14 +84,26 @@ const marks = {
   font-size: 0.8125rem;
   font-weight: 700;
 }
+/*
+ * The strip scrolls in itself, never the page: paint containment also
+ * holds the hidden day names, which would otherwise widen the window.
+ */
 ol {
   display: grid;
   grid-template-columns: repeat(14, minmax(max-content, 1fr));
   overflow-x: auto;
+  contain: paint;
+  overscroll-behavior-x: contain;
   gap: 0.2rem;
   margin: 0;
-  padding: 0;
+  padding: 0 0 var(--space-2);
+  border-radius: var(--radius-control);
   list-style: none;
+  scrollbar-width: thin;
+}
+ol:focus-visible {
+  outline: 3px solid var(--color-action-strong);
+  outline-offset: 2px;
 }
 li {
   display: grid;

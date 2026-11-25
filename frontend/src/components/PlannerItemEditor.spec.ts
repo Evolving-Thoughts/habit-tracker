@@ -1013,17 +1013,56 @@ describe("PlannerItemEditor", () => {
       );
     });
 
-    it("ends the form with the sticky actions: Speichern, Abbrechen, then the quiet delete", async () => {
+    it("ends the form with the sticky actions from 40rem: Speichern, Abbrechen, then the quiet delete", async () => {
+      vi.stubGlobal(
+        "matchMedia",
+        (query: string) =>
+          ({
+            matches: query === "(min-width: 40rem)",
+            media: query,
+            addEventListener: () => undefined,
+            removeEventListener: () => undefined,
+          }) as unknown as MediaQueryList,
+      );
       const wrapper = mountQuest();
       await flushPromises();
-      expect(wrapper.classes()).toContain("item-editor--embedded");
+      vi.unstubAllGlobals();
       const footer = wrapper.get('[data-test="editor-actions"]');
-      expect(footer.classes()).toContain("sticky-actions");
       expect(footer.findAll("button").map((button) => button.text())).toEqual([
         "Speichern",
         "Abbrechen",
         "Quest löschen",
       ]);
+      expect(wrapper.find(".item-editor__delete-row").exists()).toBe(false);
+    });
+
+    it("keeps deletion out of a phone's sticky footer, at the end of the content", async () => {
+      const wrapper = mountQuest();
+      await flushPromises();
+      const footer = wrapper.get('[data-test="editor-actions"]');
+      expect(footer.findAll("button").map((button) => button.text())).toEqual([
+        "Speichern",
+        "Abbrechen",
+      ]);
+      const row = wrapper.get(".item-editor__delete-row");
+      expect(row.text()).toBe("Quest löschen");
+      // Right before the footer: the last thing one scrolls to.
+      expect(row.element.nextElementSibling).toBe(footer.element);
+      // Its question still asks right above the footer.
+      await row.get('[data-test="request-delete"]').trigger("click");
+      await flushPromises();
+      expect(wrapper.find(".item-editor__delete-row").exists()).toBe(false);
+      expect(
+        wrapper.get('[data-test="delete-question"]').element.nextElementSibling,
+      ).toBe(footer.element);
+    });
+
+    it("ends the form with the sticky actions", async () => {
+      const wrapper = mountQuest();
+      await flushPromises();
+      expect(wrapper.classes()).toContain("item-editor--embedded");
+      const footer = wrapper.get('[data-test="editor-actions"]');
+      expect(footer.classes()).toContain("sticky-actions");
       // Nothing follows the actions, so nothing shows below them.
       expect(footer.element.nextElementSibling).toBeNull();
       expect(footer.element.parentElement!.nextElementSibling).toBeNull();

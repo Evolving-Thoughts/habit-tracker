@@ -61,6 +61,8 @@ const error = ref<string | null>(""),
 const action = ref<"create" | "move" | "edit" | "delete" | null>(null),
   selected = ref<HierarchyTodo | null>(null);
 const formBusy = ref(false);
+/** The create dialog was opened by a long press on Plus: dictate the title. */
+const dictating = ref(false);
 const timer = useTimer();
 const dragged = ref<number | null>(null),
   dropTarget = ref<number | null | undefined>(undefined);
@@ -390,8 +392,9 @@ function startDrag(event: DragEvent, id: number) {
  * The plus button and N: a new campaign on the overview; inside a campaign a
  * new quest below it, with its Warum and category taken over.
  */
-function create(): void {
+function create(dictate = false): void {
   open("create", openTile.value?.todo ?? null);
+  dictating.value = dictate && action.value === "create";
 }
 useShortcutHandlers({
   "quest.new": () => {
@@ -716,7 +719,7 @@ useShortcutHandlers({
         :completed="(tile) => checked(tile.todo)"
         @open="openCampaign"
         @complete="(tile) => toggleCompletion(tile.todo)"
-        @create="create"
+        @create="create()"
       />
     </template>
     <ModalDialog
@@ -743,6 +746,7 @@ useShortcutHandlers({
         <CreateTodoForm
           :parent="selected"
           :campaign="!selected"
+          :dictate="dictating"
           @busy="formBusy = $event"
           @created="created"
           @cancel="close"
@@ -788,7 +792,8 @@ useShortcutHandlers({
         openTile ? `Neue Quest in „${openTile.todo.title}“` : 'Neue Kampagne'
       "
       :disabled="busy"
-      @click="create"
+      @click="create()"
+      @dictate="create(true)"
     />
   </main>
 </template>
@@ -819,7 +824,7 @@ useShortcutHandlers({
   grid-template-columns: var(--tap) var(--tap) minmax(0, 1fr) auto;
   gap: var(--space-1);
   align-items: start;
-  margin-left: calc(var(--indent) * 1rem);
+  margin-left: calc(var(--indent) * var(--indent-step, 1rem));
   padding: var(--space-2) var(--space-2) var(--space-3) var(--space-1);
   border-radius: var(--radius-card);
   background: var(--color-surface);
@@ -1111,6 +1116,24 @@ useShortcutHandlers({
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+/*
+ * A phone indents each level less, so deep quests keep their width, and
+ * keeps the detail card's buttons clear of the plus button on the right.
+ */
+@media (max-width: 39.99rem) {
+  .tree {
+    --indent-step: 0.625rem;
+  }
+
+  .row--nested::before {
+    left: -0.375rem;
+  }
+
+  .campaign-detail__actions {
+    padding-right: calc(var(--fab-size) + var(--space-2));
+  }
 }
 
 .campaigns-stats {

@@ -96,6 +96,36 @@ function closest(tokens: Tokens, marks: readonly string[], vision: Vision) {
 const themes = themeTokens(css);
 const VISIONS: Vision[] = ["normal", "protan", "deutan", "tritan"];
 
+/*
+ * The two series of the review's charts: Kampagnen-Arbeit as a solid bar,
+ * Sonstiges hatched in mark-none on the card (.series-other). Beside the
+ * pattern they keep a clear lightness gap for every kind of eye, and the
+ * hatch's stripes stand out from the card they lie on.
+ */
+const SERIES_MIN = 15;
+const HATCH_MIN = 20;
+
+describe("review chart series", () => {
+  for (const [theme, tokens] of Object.entries(themes))
+    for (const vision of VISIONS)
+      it(`keeps Kampagnen-Arbeit and Sonstiges apart for ${vision} vision in the ${theme} theme`, () => {
+        const bar = tokenColor(tokens, "color-bar");
+        const other = tokenColor(tokens, "color-mark-none");
+        const surface = tokenColor(tokens, "color-surface");
+        expect(distance(bar, other, vision)).toBeGreaterThanOrEqual(SERIES_MIN);
+        expect(distance(other, surface, vision)).toBeGreaterThanOrEqual(
+          HATCH_MIN,
+        );
+      });
+
+  it("hatches Sonstiges in mark-none on the card's white", () => {
+    const rule = /\.series-other\s*\{([\s\S]*?)\}/.exec(css)?.[1] ?? "";
+    expect(rule).toContain("repeating-linear-gradient");
+    expect(rule).toContain("var(--color-mark-none)");
+    expect(rule).toContain("var(--color-surface)");
+  });
+});
+
 describe("mark palette", () => {
   it("puts the core set first, then the extra marks", () => {
     expect(CAMPAIGN_COLORS.slice(0, CORE_COLORS.length)).toEqual([

@@ -71,10 +71,24 @@ const pageOverflow = (page: Page) =>
       document.documentElement.scrollWidth -
       document.documentElement.clientWidth,
   );
+/**
+ * The Questlog stays reachable: beside the days on a wide board, behind
+ * its chip on a phone, where every column is a screen of its own.
+ */
+const questlogReachable = async (page: Page, isMobile: boolean) => {
+  if (isMobile)
+    await expect(
+      page
+        .getByRole("navigation", { name: "Spalten des Plans" })
+        .getByRole("button", { name: "Questlog", exact: true }),
+    ).toBeVisible();
+  else await expect(page.locator("aside.plan-questlog")).toBeInViewport();
+};
 
 test("Plan: opens on today, steps through the days by as many as fit and keeps the first day on reload", async ({
   page,
   request,
+  isMobile,
 }) => {
   const date = await today(request);
   await page.goto("/");
@@ -86,7 +100,7 @@ test("Plan: opens on today, steps through the days by as many as fit and keeps t
   await expect(dayColumns(page).first()).toHaveAttribute("data-date", date);
   await expect(column(page, date)).toHaveAttribute("aria-current", "date");
   await expect(column(page, date)).toBeInViewport({ ratio: 1 });
-  await expect(page.locator("aside.plan-questlog")).toBeInViewport();
+  await questlogReachable(page, isMobile);
   // At today the way back would change nothing, and there is no going back.
   await expect(page.getByRole("button", { name: "Heute", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Vorige Tage", exact: true })).toBeDisabled();
@@ -264,6 +278,7 @@ test("Plan: move a quest to today without dragging, and Heute shows it", async (
 test("Plan: what was left behind has its own column before today and moves onto a day", async ({
   page,
   request,
+  isMobile,
 }) => {
   const date = await today(request);
   const earlier = daysAfter(date, -2);
@@ -282,7 +297,7 @@ test("Plan: what was left behind has its own column before today and moves onto 
   expect(await shownDay(page, date)).toEqual(["Für heute"]);
   // Questlog and today stay in view, even where the board has to scroll.
   await expect(column(page, date)).toBeInViewport({ ratio: 1 });
-  await expect(page.locator("aside.plan-questlog")).toBeInViewport();
+  await questlogReachable(page, isMobile);
   expect(await pageOverflow(page)).toBe(0);
 
   await cardMenu(page, "Liegt noch", "Liegt noch auf heute");

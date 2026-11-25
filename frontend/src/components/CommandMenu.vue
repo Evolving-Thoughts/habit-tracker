@@ -21,7 +21,11 @@ import { isSingleKey, shortcutById } from "../utils/shortcuts";
  * from two characters on also the titles and texts the server finds. The
  * field is a combobox; arrow keys move through the options, Enter runs one.
  */
-const props = defineProps<{ commands: readonly Command[] }>();
+const props = defineProps<{
+  commands: readonly Command[];
+  /** Opened to type (Suchen): the field takes the keyboard on touch too. */
+  openKeyboard?: boolean;
+}>();
 const emit = defineEmits<{
   run: [command: Command];
   open: [action: SearchAction];
@@ -165,7 +169,11 @@ watch(
   },
 );
 
-/** Shown only where it works: single keys switched off show no key. */
+/**
+ * Shown only where it works: where a keyboard is likely (a fine pointer, or
+ * a key that already reached a shortcut; never from a touch screen alone),
+ * and single keys switched off show no key.
+ */
 function caps(command: Command) {
   if (!keyboardLikely.value || !command.shortcut) return null;
   const shortcut = shortcutById(command.shortcut);
@@ -226,6 +234,7 @@ const status = computed(() => {
     class="command-menu"
     title="Befehle"
     focus-selector=".command-menu__search"
+    :open-keyboard="openKeyboard"
     @close="emit('close')"
   >
     <input
@@ -369,8 +378,41 @@ const status = computed(() => {
 
 <style scoped>
 /* Near the top, so the list grows downwards while typing. */
-.modal-dialog.command-menu {
-  margin-top: min(12vh, 6rem);
+@media (min-width: 40rem) {
+  .modal-dialog.command-menu {
+    margin-top: min(12vh, 6rem);
+  }
+}
+
+/*
+ * A phone: the sheet takes its full height from the start, so it does not
+ * jump while typing, and only the list scrolls; field and title stay.
+ */
+@media (max-width: 39.99rem) {
+  .modal-dialog.command-menu[open] {
+    display: flex;
+    flex-direction: column;
+    height: calc(
+      var(--sheet-viewport-height, 100dvh) -
+        max(var(--space-6), env(safe-area-inset-top, 0px) + var(--space-3))
+    );
+    overflow: hidden;
+  }
+
+  .modal-dialog.command-menu :deep(.modal-dialog__content) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  /* Ahead of the list's own rule below, so it needs the menu's class. */
+  .command-menu .command-menu__list {
+    flex: 1 1 auto;
+    align-content: start;
+    min-height: 0;
+    max-height: none;
+  }
 }
 
 .command-menu__search {

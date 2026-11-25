@@ -168,11 +168,17 @@ build bundles no Capacitor code.
   system keep their names. A lookup of a blocked host gets NXDOMAIN
   (`DnsPacket`); every other lookup is forwarded unchanged to the DNS
   server of the current network, as before, and the answer handed back.
-  Nothing is logged or stored. Only if the network names no DNS server,
-  lookups go to `1.1.1.1`. It runs only while a block that covers websites
-  holds (Sperrliste with websites, or strict mode) and the VPN consent is
-  given, with a quiet notification "Fokus-Sperre aktiv". Android shows its
-  key symbol meanwhile.
+  Nothing is logged or stored. The servers are read again on every network
+  change (a `NetworkCallback`: the default network from Android 7 on, any
+  non-VPN network with internet on Android 6), so moving from Wi-Fi to
+  mobile data keeps names working; `UpstreamDns` picks them (non-VPN
+  networks with internet, IPv4 first, each once). Only if the network names
+  no DNS server, lookups go to Quad9 (`9.9.9.9`), run by a non-profit that
+  by its policy logs no IP addresses; it sees names, never content. It
+  runs only while a block that covers websites holds (Sperrliste with
+  websites, or strict mode) and the VPN consent is given, with a quiet
+  notification "Fokus-Sperre aktiv". Android shows its key symbol
+  meanwhile.
 - **Limits** (honest): "Private DNS" set to a hostname in Android's
   settings, or a browser with its own secure DNS (DNS over HTTPS), bypasses
   the website filter. In-app browsers of other apps are not covered (block
@@ -210,5 +216,5 @@ without keeping them. No telemetry, no third party.
   `PlannerItemEditor.spec.ts`) and `FocusView.spec.ts`.
 - Playwright: `e2e/focus-block.spec.ts` (Einstellungen, editor choice,
   Fokus-Modus with Soft and Hardcore).
-- Android JVM: `FocusBlockPolicyTest`, `DnsPacketTest`
+- Android JVM: `FocusBlockPolicyTest`, `DnsPacketTest`, `UpstreamDnsTest`
   (`cd frontend/android && ./gradlew.bat test`).

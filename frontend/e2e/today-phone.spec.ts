@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures";
 import { API_URL } from "./environment";
-import { today } from "./helpers";
+import { berlinTime, today } from "./helpers";
 
 /*
  * Heute on a phone: rows carry only ring, title, ▶ and "…", so the first
@@ -8,7 +8,7 @@ import { today } from "./helpers";
  */
 test.use({ viewport: { width: 375, height: 812 } });
 
-test("Heute at 375 px: focus card in one action row, the next row in view, short rows, labels uncut", async ({
+test("Heute at 375 px: focus card led by Starten, its other actions clear of the plus button, the next row in view, short rows, labels uncut", async ({
   page,
   request,
 }, info) => {
@@ -27,17 +27,38 @@ test("Heute at 375 px: focus card in one action row, the next row in view, short
   const focus = page.locator(".focus");
   await expect(page.locator("#focus-title")).toHaveText("Steuer sortieren");
 
-  // One action row: Erledigt, the stopwatch, Fokus-Modus and the menu share a line.
-  const tops = await focus
+  // The stopwatch leads as the large primary button with its word, on a line
+  // of its own; Erledigt, Fokus-Modus and the menu share the next line on the
+  // left, where the resting plus button cannot cover them.
+  const play = focus.getByRole("button", {
+    name: "Stoppuhr für Steuer sortieren starten",
+    exact: true,
+  });
+  await expect(play).toHaveText("Starten");
+  const boxes = await focus
     .locator(".focus__actions > button, .focus__actions > a")
     .evaluateAll((elements) =>
       elements.map((element) => {
         const box = element.getBoundingClientRect();
-        return Math.round(box.top + box.height / 2);
+        return {
+          middle: Math.round(box.top + box.height / 2),
+          left: box.left,
+          right: box.right,
+          height: box.height,
+        };
       }),
     );
-  expect(tops.length).toBe(4);
-  expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(2);
+  expect(boxes.length).toBe(4);
+  const [primary, ...rest] = boxes;
+  expect(primary!.height).toBeGreaterThanOrEqual(52);
+  const middles = rest.map((box) => box.middle);
+  expect(Math.max(...middles) - Math.min(...middles)).toBeLessThanOrEqual(2);
+  expect(middles[0]!).toBeGreaterThan(primary!.middle);
+  await expect(
+    focus.getByRole("button", { name: "Steuer sortieren erledigen", exact: true }),
+  ).toHaveText("Erledigt");
+  const plusBox = (await page.locator(".create-button").boundingBox())!;
+  expect(Math.max(...rest.map((box) => box.right))).toBeLessThan(plusBox.x);
   await expect(
     focus.getByRole("link", { name: "Fokus-Modus", exact: true }),
   ).toBeVisible();
@@ -217,4 +238,82 @@ test("Heute at 375 px: Daily marker and Warum on the next rows, and the plus but
     };
   });
   expect(reading).toEqual({ first: false, afterList: true });
+});
+
+test("Heute at 375 px: Liste · Logbuch swaps the list for today's day calendar, which scrolls with the page and is remembered", async ({
+  page,
+  request,
+}, info) => {
+  test.skip(
+    info.project.name !== "mobile-chromium",
+    "A phone layout, measured once on the phone project.",
+  );
+  const date = await today(request);
+  const response = await request.post(`${API_URL}/todos`, {
+    data: { title: "Mails", scheduledDate: date },
+  });
+  expect(response.status()).toBe(201);
+  const { id } = (await response.json()) as { id: number };
+  // Just after midnight, so it is never in the future.
+  expect(
+    (
+      await request.post(`${API_URL}/work-logs`, {
+        data: {
+          kind: "todo",
+          targetId: id,
+          startedAt: berlinTime(date, "00:00").toISOString(),
+          endedAt: berlinTime(date, "00:05").toISOString(),
+        },
+      })
+    ).status(),
+  ).toBe(201);
+
+  await page.goto("/");
+  const panes = page.getByRole("radiogroup", { name: "Ansicht", exact: true });
+  const list = panes.getByRole("radio", { name: "Liste", exact: true });
+  const logbook = panes.getByRole("radio", { name: "Logbuch", exact: true });
+  await expect(list).toBeChecked();
+  await expect(page.locator("#focus-title")).toHaveText("Mails");
+  // A finger's height per option.
+  for (const label of await panes.locator("label").all())
+    expect((await label.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+
+  await logbook.check();
+  const calendar = page.getByRole("region", { name: /^Logbuch/ });
+  const stretch = calendar
+    .getByRole("list", { name: "Zeitachse", exact: true })
+    .getByRole("button", { name: /^Mails, 00:00 bis 00:05, 5 Min\./ });
+  await expect(stretch).toBeVisible();
+  await expect(
+    calendar.getByRole("button", { name: "Zeit nachtragen", exact: true }),
+  ).toBeVisible();
+  // The quick add and the focus card belong to the list.
+  await expect(page.locator('input[name="quickTitle"]')).toBeHidden();
+  await expect(page.locator("#focus-title")).toBeHidden();
+  // No scroll area inside the page: the day takes its natural height.
+  expect(
+    await calendar.locator(".day-calendar__scroller").evaluate((scroller) => ({
+      overflow: getComputedStyle(scroller).overflowY,
+      fits: scroller.scrollHeight <= scroller.clientHeight + 1,
+    })),
+  ).toEqual({ overflow: "clip", fits: true });
+  // The five minutes read as one line at the usual size.
+  await stretch.scrollIntoViewIfNeeded();
+  await expect(stretch.locator(".day-calendar__title-text")).toHaveText("Mails");
+  expect(
+    await stretch
+      .locator(".day-calendar__title-text")
+      .evaluate((title) => parseFloat(getComputedStyle(title).fontSize)),
+  ).toBeGreaterThanOrEqual(12);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+  ).toBe(true);
+
+  // The choice holds on this device.
+  await page.reload();
+  await expect(logbook).toBeChecked();
+  await expect(stretch).toBeVisible();
+  await list.check();
+  await expect(page.locator("#focus-title")).toHaveText("Mails");
+  await expect(calendar).toHaveCount(0);
 });

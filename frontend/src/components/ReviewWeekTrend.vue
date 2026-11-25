@@ -26,7 +26,11 @@ const label = computed(() => weekTrendText(trend.value));
         <li>
           <i class="week-trend__key week-trend__part--quest" />Kampagnen-Arbeit
         </li>
-        <li><i class="week-trend__key week-trend__part--other" />Sonstiges</li>
+        <li>
+          <i
+            class="week-trend__key week-trend__part--other series-other"
+          />Sonstiges</li
+        >
         <li v-if="trend.average !== null" class="week-trend__average-note">
           <i class="week-trend__dash" />Schnitt der
           {{ trend.bars.length - 1 }} Wochen davor
@@ -51,7 +55,7 @@ const label = computed(() => weekTrendText(trend.value));
           />
           <span
             v-if="bar.otherHeight"
-            class="week-trend__part week-trend__part--other"
+            class="week-trend__part week-trend__part--other series-other"
             :style="{
               height: bar.questHeight
                 ? `calc(${bar.otherHeight}% - 2px)`
@@ -107,9 +111,14 @@ const label = computed(() => weekTrendText(trend.value));
 }
 
 .week-trend__key {
-  width: 0.625rem;
-  height: 0.625rem;
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
   border-radius: 0.2rem;
+}
+
+.week-trend__key.series-other {
+  box-shadow: inset 0 0 0 1px var(--color-mark-none);
 }
 
 .week-trend__average-note {
@@ -172,9 +181,7 @@ const label = computed(() => weekTrendText(trend.value));
   background: var(--color-bar);
 }
 
-.week-trend__part--other {
-  background: var(--color-mark-none);
-}
+/* Sonstiges on top, hatched (.series-other in style.css) and lighter than the bar. */
 
 /* The average of quest time as a dashed rule across all weeks. */
 .week-trend__average {

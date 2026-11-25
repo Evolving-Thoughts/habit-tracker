@@ -75,6 +75,7 @@ const anyCheckable = computed(() =>
         :campaign-mark="campaignMark(item.campaign)"
         :measure="actions?.measure(item) ?? null"
         :menu="actions?.menu(item) ?? []"
+        wrap-meta
         @toggle="actions?.complete(item)"
         @edit="actions?.edit(item)"
       >

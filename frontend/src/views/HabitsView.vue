@@ -55,6 +55,8 @@ const editingRun = ref<number | null>(null);
 const deleting = ref<DeleteTarget | null>(null);
 const editorBusy = ref(false);
 const creationOpen = ref(false);
+/** Opened by a long press on Plus: a quest, its title dictated at once. */
+const creationDictate = ref(false);
 
 /** Category names and marks for the meta line. */
 const { load: loadCategories, labelOf, list: categories } = useCategoryLabels();
@@ -261,9 +263,10 @@ function detailsOf(habit: HabitResponse): string[] {
   return parts;
 }
 
-function openCreation(): void {
+function openCreation(dictate = false): void {
   if (isBusy.value || editingId.value !== null) return;
   successMessage.value = null;
+  creationDictate.value = dictate;
   creationOpen.value = true;
 }
 function openEditing(habit: HabitResponse): void {
@@ -303,6 +306,7 @@ async function onCreated(): Promise<void> {
 
     <CreateItemDialog
       v-if="creationOpen"
+      :dictate="creationDictate"
       kind="habit"
       @close="creationOpen = false"
       @created="onCreated"
@@ -543,7 +547,8 @@ async function onCreated(): Promise<void> {
     <CreateButton
       label="Daily erstellen"
       :disabled="isBusy || editingId !== null"
-      @click="openCreation"
+      @click="openCreation()"
+      @dictate="openCreation(true)"
     />
   </main>
 </template>
@@ -673,6 +678,22 @@ async function onCreated(): Promise<void> {
 
 .habit-card__title:disabled {
   cursor: progress;
+}
+
+/*
+ * A finger's target: the title button reaches a tap high around its line,
+ * invisibly (the whole card opens the editor too; this is the button's own).
+ */
+@media (pointer: coarse) {
+  .habit-card__title {
+    position: relative;
+  }
+
+  .habit-card__title::after {
+    position: absolute;
+    inset: calc((var(--tap) - 1lh) / -2) 0;
+    content: "";
+  }
 }
 
 .habit-card__why {

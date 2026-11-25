@@ -70,8 +70,23 @@ test("Logbuch: time added by hand shows in the day, the week and the month; a st
   const stretch = lane.getByRole("button", { name: /^Mails, / });
   await expect(stretch).toHaveCount(1);
   await expect(stretch).toHaveAccessibleName(/ohne Kampagne, korrigieren$/);
-  // One minute occupies its actual share of the 64 px hour.
-  expect((await stretch.boundingBox())!.height).toBeLessThanOrEqual(2);
+  // Drawn one line high, so its name reads; its gauge keeps the minute's
+  // actual share of the 64 px hour.
+  expect((await stretch.boundingBox())!.height).toBeLessThanOrEqual(24);
+  // The gauge is its minutes times the axis scale (the browser keeps the
+  // background-size as a formula, so read its two factors).
+  expect(
+    await stretch.evaluate((block) => {
+      const style = getComputedStyle(block);
+      const minutes = parseFloat(style.getPropertyValue("--length"));
+      const probe = document.createElement("div");
+      probe.style.height = "var(--minute)";
+      block.append(probe);
+      const perMinute = probe.getBoundingClientRect().height;
+      probe.remove();
+      return minutes * perMinute;
+    }),
+  ).toBeLessThanOrEqual(2);
   await stretch.click();
   const dialog = page.getByRole("dialog", { name: "Abschnitt korrigieren" });
   await expect(dialog).toContainText("Nachtrag");
@@ -112,10 +127,100 @@ test("Logbuch: time added by hand shows in the day, the week and the month; a st
   ).toBeVisible();
 
   await view.getByRole("button", { name: "Monat", exact: true }).click();
-  await expect(page.locator(`.month-day[data-date="${yesterday}"]`)).toHaveAttribute(
-    "aria-label",
-    /1 Std\. 30 Min\. im Logbuch$/,
+  await expect(
+    page.locator(`.month-day[data-date="${yesterday}"]`),
+  ).toHaveAttribute("aria-label", /1 Std\. 30 Min\. im Logbuch$/);
+});
+
+test("Logbuch: short stretches keep a readable one-line label, side by side when they follow each other", async ({
+  page,
+  request,
+  isMobile,
+}) => {
+  test.skip(isMobile, "Measured once, on the desktop day calendar.");
+  const yesterday = daysAfter(await today(request), -1);
+  const create = async (title: string) =>
+    (
+      (await (
+        await request.post(`${API_URL}/todos`, {
+          data: { title, scheduledDate: yesterday },
+        })
+      ).json()) as { id: number }
+    ).id;
+  const reading = await create("Lesen");
+  const mails = await create("Mails");
+  for (const [targetId, start, end] of [
+    [reading, "12:00", "12:05"],
+    [mails, "12:05", "12:08"],
+    [reading, "15:00", "15:05"],
+  ] as const)
+    expect(
+      (
+        await request.post(`${API_URL}/work-logs`, {
+          data: {
+            kind: "todo",
+            targetId,
+            startedAt: `${yesterday}T${start}:00.000Z`,
+            endedAt: `${yesterday}T${end}:00.000Z`,
+          },
+        })
+      ).status(),
+    ).toBe(201);
+
+  await page.goto("/");
+  const view = await openCalendar(page, "Tag");
+  await view.getByRole("button", { name: "Voriger Zeitraum" }).click();
+  await expect(page.locator('[name="historyDate"]')).toHaveValue(yesterday);
+  const lane = view
+    .getByRole("region", { name: /^Logbuch/ })
+    .getByRole("list", { name: "Zeitachse", exact: true });
+  const blocks = lane.getByRole("button", { name: /^(Lesen|Mails), / });
+  await expect(blocks).toHaveCount(3);
+  await blocks.first().scrollIntoViewIfNeeded();
+
+  const measured = await blocks.evaluateAll((elements) =>
+    elements.map((block) => {
+      const title = block.querySelector<HTMLElement>(
+        ".day-calendar__title-text",
+      )!;
+      const style = getComputedStyle(title);
+      const box = block.getBoundingClientRect();
+      const label = title.getBoundingClientRect();
+      return {
+        text: block.textContent!.replace(/\s+/g, " ").trim(),
+        fontSize: parseFloat(style.fontSize),
+        lineHeight: parseFloat(style.lineHeight),
+        labelHeight: label.height,
+        // The label lies wholly inside its block: nothing cut off above or below.
+        inside: label.top >= box.top - 0.5 && label.bottom <= box.bottom + 0.5,
+        box: {
+          top: box.top,
+          bottom: box.bottom,
+          left: box.left,
+          right: box.right,
+        },
+      };
+    }),
   );
+  for (const block of measured) {
+    expect(block.fontSize).toBeGreaterThanOrEqual(12);
+    expect(block.labelHeight).toBeGreaterThanOrEqual(block.lineHeight - 0.5);
+    expect(block.inside).toBe(true);
+  }
+  // Alone, a five-minute stretch names its length; following each other, the
+  // two share the width and never cover one another.
+  expect(measured.map((block) => block.text)).toEqual([
+    "Lesen",
+    "Mails",
+    "Lesen · 5 Min.",
+  ]);
+  const [first, second] = measured;
+  const overlap =
+    first!.box.left < second!.box.right &&
+    second!.box.left < first!.box.right &&
+    first!.box.top < second!.box.bottom &&
+    second!.box.top < first!.box.bottom;
+  expect(overlap).toBe(false);
 });
 
 test("Logbuch: a deleted stretch waits behind the undo toast and comes back with Rückgängig", async ({
@@ -196,7 +301,10 @@ test("Logbuch: a stretch is resized by dragging its bottom edge, and Escape canc
   request,
   isMobile,
 }) => {
-  test.skip(isMobile, "The drag is a pointer gesture; the dialog covers phones.");
+  test.skip(
+    isMobile,
+    "The drag is a pointer gesture; the dialog covers phones.",
+  );
   const yesterday = daysAfter(await today(request), -1);
   const todo = (
     (await (
@@ -338,5 +446,7 @@ test("Logbuch: the axis reaches an early stretch and a completion, and time is a
       .locator(".day-calendar__hours > span:not(.day-calendar__now-time)")
       .first(),
   ).toHaveText(`${hour}:00`);
-  await expect(lane.getByRole("button", { name: /^Früh lesen, / })).toBeVisible();
+  await expect(
+    lane.getByRole("button", { name: /^Früh lesen, / }),
+  ).toBeVisible();
 });
