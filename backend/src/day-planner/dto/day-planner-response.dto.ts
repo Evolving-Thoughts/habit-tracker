@@ -81,6 +81,12 @@ export type DayPlannerExternalEventDto = {
   title: string;
   start: string;
   end: string;
+  /**
+   * Its place in the order of the day, counted like the items'
+   * `dayPosition`; null while it was never sorted (it then stands by the
+   * clock among the appointments).
+   */
+  dayPosition: number | null;
 };
 
 export class DayPlannerResponseDto {

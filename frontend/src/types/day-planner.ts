@@ -84,6 +84,8 @@ export type DayPlannerResponse = {
     title: string;
     start: string;
     end: string;
+    /** Its place in the order of the day; null while never sorted. */
+    dayPosition: number | null;
   }[];
   workedMinutes: number;
   /** Quest minutes today and this week, against the overall goal. */

@@ -149,4 +149,15 @@ export class ExternalEventEntity {
 
   @Column({ type: 'timestamptz' })
   end!: Date;
+
+  /** The event's id in its Google calendar; empty for rows from before. */
+  @Column({ type: 'varchar', length: 1024, default: '' })
+  eventId!: string;
+
+  /**
+   * Where the user sorted it among the day's quests and dailies; null until
+   * then. A sync keeps it (see `CalendarSyncService.replaceExternal`).
+   */
+  @Column({ type: 'integer', nullable: true })
+  dayPosition!: number | null;
 }

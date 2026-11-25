@@ -3,6 +3,15 @@ export const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "/api").replace(
   /\/$/,
   "",
 );
+/**
+ * This app's name for the server's live updates (docs/live-sync.md): sent
+ * with every request, so a change this app made comes back marked as its
+ * own and does not reload it twice.
+ */
+export const CLIENT_ID: string =
+  globalThis.crypto?.randomUUID?.() ??
+  `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
@@ -53,7 +62,11 @@ export async function request<T>(
     response = await fetch(`${apiBaseUrl}${path}`, {
       ...options,
       credentials: "include",
-      headers: { "Content-Type": "application/json", ...options?.headers },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Client-Id": CLIENT_ID,
+        ...options?.headers,
+      },
     });
   } catch (cause) {
     // An abort is the caller's own doing and stays one.

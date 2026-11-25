@@ -4,8 +4,16 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, EntityManager, In, MoreThanOrEqual } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  In,
+  IsNull,
+  MoreThanOrEqual,
+  Not,
+} from 'typeorm';
 import { Clock } from '../common/clock';
+import { LiveService } from '../live/live.service';
 import { DEFAULT_TIME_ZONE } from '../common/date/date-only.utils';
 import {
   addDays,
@@ -51,6 +59,12 @@ const READ_PAST_DAYS = 31;
 const DEFAULT_MINUTES = 30;
 const MINUTE_MS = 60_000;
 const MARKER = 'habitTracker';
+
+/** One Google event across syncs: its calendar and its id there. */
+function placeKey(calendarId: string, eventId: string): string {
+  return `${calendarId}\n${eventId}`;
+}
+
 /** Shorter stretches stay out of the calendar; they would only clutter it. */
 const LOGBOOK_MIN_MS = 5 * MINUTE_MS;
 /**
@@ -122,13 +136,21 @@ export class CalendarSyncService {
     private readonly clock: Clock,
     private readonly unitOfWork: UserUnitOfWork,
     private readonly scheduling: HabitSchedulingService,
+    private readonly live: LiveService,
   ) {}
 
+  /**
+   * The background round: what came from Google (a new event, a moved
+   * appointment) reaches the person's open apps right away.
+   */
   async syncAll(): Promise<void> {
     const connections = await this.db
       .getRepository(CalendarConnectionEntity)
       .findBy({ revoked: false });
-    for (const { userId } of connections) await this.syncUser(userId);
+    for (const { userId } of connections) {
+      await this.syncUser(userId);
+      this.live.notify(userId);
+    }
   }
 
   private readonly pending = new Map<string, Promise<void>>();
@@ -410,6 +432,15 @@ export class CalendarSyncService {
       await calendars.remove(known.filter((c) => !current.has(c.calendarId)));
     }
     const repository = manager.getRepository(ExternalEventEntity);
+    // The rows are replaced, the places the user sorted them into stay.
+    const places = new Map(
+      (
+        await repository.find({
+          select: { calendarId: true, eventId: true, dayPosition: true },
+          where: { userId, dayPosition: Not(IsNull()) },
+        })
+      ).map((row) => [placeKey(row.calendarId, row.eventId), row.dayPosition]),
+    );
     await repository.delete({ userId });
     for (const { calendar, events } of read) {
       await calendars.save({
@@ -433,6 +464,8 @@ export class CalendarSyncService {
             title: (event.summary?.trim() || 'Termin').slice(0, 500),
             start: times.start,
             end: times.end,
+            eventId: event.id,
+            dayPosition: places.get(placeKey(calendar.id, event.id)) ?? null,
           }),
         ];
       });

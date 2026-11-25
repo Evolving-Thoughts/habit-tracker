@@ -23,6 +23,7 @@ import CreateButton from "../components/CreateButton.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import DayBestCard from "../components/DayBestCard.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
+import CalendarEventRow from "../components/CalendarEventRow.vue";
 import PlannerItem from "../components/PlannerItem.vue";
 import QuickAddQuest from "../components/QuickAddQuest.vue";
 import TodayCalendar from "../components/TodayCalendar.vue";
@@ -505,7 +506,7 @@ const orderMessage = ref("");
 const sortables = computed(() =>
   agenda.value ? sortableRows(agenda.value) : [],
 );
-const orderRefs = computed(() => (agenda.value?.sequence ?? []).map(orderRef));
+const orderRefs = computed(() => (agenda.value?.dayOrder ?? []).map(orderRef));
 
 async function moveInOrder(from: number, to: number): Promise<void> {
   if (!planner.value || !agenda.value || writes.isWriting("order")) return;
@@ -1168,8 +1169,8 @@ useShortcutHandlers(
               The rest of the day in one order. Appointments stand in it with
               their time and drag like any other card; one that is over but
               still open asks quietly. Google events are read-only anchors: a
-              card can be dropped next to them, but they never lift. On wide
-              screens they stand in the day calendar instead. On a phone only the next two rows carry
+              card dropped next to them keeps that place (it is stored), but
+              they never lift. On a phone only the next two rows carry
               their Warum, so the day stays short.
             -->
             <template
@@ -1199,17 +1200,15 @@ useShortcutHandlers(
                 @edit="openEditing"
                 @move="openMoving"
               />
-              <div
+              <CalendarEventRow
                 v-else-if="entry.kind === 'event'"
                 class="today-view__event"
-                :class="{ 'today-view__event--past': entry.past }"
                 :data-sort-key="`event-${entry.event.id}`"
                 data-sort-anchor
-              >
-                <span class="today-view__event-time">{{ entry.time }}</span>
-                <span class="today-view__event-title">{{ entry.event.title }}</span>
-                <span class="today-view__event-source">Google Kalender</span>
-              </div>
+                :time="entry.time"
+                :title="entry.event.title"
+                :past="entry.past"
+              />
               <PlannerItem
                 v-else
                 :data-focus-key="getItemKey(entry.item)"
@@ -1893,39 +1892,6 @@ useShortcutHandlers(
   opacity: 0.8;
 }
 
-/* A Google event: read-only, in the flat white of appointments elsewhere. */
-.today-view__event {
-  display: grid;
-  grid-template-columns: 2.75rem minmax(0, 1fr);
-  gap: 0 calc(var(--tap) + var(--space-4));
-  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
-  border-radius: var(--radius-card);
-  background: var(--color-surface-flat);
-}
-
-.today-view__event--past {
-  opacity: 0.8;
-}
-
-.today-view__event-time {
-  padding-top: 0.1rem;
-  color: var(--color-ink-muted);
-  font-size: 0.875rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.today-view__event-title {
-  font-weight: 700;
-  overflow-wrap: anywhere;
-}
-
-.today-view__event-source {
-  grid-column: 2;
-  color: var(--color-ink-muted);
-  font-size: 0.875rem;
-}
-
 .resolved__toggle {
   display: inline-flex;
   gap: var(--space-2);
@@ -2031,11 +1997,6 @@ useShortcutHandlers(
   /* The plus button stays beside the list, clear of the calendar. */
   .today-view--split .create-button {
     right: calc(var(--calendar-width) + var(--space-6) * 2 + var(--space-4));
-  }
-
-  /* Google events stand in the calendar; the list keeps the own entries. */
-  .today-view--split .today-view__event {
-    display: none;
   }
 }
 

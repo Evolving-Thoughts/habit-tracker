@@ -9,10 +9,13 @@ import {
 } from 'class-validator';
 
 export class OrderedItemDto {
-  @IsIn(['todo', 'habit'])
-  readonly type!: 'todo' | 'habit';
+  @IsIn(['todo', 'habit', 'event'])
+  readonly type!: 'todo' | 'habit' | 'event';
 
-  /** A todo's id, or the id of a habit occurrence. */
+  /**
+   * A todo's id, the id of a habit occurrence, or a Google event's
+   * (`externalEvents[].id`), which holds its place but never moves in time.
+   */
   @IsInt()
   @Min(1)
   readonly id!: number;

@@ -54,3 +54,46 @@ export function clockBoundIndex<T extends { timeOfDay: string | null }>(
   }
   return Math.max(first, index);
 }
+
+/**
+ * `rows` (already in the order of the day) with `anchors` joined at their
+ * stored places: each stays on the clock among the timed rows (after those
+ * that start earlier, before those that start later) and, between them,
+ * before the first row stored after it. One never sorted stands right after
+ * the timed row before it on the clock, or at the head of the day. The
+ * rows keep their order.
+ */
+export function withAnchors<
+  T extends { timeOfDay: string | null; dayPosition?: number | null },
+>(rows: readonly T[], anchors: readonly T[]): T[] {
+  const result = [...rows];
+  const sorted = [...anchors].sort(
+    (a, b) =>
+      a.timeOfDay!.localeCompare(b.timeOfDay!) ||
+      (a.dayPosition ?? -1) - (b.dayPosition ?? -1),
+  );
+  for (const anchor of sorted) {
+    const time = anchor.timeOfDay!;
+    let low = 0;
+    let high = result.length;
+    for (const [index, row] of result.entries()) {
+      if (row.timeOfDay === null) continue;
+      if (row.timeOfDay <= time) low = index + 1;
+      else if (high === result.length) high = index;
+    }
+    high = Math.max(low, high);
+    const place = anchor.dayPosition ?? null;
+    let at = low;
+    if (place !== null) {
+      at = high;
+      for (let index = low; index < high; index += 1) {
+        if ((result[index]!.dayPosition ?? Number.POSITIVE_INFINITY) > place) {
+          at = index;
+          break;
+        }
+      }
+    }
+    result.splice(at, 0, anchor);
+  }
+  return result;
+}

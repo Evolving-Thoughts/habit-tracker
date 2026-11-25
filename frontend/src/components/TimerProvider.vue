@@ -24,6 +24,7 @@ import ActionMenu from "./ActionMenu.vue";
 import TimerIconButton from "./TimerIconButton.vue";
 import ModalDialog from "./ModalDialog.vue";
 import NoticeToast from "./NoticeToast.vue";
+import { startLiveSync } from "../composables/live-sync";
 
 /**
  * Holds the one stopwatch of the signed-in user for everything below it and
@@ -192,7 +193,10 @@ onTargetsChanged(refresh);
 function primeSounds() {
   if (document.visibilityState !== "hidden") primeMissingMilestones();
 }
+let stopLive: (() => void) | undefined;
 onMounted(() => {
+  // Changes from the person's other apps, as they happen.
+  stopLive = startLiveSync();
   void controller.refresh();
   primeSounds();
   document.addEventListener("visibilitychange", primeSounds);
@@ -208,6 +212,7 @@ onMounted(() => {
   document.addEventListener("visibilitychange", refreshFocus);
 });
 onUnmounted(() => {
+  stopLive?.();
   document.documentElement.style.removeProperty(HEIGHT_PROPERTY);
   document.removeEventListener("visibilitychange", primeSounds);
   controller.dispose();
