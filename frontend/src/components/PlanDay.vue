@@ -12,6 +12,7 @@ import {
   doneEntries,
   DRAGGABLE,
   entryKey,
+  isEvent,
   isMovable,
   isMovableRun,
   openEntries,
@@ -105,6 +106,9 @@ useSortable(list, {
         :data-focus-key="entryKey(entry, day.date)"
         :data-todo-id="isMovable(entry) ? entry.todoId : undefined"
         :data-run-id="isMovableRun(entry) ? entry.occurrenceId : undefined"
+        :data-event-id="
+          isEvent(entry) && day.date >= today ? entry.eventId : undefined
+        "
       >
         <PlanEntry
           :entry="entry"

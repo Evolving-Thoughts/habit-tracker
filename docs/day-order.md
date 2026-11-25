@@ -163,8 +163,8 @@ export only, as Logbuch events (see `logbook.md`).
 - Heute sorts by drag and drop: the focus card and the rows after it are one
   list (`useSortable`, SortableJS). Quests, stored runs and appointments drag.
   Timed cards can cross flexible cards and stop at the adjacent appointment
-  in clock order. Google events are read-only anchors with a stored place
-  (below). Every write sends the whole day. A card passes another once the pointer crosses its
+  in clock order. Google events drag too, among the untimed cards, with
+  their time fixed (below). Every write sends the whole day. A card passes another once the pointer crosses its
   middle (`swapThreshold` 0.5), so cards of different heights do not jump. A mouse lifts
   it after 6px, a finger only after a 300ms press (`delayOnTouchOnly`), so a
   swipe still scrolls and a short tap still opens the editor; the card's own
@@ -227,10 +227,8 @@ counts one.
   stored runs by dragging (the Plan's `dropOnDay` / `dropRunOnDay`) and
   moves them with the quick moves of their menu. Quests tick; runs only
   tick on their own day.
-- Its Google events stand in the list by the clock (`withAnchors`, read
-  from `GET /history` like the Kalender), right after the appointment
-  before them; another day keeps no place for them, a card dropped there
-  counts only among the entries.
+- Its Google events are entries of the Plan's day, at their places; on a
+  later day they drag like on today (the Plan's `dropEventOnDay`).
 - A past day shows its reflection and its best below the list.
 - No focus card, no stopwatch, no "Nachholen", no "Auf morgen" there:
   they belong to now. The Logbuch pane shows that day's calendar.
@@ -239,25 +237,31 @@ counts one.
 ### Google-Termine in der Reihenfolge
 
 Events from the person's other Google calendars are read only
-(`calendar.events.readonly`); the app never writes there. In Heute they
-still stand in the order of the day like an appointment: at their start on
-the clock among the timed items, and between those wherever the person put
-quests around them.
+(`calendar.events.readonly`); the app never writes there. Everywhere a day
+is sorted (Heute, its other days, the Plan) they still stand in the order
+of the day like an appointment: at their start on the clock among the
+timed items, and between those wherever the person put them or the quests
+around them. Their time and day never change.
 
 - `external_events.dayPosition` holds the place, counted like the items'
   (`PUT /day-planner/order` takes `{ type: "event", id }` among the
   items). A sync replaces the rows, so `eventId` (the event's id in its
   calendar) carries the place over (`replaceExternal`). An event id a sync
   has replaced meanwhile is skipped; its place stays a gap.
+- `GET /day-planner/plan` puts them among each day's entries
+  (`type: "event"`, `eventCandidates`), sorted by the one rule
+  (`sortInDay`); one that began the day before stands at 00:00 there.
 - `GET /day-planner/today` sends each event's `dayPosition`. Heute joins
   them into the server's order (`withAnchors` in `utils/day-order.ts`):
   on the clock among the timed items and, between them, before the first
   item stored after it; one never sorted right after the appointment
   before it, or at the head of the day.
-- An event never lifts (`data-sort-anchor`), but counts as a row: a card
-  dropped right after it stays after it (`dropInDay`, which then sorts by
-  what is on screen, as for the focus card). The keyboard's "Nach oben" /
-  "Nach unten" step over events.
+- An event counts as a row: a card dropped right after it stays after it,
+  and the event itself drags among the untimed cards, stopping at the
+  appointments and events before and after it on the clock
+  (`clockBoundIndex`, in `dropInDay` on Heute and `dropEventOnDay` on the
+  Plan's days). It opens no editor and counts in no tally. The keyboard's
+  "Nach oben" / "Nach unten" step over events; they have no menu.
 
 ## Migration
 

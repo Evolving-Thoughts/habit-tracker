@@ -6,8 +6,6 @@ import PlannerItem from "./PlannerItem.vue";
 import QuickAddQuest from "./QuickAddQuest.vue";
 import AppIcon from "./AppIcon.vue";
 import CalendarEventRow from "./CalendarEventRow.vue";
-import { getHistory } from "../api/history.api";
-import { withAnchors } from "../utils/day-order";
 import {
   getPlan,
   rescheduleOccurrence,
@@ -18,6 +16,7 @@ import {
 import { useLoader } from "../composables/useLoader";
 import { useSortable } from "../composables/useSortable";
 import { useWrites } from "../composables/useWrites";
+import { useEventDrop } from "../composables/useEventDrop";
 import type { WeekPlanEntry, WeekPlanResponse } from "../types/week-plan";
 import { dayRelation, tallyLine } from "../utils/day-tally";
 import { asPlannerItem, relationLabel, tallyOfEntries } from "../utils/other-day";
@@ -33,6 +32,7 @@ import {
   dropOnDay,
   dropRunOnDay,
   entryKey,
+  isEvent,
   isMovable,
   isMovableRun,
   openEntries,
@@ -92,57 +92,6 @@ const name = computed(
 
 const busy = computed(() => props.held || writes.busy.value);
 
-/*
- * The day's Google events, read as the Kalender reads them. They stand by
- * the clock among the open entries, right after the appointment before
- * them (`withAnchors`): read-only, and on another day without a stored
- * place.
- */
-const { data: history } = useLoader(
-  (signal) => getHistory(props.date, "day", "all", signal),
-  {
-    initial: null,
-    fallbackError: "Die Termine konnten nicht geladen werden.",
-    params: [() => props.date],
-    resetOnLoad: true,
-    refreshOnChange: () => !busy.value,
-  },
-);
-const clock = new Intl.DateTimeFormat("de-DE", {
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-  timeZone: "Europe/Berlin",
-});
-type Row =
-  | { kind: "entry"; entry: WeekPlanEntry; timeOfDay: string | null }
-  | { kind: "event"; id: number; title: string; timeOfDay: string };
-const rows = computed<Row[]>(() => {
-  const events = (
-    history.value?.days.find((entry) => entry.date === props.date)?.external ??
-    []
-  ).map(
-    (event): Row => ({
-      kind: "event",
-      id: event.id,
-      title: event.title,
-      timeOfDay: clock.format(new Date(event.start)),
-    }),
-  );
-  return withAnchors<Row>(
-    open.value.map((entry) => ({ kind: "entry", entry, timeOfDay: entry.timeOfDay })),
-    events,
-  );
-});
-
-/** A drop's place among the open entries: the events between them do not count. */
-function entryIndex(item: HTMLElement, list: HTMLElement, index: number): number {
-  const before = [...list.children]
-    .filter((child) => child !== item)
-    .slice(0, index);
-  return index - before.filter((child) => child.hasAttribute("data-event")).length;
-}
-
 const list = ref<HTMLElement | null>(null);
 /* Status line for a move: read out, since the card itself moved. */
 const status = ref("");
@@ -150,10 +99,11 @@ useSortable(list, {
   item: DRAGGABLE,
   accepts: () => !busy.value,
   onMove: (_from, _to, { item, list: target, index }) => {
-    const drop = boardDrop(item, target, entryIndex(item, target, index));
+    const drop = boardDrop(item, target, index);
     if (!drop || busy.value) return;
     if (drop.kind === "day") void applyDrop(drop.drop);
     else if (drop.kind === "run") void applyRunDrop(drop.drop);
+    else if (drop.kind === "event") void applyEventDrop(drop.drop);
   },
 });
 
@@ -199,8 +149,14 @@ async function applyRunDrop(
   );
 }
 
+/* A Google event sorted within the day: the rule all day views share. */
+const applyEventDrop = useEventDrop(plan, writes, {
+  key: "day",
+  said: (line) => (status.value = line),
+});
+
 function edit(entry: WeekPlanEntry): void {
-  if (busy.value) return;
+  if (busy.value || isEvent(entry)) return;
   if (entry.type === "todo") emit("edit", { kind: "todo", entityId: entry.todoId });
   else
     emit("edit", {
@@ -297,7 +253,7 @@ function menu(entry: WeekPlanEntry): MenuEntry[] {
     </div>
 
     <template v-else-if="day">
-      <p v-if="!rows.length && !done.length" class="other-day__empty">
+      <p v-if="!day.entries.length" class="other-day__empty">
         {{
           ahead
             ? `Für ${name} ist noch nichts geplant.`
@@ -306,38 +262,38 @@ function menu(entry: WeekPlanEntry): MenuEntry[] {
       </p>
 
       <!--
-        The day's open entries in its order, its Google events among them by
-        the clock. The entries drag, like Heute's; the events never lift.
+        The day's open entries in its order, its Google events among them at
+        their places (the server's order). Quests, stored runs and, on a
+        later day, the events drag, like Heute's; an event keeps its time.
       -->
       <div
-        v-if="rows.length"
+        v-if="open.length"
         ref="list"
         class="other-day__list"
         :data-date="date"
       >
-        <template
-          v-for="row in rows"
-          :key="row.kind === 'event' ? `event-${row.id}` : entryKey(row.entry, date)"
-        >
+        <template v-for="entry in open" :key="entryKey(entry, date)">
           <CalendarEventRow
-            v-if="row.kind === 'event'"
-            :time="row.timeOfDay"
-            :title="row.title"
+            v-if="isEvent(entry)"
+            :data-event-id="ahead ? entry.eventId : undefined"
+            :draggable="ahead"
+            :time="entry.timeOfDay ?? ''"
+            :title="entry.title"
             :past="!ahead"
           />
           <PlannerItem
             v-else
-            :data-todo-id="isMovable(row.entry) ? row.entry.todoId : undefined"
-            :data-run-id="isMovableRun(row.entry) ? row.entry.occurrenceId : undefined"
-            :item="asPlannerItem(row.entry, date)"
+            :data-todo-id="isMovable(entry) ? entry.todoId : undefined"
+            :data-run-id="isMovableRun(entry) ? entry.occurrenceId : undefined"
+            :item="asPlannerItem(entry, date)"
             :is-updating="busy"
-            :checkable="row.entry.type === 'todo'"
+            :checkable="entry.type === 'todo'"
             :measurable="false"
-            :menu="menu(row.entry)"
-            :sortable="isMovable(row.entry) || isMovableRun(row.entry)"
-            :time="row.entry.timeOfDay"
-            @toggle="toggle(row.entry)"
-            @edit="edit(row.entry)"
+            :menu="menu(entry)"
+            :sortable="isMovable(entry) || isMovableRun(entry)"
+            :time="entry.timeOfDay"
+            @toggle="toggle(entry)"
+            @edit="edit(entry)"
           />
         </template>
       </div>

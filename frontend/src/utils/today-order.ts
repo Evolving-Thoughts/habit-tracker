@@ -1,5 +1,5 @@
 import type { DayPlannerItem, DayPlannerResponse } from "../types/day-planner";
-import { anchoredOrder, clockBoundIndex } from "./day-order";
+import { anchoredOrder, clockBoundIndex, type OrderRef } from "./day-order";
 import {
   isEventSlot,
   withDayOrder,
@@ -7,8 +7,7 @@ import {
   type TodayAgenda,
 } from "./today-agenda";
 
-/** How the server names a row of the order (`PUT /day-planner/order`). */
-export type OrderRef = { type: "todo" | "habit" | "event"; id: number };
+export type { OrderRef };
 
 export function orderRef(row: OrderRow): OrderRef {
   if (isEventSlot(row)) return { type: "event", id: row.event.id };
@@ -44,8 +43,10 @@ export type DayMove = {
 /**
  * Drags the row at `from` onto `to` (indices into `sortableRows`). The
  * rows crossed on screen count, Google events too: a card dropped right
- * after one stays after it. The focus card stands apart from its stored
- * place. An appointment stays on the clock among the others and the events. The Monats-Challenge's run in the evening
+ * after one stays after it. A Google event drags as well, among the cards
+ * without a time; like an appointment it stays on the clock among the
+ * other appointments and events. The focus card stands apart from its
+ * stored place. The Monats-Challenge's run in the evening
  * (`eveningChallenge`) also stands apart from its stored place: a drag of
  * it, or onto it, sorts by what is on screen, and while it is open it keeps
  * showing right below the focus card wherever it was stored. One carried
@@ -61,7 +62,7 @@ export function dropInDay(
   if (from === to) return null;
   const rows = sortableRows(agenda);
   const item = rows[from];
-  if (!item || isEventSlot(item) || item.isOverdue) return null;
+  if (!item || (!isEventSlot(item) && item.isOverdue)) return null;
   const down = from < to;
   const crossed = down
     ? rows.slice(from + 1, to + 1).reverse()
@@ -89,11 +90,15 @@ export function dropInDay(
     sequence.indexOf(neighbour) + Number(down),
   );
   sequence.splice(index, 0, item);
-  const own = sequence.filter((row) => !isEventSlot(row));
+  // A card counts among the own entries, an event among all rows.
+  const counted = isEventSlot(item)
+    ? sequence
+    : sequence.filter((row) => !isEventSlot(row));
+  const title = isEventSlot(item) ? item.event.title : item.title;
   return {
     planner: withDayOrder(planner, sequence),
     order: sequence.map(orderRef),
-    message: `„${item.title}“ steht jetzt an Stelle ${own.indexOf(item) + 1} von ${own.length}.`,
+    message: `„${title}“ steht jetzt an Stelle ${counted.indexOf(item) + 1} von ${counted.length}.`,
   };
 }
 

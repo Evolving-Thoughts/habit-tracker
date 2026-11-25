@@ -231,11 +231,27 @@ describe("a Google event in the order of the day", () => {
     expect(names(sortableRows(arrangeToday(move.planner, nine)))).toEqual(["Q1", "Q3", "E9", "Q2"]);
   });
 
-  it("never lifts and is stepped over by the keyboard", () => {
+  it("drags itself among the cards without a time, never past an appointment", () => {
+    // Q5 has a time (13:00); the event (11:00) stands before it.
+    const planner = {
+      ...day([quest(1, 0), quest(2, 2), quest(3, 3), quest(5, 4, "13:00")]),
+      externalEvents: [event(9, 11, 1)],
+    };
+    const agenda = arrangeToday(planner, nine);
+    expect(names(sortableRows(agenda))).toEqual(["Q1", "E9", "Q2", "Q3", "Q5"]);
+    // Dragged down past Q2 and Q3, it lands right after them.
+    const move = dropInDay(planner, agenda, 1, 3)!;
+    expect(names(sortableRows(arrangeToday(move.planner, nine)))).toEqual(["Q1", "Q2", "Q3", "E9", "Q5"]);
+    expect(move.message).toBe("„E9“ steht jetzt an Stelle 4 von 5.");
+    // Past the 13:00 appointment it stops right before it.
+    const far = dropInDay(planner, agenda, 1, 4)!;
+    expect(names(sortableRows(arrangeToday(far.planner, nine)))).toEqual(["Q1", "Q2", "Q3", "E9", "Q5"]);
+  });
+
+  it("is stepped over by the keyboard", () => {
     const planner = { ...day([quest(1, 0), quest(2, 2)]), externalEvents: [event(9, 11, 1)] };
     const agenda = arrangeToday(planner, nine);
     const rows = sortableRows(agenda);
-    expect(dropInDay(planner, agenda, 1, 0)).toBeNull();
     expect(stepInDay(agenda, rows[1]!, -1)).toBeNull();
     expect(stepInDay(agenda, rows[2]!, -1)).toBe(0);
   });

@@ -560,7 +560,6 @@ async function shiftInOrder(
 /* The whole card drags: the focus card and every row of the order. */
 useSortable(order, {
   item: "[data-sort-key]",
-  anchor: "[data-sort-anchor]",
   onMove: (from, to) => void moveInOrder(from, to),
 });
 
@@ -1168,9 +1167,9 @@ useShortcutHandlers(
             <!--
               The rest of the day in one order. Appointments stand in it with
               their time and drag like any other card; one that is over but
-              still open asks quietly. Google events are read-only anchors: a
-              card dropped next to them keeps that place (it is stored), but
-              they never lift. On a phone only the next two rows carry
+              still open asks quietly. A Google event drags too, but only
+              among the cards without a time: its time stays, so it never
+              passes another appointment. On a phone only the next two rows carry
               their Warum, so the day stays short.
             -->
             <template
@@ -1202,9 +1201,9 @@ useShortcutHandlers(
               />
               <CalendarEventRow
                 v-else-if="entry.kind === 'event'"
+                draggable
                 class="today-view__event"
                 :data-sort-key="`event-${entry.event.id}`"
-                data-sort-anchor
                 :time="entry.time"
                 :title="entry.event.title"
                 :past="entry.past"

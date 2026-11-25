@@ -1,23 +1,30 @@
-import { anchoredOrder, clockBoundIndex } from "./day-order";
+import { anchoredOrder, clockBoundIndex, type OrderRef } from "./day-order";
 import type { TodoResponse } from "../types/todo";
 import type {
   WeekPlanDay,
   WeekPlanEntry,
+  WeekPlanEventEntry,
   WeekPlanHabitEntry,
+  WeekPlanOwnEntry,
   WeekPlanResponse,
   WeekPlanTodoEntry,
 } from "../types/week-plan";
 import { addDays, isValidIsoDate, weekStart } from "./date";
 import { formatDuration } from "./today-agenda";
 
-/** How the server names an item of a day's order (PUT /day-planner/order). */
-export type OrderRef = { type: "todo" | "habit"; id: number };
+export type { OrderRef };
 
 /** A quest dropped on a day: `index` is its place among the day's open rows. */
 export type Drop = { todoId: number; toDate: string; index: number };
 
 /** A daily's stored run dropped on a day, at `index` among its open rows. */
 export type RunDrop = { occurrenceId: number; toDate: string; index: number };
+
+/**
+ * A Google event dropped on a day, at `index` among its open rows. It keeps
+ * its time, so it only sorts within its own day.
+ */
+export type EventDrop = { eventId: number; toDate: string; index: number };
 
 /** A quest dropped into the Questlog column, at `index` of its list. */
 export type ShelfDrop = { todoId: number; index: number };
@@ -26,6 +33,7 @@ export type ShelfDrop = { todoId: number; index: number };
 export type BoardDrop =
   | { kind: "day"; drop: Drop }
   | { kind: "run"; drop: RunDrop }
+  | { kind: "event"; drop: EventDrop }
   | { kind: "questlog"; drop: ShelfDrop };
 
 /** What a drop asks of the server: move the quest, then sort its day. */
@@ -88,12 +96,13 @@ export function shiftedStart(
   return next < today ? today : next;
 }
 
-/** What drags on the board: open quests and open stored runs. */
-export const DRAGGABLE = "[data-todo-id], [data-run-id]";
+/** What drags: open quests, open stored runs and Google events. */
+export const DRAGGABLE = "[data-todo-id], [data-run-id], [data-event-id]";
 
 /** A key unique on the board; quests keep the key Heute uses. */
 export function entryKey(entry: WeekPlanEntry, date: string): string {
   if (entry.type === "todo") return `todo-${entry.todoId}`;
+  if (entry.type === "event") return `event-${entry.eventId}-${date}`;
   return entry.occurrenceId === null
     ? `forecast-${entry.habitId}-${date}`
     : `habit-${entry.occurrenceId}`;
@@ -129,12 +138,21 @@ export function runMayMoveTo(
   return date >= today && entry.moveUntil !== null && date <= entry.moveUntil;
 }
 
+/** A Google event: it sorts among the cards of its day, its time stays. */
+export function isEvent(entry: WeekPlanEntry): entry is WeekPlanEventEntry {
+  return entry.type === "event";
+}
+
 export function openEntries(day: WeekPlanDay): WeekPlanEntry[] {
   return day.entries.filter((entry) => entry.status === "pending");
 }
 
-export function doneEntries(day: WeekPlanDay): WeekPlanEntry[] {
-  return day.entries.filter((entry) => entry.status !== "pending");
+/** What is done or skipped; a Google event is never either. */
+export function doneEntries(day: WeekPlanDay): WeekPlanOwnEntry[] {
+  return day.entries.filter(
+    (entry): entry is WeekPlanOwnEntry =>
+      entry.type !== "event" && entry.status !== "pending",
+  );
 }
 
 /**
@@ -143,7 +161,7 @@ export function doneEntries(day: WeekPlanDay): WeekPlanEntry[] {
  */
 function isSequenced(entry: WeekPlanEntry): boolean {
   if (entry.status !== "pending") return false;
-  return entry.type === "todo" || entry.occurrenceId !== null;
+  return entry.type !== "habit" || entry.occurrenceId !== null;
 }
 
 /** The order of a day as the server stores it. */
@@ -151,7 +169,9 @@ export function dayOrder(open: readonly WeekPlanEntry[]): OrderRef[] {
   return open.filter(isSequenced).map((entry) =>
     entry.type === "todo"
       ? { type: "todo", id: entry.todoId }
-      : { type: "habit", id: entry.occurrenceId! },
+      : entry.type === "event"
+        ? { type: "event", id: entry.eventId }
+        : { type: "habit", id: entry.occurrenceId! },
   );
 }
 
@@ -337,6 +357,33 @@ export function dropRunOnDay(
 }
 
 /**
+ * A Google event dragged within its day: it takes its place in the order,
+ * held on the clock among the appointments and events like any of them.
+ * Dropped on another day it stays (its day is Google's). Returns null when
+ * nothing changes.
+ */
+export function dropEventOnDay(
+  plan: WeekPlanResponse,
+  drop: EventDrop,
+): { plan: WeekPlanResponse; order: OrderRef[] } | null {
+  const day = plan.days.find((item) => item.date === drop.toDate);
+  const entry = day?.entries.find(
+    (item): item is WeekPlanEventEntry =>
+      isEvent(item) && item.eventId === drop.eventId,
+  );
+  if (!day || !entry) return null;
+  const result = place(
+    plan,
+    entry,
+    entry,
+    { source: day, overdue: false, moves: false },
+    drop.toDate,
+    drop.index,
+  );
+  return result?.order ? { plan: result.plan, order: result.order } : null;
+}
+
+/**
  * Where a step takes the open entry that `matches`: up and down to the next
  * place in its day's order, left and right to the end of the shown day
  * before or after (never into the past). Null where there is no such place.
@@ -505,6 +552,11 @@ export function boardDrop(
   list: HTMLElement,
   index: number,
 ): BoardDrop | null {
+  const eventId = Number(item.dataset.eventId);
+  if (eventId) {
+    const toDate = list.dataset.date;
+    return toDate ? { kind: "event", drop: { eventId, toDate, index } } : null;
+  }
   const occurrenceId = Number(item.dataset.runId);
   if (occurrenceId) {
     const toDate = list.dataset.date;
@@ -522,7 +574,8 @@ export function boardDrop(
 
 /** "3 offen · 1 Std. 30 Min.": what is still open on a day; empty when nothing is. */
 export function openSummary(day: WeekPlanDay): string {
-  const open = openEntries(day);
+  // Google events are not the person's to do: they do not count.
+  const open = openEntries(day).filter((entry) => !isEvent(entry));
   if (!open.length) return "";
   const minutes = open.reduce(
     (sum, entry) => sum + (entry.plannedDurationMinutes ?? 0),

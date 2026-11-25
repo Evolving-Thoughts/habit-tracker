@@ -219,8 +219,10 @@ redirected by the router to the first day of that week still ahead
   quiet reload). A failed write puts the old plan (and column) back at once,
   shows the error and reloads quietly to show what the server kept.
 - `useSortable` takes an optional `group` (and `accepts`, and `sort: false`
-  for a list whose items only leave it) so lists trade items, and an
-  optional `anchor` selector for items that hold their place (a card can be
-  dropped next to them, but they never lift; Heute uses it for Google
-  events); it reports the
-  drop's target list and its index among all children.
+  for a list whose items only leave it) so lists trade items; it reports
+  the drop's target list and its index among all children.
+- Google events are entries of their days (`type: "event"`, see
+  day-order.md › Google-Termine in der Reihenfolge). They drag within their
+  own day from today on (`data-event-id`, `dropEventOnDay`, written by the
+  shared `useEventDrop`), never to another day, open no editor and do not
+  count in a day's summary.

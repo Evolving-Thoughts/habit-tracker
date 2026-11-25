@@ -52,6 +52,7 @@ import {
 import { WeekPlanResponseDto } from './dto/week-plan.dto';
 import {
   arrangePlan,
+  eventCandidates,
   planDates,
   plannedHabitCandidate,
   resolvedHabitCandidate,
@@ -299,7 +300,14 @@ export class DayPlannerService {
         startDate: firstDay,
         endDate: lastDay,
         today,
-        ...arrangePlan(dates, candidates),
+        ...arrangePlan(dates, [
+          ...candidates,
+          // Google events stand among them at their places.
+          ...eventCandidates(
+            await eventsOfDays(manager, { userId }, firstDay, lastDay),
+            dates,
+          ),
+        ]),
       };
     });
   }

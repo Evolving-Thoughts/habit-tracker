@@ -137,12 +137,4 @@ describe("pressesControl", () => {
     const article = card();
     expect(pressesControl(article.querySelector(".ring"), article)).toBe(true);
   });
-
-  it("never lifts an anchored card", () => {
-    const article = card();
-    article.classList.add("event");
-    expect(
-      pressesControl(article.querySelector(".meta span"), article, ".event"),
-    ).toBe(true);
-  });
 });

@@ -1,21 +1,23 @@
 <script setup lang="ts">
 /**
  * A Google event in a list of the day: read-only, in the flat white of
- * appointments elsewhere. It holds its place in the order (a card dropped
- * next to it stays there) but never lifts itself.
+ * appointments elsewhere. In Heute's order it drags like a card (`draggable`),
+ * among the cards without a time; its time stays.
  */
 defineProps<{
   time: string;
   title: string;
   /** Over: quieter, like an appointment that has ended. */
   past?: boolean;
+  /** In an order that sorts by dragging: the whole row lifts. */
+  draggable?: boolean;
 }>();
 </script>
 
 <template>
   <div
     class="calendar-event-row"
-    :class="{ 'calendar-event-row--past': past }"
+    :class="{ 'calendar-event-row--past': past, 'card-drag': draggable }"
     data-event
   >
     <span class="calendar-event-row__time">{{ time }}</span>

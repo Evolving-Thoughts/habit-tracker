@@ -42,11 +42,13 @@ function onArrow(event: KeyboardEvent, key: "up" | "down" | "left" | "right") {
   emit("arrow", key);
 }
 
+/** A Google event: read-only, it drags within its day but opens no editor. */
+const event = computed(() => props.entry.type === "event");
 const movable = computed(
-  () => isMovable(props.entry) || isMovableRun(props.entry),
+  () => isMovable(props.entry) || isMovableRun(props.entry) || event.value,
 );
-function openFromCard(event: MouseEvent): void {
-  if (!props.busy) onCardClick(event, () => emit("edit"));
+function openFromCard(click: MouseEvent): void {
+  if (!props.busy && !event.value) onCardClick(click, () => emit("edit"));
 }
 const done = computed(() => props.entry.status !== "pending");
 
@@ -64,6 +66,7 @@ const details = computed(() => {
     parts.push("Übersprungen");
   if (entry.type === "todo" && entry.isOverdue)
     parts.push(`seit ${shortDate(entry.scheduledDate)}`);
+  if (entry.type === "event") parts.push("Google Kalender");
   return parts;
 });
 
@@ -84,6 +87,7 @@ const campaign = computed(() => {
     :class="{
       'plan-entry--done': done,
       'plan-entry--campaign': campaignMark,
+      'plan-entry--event': event,
       'card-target': true,
       'card-drag': movable,
     }"
@@ -94,7 +98,11 @@ const campaign = computed(() => {
       <!-- The heading keeps the plain title; the button inside says "bearbeiten". -->
       <!-- Clamped to three lines; the tooltip and the names keep the full title. -->
       <h3 class="plan-entry__title" :aria-label="entry.title">
+        <span v-if="event" class="plan-entry__event" :title="entry.title">{{
+          entry.title
+        }}</span>
         <button
+          v-else
           class="plan-entry__edit"
           data-edit-button
           type="button"
@@ -141,6 +149,11 @@ const campaign = computed(() => {
   container-type: inline-size;
   border-radius: var(--radius-control);
   background: var(--color-surface);
+}
+
+/* A Google event: the flat white of appointments elsewhere, never a button. */
+.plan-entry--event {
+  background: var(--color-surface-flat);
 }
 
 /* The stripe names the campaign the entry works towards. */

@@ -1,5 +1,5 @@
 import type { DayPlannerItem } from "../types/day-planner";
-import type { WeekPlanEntry } from "../types/week-plan";
+import type { WeekPlanEntry, WeekPlanOwnEntry } from "../types/week-plan";
 import type { DayTally } from "./day-tally";
 
 /*
@@ -27,6 +27,8 @@ export function relationLabel(date: string, today: string): string | null {
 export function tallyOfEntries(entries: readonly WeekPlanEntry[]): DayTally {
   const tally: DayTally = { completed: 0, open: 0, carriedOver: 0, skipped: 0 };
   for (const entry of entries) {
+    // A Google event is not the person's to do: it does not count.
+    if (entry.type === "event") continue;
     if (entry.status === "completed") tally.completed += 1;
     else if (entry.status === "skipped") tally.skipped += 1;
     else tally[entry.isOverdue ? "carriedOver" : "open"] += 1;
@@ -41,7 +43,7 @@ export function tallyOfEntries(entries: readonly WeekPlanEntry[]): DayTally {
  * measures or ticks it (`timerEligible` is false, the card has no ring).
  */
 export function asPlannerItem(
-  entry: WeekPlanEntry,
+  entry: WeekPlanOwnEntry,
   date: string,
 ): DayPlannerItem {
   const shared = {

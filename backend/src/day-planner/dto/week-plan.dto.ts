@@ -53,7 +53,23 @@ export type WeekPlanHabitEntryDto = {
   monthChallenge: boolean;
 } & WeekPlanEntryContext;
 
-export type WeekPlanEntryDto = WeekPlanTodoEntryDto | WeekPlanHabitEntryDto;
+/**
+ * An event of the person's Google calendars on this day: read-only, it
+ * keeps its time, but takes a place in the order of the day like an
+ * appointment (`PUT /day-planner/order` with `{ type: 'event', id }`).
+ */
+export type WeekPlanEventEntryDto = {
+  type: 'event';
+  /** `externalEvents[].id` of Heute: the row of this sync. */
+  eventId: number;
+  /** Always open: an event is never ticked off. */
+  status: 'pending';
+  start: string;
+  end: string;
+} & WeekPlanEntryContext;
+
+export type WeekPlanEntryDto =
+  WeekPlanTodoEntryDto | WeekPlanHabitEntryDto | WeekPlanEventEntryDto;
 
 export type WeekPlanDayDto = {
   date: string;

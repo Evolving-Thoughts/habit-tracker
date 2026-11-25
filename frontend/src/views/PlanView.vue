@@ -41,6 +41,7 @@ import {
 import { toggleTimer, useTimer } from "../composables/useTimer";
 import { useTicks } from "../composables/useTicks";
 import { useWrites } from "../composables/useWrites";
+import { useEventDrop } from "../composables/useEventDrop";
 import type {
   WeekPlanEntry,
   WeekPlanResponse,
@@ -320,6 +321,14 @@ const nothingPlanned = computed(
 
 /* The order of a day and moves between days, shown at once. */
 const status = ref("");
+/* A Google event sorted within its day: the rule all day views share. */
+const applyEventDrop = useEventDrop(plan, writes, {
+  key: "plan",
+  said: (line) => {
+    notice.value = "";
+    status.value = line;
+  },
+});
 /** Said in sight when a drop could not land, such as a run beyond its window. */
 const notice = ref("");
 
@@ -483,6 +492,8 @@ function focusCard(key: string, on: "menu" | "card"): void {
  */
 function openEditing(entry: WeekPlanEntry | { todoId: number }, date = ""): void {
   if (dialogBusy.value || writes.busy.value) return;
+  // A Google event has no editor here: it is changed in Google.
+  if ("type" in entry && entry.type === "event") return;
   if ("type" in entry && entry.type === "habit") {
     listFocus.remember(entryKey(entry, date));
     editing.value = {
@@ -578,6 +589,10 @@ function onMove(move: BoardDrop): void {
   }
   if (move.kind === "run") {
     void applyRunDrop(move.drop);
+    return;
+  }
+  if (move.kind === "event") {
+    void applyEventDrop(move.drop);
     return;
   }
   const drop = move.drop;

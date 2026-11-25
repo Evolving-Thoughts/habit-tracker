@@ -555,6 +555,20 @@ describe('Google calendar sync (e2e)', () => {
       })
       .expect(204);
     expect((await read())[0].dayPosition).toBe(1);
+    // The Plan shows it at the same place, as an entry of the day.
+    const plan = await request(server)
+      .get('/day-planner/plan?from=2026-10-30&days=1')
+      .expect(200);
+    expect(
+      (
+        plan.body as {
+          days: { entries: { type: string; title: string }[] }[];
+        }
+      ).days[0].entries.map(({ type, title }) => [type, title]),
+    ).toEqual([
+      ['todo', 'Bewerbung'],
+      ['event', 'Besprechung'],
+    ]);
 
     // A sync replaces the rows; the place stays, and an old id is skipped.
     await sync();
