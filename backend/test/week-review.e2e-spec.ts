@@ -345,7 +345,7 @@ describe('Week review (e2e)', () => {
         {
           id: category,
           name: 'Schreiben',
-          color: null,
+          color: 'indigo', // the first free core colour, given when it was created
           target: 2,
           completed: 2,
           reached: true,

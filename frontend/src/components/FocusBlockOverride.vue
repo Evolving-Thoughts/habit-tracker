@@ -6,8 +6,8 @@ import { OVERRIDE_LABELS } from "../utils/focus-block";
 
 /**
  * "Fokus-Sperre: Standard | Immer | Nie" in a quest's or daily's editor:
- * whether starting it in the Fokus-Modus blocks apps and websites.
- * Standard follows Einstellungen (from a Soll of so many minutes on).
+ * whether its running stopwatch blocks apps and websites. Standard follows
+ * Einstellungen (while the stopwatch runs, or from a Soll of so many minutes).
  */
 const choice = defineModel<FocusBlockOverride>({ required: true });
 const props = defineProps<{ kind: "todo" | "habit" }>();
@@ -19,13 +19,14 @@ const hint = computed(() => {
   const settings = focusBlock?.state.value?.settings;
   const own = props.kind === "todo" ? "diese Quest" : "dieses Daily";
   if (choice.value === "always")
-    return `Der Fokus-Modus sperrt für ${own} immer, auch ohne Soll.`;
-  if (choice.value === "never")
-    return `Der Fokus-Modus sperrt für ${own} nie.`;
+    return `Sperrt für ${own} immer, sobald ihre Stoppuhr läuft, auch ohne Soll.`;
+  if (choice.value === "never") return `Sperrt für ${own} nie.`;
   if (!settings) return "Folgt den Einstellungen.";
-  return settings.enabled
+  if (!settings.enabled)
+    return "Folgt den Einstellungen: dort ist das Sperren aus.";
+  return settings.trigger === "threshold"
     ? `Folgt den Einstellungen: sperren ab einem Soll von ${settings.thresholdMinutes} Min.`
-    : "Folgt den Einstellungen: dort ist das Sperren beim Fokus aus.";
+    : "Folgt den Einstellungen: sperren, solange die Stoppuhr läuft.";
 });
 </script>
 

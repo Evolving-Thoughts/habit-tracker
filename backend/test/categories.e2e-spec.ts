@@ -8,7 +8,11 @@ import { CategoryEntity } from '../src/categories/category.entity';
 import { dayOf } from '../src/common/date/local-day';
 import { configureApp } from '../src/configure-app';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
-import { authenticatedRequest as request, seedAuth } from './auth-fixture';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  TEST_USER,
+} from './auth-fixture';
 
 const OTHER_USER = '22222222-2222-4222-8222-222222222222';
 type Named = { id: number; name: string };
@@ -59,9 +63,64 @@ describe('Categories and why (e2e)', () => {
       .send({ name: 'Musik' })
       .expect(200);
     const list = await request(server).get('/categories').expect(200);
+    // Without a chosen colour it got the first free core colour, stored.
     expect(list.body).toEqual([
-      { id: created.id, name: 'Musik', weeklyTarget: null, color: null },
+      {
+        id: created.id,
+        name: 'Musik',
+        weeklyTarget: null,
+        color: 'indigo',
+        colorChosen: true,
+      },
     ]);
+  });
+
+  it('gives each new category the first colour of the pick order no other one shows', async () => {
+    // "Haushalt" and "Kreativ" would pick the same colour from their names.
+    const first = await category('Haushalt');
+    const second = await category('Kreativ');
+    const list = (await request(server).get('/categories').expect(200))
+      .body as (Named & { color: string })[];
+    expect(list.map(({ id, color }) => [id, color])).toEqual([
+      [first.id, 'indigo'],
+      [second.id, 'ochre'],
+    ]);
+  });
+
+  it('shows older categories without a stored colour apart from each other', async () => {
+    // Stored before colours were assigned: both names pick the same one.
+    const [home, art] = await db.getRepository(CategoryEntity).save([
+      { userId: TEST_USER, name: 'Haushalt', color: null },
+      { userId: TEST_USER, name: 'Kreativ', color: null },
+    ]);
+    await request(server)
+      .post('/todos')
+      .send({
+        title: 'Putzen',
+        categoryId: art.id,
+        scheduledDate: dayOf(new Date()),
+      })
+      .expect(201);
+    const list = (await request(server).get('/categories').expect(200))
+      .body as (Named & { color: string; colorChosen: boolean })[];
+    expect(list).toEqual([
+      expect.objectContaining({
+        id: home.id,
+        color: 'pine',
+        colorChosen: false,
+      }),
+      expect.objectContaining({
+        id: art.id,
+        color: 'indigo',
+        colorChosen: false,
+      }),
+    ]);
+    // Entries show the same colour as the settings.
+    const planner = await request(server).get('/day-planner/today').expect(200);
+    expect((planner.body as { items: unknown[] }).items[0]).toMatchObject({
+      categoryName: 'Kreativ',
+      categoryColor: 'indigo',
+    });
   });
 
   it('keeps a chosen colour, refusing one outside the palette', async () => {
@@ -80,7 +139,12 @@ describe('Categories and why (e2e)', () => {
       .patch(`/categories/${created.id}`)
       .send({ color: null })
       .expect(200);
-    expect(reset.body).toMatchObject({ name: 'Lesen', color: null });
+    // Back to "Automatisch": it shows a colour, but none is stored.
+    expect(reset.body).toMatchObject({
+      name: 'Lesen',
+      color: 'indigo',
+      colorChosen: false,
+    });
   });
 
   it('stores category and why on todos and habits', async () => {

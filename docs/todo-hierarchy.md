@@ -83,7 +83,8 @@ server's (`todoCount - doneCount` of its progress); without open todos below
 nothing asks. `useCampaignCompletion` and `CampaignCompletionDialog` do this,
 through `useTicks` (the one place for ring, undo toast and this question), in
 the Kampagnen view (the tree is at hand: "Abschließen" on a campaign's tile
-and on its detail card, and "Kampagne abschließen" in the card's "…"), Heute
+once all its quests are done, else "Kampagne abschließen" in the tile's "…";
+"Abschließen" on its detail card, and "Kampagne abschließen" in the card's "…"), Heute
 and the Plan's X (they read `GET /todos/hierarchy` once, only for a row that
 is itself a campaign; a failed read asks nothing). The Questlog lists no
 campaigns (see below) and never asks. The calendar's rows do not name their

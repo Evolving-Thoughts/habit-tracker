@@ -179,9 +179,13 @@ redirected by the router to the first day of that week still ahead
   (`backlogPlace`, see `day-order.md`).
 - Each day starts with its quick add (`QuickAddQuest`) above the cards:
   Enter plans the quest on that day, at the end of its order, or at its head
-  while ↑ ("Oben einfügen") is pressed. The two small toggles ↑ / ↓ beside
-  the field are one choice per device for every quick add, Heute's too
-  (`composables/useInsertPlace.ts`, `localStorage` `quickAdd:place`).
+  while ↑ ("Oben einfügen") is pressed. The two small toggles ↑ / ↓ are one
+  choice per device for every quick add, Heute's too
+  (`composables/useInsertPlace.ts`, `localStorage` `quickAdd:place`). The
+  Plan shows them once, in its head before the day arrows
+  (`InsertPlaceToggle`), with the visible word "Neue" before them and a
+  thin rule after them, so they never read as part of the day navigation; its columns' quick adds hide their own
+  (`placeToggle: false`) and keep the full width for the field.
 
 ## Widths and wrapping
 

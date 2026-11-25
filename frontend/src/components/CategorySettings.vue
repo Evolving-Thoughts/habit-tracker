@@ -14,11 +14,15 @@ import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import type { CampaignColor } from "../types/campaign";
 import type { CategoryResponse } from "../types/category";
-import { COLOR_NAMES, isCampaignColor } from "../utils/campaign-style";
-import { categoryMark } from "../utils/category-mark";
+import { COLOR_NAMES, isCampaignColor, markToken } from "../utils/campaign-style";
+import {
+  automaticCategoryColor,
+  categoryMark,
+  newCategoryColor,
+} from "../utils/category-mark";
 
 const newName = ref("");
-/** The new category's colour; null lets its name pick one. */
+/** The new category's colour; null takes the first one no category shows. */
 const newColor = ref<CampaignColor | null>(null);
 const newColorOpen = ref(false);
 /** The category whose palette is open below its row. */
@@ -64,9 +68,29 @@ async function add(): Promise<void> {
   }
 }
 
-/** The chosen colour as a key; null while the name picks it. */
+/** The chosen colour as a key; null while none is stored ("Automatisch"). */
 const chosenColor = (category: CategoryResponse): CampaignColor | null =>
-  isCampaignColor(category.color) ? category.color : null;
+  category.colorChosen !== false && isCampaignColor(category.color)
+    ? category.color
+    : null;
+
+/** "Automatisch": a colour no other category shows, as the server picks it. */
+const AUTOMATIC_LABEL = "Automatisch: eine freie Farbe";
+const newAutomatic = (): CampaignColor =>
+  newCategoryColor(
+    newName.value.trim(),
+    categories.value.map((category) => category.color),
+  );
+const newMark = (): string => markToken(newColor.value ?? newAutomatic());
+const automaticMark = (category: CategoryResponse): string =>
+  markToken(
+    automaticCategoryColor(
+      category.name,
+      categories.value
+        .filter((other) => other.id !== category.id)
+        .map((other) => other.color),
+    ),
+  );
 
 /** "Tanne" or "automatisch": what the dot shows, in words. */
 const colorWords = (color: CampaignColor | null): string =>
@@ -147,7 +171,7 @@ async function remove(id: number): Promise<void> {
       <button
         class="category-settings__dot"
         type="button"
-        :style="{ '--mark': categoryMark(newName.trim(), newColor) }"
+        :style="{ '--mark': newMark() }"
         :aria-label="`Farbe der neuen Kategorie: ${colorWords(newColor)}`"
         :aria-expanded="newColorOpen"
         aria-controls="new-category-color"
@@ -175,8 +199,8 @@ async function remove(id: number): Promise<void> {
         class="category-settings__picker"
         name="new-category-color"
         legend="Farbe der neuen Kategorie"
-        :automatic="categoryMark(newName.trim())"
-        automatic-label="Automatisch aus dem Namen"
+        :automatic="markToken(newAutomatic())"
+        :automatic-label="AUTOMATIC_LABEL"
       />
     </form>
     <p
@@ -343,8 +367,8 @@ async function remove(id: number): Promise<void> {
             :model-value="chosenColor(category)"
             :name="`category-color-${category.id}`"
             :legend="`Farbe von ${category.name}`"
-            :automatic="categoryMark(category.name)"
-            automatic-label="Automatisch aus dem Namen"
+            :automatic="automaticMark(category)"
+            :automatic-label="AUTOMATIC_LABEL"
             @update:model-value="saveColor(category.id, $event)"
           />
           <p

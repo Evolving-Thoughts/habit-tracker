@@ -160,7 +160,13 @@ Beside its own routes:
   without one begun by then or once its Daily is deleted.
 
 Next month's challenge can be created at any time; the Dailies offer
-"Challenge für Dezember festlegen" from the 16th on.
+"Challenge für Dezember festlegen" from the 16th on. Without a challenge
+this month, from the 16th that is the empty card's main action ("Der
+November hat nur noch 6 Tage – wähle eins für Dezember.", the days left
+counting today) with "Doch noch für November" beside it; before the 16th,
+or once December is set, the card offers this month ("Challenge
+starten"). The words come from `offerNextFirst` and `emptyLine` in
+`frontend/src/utils/month-challenge.ts`.
 
 ## Reminder
 

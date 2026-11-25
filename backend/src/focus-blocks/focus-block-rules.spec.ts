@@ -3,6 +3,7 @@ import {
   assertListChangeAllowed,
   assertLiftable,
   blockApplies,
+  blockShape,
   hardcoreEndsAt,
   hostBlocked,
   hostMatches,
@@ -20,10 +21,25 @@ const START = new Date('2026-11-23T10:00:00.000Z');
 const at = (minutes: number) => new Date(START.getTime() + minutes * MINUTE);
 
 describe('blockApplies', () => {
-  const on = { enabled: true, thresholdMinutes: 15 };
-  const off = { enabled: false, thresholdMinutes: 15 };
+  const running = {
+    enabled: true,
+    trigger: 'stopwatch',
+    thresholdMinutes: 15,
+  } as const;
+  const on = { ...running, trigger: 'threshold' } as const;
+  const off = { ...on, enabled: false } as const;
 
-  it('blocks by default from the threshold on, never without a Soll', () => {
+  it('blocks whenever the stopwatch runs, with or without a Soll', () => {
+    expect(blockApplies(running, 'default', null)).toBe(true);
+    expect(blockApplies(running, 'default', 5)).toBe(true);
+    expect(blockApplies(running, 'always', null)).toBe(true);
+    expect(blockApplies(running, 'never', 60)).toBe(false);
+    expect(blockApplies({ ...running, enabled: false }, 'default', 60)).toBe(
+      false,
+    );
+  });
+
+  it('blocks with the threshold trigger from the threshold on, never without a Soll', () => {
     expect(blockApplies(on, 'default', 15)).toBe(true);
     expect(blockApplies(on, 'default', 60)).toBe(true);
     expect(blockApplies(on, 'default', 14)).toBe(false);
@@ -38,6 +54,40 @@ describe('blockApplies', () => {
     expect(blockApplies(off, 'always', null)).toBe(true);
     expect(blockApplies(on, 'always', 5)).toBe(true);
     expect(blockApplies(on, 'never', 60)).toBe(false);
+  });
+});
+
+describe('blockShape', () => {
+  it('gives Soft no end', () => {
+    expect(blockShape('soft', 'stopwatch', 30, 0, START)).toEqual({
+      mode: 'soft',
+      endsAt: null,
+    });
+    expect(blockShape('soft', 'threshold', 30, 0, START)).toEqual({
+      mode: 'soft',
+      endsAt: null,
+    });
+  });
+
+  it('binds Hardcore to the stopwatch with the stopwatch trigger, Soll or not', () => {
+    expect(blockShape('hardcore', 'stopwatch', null, 0, START)).toEqual({
+      mode: 'hardcore',
+      endsAt: null,
+    });
+    expect(blockShape('hardcore', 'stopwatch', 30, 0, START)).toEqual({
+      mode: 'hardcore',
+      endsAt: null,
+    });
+  });
+
+  it('ends Hardcore at the Soll with the threshold trigger, else starts Soft', () => {
+    expect(blockShape('hardcore', 'threshold', 25, 10 * MINUTE, START)).toEqual(
+      { mode: 'hardcore', endsAt: at(15) },
+    );
+    expect(blockShape('hardcore', 'threshold', null, 0, START)).toEqual({
+      mode: 'soft',
+      endsAt: null,
+    });
   });
 });
 
@@ -70,6 +120,15 @@ describe('Hardcore end', () => {
     expect(lapsedReason(hardcore, at(19))).toBeNull();
     expect(lapsedReason(hardcore, at(20))).toBe('target_reached');
     expect(lapsesAt(hardcore)).toEqual(at(20));
+  });
+
+  it('holds Hardcore without a moment until twelve hours, never liftable', () => {
+    const bound: BlockTiming = { ...hardcore, endsAt: null };
+    expect(lapsedReason(bound, at(600))).toBeNull();
+    const late = new Date(START.getTime() + SOFT_BLOCK_MAX_MS);
+    expect(lapsedReason(bound, late)).toBe('expired');
+    expect(lapsesAt(bound)).toEqual(late);
+    expect(() => assertLiftable(bound, at(5))).toThrow(ConflictException);
   });
 
   it('lifts a forgotten Soft block after twelve hours', () => {

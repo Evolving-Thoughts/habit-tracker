@@ -68,7 +68,7 @@ describe("PlannerItem", () => {
     expect(broken.text()).not.toContain("in Folge");
   });
 
-  it("shows the given time, duration and the fixed flag once", () => {
+  it("shows the given time and duration; the time column says Termin", () => {
     const wrapper = mount(PlannerItem, {
       props: {
         item: makeTodo({ categoryName: "Lernen" }),
@@ -81,7 +81,7 @@ describe("PlannerItem", () => {
     expect(wrapper.get(".planner-item__time").text()).toBe("10:00");
     expect(wrapper.text()).toContain("Lernen");
     expect(wrapper.text()).toContain("30 Min.");
-    expect(wrapper.text()).toContain("Termin");
+    expect(wrapper.text()).not.toContain("Termin");
     // The day is today; repeating it on every row is noise.
     expect(wrapper.text()).not.toContain("02.10.2026");
   });
@@ -406,5 +406,49 @@ describe("PlannerItem: Daily marker and Warum", () => {
       },
     });
     expect(done.find(".planner-item__why").exists()).toBe(false);
+  });
+});
+
+describe("PlannerItem: meta line and past appointments", () => {
+  it("names an appointment Termin where no time column shows it", () => {
+    const carried = mount(PlannerItem, {
+      props: { item: makeTodo(), showDate: true, isUpdating: false },
+    });
+    expect(carried.get(".item-row__meta").text()).toContain("Termin");
+    const plain = mount(PlannerItem, {
+      props: { item: makeTodo(), isUpdating: false },
+    });
+    expect(plain.get(".item-row__meta").text()).toContain("Termin");
+  });
+
+  it("lets the meta line wrap on a phone, as in the Kalender", () => {
+    const wrapper = mount(PlannerItem, {
+      props: {
+        item: makeTodo({
+          campaign: { id: 9, title: "Halbmarathon schaffen", color: null, icon: null },
+        }),
+        isUpdating: false,
+      },
+    });
+    expect(wrapper.classes()).toContain("item-row--wrap-meta");
+    expect(wrapper.get(".campaign-chip").text()).toContain(
+      "Halbmarathon schaffen",
+    );
+  });
+
+  it("asks about a past appointment in one quiet line, without a move button", () => {
+    const wrapper = mount(PlannerItem, {
+      props: {
+        item: makeTodo({ why: "Wird ersetzt" }),
+        time: "10:00",
+        past: true,
+        isUpdating: false,
+      },
+    });
+    expect(wrapper.get(".planner-item__nudge").text()).toBe(
+      "Vorbei – erledigt?",
+    );
+    expect(wrapper.find(".planner-item__why").exists()).toBe(false);
+    expect(wrapper.find("[data-move-button]").exists()).toBe(false);
   });
 });

@@ -81,6 +81,36 @@ describe("failure messages", () => {
     );
   });
 
+  it("replaces the guard's technical refusal with plain words", async () => {
+    const { request } = await load(
+      new Response(
+        JSON.stringify({
+          message: "Ungültiger Request-Ursprung oder Content-Type.",
+        }),
+        { status: 403 },
+      ),
+    );
+    const failure = request("/todos", { method: "POST" });
+    await expect(failure).rejects.toThrow("Lade die Seite neu");
+    await expect(failure).rejects.not.toThrow("Content-Type");
+  });
+
+  it("says how long to wait after too many requests, keeping the code", async () => {
+    const { request, ApiError } = await load(
+      new Response(
+        JSON.stringify({
+          message: "Zu viele Versuche. Bitte später erneut versuchen.",
+          code: "X",
+        }),
+        { status: 429 },
+      ),
+    );
+    const failure = request("/auth/login", { method: "POST" });
+    await expect(failure).rejects.toBeInstanceOf(ApiError);
+    await expect(failure).rejects.toThrow("in ein paar Minuten");
+    await expect(failure).rejects.toMatchObject({ status: 429, code: "X" });
+  });
+
   it("turns an unreachable server into a TypeError with our words", async () => {
     const { request, ConnectionError } = await load(
       new TypeError("Failed to fetch"),

@@ -9,6 +9,11 @@
  * zurück und spielt die Nutzung über die echte HTTP-Schnittstelle nach. So
  * entstehen Verlauf, Wochenquoten und Ziele genau wie im Betrieb. Ein schon
  * vorhandenes Demo-Konto wird vorher samt Daten gelöscht.
+ *
+ * Zwei Dinge holt das Skript selbst nach, weil die verstellte Uhr sie nicht
+ * erreicht: Das Anlegedatum der Quests setzt die Datenbank, es wird auf den
+ * ersten Tag zurückgesetzt; und den Fortschritt der Kampagnen hält im Betrieb
+ * ein stündlicher Job je Tag fest (goal_snapshots), hier am Ende jedes Tags.
  */
 import { NestFactory } from '@nestjs/core';
 import type { AddressInfo } from 'node:net';
@@ -18,6 +23,7 @@ import { configureApp } from '../src/configure-app';
 import { Clock } from '../src/common/clock';
 import { SessionEntity, UserEntity } from '../src/auth/auth.entities';
 import { hashPassword, tokenHash } from '../src/auth/auth.crypto';
+import { GoalSnapshotsService } from '../src/todos/goal-snapshots.service';
 
 const EMAIL = 'demo@habit-tracker.test';
 const PASSWORD = 'demo-passwort-lokal';
@@ -334,6 +340,15 @@ async function main() {
     done: false,
   });
 
+  // Die Datenbank stempelt createdAt mit der echten Zeit; im Betrieb
+  // entstünden diese Quests am ersten Tag, und der Wochenrückblick rechnet
+  // frühere Stände daraus zurück.
+  await db.query(
+    'update todos set "createdAt" = $1 where "userId" = $2',
+    [at(start, '08:00'), user.id],
+  );
+  const snapshots = app.get(GoalSnapshotsService);
+
   const reflections = [
     'Guter Tag, Laufen fiel leicht.',
     'Wenig geschafft, war müde. Morgen früher ins Bett.',
@@ -385,6 +400,8 @@ async function main() {
       });
       await api('PATCH', `/todos/${p.id}`, { completed: true });
     }
+    // Was der stündliche Job an diesem Tag festgehalten hätte.
+    await snapshots.record(user.id);
     if (!isToday && chance(0.55))
       await api('PUT', `/reflections/${date}`, {
         text: reflections[Math.abs(offset) % reflections.length],

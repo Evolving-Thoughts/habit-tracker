@@ -14,6 +14,7 @@ import {
   SHEET_QUERY,
   useMediaQuery,
 } from "../composables/useMediaQuery";
+import { useOverlay } from "../composables/useOverlayStack";
 
 /**
  * Every dialog of the app. From 40rem it is a card in the middle of the
@@ -82,6 +83,8 @@ function lockPageScroll(): () => void {
 function close(): void {
   if (!props.busy) emit("close");
 }
+// Back on the phone closes the top dialog, as the close button does.
+useOverlay(() => true, close, { dialog: true });
 function guardSubmission(event: Event): void {
   if (props.busy) {
     event.preventDefault();

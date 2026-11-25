@@ -130,6 +130,20 @@ describe("rowMenu", () => {
     ]);
   });
 
+  it("leads with Anderer Tag … for a past, still open appointment", () => {
+    const entries = rowMenu("Laufen", {
+      otherDay: { run, appointment: true, lead: true },
+      quickMoves: quickMoveEntries("Laufen", quickMoves(TODAY, { date: TODAY }), run),
+      edit: run,
+    });
+    expect(entries.map((entry) => [entry.label, entry.ariaLabel])).toEqual([
+      ["Anderer Tag …", "Laufen auf einen anderen Tag"],
+      ["Morgen", "Laufen auf morgen"],
+      ["Nächste Woche", "Laufen auf nächste Woche"],
+      ["Bearbeiten", undefined],
+    ]);
+  });
+
   it("holds every step while the row is busy", () => {
     const entries = rowMenu("Lesen", { edit: run, remove: { run } }, true);
     expect(entries.every((entry) => entry.disabled)).toBe(true);

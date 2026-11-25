@@ -20,15 +20,16 @@ export class StartTimerDto {
   @IsUUID()
   replaceTimerId?: string;
   /**
-   * Sent by the Fokus-Modus: start a Fokus-Sperre with the stopwatch when
-   * the quest or daily calls for one (docs/focus-block.md).
+   * Sent by the Fokus-Modus: Soft or Hardcore for the Fokus-Sperre that
+   * starts with the stopwatch when the rule calls for one
+   * (docs/focus-block.md). Without it the default from Einstellungen.
    */
   @IsOptional()
   @ValidateNested()
   @Type(() => FocusBlockRequestDto)
   focusBlock?: FocusBlockRequestDto;
 }
-/** POST /timers/:id/resume; the Fokus-Modus sends `focusBlock` as on start. */
+/** POST /timers/:id/resume; the Fokus-Modus may send `focusBlock` as on start. */
 export class ResumeTimerDto {
   @IsOptional()
   @ValidateNested()

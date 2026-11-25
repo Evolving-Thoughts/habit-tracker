@@ -113,8 +113,18 @@ describe("DayBestView", () => {
   it("explains the idea when there is nothing yet and invites today's line", async () => {
     serve([]);
     const { wrapper } = await render();
-    expect(wrapper.get(".empty-state").text()).toContain("Noch keine Zeile.");
+    // One calm card: title, one sentence and the field; no month to choose.
+    const card = wrapper.get(".day-best-view__today");
+    expect(card.get(".card-title").text()).toBe("Das Beste von heute");
+    expect(card.text()).toContain("nur für dich");
+    expect(wrapper.find(".empty-state").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("Monat wählen");
     const field = wrapper.get(".day-best-view__today textarea");
+    expect(field.attributes("placeholder")).toBe("Zum Beispiel: ein Gespräch");
+    // The label stays for screen readers; the card title names it.
+    expect(wrapper.get(".day-best-field__label").text()).toBe(
+      "Das Beste von heute",
+    );
     await field.setValue("Erster Eintrag");
     await field.trigger("keydown", { key: "Enter" });
     await flushPromises();

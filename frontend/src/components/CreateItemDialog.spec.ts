@@ -167,4 +167,14 @@ describe("CreateItemDialog", () => {
       wrapper.get<HTMLButtonElement>(".modal-dialog__close").element.disabled,
     ).toBe(false);
   });
+  it("starts both forms from a suggested title", async () => {
+    const wrapper = mount(CreateItemDialog, {
+      props: { kind: "habit", title: "Wasser trinken" },
+      attachTo: document.body,
+    });
+    await flushPromises();
+    expect(
+      (wrapper.find("input[name='title']").element as HTMLInputElement).value,
+    ).toBe("Wasser trinken");
+  });
 });

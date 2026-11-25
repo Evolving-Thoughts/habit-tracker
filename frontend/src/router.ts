@@ -1,21 +1,14 @@
-import type { Component } from "vue";
 import {
   createRouter,
   createWebHashHistory,
   type RouteLocationNormalized,
+  type RouteRecordSingleView,
   type Router,
   type RouterHistory,
 } from "vue-router";
-import CalendarView from "./views/CalendarView.vue";
-import CampaignsView from "./views/CampaignsView.vue";
-import DayBestView from "./views/DayBestView.vue";
-import FocusView from "./views/FocusView.vue";
-import HabitsView from "./views/HabitsView.vue";
-import PlanView from "./views/PlanView.vue";
-import QuestlogView from "./views/QuestlogView.vue";
-import SettingsView from "./views/SettingsView.vue";
+// Heute is the start view and stays alive (App.vue), so it comes with the
+// main bundle; every other view loads as its own chunk when first opened.
 import TodayView from "./views/TodayView.vue";
-import WeekReviewView from "./views/WeekReviewView.vue";
 import { PATHS, SECTION_QUERY, sectionId, type ViewName } from "./routes";
 import { getCurrentDateInTimeZone } from "./utils/date";
 import { holdScroll } from "./utils/scroll-hold";
@@ -27,7 +20,8 @@ export type AppView = {
   name: ViewName;
   path: string;
   label: string;
-  component: Component;
+  /** The view, or how to load it. */
+  component: RouteRecordSingleView["component"];
   /** Primary views are tabs on a phone; the rest sit behind Mehr. */
   primary: boolean;
   /** Starts a group in the top bar, set off by a little more space. */
@@ -54,7 +48,7 @@ export const VIEWS: readonly AppView[] = [
     name: "focus",
     path: PATHS.focus,
     label: "Fokus",
-    component: FocusView,
+    component: () => import("./views/FocusView.vue"),
     primary: false,
     immersive: true,
   },
@@ -62,7 +56,7 @@ export const VIEWS: readonly AppView[] = [
     name: "calendar",
     path: PATHS.calendar,
     label: "Kalender",
-    component: CalendarView,
+    component: () => import("./views/CalendarView.vue"),
     primary: true,
     groupStart: true,
   },
@@ -70,21 +64,21 @@ export const VIEWS: readonly AppView[] = [
     name: "plan",
     path: PATHS.plan,
     label: "Plan",
-    component: PlanView,
+    component: () => import("./views/PlanView.vue"),
     primary: false,
   },
   {
     name: "questlog",
     path: PATHS.questlog,
     label: "Questlog",
-    component: QuestlogView,
+    component: () => import("./views/QuestlogView.vue"),
     primary: true,
   },
   {
     name: "campaigns",
     path: PATHS.campaigns,
     label: "Kampagnen",
-    component: CampaignsView,
+    component: () => import("./views/CampaignsView.vue"),
     primary: true,
     groupStart: true,
   },
@@ -92,14 +86,14 @@ export const VIEWS: readonly AppView[] = [
     name: "dailies",
     path: PATHS.dailies,
     label: "Dailies",
-    component: HabitsView,
+    component: () => import("./views/HabitsView.vue"),
     primary: false,
   },
   {
     name: "review",
     path: PATHS.review,
     label: "Wochenrückblick",
-    component: WeekReviewView,
+    component: () => import("./views/WeekReviewView.vue"),
     primary: false,
     groupStart: true,
   },
@@ -107,14 +101,14 @@ export const VIEWS: readonly AppView[] = [
     name: "best",
     path: PATHS.best,
     label: "Das Beste",
-    component: DayBestView,
+    component: () => import("./views/DayBestView.vue"),
     primary: false,
   },
   {
     name: "settings",
     path: PATHS.settings,
     label: "Einstellungen",
-    component: SettingsView,
+    component: () => import("./views/SettingsView.vue"),
     primary: false,
   },
 ];
@@ -149,6 +143,18 @@ function sectionTop(to: RouteLocationNormalized): number | null {
   const covered = sticky ? sticky.getBoundingClientRect().height : 0;
   return (
     section.getBoundingClientRect().top + window.scrollY - margin - covered
+  );
+}
+
+const RELOADED_KEY = "router:chunk-reload";
+
+/** A view's chunk failed to load (Chrome, Firefox and Safari word it apart). */
+export function isChunkError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /dynamically imported module|Importing a module script failed/i.test(
+      error.message,
+    )
   );
 }
 
@@ -199,6 +205,21 @@ export function createAppRouter(
       query: planQueryFromWeek(to.query.woche, getCurrentDateInTimeZone()),
       replace: true,
     };
+  });
+  // After a deploy an open tab may ask for a view chunk the server no longer
+  // has; loading the page anew at that view fetches the current build. Once
+  // per view and tab, so a server that is down does not reload forever.
+  router.onError((error: unknown, to) => {
+    if (!isChunkError(error)) return;
+    const href = router.resolve(to).href;
+    try {
+      if (sessionStorage.getItem(RELOADED_KEY) === href) return;
+      sessionStorage.setItem(RELOADED_KEY, href);
+    } catch {
+      return;
+    }
+    window.history.replaceState(window.history.state, "", href);
+    window.location.reload();
   });
   router.afterEach((to) => {
     document.title = to.meta.title

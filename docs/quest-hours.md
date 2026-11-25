@@ -46,9 +46,22 @@ number, never in a warning colour.
   any other key with 400; the column is `varchar(16)` without a check, so
   the list lives in code only.
 - **Colour of a category:** `categories.color` (nullable, migration
-  `CategoryColor`), a key from the same colours. Null lets the name pick one
-  (see below). `POST /categories` and `PATCH /categories/:id` take
-  `color` (a key or null); every category response carries it.
+  `CategoryColor`), a key from the same colours. `POST /categories` without
+  a colour stores the first colour of `AUTO_COLOR_ORDER` no category of the
+  user shows yet (`colorForNewCategory` in `categories/category-colors.ts`;
+  the order indigo, ochre, plum, walnut, navy, berry, pine, teal keeps each
+  next pick as far from the earlier ones as the core set allows under
+  protanopia and deuteranopia, checked in the frontend's `palette.spec.ts`;
+  the frontend's `utils/category-mark.ts` holds the same list; once all eight
+  are used, the colour its name picks), so every way of creating one (the
+  settings, the editor's "Kategorie" field, a dictated or typed new name) gets
+  a free colour. `PATCH /categories/:id` takes `color` (a key, or null for
+  "Automatisch"). Older categories may have none stored:
+  `shownCategoryColors` resolves them, in the order they were created, to
+  the colour their name picks (FNV-1a, as in the frontend) unless another
+  category already shows it, then to the first free one in that order. Every
+  category response carries the shown colour as `color` and
+  `colorChosen` (false while none is stored).
 - The three campaign fields belong to a todo without parent. Setting one on a
   todo with a parent is a 400, both on create and update; moving a campaign
   below another todo clears them (`TodosService.update`). The database holds
@@ -144,13 +157,17 @@ lists and Logbuch, quest hours, the week review) carries
 `{ id, title, color, icon }`. Answers that name a category by
 `categoryName` (Heute, the calendar's lists) also carry `categoryColor`,
 and the Perfect Week rows carry `color`; `categories/category-lookup.ts`
-resolves both from one read of the user's categories.
+and `history/perfect-week.ts` resolve both from one read of the user's
+categories with `shownCategoryColors`, so a category shows the same colour
+everywhere.
 
 ## Frontend
 
 - `utils/category-mark.ts` decides every colour: `categoryMark(name, color)`
-  takes a category's stored colour, else one of the eight core colours from
-  the name (FNV-1a); `campaignMark` does the same for a campaign and its
+  takes the colour the server sends for a category, else one of the eight
+  core colours from the name (FNV-1a); `newCategoryColor` and
+  `automaticCategoryColor` preview what the server will pick for a new name
+  or for "Automatisch"; `campaignMark` does the same for a campaign and its
   title. The colours are tokens in `style.css` (`--color-mark-<key>`), none
   the action orange. The core eight stay apart under protanopia,
   deuteranopia and tritanopia in both themes; `src/palette.spec.ts`
@@ -179,7 +196,20 @@ resolves both from one read of the user's categories.
   (`QuestTrend.vue`, a small SVG named "Letzte 8 Wochen: ab 28.09. 2 Std., …,
   diese Woche 4 Std."), the total and "Abschließen" (on a completed one
   "Wieder öffnen"; it asks like the ring, see `todo-hierarchy.md`, with undo
-  in the toast). After the active tiles a dashed tile "Neue Kampagne" opens
+  in the toast). Under the title a tile says how far the campaign is: "4 von
+  8 Quests erledigt" with a flat ink bar (the server's progress, the same as
+  on its page), then "Als Nächstes: <title> · heute" with a ▶ for the
+  stopwatch (`nextQuest` in `utils/campaign-next.ts`, among the open
+  quests that can be worked on: planned for today, the earliest time first;
+  then left over from an earlier day, the earliest first; then the nearest
+  later day; then the campaign's page order; the day is "heute", "morgen", a
+  short date or nothing). A daily goal the campaign links that still runs
+  (not reached, period not over: `runningGoal`) counts as open: with every
+  quest done the tile says "Noch offen: Laufen gehen 9 von 24" instead of
+  "Alle Quests erledigt.". "Abschließen" stands on the tile only once
+  nothing is open (`readyToComplete`, the same rule for the campaign's
+  detail card); until then it waits in the "…" beside "Bearbeiten". A count of
+  zero in the strip stays, in muted ink. After the active tiles a dashed tile "Neue Kampagne" opens
   the campaign form, as the plus button does there. The overview has no tree:
   a campaign's quests show on its own page. A tile opens the campaign in
   the same view (`#/kampagnen?kampagne=<id>`, so Back closes it): its own
@@ -190,7 +220,9 @@ resolves both from one read of the user's categories.
   which offers its switches only once it has two days to draw), "Bearbeiten"
   and "Abschließen" side by side, "…" with the campaign's own actions, and
   the quests below it as the tree (dragging a row onto another re-parents
-  it). The campaign is the card, not a row of the tree. Inside a campaign the
+  it): open quests first in their order, the done ones (each with what lies
+  below it) folded under "N erledigt", as in the Questlog. An opened
+  campaign is the page: "Alle Kampagnen" above, its title the page's h1. The campaign is the card, not a row of the tree. Inside a campaign the
   plus button (and N) creates a quest below it, so its Warum and category are
   taken over.
 - The overall goal is edited in `QuestTargetForm.vue`: hours and minutes

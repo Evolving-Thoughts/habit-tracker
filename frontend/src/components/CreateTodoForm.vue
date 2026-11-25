@@ -43,6 +43,8 @@ const props = defineProps<{
   campaign?: boolean;
   /** Opened by a long press on Plus: dictation of the title starts at once. */
   dictate?: boolean;
+  /** A suggested title to start from (a starter of Heute's welcome). */
+  initialTitle?: string;
 }>();
 
 const emit = defineEmits<{
@@ -52,7 +54,7 @@ const emit = defineEmits<{
   cancel: [];
 }>();
 
-const title = ref("");
+const title = ref(props.initialTitle ?? "");
 const parentId = ref<number | null>(props.parent?.id ?? null);
 /** What the new quest inherits from the quest it goes below. */
 const inheritedWhy = ref<InheritedWhy | null>(
@@ -396,7 +398,7 @@ async function submit(): Promise<void> {
                 type="number"
                 min="1"
                 step="1"
-                placeholder="30"
+                placeholder="z. B. 30"
                 @input="touched.duration = true"
               />
             </label>

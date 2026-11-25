@@ -1,25 +1,27 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, useId } from "vue";
+import { computed, onMounted, ref, useId } from "vue";
 import { useFocusBlock } from "../composables/useFocusBlock";
-import type {
-  InstalledApp,
-  FocusBlockNativeStatus,
-} from "../native/focus-block-plugin";
+import type { InstalledApp } from "../native/focus-block-plugin";
 import type {
   FocusBlockMode,
   FocusEntry,
   FocusList,
   FocusListMode,
+  FocusTrigger,
 } from "../types/focus-block";
 import { FIXED_ALLOWED_APPS } from "../utils/focus-block";
 import AppIcon from "./AppIcon.vue";
+import FocusBlockSetupHint from "./FocusBlockSetupHint.vue";
 import ModalDialog from "./ModalDialog.vue";
 
 /**
- * Einstellungen › Fokus-Sperre: when the Fokus-Modus blocks, Soft or
- * Hardcore by default, which list decides, the Sperrliste and the
- * Erlaubt-Liste, and on Android the two permissions the phone needs. The
- * lists live on the server; the Android app reads them from there.
+ * Einstellungen › Fokus-Sperre: when a running stopwatch blocks (always,
+ * or from a Soll on), Soft or Hardcore by default, which list decides, the
+ * Sperrliste and the Erlaubt-Liste, and the two permissions the phone
+ * needs. Switched off, only the switch and its sentence stand. Settings and
+ * lists live on the server, so they can be edited on every device; only the
+ * Android app blocks, so only there are apps picked and the device set up,
+ * and a browser says so in one sentence instead.
  */
 const focus = useFocusBlock();
 const id = useId();
@@ -60,6 +62,18 @@ const MODES: { value: FocusBlockMode; label: string }[] = [
   { value: "soft", label: "Soft" },
   { value: "hardcore", label: "Hardcore" },
 ];
+const TRIGGERS: { value: FocusTrigger; label: string; text: string }[] = [
+  {
+    value: "stopwatch",
+    label: "Solange die Stoppuhr läuft",
+    text: "Jede Stoppuhr sperrt, egal wo du sie startest: Heute, Fokus-Modus, Plan, Questlog oder Benachrichtigung. Ein Soll braucht es nicht.",
+  },
+  {
+    value: "threshold",
+    label: "Erst ab einem Soll",
+    text: "Nur eine Stoppuhr mit einem Soll ab so vielen Minuten sperrt.",
+  },
+];
 const LIST_MODES: { value: FocusListMode; label: string; text: string }[] = [
   {
     value: "blocklist",
@@ -97,35 +111,12 @@ function canAdd(list: FocusList): boolean {
   return !hardcoreActive.value || list === "block";
 }
 
-/* Android: the two permissions and the app picker. */
-const status = ref<FocusBlockNativeStatus | null>(null);
-const statusError = ref("");
-async function readStatus(): Promise<void> {
-  if (!native) return;
-  try {
-    status.value = await native.getStatus();
-    statusError.value = "";
-  } catch {
-    statusError.value = "Der Stand auf dem Handy ließ sich nicht lesen.";
-  }
-}
-async function allowVpn(): Promise<void> {
-  if (!native) return;
-  try {
-    await native.requestVpnPermission();
-  } finally {
-    await readStatus();
-  }
-}
-/* Back from Android's settings: read the stand again. */
-function onReturn(): void {
-  if (document.visibilityState !== "hidden") void readStatus();
-}
-onMounted(() => {
-  void readStatus();
-  document.addEventListener("visibilitychange", onReturn);
-});
-onUnmounted(() => document.removeEventListener("visibilitychange", onReturn));
+/*
+ * Android: the two permissions (read by the controller, again whenever the
+ * app comes back from Android's settings) and the app picker.
+ */
+const status = computed(() => focus?.device.value ?? null);
+onMounted(() => void focus?.readDevice());
 
 const pickerList = ref<FocusList | null>(null);
 const apps = ref<InstalledApp[]>([]);
@@ -178,15 +169,15 @@ async function pick(app: InstalledApp): Promise<void> {
 <template>
   <div class="focus-settings">
     <p class="focus-settings__text">
-      Während du im Fokus-Modus an einer Quest arbeitest, sperrt die
-      Android-App Apps und Websites, die ablenken. Die Listen liegen auf deinem
-      Server; nur deine Geräte lesen sie.
+      Während eine Stoppuhr läuft, sperrt die Android-App Apps und Websites,
+      die ablenken. Einstellungen und Listen liegen auf deinem Server; nur
+      deine Geräte lesen sie.
     </p>
 
     <template v-if="settings">
       <div class="focus-settings__row">
         <span :id="`${id}-enabled`" class="focus-settings__label">
-          Beim Fokus sperren
+          Bei der Arbeit sperren
         </span>
         <button
           class="switch"
@@ -204,285 +195,315 @@ async function pick(app: InstalledApp): Promise<void> {
           </span>
         </button>
       </div>
-      <label class="field focus-settings__minutes">
-        ab einem Soll von (Minuten)
-        <input
-          type="number"
-          name="focusThreshold"
-          min="1"
-          max="600"
-          step="1"
-          inputmode="numeric"
-          :value="shownMinutes"
-          :disabled="!settings.enabled"
-          :aria-invalid="!!minutesError"
-          @change="onMinutes"
-        />
-      </label>
-      <p v-if="minutesError" class="form-error" role="alert">
-        {{ minutesError }}
-      </p>
       <p :id="`${id}-enabled-text`" class="focus-settings__text">
-        Gilt, wenn du die Stoppuhr im Fokus-Modus startest, für Quests und
-        Dailies auf „Standard“. Im Bearbeiten-Dialog lässt sich jede auf „Immer“
-        oder „Nie“ stellen.
+        Gilt für Quests und Dailies auf „Standard“. Im Bearbeiten-Dialog lässt
+        sich jede auf „Immer“ oder „Nie“ stellen.
       </p>
 
-      <fieldset class="focus-settings__group">
-        <legend class="focus-settings__label">Art der Sperre</legend>
-        <div class="segmented" role="radiogroup" aria-label="Art der Sperre">
-          <label v-for="mode in MODES" :key="mode.value">
+      <!-- Switched off, only the switch and its sentence stand; the values wait on the server. -->
+      <template v-if="settings.enabled">
+        <FocusBlockSetupHint where="settings" />
+
+        <fieldset class="focus-settings__group">
+          <legend class="focus-settings__label">Wann gesperrt wird</legend>
+          <label
+            v-for="trigger in TRIGGERS"
+            :key="trigger.value"
+            class="focus-settings__choice"
+          >
             <input
               type="radio"
-              :name="`${id}-mode`"
-              :value="mode.value"
-              :checked="settings.mode === mode.value"
+              :name="`${id}-trigger`"
+              :value="trigger.value"
+              :checked="settings.trigger === trigger.value"
               :disabled="focus?.busy.value"
-              :data-test="`focus-mode-${mode.value}`"
-              @change="save({ mode: mode.value })"
+              :data-test="`focus-trigger-${trigger.value}`"
+              @change="save({ trigger: trigger.value })"
             />
-            {{ mode.label }}
-          </label>
-        </div>
-        <p class="focus-settings__text">
-          <template v-if="settings.mode === 'soft'">
-            Soft: Beim Beenden der Stoppuhr endet die Sperre; wer den
-            Fokus-Modus verlässt, wird gefragt „Sperre aufheben?“.
-          </template>
-          <template v-else>
-            Hardcore: Die Sperre hält, bis die Quest erledigt ist oder die
-            Stoppuhr das Soll erreicht. Pausieren hebt sie nicht auf, und es gibt
-            keinen Knopf zum Aufheben.
-          </template>
-          Im Fokus-Modus lässt sich die Art vor dem Start mit einem Tipp ändern.
-        </p>
-      </fieldset>
-
-      <fieldset class="focus-settings__group">
-        <legend class="focus-settings__label">Was gesperrt wird</legend>
-        <label
-          v-for="mode in LIST_MODES"
-          :key="mode.value"
-          class="focus-settings__choice"
-        >
-          <input
-            type="radio"
-            :name="`${id}-list-mode`"
-            :value="mode.value"
-            :checked="settings.listMode === mode.value"
-            :disabled="focus?.busy.value"
-            :data-test="`focus-list-mode-${mode.value}`"
-            @change="save({ listMode: mode.value })"
-          />
-          <span>
-            <strong>{{ mode.label }}</strong>
-            <small>{{ mode.text }}</small>
-          </span>
-        </label>
-        <p class="focus-settings__text">
-          Gilt ab der nächsten Sperre; eine laufende behält ihre Art.
-        </p>
-      </fieldset>
-
-      <p v-if="hardcoreActive" class="focus-settings__note" role="status">
-        Eine Hardcore-Sperre läuft: Bis sie endet, lassen sich die Listen nur
-        strenger machen.
-      </p>
-
-      <section
-        v-for="list in LISTS"
-        :key="list"
-        class="focus-settings__list"
-        :aria-labelledby="`${id}-${list}`"
-        :data-test="`focus-list-${list}`"
-      >
-        <h3 :id="`${id}-${list}`" class="focus-settings__list-title">
-          {{ LIST_NAMES[list] }}
-        </h3>
-        <ul class="focus-settings__entries">
-          <li
-            v-for="entry in state?.lists[list] ?? []"
-            :key="entry.id"
-            class="focus-settings__entry"
-          >
-            <span class="focus-settings__entry-text">
-              <strong>{{ entryName(entry) }}</strong>
-              <small>{{
-                entry.kind === "app"
-                  ? `App · ${entry.value}`
-                  : "Website mit allen Subdomains"
-              }}</small>
+            <span>
+              <strong>{{ trigger.label }}</strong>
+              <small>{{ trigger.text }}</small>
             </span>
-            <button
-              class="btn btn--icon btn--quiet"
-              type="button"
-              :aria-label="`${entryName(entry)} von der ${LIST_NAMES[list]} nehmen`"
-              :disabled="focus?.busy.value || !canRemove()"
-              @click="focus?.removeEntry(entry.id)"
-            >
-              <AppIcon name="trash" />
-            </button>
-          </li>
-          <template v-if="list === 'allow'">
-            <li
-              v-for="fixed in FIXED_ALLOWED_APPS"
-              :key="fixed"
-              class="focus-settings__entry focus-settings__entry--fixed"
-            >
-              <span class="focus-settings__entry-text">
-                <strong>{{ fixed }}</strong>
-                <small>Immer erlaubt</small>
-              </span>
-            </li>
-            <li
-              v-for="domain in state?.fixedDomains ?? []"
-              :key="domain"
-              class="focus-settings__entry focus-settings__entry--fixed"
-            >
-              <span class="focus-settings__entry-text">
-                <strong>{{ domain }}</strong>
-                <small>Immer erlaubt · Website dieser App</small>
-              </span>
-            </li>
-          </template>
-          <li
-            v-if="list === 'block' && !state?.lists.block.length"
-            class="focus-settings__empty"
-          >
-            Noch leer.
-          </li>
-        </ul>
-        <form
-          class="focus-settings__add"
-          @submit.prevent="addDomain(list)"
-        >
-          <label class="field">
-            Website
-            <input
-              v-model="domains[list]"
-              :name="`focus-domain-${list}`"
-              type="text"
-              inputmode="url"
-              autocomplete="off"
-              autocapitalize="off"
-              spellcheck="false"
-              placeholder="youtube.com"
-              :disabled="!canAdd(list)"
-            />
           </label>
+          <template v-if="settings.trigger === 'threshold'">
+            <label class="field focus-settings__minutes">
+              ab einem Soll von (Minuten)
+              <input
+                type="number"
+                name="focusThreshold"
+                min="1"
+                max="600"
+                step="1"
+                inputmode="numeric"
+                :value="shownMinutes"
+                :aria-invalid="!!minutesError"
+                @change="onMinutes"
+              />
+            </label>
+            <p v-if="minutesError" class="form-error" role="alert">
+              {{ minutesError }}
+            </p>
+          </template>
+        </fieldset>
+
+        <fieldset class="focus-settings__group">
+          <legend class="focus-settings__label">Art der Sperre</legend>
+          <div class="segmented" role="radiogroup" aria-label="Art der Sperre">
+            <label v-for="mode in MODES" :key="mode.value">
+              <input
+                type="radio"
+                :name="`${id}-mode`"
+                :value="mode.value"
+                :checked="settings.mode === mode.value"
+                :disabled="focus?.busy.value"
+                :data-test="`focus-mode-${mode.value}`"
+                @change="save({ mode: mode.value })"
+              />
+              {{ mode.label }}
+            </label>
+          </div>
+          <p class="focus-settings__text">
+            <template v-if="settings.mode === 'soft'">
+              Soft: Pausierst oder beendest du die Stoppuhr, endet die Sperre;
+              beim Fortsetzen beginnt sie neu. Aufheben lässt sie sich jederzeit
+              nach der Frage „Sperre aufheben?“.
+            </template>
+            <template v-else-if="settings.trigger === 'stopwatch'">
+              Hardcore: Die Sperre hält auch in Pausen, bis die Quest erledigt
+              ist oder du die Stoppuhr beendest. Es gibt keinen Knopf zum
+              Aufheben.
+            </template>
+            <template v-else>
+              Hardcore: Die Sperre hält, bis die Quest erledigt ist oder die
+              Stoppuhr das Soll erreicht, auch in Pausen und nach dem Beenden. Es
+              gibt keinen Knopf zum Aufheben.
+            </template>
+            Im Fokus-Modus lässt sich die Art vor dem Start mit einem Tipp ändern.
+          </p>
+        </fieldset>
+
+        <fieldset class="focus-settings__group">
+          <legend class="focus-settings__label">Was gesperrt wird</legend>
+          <label
+            v-for="mode in LIST_MODES"
+            :key="mode.value"
+            class="focus-settings__choice"
+          >
+            <input
+              type="radio"
+              :name="`${id}-list-mode`"
+              :value="mode.value"
+              :checked="settings.listMode === mode.value"
+              :disabled="focus?.busy.value"
+              :data-test="`focus-list-mode-${mode.value}`"
+              @change="save({ listMode: mode.value })"
+            />
+            <span>
+              <strong>{{ mode.label }}</strong>
+              <small>{{ mode.text }}</small>
+            </span>
+          </label>
+          <p class="focus-settings__text">
+            Gilt ab der nächsten Sperre; eine laufende behält ihre Art.
+          </p>
+        </fieldset>
+
+        <p v-if="hardcoreActive" class="focus-settings__note" role="status">
+          Eine Hardcore-Sperre läuft: Bis sie endet, lassen sich die Listen nur
+          strenger machen.
+        </p>
+
+        <section
+          v-for="list in LISTS"
+          :key="list"
+          class="focus-settings__list"
+          :aria-labelledby="`${id}-${list}`"
+          :data-test="`focus-list-${list}`"
+        >
+          <h3 :id="`${id}-${list}`" class="focus-settings__list-title">
+            {{ LIST_NAMES[list] }}
+          </h3>
+          <ul class="focus-settings__entries">
+            <li
+              v-for="entry in state?.lists[list] ?? []"
+              :key="entry.id"
+              class="focus-settings__entry"
+            >
+              <span class="focus-settings__entry-text">
+                <strong>{{ entryName(entry) }}</strong>
+                <small>{{
+                  entry.kind === "app"
+                    ? `App · ${entry.value}`
+                    : "Website mit allen Subdomains"
+                }}</small>
+              </span>
+              <button
+                class="btn btn--icon btn--quiet"
+                type="button"
+                :aria-label="`${entryName(entry)} von der ${LIST_NAMES[list]} nehmen`"
+                :disabled="focus?.busy.value || !canRemove()"
+                @click="focus?.removeEntry(entry.id)"
+              >
+                <AppIcon name="trash" />
+              </button>
+            </li>
+            <template v-if="list === 'allow'">
+              <li
+                v-for="fixed in FIXED_ALLOWED_APPS"
+                :key="fixed"
+                class="focus-settings__entry focus-settings__entry--fixed"
+              >
+                <span class="focus-settings__entry-text">
+                  <strong>{{ fixed }}</strong>
+                  <small>Immer erlaubt</small>
+                </span>
+              </li>
+              <li
+                v-for="domain in state?.fixedDomains ?? []"
+                :key="domain"
+                class="focus-settings__entry focus-settings__entry--fixed"
+              >
+                <span class="focus-settings__entry-text">
+                  <strong>{{ domain }}</strong>
+                  <small>Immer erlaubt · Website dieser App</small>
+                </span>
+              </li>
+            </template>
+            <li
+              v-if="list === 'block' && !state?.lists.block.length"
+              class="focus-settings__empty"
+            >
+              Noch leer.
+            </li>
+          </ul>
+          <form
+            class="focus-settings__add"
+            @submit.prevent="addDomain(list)"
+          >
+            <label class="field">
+              Website
+              <input
+                v-model="domains[list]"
+                :name="`focus-domain-${list}`"
+                type="text"
+                inputmode="url"
+                autocomplete="off"
+                autocapitalize="off"
+                spellcheck="false"
+                :placeholder="list === 'allow' ? 'wikipedia.org' : 'youtube.com'"
+                :disabled="!canAdd(list)"
+              />
+            </label>
+            <button
+              class="btn btn--ground"
+              type="submit"
+              :disabled="focus?.busy.value || !canAdd(list) || !domains[list].trim()"
+            >
+              <AppIcon name="plus" />
+              Hinzufügen
+            </button>
+          </form>
           <button
-            class="btn btn--ground"
-            type="submit"
-            :disabled="focus?.busy.value || !canAdd(list) || !domains[list].trim()"
+            v-if="native"
+            class="btn btn--ground focus-settings__app"
+            type="button"
+            :disabled="focus?.busy.value || !canAdd(list)"
+            @click="openPicker(list)"
           >
             <AppIcon name="plus" />
-            Hinzufügen
+            App hinzufügen
           </button>
-        </form>
-        <button
-          v-if="native"
-          class="btn btn--ground focus-settings__app"
-          type="button"
-          :disabled="focus?.busy.value || !canAdd(list)"
-          @click="openPicker(list)"
-        >
-          <AppIcon name="plus" />
-          App hinzufügen
-        </button>
-        <p v-else class="focus-settings__text">
-          Apps fügst du in der Android-App hinzu; sie liest dafür die Liste der
-          installierten Apps.
+        </section>
+
+        <!-- A browser cannot block: one honest sentence instead of the device setup. -->
+        <p v-if="!native" class="focus-settings__text" data-test="focus-web">
+          Gesperrt wird auf dem Android-Handy: Dort richtest du in der App die
+          Bedienungshilfe und das VPN ein und wählst Apps für die Listen. Eine
+          Stoppuhr, die du hier startest, sperrt dort mit.
         </p>
-      </section>
+        <section
+          v-else
+          class="focus-settings__device"
+          :aria-labelledby="`${id}-device`"
+          data-test="focus-device"
+        >
+          <h3 :id="`${id}-device`" class="focus-settings__list-title">
+            Auf diesem Gerät
+          </h3>
+          <ul class="focus-settings__checklist">
+            <li class="focus-settings__step">
+              <span class="focus-settings__entry-text">
+                <strong>Bedienungshilfe aktivieren</strong>
+                <small>
+                  Damit erkennt die App, welche App gerade vorne ist, und legt bei
+                  einer gesperrten ihren Sperrbildschirm darüber. Sie liest keine
+                  Inhalte von Bildschirmen. Ist der Schalter ausgegraut (Android 13
+                  und neuer): in den App-Infos von Habit Tracker über ⋮
+                  „Eingeschränkte Einstellungen zulassen“ tippen, dann noch einmal.
+                </small>
+                <span class="focus-settings__state">
+                  <AppIcon v-if="status?.accessibilityEnabled" name="check" />
+                  {{
+                    status === null
+                      ? "Stand unbekannt"
+                      : status.accessibilityEnabled
+                        ? "Eingeschaltet"
+                        : "Noch aus"
+                  }}
+                </span>
+              </span>
+              <button
+                class="btn btn--ground"
+                type="button"
+                @click="focus?.openAccessibilitySettings()"
+              >
+                Bedienungshilfen öffnen
+              </button>
+            </li>
+            <li class="focus-settings__step">
+              <span class="focus-settings__entry-text">
+                <strong>VPN für Websites erlauben</strong>
+                <small>
+                  Android fragt einmal, ob die App ein VPN einrichten darf. Es ist
+                  ein lokales VPN nur für die Namensauflösung (DNS) in Browsern:
+                  Gesperrte Websites lösen nicht auf, alle anderen Anfragen gehen
+                  an den DNS-Server deines Netzes wie bisher. Es läuft nur während
+                  einer Sperre, und nichts wird mitgeschnitten.
+                </small>
+                <span class="focus-settings__state">
+                  <AppIcon v-if="status?.vpnPrepared" name="check" />
+                  {{
+                    status === null
+                      ? "Stand unbekannt"
+                      : status.vpnPrepared
+                        ? "Erlaubt"
+                        : "Noch nicht erlaubt"
+                  }}
+                </span>
+              </span>
+              <button
+                v-if="!status?.vpnPrepared"
+                class="btn btn--ground"
+                type="button"
+                @click="focus?.allowVpn()"
+              >
+                VPN erlauben
+              </button>
+            </li>
+          </ul>
+          <p class="focus-settings__text">
+            Ehrlich gesagt: Die Sperre ist eine Hürde gegen Ablenkung, kein Schloss.
+            Wer die Bedienungshilfe ausschaltet, das VPN trennt oder die App
+            deinstalliert, hebt sie auf, auch im Hardcore-Modus.
+          </p>
+        </section>
+      </template>
     </template>
 
     <p v-if="focus?.error.value" class="form-error" role="alert">
       {{ focus.error.value }}
     </p>
     <p class="focus-settings__saved" role="status">{{ saved }}</p>
-
-    <section
-      class="focus-settings__device"
-      :aria-labelledby="`${id}-device`"
-      data-test="focus-device"
-    >
-      <h3 :id="`${id}-device`" class="focus-settings__list-title">
-        Auf diesem Gerät
-      </h3>
-      <template v-if="native">
-        <ul class="focus-settings__checklist">
-          <li class="focus-settings__step">
-            <span class="focus-settings__entry-text">
-              <strong>Bedienungshilfe aktivieren</strong>
-              <small>
-                Damit erkennt die App, welche App gerade vorne ist, und legt bei
-                einer gesperrten ihren Sperrbildschirm darüber. Sie liest keine
-                Inhalte von Bildschirmen.
-              </small>
-              <span class="focus-settings__state">
-                <AppIcon v-if="status?.accessibilityEnabled" name="check" />
-                {{
-                  status === null
-                    ? "Stand unbekannt"
-                    : status.accessibilityEnabled
-                      ? "Eingeschaltet"
-                      : "Noch aus"
-                }}
-              </span>
-            </span>
-            <button
-              class="btn btn--ground"
-              type="button"
-              @click="native.openAccessibilitySettings()"
-            >
-              Bedienungshilfen öffnen
-            </button>
-          </li>
-          <li class="focus-settings__step">
-            <span class="focus-settings__entry-text">
-              <strong>VPN für Websites erlauben</strong>
-              <small>
-                Android fragt einmal, ob die App ein VPN einrichten darf. Es ist
-                ein lokales VPN nur für die Namensauflösung (DNS) in Browsern:
-                Gesperrte Websites lösen nicht auf, alle anderen Anfragen gehen
-                an den DNS-Server deines Netzes wie bisher. Es läuft nur während
-                einer Sperre, und nichts wird mitgeschnitten.
-              </small>
-              <span class="focus-settings__state">
-                <AppIcon v-if="status?.vpnPrepared" name="check" />
-                {{
-                  status === null
-                    ? "Stand unbekannt"
-                    : status.vpnPrepared
-                      ? "Erlaubt"
-                      : "Noch nicht erlaubt"
-                }}
-              </span>
-            </span>
-            <button
-              v-if="!status?.vpnPrepared"
-              class="btn btn--ground"
-              type="button"
-              @click="allowVpn"
-            >
-              VPN erlauben
-            </button>
-          </li>
-        </ul>
-        <p v-if="statusError" class="form-error" role="alert">
-          {{ statusError }}
-        </p>
-      </template>
-      <p v-else class="focus-settings__text">
-        Gesperrt wird zurzeit in der Android-App. Hier legst du fest, wann und
-        was; eine Browser-Erweiterung für den PC kommt später.
-      </p>
-      <p class="focus-settings__text">
-        Ehrlich gesagt: Die Sperre ist eine Hürde gegen Ablenkung, kein Schloss.
-        Wer die Bedienungshilfe ausschaltet, das VPN trennt oder die App
-        deinstalliert, hebt sie auf, auch im Hardcore-Modus.
-      </p>
-    </section>
 
     <ModalDialog
       v-if="pickerList"

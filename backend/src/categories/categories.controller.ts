@@ -19,13 +19,19 @@ import {
   UpdateCategoryDto,
 } from './category.dto';
 import { CategoryEntity } from './category.entity';
+import { shownCategoryColors } from './category-colors';
 
-const response = ({
-  id,
-  name,
-  weeklyTarget,
-  color,
-}: CategoryEntity): CategoryResponse => ({ id, name, weeklyTarget, color });
+/** Each category with the colour it shows, which depends on the others. */
+function responses(categories: CategoryEntity[]): CategoryResponse[] {
+  const shown = shownCategoryColors(categories);
+  return categories.map(({ id, name, weeklyTarget, color }) => ({
+    id,
+    name,
+    weeklyTarget,
+    color: shown.get(id)!,
+    colorChosen: color !== null,
+  }));
+}
 
 @Controller('categories')
 export class CategoriesController {
@@ -33,7 +39,14 @@ export class CategoriesController {
 
   @Get()
   async findAll(@CurrentUser() user: AuthUser): Promise<CategoryResponse[]> {
-    return (await this.categories.findAll(user.id)).map(response);
+    return responses(await this.categories.findAll(user.id));
+  }
+
+  /** One category as `findAll` shows it, after a write. */
+  private async one(userId: string, id: number): Promise<CategoryResponse> {
+    return responses(await this.categories.findAll(userId)).find(
+      (category) => category.id === id,
+    )!;
   }
 
   @Post()
@@ -41,9 +54,12 @@ export class CategoriesController {
     @CurrentUser() user: AuthUser,
     @Body() dto: CategoryInputDto,
   ): Promise<CategoryResponse> {
-    return response(
-      await this.categories.create(user.id, dto.name, dto.color ?? null),
+    const created = await this.categories.create(
+      user.id,
+      dto.name,
+      dto.color ?? null,
     );
+    return this.one(user.id, created.id);
   }
 
   @Patch(':id')
@@ -52,7 +68,8 @@ export class CategoriesController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateCategoryDto,
   ): Promise<CategoryResponse> {
-    return response(await this.categories.update(user.id, id, dto));
+    const updated = await this.categories.update(user.id, id, dto);
+    return this.one(user.id, updated.id);
   }
 
   @Delete(':id')

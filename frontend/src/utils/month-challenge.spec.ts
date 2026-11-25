@@ -5,7 +5,9 @@ import {
   barText,
   canPrepareNext,
   daysLeftInMonth,
+  emptyLine,
   monthName,
+  offerNextFirst,
   monthTitle,
   nextMonthKey,
   progressLine,
@@ -118,5 +120,30 @@ describe("month challenge words", () => {
     expect(canPrepareNext("2026-11-16")).toBe(true);
     expect(daysLeftInMonth("2026-11-23")).toBe(8);
     expect(daysLeftInMonth("2028-02-01")).toBe(29);
+  });
+
+  it("offers next month first from the 16th, if it is still free", () => {
+    expect(offerNextFirst("2026-11-15", false)).toBe(false);
+    expect(offerNextFirst("2026-11-16", false)).toBe(true);
+    expect(offerNextFirst("2026-11-30", false)).toBe(true);
+    expect(offerNextFirst("2026-11-20", true)).toBe(false);
+  });
+
+  it("words the empty card by the days left, today included", () => {
+    const lead = "Ein Daily, einen ganzen Monat lang in seinem Rhythmus.";
+    expect(emptyLine("2026-11-15", false)).toBe(`${lead} Wähle eins für November.`);
+    expect(emptyLine("2026-11-16", true)).toBe(
+      `${lead} Der November hat nur noch 15 Tage – wähle eins für Dezember.`,
+    );
+    expect(emptyLine("2026-11-25", true)).toBe(
+      `${lead} Der November hat nur noch 6 Tage – wähle eins für Dezember.`,
+    );
+    // The last day of the month is one day; December leads to January.
+    expect(emptyLine("2026-12-31", true)).toBe(
+      `${lead} Der Dezember hat nur noch 1 Tag – wähle eins für Januar.`,
+    );
+    expect(emptyLine("2028-02-16", true)).toBe(
+      `${lead} Der Februar hat nur noch 14 Tage – wähle eins für März.`,
+    );
   });
 });

@@ -15,6 +15,7 @@ const state = (overrides: Partial<FocusBlockState> = {}): FocusBlockState => ({
   serverNow: new Date().toISOString(),
   settings: {
     enabled: true,
+    trigger: "stopwatch",
     thresholdMinutes: 15,
     mode: "soft",
     listMode: "blocklist",
@@ -55,7 +56,7 @@ function fakeNative(): FocusBlockNative {
 
 async function mountSettings(
   initial = state(),
-  native: FocusBlockNative | null = null,
+  native: FocusBlockNative | null = fakeNative(),
 ) {
   const focus = createFocusBlockController(native);
   focus.state.value = initial;
@@ -74,9 +75,24 @@ async function mountSettings(
 
 describe("FocusBlockSettings", () => {
   it("switches the trigger, its threshold, the mode and the list mode", async () => {
-    const { wrapper, saveSettings } = await mountSettings();
+    const { wrapper, focus, saveSettings } = await mountSettings();
     await wrapper.get("[data-test='focus-enabled']").trigger("click");
     expect(saveSettings).toHaveBeenLastCalledWith({ enabled: false });
+    // "Solange die Stoppuhr läuft" needs no threshold.
+    expect(
+      wrapper.get<HTMLInputElement>("[data-test='focus-trigger-stopwatch']")
+        .element.checked,
+    ).toBe(true);
+    expect(wrapper.find("input[name='focusThreshold']").exists()).toBe(false);
+    expect(wrapper.text()).toContain("Pausierst oder beendest du die Stoppuhr");
+    await wrapper.get("[data-test='focus-trigger-threshold']").setValue(true);
+    expect(saveSettings).toHaveBeenLastCalledWith({ trigger: "threshold" });
+    const current = focus.state.value!;
+    focus.state.value = {
+      ...current,
+      settings: { ...current.settings, trigger: "threshold" },
+    };
+    await flushPromises();
     await wrapper.get("input[name='focusThreshold']").setValue("25");
     expect(saveSettings).toHaveBeenLastCalledWith({ thresholdMinutes: 25 });
     await wrapper.get("input[name='focusThreshold']").setValue("0");
@@ -108,17 +124,97 @@ describe("FocusBlockSettings", () => {
     expect(removeEntry).toHaveBeenCalledWith(1);
   });
 
-  it("shows what is always allowed, and on the web that blocking happens on the phone", async () => {
+  it("shows what is always allowed and says honestly what it is", async () => {
     const { wrapper } = await mountSettings();
     const allow = wrapper.get("[data-test='focus-list-allow']");
     expect(allow.text()).toContain("Telefon und Notruf");
     expect(allow.text()).toContain("Habit Tracker (diese App)");
     expect(allow.text()).toContain("plan.evolving-thoughts.com");
-    expect(allow.text()).toContain("Apps fügst du in der Android-App hinzu");
-    expect(wrapper.get("[data-test='focus-device']").text()).toContain(
-      "Gesperrt wird zurzeit in der Android-App",
-    );
     expect(wrapper.text()).toContain("kein Schloss");
+  });
+
+  it("switched off shows only the switch and its sentence, and keeps the values", async () => {
+    const off = state();
+    off.settings = { ...off.settings, enabled: false, thresholdMinutes: 25 };
+    const { wrapper, focus } = await mountSettings(off);
+    expect(wrapper.get("[data-test='focus-enabled']").attributes("aria-checked")).toBe("false");
+    expect(wrapper.text()).toContain("Gilt für Quests und Dailies auf „Standard“");
+    expect(wrapper.find("[data-test='focus-trigger-stopwatch']").exists()).toBe(
+      false,
+    );
+    expect(wrapper.find("[data-test='focus-mode-soft']").exists()).toBe(false);
+    expect(wrapper.find("[data-test='focus-list-block']").exists()).toBe(false);
+    expect(wrapper.find("[data-test='focus-device']").exists()).toBe(false);
+    // Switched on again, the options come back with their values.
+    focus.state.value = {
+      ...off,
+      settings: { ...off.settings, enabled: true, trigger: "threshold" },
+    };
+    await flushPromises();
+    expect(
+      wrapper.get<HTMLInputElement>("input[name='focusThreshold']").element.value,
+    ).toBe("25");
+    expect(wrapper.find("[data-test='focus-list-block']").exists()).toBe(true);
+  });
+
+  it("in a browser keeps settings and lists editable, without the device setup", async () => {
+    const { wrapper, saveSettings } = await mountSettings(state(), null);
+    expect(wrapper.get("[data-test='focus-web']").text()).toContain(
+      "Gesperrt wird auf dem Android-Handy",
+    );
+    await wrapper.get("[data-test='focus-mode-hardcore']").setValue(true);
+    expect(saveSettings).toHaveBeenLastCalledWith({ mode: "hardcore" });
+    const block = wrapper.get("[data-test='focus-list-block']");
+    expect(block.text()).toContain("Instagram");
+    expect(block.find("input[name='focus-domain-block']").exists()).toBe(true);
+    // Apps are picked on the phone only.
+    expect(block.text()).not.toContain("App hinzufügen");
+    expect(wrapper.find("[data-test='focus-device']").exists()).toBe(false);
+    expect(wrapper.find("[data-test='focus-setup']").exists()).toBe(false);
+  });
+
+  it("says what keeps the phone from blocking, with the button to fix it", async () => {
+    const native = fakeNative();
+    vi.mocked(native.getStatus).mockResolvedValue({
+      accessibilityEnabled: false,
+      vpnPrepared: false,
+    });
+    const { wrapper } = await mountSettings(state(), native);
+    const hint = wrapper.get("[data-test='focus-setup']");
+    expect(hint.text()).toContain("Apps sperrt sie erst");
+    expect(hint.text()).toContain("Websites sperrt sie erst");
+    await hint.get("[data-test='focus-setup-accessibility']").trigger("click");
+    expect(native.openAccessibilitySettings).toHaveBeenCalled();
+    await hint.get("[data-test='focus-setup-vpn']").trigger("click");
+    expect(native.requestVpnPermission).toHaveBeenCalled();
+  });
+
+  it("separates the setup hint's sentences", async () => {
+    const native = fakeNative();
+    vi.mocked(native.getStatus).mockResolvedValue({
+      accessibilityEnabled: false,
+      vpnPrepared: true,
+    });
+    const { wrapper } = await mountSettings(
+      state({ lists: { block: [], allow: [] } }),
+      native,
+    );
+    const text = wrapper.get("[data-test='focus-setup']").text();
+    expect(text).toContain("Die Fokus-Sperre wirkt so noch nicht. Die Sperrliste");
+    // Settings links nowhere for the list: it is right here.
+    expect(wrapper.get("[data-test='focus-setup']").find("a").exists()).toBe(
+      false,
+    );
+  });
+
+  it("suggests a site that fits each list in its field", async () => {
+    const { wrapper } = await mountSettings();
+    expect(
+      wrapper.get("input[name='focus-domain-block']").attributes("placeholder"),
+    ).toBe("youtube.com");
+    expect(
+      wrapper.get("input[name='focus-domain-allow']").attributes("placeholder"),
+    ).toBe("wikipedia.org");
   });
 
   it("lets the lists only get stricter while Hardcore runs", async () => {

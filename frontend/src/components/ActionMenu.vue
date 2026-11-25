@@ -15,6 +15,7 @@ import {
   singleKeys,
   useKeyboardLikely,
 } from "../composables/useShortcuts";
+import { useOverlay } from "../composables/useOverlayStack";
 import { ariaKeys, SHORTCUTS } from "../utils/shortcuts";
 import type { MenuEntry } from "../utils/row-actions";
 
@@ -113,6 +114,9 @@ function close({ restoreFocus = true } = {}): void {
   open.value = false;
   if (restoreFocus) trigger.value?.focus();
 }
+
+// Back on the phone closes the open menu, as Escape does.
+useOverlay(open, () => close());
 
 function toggle(): void {
   if (open.value) close();

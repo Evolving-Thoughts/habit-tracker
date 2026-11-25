@@ -167,9 +167,11 @@ describe('Authentication and ownership (e2e)', () => {
     expect(saved.expiresAt.getTime() - Date.now()).toBeGreaterThan(
       23 * 3600_000,
     );
-    await post('/auth/login', { email: user.email, password: PASSWORD }).expect(
-      401,
-    );
+    const unverified = await post('/auth/login', {
+      email: user.email,
+      password: PASSWORD,
+    }).expect(401);
+    expect(unverified.body).toMatchObject({ code: 'EMAIL_UNVERIFIED' });
     await post('/auth/verify-email', { token: raw }).expect(204);
     await post('/auth/verify-email', { token: raw }).expect(400);
     const response = await post('/auth/login', {

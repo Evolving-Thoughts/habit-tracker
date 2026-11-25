@@ -49,6 +49,28 @@ export function daysLeftInMonth(today: string): number {
 }
 
 /**
+ * Which month the empty card offers first while this month has no
+ * challenge: from the 16th the next one (if still free), since little of
+ * this month is left; before that this one.
+ */
+export function offerNextFirst(today: string, nextTaken: boolean): boolean {
+  return !nextTaken && canPrepareNext(today);
+}
+
+/**
+ * The sentence on the empty card. Before the 16th: "… Wähle eins für
+ * November."; from then on, when next month comes first: "… Der November
+ * hat nur noch 6 Tage – wähle eins für Dezember."
+ */
+export function emptyLine(today: string, nextFirst: boolean): string {
+  const lead = "Ein Daily, einen ganzen Monat lang in seinem Rhythmus.";
+  const month = monthKeyOf(today);
+  if (!nextFirst) return `${lead} Wähle eins für ${monthName(month)}.`;
+  const left = daysLeftInMonth(today);
+  return `${lead} Der ${monthName(month)} hat nur noch ${left} ${left === 1 ? "Tag" : "Tage"} – wähle eins für ${monthName(nextMonthKey(month))}.`;
+}
+
+/**
  * While it runs: "Tag 12 · 11 von 12 geschafft · noch 18". The second part
  * counts the runs decided so far (today's open run is not among them), the
  * last one what can still be done, today's open run included.

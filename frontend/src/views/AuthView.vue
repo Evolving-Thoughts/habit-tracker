@@ -9,6 +9,7 @@ import {
   resetPassword,
 } from "../api/auth.api";
 import type { User } from "../api/auth.api";
+import { authErrorMessage, isEmailUnverified } from "../api/auth-errors";
 import AppIcon from "../components/AppIcon.vue";
 const props = defineProps<{
   link?: { kind: "verify" | "reset"; token: string };
@@ -26,6 +27,8 @@ const passwordType = computed(() => (showPassword.value ? "text" : "password"));
 const pending = ref(false);
 const error = ref("");
 const message = ref("");
+/** Sign-in failed only for an unconfirmed e-mail: offer to resend the link. */
+const unverified = ref(false);
 const passwordMode = computed(() =>
   ["login", "register", "reset"].includes(mode.value),
 );
@@ -64,12 +67,14 @@ function select(next: typeof mode.value): void {
   showPassword.value = false;
   error.value = "";
   message.value = "";
+  unverified.value = false;
   emit("link-cleared");
 }
 async function submit(): Promise<void> {
   if (pending.value) return;
   error.value = "";
   message.value = "";
+  unverified.value = false;
   if (
     ["register", "reset"].includes(mode.value) &&
     password.value !== confirmation.value
@@ -102,8 +107,8 @@ async function submit(): Promise<void> {
         "Passwort geändert. Bitte melde dich neu an. Auf allen anderen Geräten bist du jetzt abgemeldet.";
     }
   } catch (cause) {
-    error.value =
-      cause instanceof Error ? cause.message : "Anfrage fehlgeschlagen.";
+    error.value = authErrorMessage(cause, mode.value);
+    unverified.value = mode.value === "login" && isEmailUnverified(cause);
   } finally {
     pending.value = false;
   }
@@ -142,7 +147,11 @@ function selectAfter(next: typeof mode.value): void {
               required
             />
           </label>
-          <div v-if="passwordMode" class="field">
+          <div
+            v-if="passwordMode"
+            class="field"
+            :class="{ 'field--with-action': mode === 'login' }"
+          >
             <label for="auth-password">{{
               mode === "reset" ? "Neues Passwort" : "Passwort"
             }}</label>
@@ -184,6 +193,16 @@ function selectAfter(next: typeof mode.value): void {
                 <AppIcon :name="showPassword ? 'eye-off' : 'eye'" />
               </button>
             </div>
+            <!-- After the field in the DOM, so Tab goes e-mail, password; the
+                 grid shows it right-aligned in the label row. -->
+            <button
+              v-if="mode === 'login'"
+              class="btn btn--link auth-form__forgot"
+              type="button"
+              @click="select('forgot')"
+            >
+              Passwort vergessen?
+            </button>
           </div>
           <p v-if="needsNewPassword" id="password-help" class="auth-form__hint">
             Mindestens 12 Zeichen. Ein langer, einzigartiger Satz eignet sich
@@ -228,23 +247,19 @@ function selectAfter(next: typeof mode.value): void {
       </p>
       <div class="auth-links">
         <template v-if="mode === 'login'">
+          <p class="auth-links__line">
+            Noch kein Konto?
+            <button
+              class="btn btn--link"
+              type="button"
+              :disabled="pending"
+              @click="select('register')"
+            >
+              Konto erstellen
+            </button>
+          </p>
           <button
-            class="btn btn--link"
-            type="button"
-            :disabled="pending"
-            @click="select('forgot')"
-          >
-            Passwort vergessen?
-          </button>
-          <button
-            class="btn btn--link"
-            type="button"
-            :disabled="pending"
-            @click="select('register')"
-          >
-            Konto erstellen
-          </button>
-          <button
+            v-if="unverified"
             class="btn btn--link auth-links__minor"
             type="button"
             :disabled="pending"
@@ -315,7 +330,7 @@ function selectAfter(next: typeof mode.value): void {
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 50%;
-  background: var(--color-action-tint);
+  background: var(--color-logo-disc);
   color: var(--color-ink);
 }
 .wordmark__mark :deep(svg) {
@@ -377,6 +392,37 @@ function selectAfter(next: typeof mode.value): void {
   width: 1.25rem;
   height: 1.25rem;
 }
+/*
+ * Passwort vergessen? sits right in the label row, the label keeping the
+ * e-mail field's spacing. The link stays as small as the label; an
+ * invisible area above it makes the full tap height, which the extra
+ * margin keeps clear of the e-mail field.
+ */
+.field--with-action {
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  margin-top: var(--space-1);
+}
+.field--with-action .password-field {
+  grid-column: 1 / -1;
+}
+.auth-form__forgot {
+  position: relative;
+  grid-row: 1;
+  grid-column: 2;
+  min-height: 0;
+  padding: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+.auth-form__forgot::before {
+  position: absolute;
+  right: calc(var(--space-2) * -1);
+  bottom: 0;
+  left: calc(var(--space-2) * -1);
+  height: var(--tap);
+  content: "";
+}
 .auth-form__hint {
   margin: calc(var(--space-2) * -1) 0 0;
   color: var(--color-ink-muted);
@@ -403,10 +449,18 @@ function selectAfter(next: typeof mode.value): void {
 }
 .auth-links {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0 var(--space-2);
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
   margin-top: var(--space-4);
+}
+.auth-links__line {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--color-ink-muted);
+  text-align: center;
+}
+.auth-links__line .btn--link {
+  padding: 0 var(--space-1);
 }
 .auth-links__minor {
   color: var(--color-ink-muted);

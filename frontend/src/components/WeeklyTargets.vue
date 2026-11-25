@@ -10,9 +10,13 @@ defineProps<{ targets: HistoryWeeklyTarget[] }>();
     <ul class="rows card">
       <li v-for="target in targets" :key="target.key" class="row">
         <strong class="row__name">{{ target.title }}</strong>
+        <!-- Done first, as everywhere: "2 von 4 erledigt · noch 2". -->
         <span class="count"
-          >Noch {{ target.remaining }} von {{ target.target }} ·
-          {{ target.completed }} erledigt</span
+          >{{ target.completed }} von {{ target.target }} erledigt<template
+            v-if="target.remaining > 0"
+          >
+            · noch {{ target.remaining }}</template
+          ></span
         >
       </li>
     </ul>

@@ -76,13 +76,40 @@ describe("CategorySettings", () => {
       .findAll("label")
       .map((label) => label.attributes("title"));
     expect(names.slice(0, 3)).toEqual([
-      "Automatisch aus dem Namen",
+      "Automatisch: eine freie Farbe",
       "Indigo",
       "Nachtblau",
     ]);
     await picker.get('input[value="teal"]').setValue(true);
     await flushPromises();
     expect(setCategoryColor).toHaveBeenCalledWith(1, "teal");
+  });
+
+  it("previews the first colour no category shows for a new one", async () => {
+    vi.mocked(getCategories).mockResolvedValue([
+      { id: 1, name: "Haushalt", color: "pine", colorChosen: false },
+      { id: 2, name: "Lesen", color: "indigo", colorChosen: true },
+    ]);
+    const wrapper = await render();
+    const dot = button(wrapper, "Farbe der neuen Kategorie: automatisch");
+    expect(dot.attributes("style")).toContain("var(--color-mark-ochre)");
+    await dot.trigger("click");
+    const automatic = wrapper.get('#new-category-color label[title^="Automatisch"]');
+    expect(automatic.attributes("style")).toContain("var(--color-mark-ochre)");
+  });
+
+  it("tells a stored colour from one the server resolved", async () => {
+    vi.mocked(getCategories).mockResolvedValue([
+      { id: 1, name: "Haushalt", color: "pine", colorChosen: false },
+      { id: 2, name: "Kreativ", color: "navy", colorChosen: false },
+      { id: 3, name: "Lesen", color: "indigo", colorChosen: true },
+    ]);
+    const wrapper = await render();
+    // Both show the colour the server sends, not the one their name picks.
+    expect(button(wrapper, "Farbe von Kreativ: automatisch").attributes("style")).toContain(
+      "var(--color-mark-navy)",
+    );
+    expect(button(wrapper, "Farbe von Lesen: Indigo").exists()).toBe(true);
   });
 
   it("renames a category", async () => {

@@ -21,7 +21,9 @@ import {
   barShare,
   barText,
   canPrepareNext,
+  emptyLine,
   monthKeyOf,
+  offerNextFirst,
   monthName,
   monthTitle,
   nextMonthKey,
@@ -55,6 +57,8 @@ const currentKey = computed(() => monthKeyOf(today.value));
 const nextKey = computed(() => nextMonthKey(currentKey.value));
 const current = computed(() => props.overview.current);
 const next = computed(() => props.overview.next);
+/* From the 16th, with no challenge this month, the next month comes first. */
+const nextFirst = computed(() => offerNextFirst(today.value, !!next.value));
 const activeHabits = computed(() =>
   props.habits.filter((habit) => habit.isActive),
 );
@@ -309,11 +313,29 @@ onMounted(async () => {
     </template>
 
     <div v-if="!current" class="challenge-section__empty">
-      <p>
-        Ein Daily, einen ganzen Monat lang in seinem Rhythmus. Wähle eins für
-        {{ monthName(currentKey) }}.
-      </p>
+      <p>{{ emptyLine(today, nextFirst) }}</p>
+      <template v-if="nextFirst">
+        <button
+          class="btn btn--primary"
+          type="button"
+          :disabled="busy"
+          @click="openCreate(nextKey)"
+        >
+          <AppIcon name="challenge" />Challenge für {{ monthName(nextKey) }}
+          festlegen
+        </button>
+        <button
+          class="btn"
+          type="button"
+          data-this-month
+          :disabled="busy"
+          @click="openCreate(currentKey)"
+        >
+          Doch noch für {{ monthName(currentKey) }}
+        </button>
+      </template>
       <button
+        v-else
         class="btn btn--primary"
         type="button"
         :disabled="busy"

@@ -1,11 +1,12 @@
 import type { CampaignColor } from '../todos/campaign-style';
+import { withShownColors } from '../categories/category-colors';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 
 export type PerfectWeekCategory = {
   id: number;
   name: string;
-  /** The chosen colour; null while the name picks one. */
-  color: CampaignColor | null;
+  /** The colour the category shows (`shownCategoryColors`). */
+  color: CampaignColor;
   target: number;
   completed: number;
   reached: boolean;
@@ -31,20 +32,24 @@ export function perfectWeek(
   categories: Category[],
   completedCategoryIds: (number | null)[],
 ): PerfectWeek | null {
-  const rows = categories.flatMap(({ id, name, color, weeklyTarget }) => {
-    if (weeklyTarget === null) return [];
-    const completed = completedCategoryIds.filter((item) => item === id).length;
-    return [
-      {
-        id,
-        name,
-        color,
-        target: weeklyTarget,
-        completed,
-        reached: completed >= weeklyTarget,
-      },
-    ];
-  });
+  const rows = withShownColors(categories).flatMap(
+    ({ id, name, color, weeklyTarget }) => {
+      if (weeklyTarget === null) return [];
+      const completed = completedCategoryIds.filter(
+        (item) => item === id,
+      ).length;
+      return [
+        {
+          id,
+          name,
+          color,
+          target: weeklyTarget,
+          completed,
+          reached: completed >= weeklyTarget,
+        },
+      ];
+    },
+  );
   if (!rows.length) return null;
   return { perfect: rows.every((row) => row.reached), categories: rows };
 }

@@ -10,6 +10,7 @@ import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { HabitEntity } from '../habits/entities/habit.entity';
 import type { CampaignColor } from '../todos/campaign-style';
 import { TodoEntity } from '../todos/entities/todo.entity';
+import { colorForNewCategory } from './category-colors';
 import { UpdateCategoryDto } from './category.dto';
 import { CategoryEntity } from './category.entity';
 
@@ -37,7 +38,12 @@ export class CategoriesService {
     return this.unitOfWork.run(userId, async (manager) => {
       await this.assertNameFree(manager, userId, name, null);
       const repository = manager.getRepository(CategoryEntity);
-      return repository.save(repository.create({ userId, name, color }));
+      // Without a chosen colour it gets one no other category shows, stored.
+      const stored =
+        color ?? colorForNewCategory(name, await repository.findBy({ userId }));
+      return repository.save(
+        repository.create({ userId, name, color: stored }),
+      );
     });
   }
 

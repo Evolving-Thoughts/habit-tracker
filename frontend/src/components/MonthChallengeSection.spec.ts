@@ -132,6 +132,40 @@ describe("MonthChallengeSection in the Dailies", () => {
     );
   });
 
+  it("without a challenge offers next month first from the 16th", async () => {
+    const before = render({ today: "2026-11-15" });
+    expect(before.get(".challenge-section__empty .btn--primary").text()).toBe(
+      "Challenge starten",
+    );
+    expect(before.find("[data-this-month]").exists()).toBe(false);
+    before.unmount();
+
+    const wrapper = render({ today: "2026-11-25" });
+    const empty = wrapper.get(".challenge-section__empty");
+    expect(empty.get("p").text()).toContain(
+      "Der November hat nur noch 6 Tage – wähle eins für Dezember.",
+    );
+    expect(empty.get(".btn--primary").text()).toBe(
+      "Challenge für Dezember festlegen",
+    );
+    expect(empty.get("[data-this-month]").text()).toBe("Doch noch für November");
+    await empty.get(".btn--primary").trigger("click");
+    // The dialog opens on next month.
+    expect(document.body.textContent).toContain(
+      "Gezählt wird der ganze Dezember.",
+    );
+  });
+
+  it("keeps this month first when next month is already set", () => {
+    const wrapper = render({
+      today: "2026-11-25",
+      next: challenge({ id: 5, month: "2026-12", status: "upcoming" }),
+    });
+    expect(
+      wrapper.get(".challenge-section__empty .btn--primary").text(),
+    ).toBe("Challenge starten");
+  });
+
   it("starts a challenge on an existing Daily with the reminder at 19:00", async () => {
     vi.mocked(createMonthChallenge).mockResolvedValue(challenge());
     const wrapper = render();

@@ -155,6 +155,19 @@ describe("QuickAddQuest", () => {
     ).toBe("true");
   });
 
+  it("hides its toggles where the view shows the choice once, and still follows it", async () => {
+    const wrapper = mount(QuickAddQuest, {
+      props: { date: "2026-10-02", order, placeToggle: false },
+    });
+    expect(wrapper.find('[role="group"]').exists()).toBe(false);
+    const shown = mountField().wrapper;
+    await shown.get('button[aria-label="Oben einfügen"]').trigger("click");
+    await wrapper.get('input[name="quickTitle"]').setValue("Kapitel schreiben");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(reorderDay).toHaveBeenCalledWith([{ type: "todo", id: 7 }, ...order]);
+  });
+
   it("names its day and joins the end of a day without an order", async () => {
     const wrapper = mount(QuickAddQuest, {
       props: {

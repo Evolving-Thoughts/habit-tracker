@@ -54,12 +54,14 @@ Links tragen Token im URL-Fragment, nicht im Querystring. Die App entfernt sie a
 Öffentliche POST-Endpunkte (immer JSON und exakter `Origin`):
 
 - `/auth/register` → 202, generische Registrierungsantwort
-- `/auth/login` → 200, Nutzer und HttpOnly-Cookie
+- `/auth/login` → 200, Nutzer und HttpOnly-Cookie; 401 bei falschen Zugangsdaten, 401 mit `code: "EMAIL_UNVERIFIED"`, wenn das Passwort stimmt, die E-Mail aber noch nicht bestätigt ist (nur dann bietet die Anmeldung "Bestätigung erneut senden" an)
 - `/auth/verify-email` → 204
 - `/auth/resend-verification` → 202
 - `/auth/forgot-password` → 202
 - `/auth/reset-password` → 204
 - `/auth/logout` → 204, idempotent
+
+Die Anmeldung zeigt nie den Text des Servers: `frontend/src/api/auth-errors.ts` übersetzt Status und Code jedes Auth-Aufrufs (400, 401, 403, 409, 429, 5xx, keine Verbindung) in einen Alltagssatz mit dem, was man tun kann.
 
 `GET /auth/me` erfordert eine gültige, verifizierte Session. Alle Domain-Endpunkte sind standardmäßig geschützt. `GET /` bleibt ein datenfreier Health-/Hello-Endpunkt.
 

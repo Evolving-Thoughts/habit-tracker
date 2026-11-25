@@ -32,7 +32,7 @@ const percent = computed(() => Math.round(settings.value.volume * 100));
     </div>
     <p :id="`${id}-text`" class="effect-settings__text">
       Kurze Töne beim Abhaken, bei „Soll erreicht“ im Fokus-Modus und bei
-      Meilensteinen wie der Perfect Week. Gilt auf diesem Gerät.
+      Meilensteinen wie der Perfekten Woche. Gilt auf diesem Gerät.
     </p>
     <p class="visually-hidden" role="status">
       {{ settings.enabled ? "Töne sind eingeschaltet." : "Töne sind ausgeschaltet." }}
@@ -42,6 +42,7 @@ const percent = computed(() => Math.round(settings.value.volume * 100));
       <label :for="`${id}-volume`">Lautstärke der Töne</label>
       <input
         :id="`${id}-volume`"
+        class="range"
         type="range"
         min="0"
         max="100"
@@ -49,6 +50,7 @@ const percent = computed(() => Math.round(settings.value.volume * 100));
         :value="percent"
         :disabled="!settings.enabled"
         :aria-valuetext="`${percent} %`"
+        :style="{ '--fill': `${percent}%` }"
         @input="
           update({
             volume: Number(($event.target as HTMLInputElement).value) / 100,
@@ -96,11 +98,5 @@ const percent = computed(() => Math.round(settings.value.volume * 100));
   color: var(--color-ink);
   font-size: 0.875rem;
   font-weight: 800;
-}
-
-.effect-settings__volume input {
-  width: 100%;
-  min-height: var(--tap);
-  margin: 0;
 }
 </style>

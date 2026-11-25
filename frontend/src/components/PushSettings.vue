@@ -129,8 +129,7 @@ onUnmounted(() => {
     <div v-else-if="!config.configured" class="push-settings__hint">
       <p>Benachrichtigungen sind auf dem Server noch nicht eingerichtet.</p>
       <p class="push-settings__operator">
-        Auf dem Server fehlen die Schlüssel für Push (VAPID). Wie man sie
-        einrichtet, steht in <code>docs/betrieb.md</code>.
+        Frag die Person, die den Server betreibt.
       </p>
     </div>
     <div v-else-if="permission === 'denied'" class="push-settings__hint">

@@ -10,8 +10,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h, KeepAlive } from "vue";
 import { notifyDataChanged } from "../composables/data-sync";
 import {
+  getHabits,
   getPlan,
   getToday,
+  getTodos,
   reorderDay,
   createTodo,
   createHabit,
@@ -72,6 +74,8 @@ vi.mock("../api/todo-hierarchy.api", () => ({
 }));
 vi.mock("../api/day-planner.api", () => ({
   getToday: vi.fn(),
+  getTodos: vi.fn(),
+  getHabits: vi.fn(),
   getPlan: vi.fn(),
   reorderDay: vi.fn(),
   createTodo: vi.fn(),
@@ -194,6 +198,88 @@ describe("TodayView", () => {
     expect(wrapper.findAll(".planner-item")).toHaveLength(0);
   });
 
+  it("keeps the calm line for an account that only has an empty day", async () => {
+    vi.mocked(getTodos).mockResolvedValue([{ ...TODO_FIELDS, id: 7 }] as never);
+    vi.mocked(getHabits).mockResolvedValue([]);
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.text()).toContain("Für heute ist nichts geplant.");
+    expect(wrapper.find(".today-welcome").exists()).toBe(false);
+  });
+
+  describe("for a brand-new account", () => {
+    beforeEach(() => {
+      vi.mocked(getTodos).mockResolvedValue([]);
+      vi.mocked(getHabits).mockResolvedValue([]);
+    });
+
+    it("explains the four words and offers starters and one way to begin", async () => {
+      const wrapper = mount(TodayView);
+      await flushPromises();
+      const welcome = wrapper.get(".today-welcome");
+      expect(wrapper.text()).not.toContain("Für heute ist nichts geplant.");
+      expect(welcome.findAll("dt").map((term) => term.text())).toEqual([
+        "Quest",
+        "Daily",
+        "Kampagne",
+        "Questlog",
+      ]);
+      expect(
+        welcome.findAll(".today-welcome__starter").map((b) => b.text()),
+      ).toEqual([
+        "Wasser trinken Daily",
+        "Spazieren gehen Daily",
+        "Einkaufen Quest für heute",
+      ]);
+      expect(welcome.findAll(".btn--primary").map((b) => b.text())).toEqual([
+        "Erste Quest anlegen",
+      ]);
+      await welcome.get(".today-welcome__create").trigger("click");
+      expect(wrapper.find("dialog .create-todo").exists()).toBe(true);
+    });
+
+    it("fills the quick add with a quest starter and creates nothing yet", async () => {
+      const wrapper = mount(TodayView);
+      await flushPromises();
+      const einkaufen = wrapper
+        .findAll(".today-welcome__starter")
+        .find((button) => button.text().startsWith("Einkaufen"))!;
+      await einkaufen.trigger("click");
+      expect(
+        (wrapper.get('input[name="quickTitle"]').element as HTMLInputElement)
+          .value,
+      ).toBe("Einkaufen");
+      expect(createTodo).not.toHaveBeenCalled();
+    });
+
+    it("opens Neues Daily with the title of a daily starter", async () => {
+      const wrapper = mount(TodayView);
+      await flushPromises();
+      await wrapper.get(".today-welcome__starter").trigger("click");
+      await flushPromises();
+      expect(wrapper.get("dialog h2").text()).toBe("Neues Daily");
+      expect(
+        (wrapper.get('dialog input[name="title"]').element as HTMLInputElement)
+          .value,
+      ).toBe("Wasser trinken");
+      expect(createHabit).not.toHaveBeenCalled();
+    });
+
+    it("keeps the calm line when the account cannot be asked", async () => {
+      vi.mocked(getTodos).mockRejectedValue(new Error("offline"));
+      const wrapper = mount(TodayView);
+      await flushPromises();
+      expect(wrapper.text()).toContain("Für heute ist nichts geplant.");
+    });
+
+    it("does not ask while the day has entries", async () => {
+      getTodayMock.mockResolvedValue(makePlanner([makeTodo()]));
+      mount(TodayView);
+      await flushPromises();
+      expect(getTodos).not.toHaveBeenCalled();
+    });
+  });
+
   it("relates worked time and quest hours in one line in the head", async () => {
     getTodayMock.mockResolvedValue({
       ...makePlanner([makeTodo()]),
@@ -214,6 +300,32 @@ describe("TodayView", () => {
     ).toBe(
       "1 Std. 40 Min. gearbeitet, davon 1 Std. 20 Min. auf Kampagnen · Woche 4 Std. 11 Min. von 20 Std.",
     );
+  });
+
+  it("keeps count and time as two lines, each part whole", async () => {
+    getTodayMock.mockResolvedValue({
+      ...makePlanner([
+        makeTodo(),
+        makeTodo({ todoId: 2, title: "Alt", isOverdue: true }),
+      ]),
+      workedMinutes: 70,
+      questHours: { todayMinutes: 0, weekMinutes: 70, weeklyTargetMinutes: null },
+    });
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    const progress = wrapper.get(".today-view__progress");
+    const time = wrapper.get(".today-view__time");
+    // Two paragraphs, never one running line.
+    expect(progress.element.tagName).toBe("P");
+    expect(time.element.tagName).toBe("P");
+    expect(
+      progress.findAll(".today-view__progress-part").map((part) => part.text()),
+    ).toEqual(["0 von 1 erledigt ·", "1 von früher"]);
+    expect(
+      time
+        .findAll(".today-view__time-part")
+        .map((part) => part.text().replace(/ /g, " ")),
+    ).toEqual(["1 Std. 10 Min. gearbeitet ·", "Kampagnen diese Woche 1 Std. 10 Min."]);
   });
 
   it("leaves the time line out without measured time and goal", async () => {
@@ -302,6 +414,37 @@ describe("TodayView", () => {
     );
   });
 
+  it("names the campaign once when the goal is the campaign itself", async () => {
+    getTodayMock.mockResolvedValueOnce(
+      makePlanner([
+        makeHabit({
+          goal: {
+            title: "Halbmarathon schaffen",
+            completed: 9,
+            target: 24,
+            periodEnd: "2027-01-20",
+          },
+          campaign: {
+            id: 40,
+            title: "Halbmarathon schaffen",
+            color: null,
+            icon: null,
+          },
+        }),
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    const meta = wrapper.get(".focus__meta");
+    const spans = meta.findAll(":scope > *").map((part) => part.text());
+    const chip = spans.findIndex((text) =>
+      text.includes("Halbmarathon schaffen"),
+    );
+    // The chip names it, the count follows it alone.
+    expect(spans[chip + 1]).toBe("9 von 24 bis 20.01.2027");
+    expect(meta.text().split("Halbmarathon schaffen")).toHaveLength(2);
+  });
+
   it("lists appointments in the order of the day, anchored by their time", async () => {
     getTodayMock.mockResolvedValueOnce({
       ...makePlanner([
@@ -369,9 +512,15 @@ describe("TodayView", () => {
     expect(
       row.find('[aria-label="Frühsport erledigen"]').exists(),
     ).toBe(true);
-    await row
-      .get('[aria-label="Frühsport auf einen anderen Tag"]')
-      .trigger("click");
+    // The move waits in "…", as its first entry; the card stays compact.
+    expect(row.find("[data-move-button]").exists()).toBe(false);
+    await row.get('[aria-label="Aktionen für Frühsport"]').trigger("click");
+    const entries = wrapper.findAll("[role=menuitem]");
+    expect(entries[0]!.text()).toContain("Anderer Tag …");
+    expect(entries[0]!.attributes("aria-label")).toBe(
+      "Frühsport auf einen anderen Tag",
+    );
+    await entries[0]!.trigger("click");
     await flushPromises();
     expect(wrapper.find(".modal-dialog").exists()).toBe(true);
   });
@@ -1827,6 +1976,20 @@ describe("TodayView on wide screens", () => {
     );
   });
 
+  it("trades the plus button for Neue Quest in the head, opening the same dialog", async () => {
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    expect(wrapper.find(".create-button").exists()).toBe(false);
+    const create = wrapper.get(".today-view__header .today-view__create");
+    expect(create.text()).toBe("Neue Quest");
+    // A pill on the ground: "Starten" on the focus card stays the one primary.
+    expect(create.classes()).toContain("btn--ground");
+    expect(create.classes()).not.toContain("btn--primary");
+    await create.trigger("click");
+    expect(wrapper.find('[data-test="kind-todo"]').exists()).toBe(true);
+    expect(wrapper.find("dialog .create-todo").exists()).toBe(true);
+  });
+
   it("holds a deleted stretch behind Heute's undo toast", async () => {
     const wrapper = mount(TodayView, { attachTo: document.body });
     await flushPromises();
@@ -2215,6 +2378,25 @@ describe("TodayView on other days", () => {
       "Steuer vorbereiten",
     );
     expect(wrapper.find(".quick-add").exists()).toBe(false);
+  });
+
+  it("names the narrow pane Termine on a day after today, Logbuch before", async () => {
+    route.query = { tag: "2026-10-03" };
+    vi.mocked(getPlan).mockResolvedValue(dayPlan("2026-10-03", []));
+    const later = mount(TodayView);
+    await flushPromises();
+    const labels = (wrapper: ReturnType<typeof mount>) =>
+      wrapper
+        .findAll('input[name="todayPane"]')
+        .map((input) => input.element.parentElement!.textContent!.trim());
+    expect(labels(later)).toEqual(["Liste", "Termine"]);
+    later.unmount();
+
+    route.query = { tag: "2026-10-01" };
+    vi.mocked(getPlan).mockResolvedValue(dayPlan("2026-10-01", []));
+    const earlier = mount(TodayView);
+    await flushPromises();
+    expect(labels(earlier)).toEqual(["Liste", "Logbuch"]);
   });
 
   it("opens a quest of another day in the same editor as today's", async () => {

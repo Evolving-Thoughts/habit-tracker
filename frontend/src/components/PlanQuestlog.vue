@@ -127,6 +127,7 @@ function menu(todo: QuestlogQuest): MenuEntry[] {
         class="plan-questlog__add"
         :date="null"
         label="Quest ins Questlog hinzufügen"
+        :place-toggle="false"
         @created="emit('created')"
       />
       <p class="plan-questlog__lead">

@@ -91,6 +91,7 @@ useSortable(list, {
       :date="day.date"
       :order="dayOrder(open)"
       :label="`Quest für ${dayLabel(day.date)} hinzufügen`"
+      :place-toggle="false"
       @created="emit('created')"
     />
 

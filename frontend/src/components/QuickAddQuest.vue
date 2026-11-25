@@ -18,7 +18,7 @@ import { useInsertPlace } from "../composables/useInsertPlace";
 import { useQuestParseContext } from "../composables/useQuestParseContext";
 import { contentWidth, firstThatFits } from "../utils/fit-text";
 import { parseQuest, type QuestParseKind } from "../utils/quest-parse";
-import AppIcon from "./AppIcon.vue";
+import InsertPlaceToggle from "./InsertPlaceToggle.vue";
 import MicButton from "./MicButton.vue";
 import QuestParseChips from "./QuestParseChips.vue";
 
@@ -28,7 +28,8 @@ type OrderedItem = { type: "todo" | "habit" | "event"; id: number };
  * One line to put a quest on a day, or into the Questlog: type a title,
  * press Enter. It joins the end of the day's order (or of the Questlog's),
  * or its head while ↑ ("Oben einfügen") is chosen; the choice beside the
- * field holds for every quick add on the device.
+ * field holds for every quick add on the device. A view that shows the
+ * choice once for all its fields (the Plan, in its head) hides it here.
  *
  * Typed or dictated (the microphone in the field), a day and a duration in
  * the text ("Steuererklärung morgen 30 Minuten") show as chips under the
@@ -56,14 +57,16 @@ const props = withDefaults(
     order?: OrderedItem[];
     /** Names the field when a view shows one per day. */
     label?: string;
+    /** Shows ↑ / ↓ beside the field; false where the view shows them once. */
+    placeToggle?: boolean;
   }>(),
-  { order: () => [], label: "Quest für heute hinzufügen" },
+  { order: () => [], label: "Quest für heute hinzufügen", placeToggle: true },
 );
 const emit = defineEmits<{ created: [] }>();
 
 const MAX_TITLE = 200;
 const title = ref("");
-const { place, choose } = useInsertPlace();
+const { place } = useInsertPlace();
 const busy = ref(false);
 const errorMessage = ref<string | null>(null);
 /** Where the last quest went when that is not this list ("Für morgen …"). */
@@ -105,6 +108,13 @@ async function onDictated(text: string): Promise<void> {
 const PLACEHOLDERS = ["Quest hinzufügen …", "Hinzufügen …", "Neu …"];
 const placeholder = ref(PLACEHOLDERS[0]!);
 const field = ref<HTMLInputElement | null>(null);
+
+/** Puts a suggested title in the field and the focus on it; nothing is added yet. */
+function fill(text: string): void {
+  title.value = text;
+  field.value?.focus();
+}
+defineExpose({ fill });
 let observer: ResizeObserver | null = null;
 let context: CanvasRenderingContext2D | null = null;
 function fitPlaceholder(): void {
@@ -233,31 +243,7 @@ async function add(): Promise<void> {
           @result="onDictated"
         />
       </div>
-      <!-- Where a new quest joins the list: two small toggles, named in words. -->
-      <div
-        class="segmented quick-add__place"
-        role="group"
-        aria-label="Neue Quests einfügen"
-      >
-        <button
-          type="button"
-          aria-label="Oben einfügen"
-          title="Oben einfügen"
-          :aria-pressed="place === 'top'"
-          @click="choose('top')"
-        >
-          <AppIcon name="arrow-up" />
-        </button>
-        <button
-          type="button"
-          aria-label="Unten einfügen"
-          title="Unten einfügen"
-          :aria-pressed="place === 'bottom'"
-          @click="choose('bottom')"
-        >
-          <AppIcon name="arrow-down" />
-        </button>
-      </div>
+      <InsertPlaceToggle v-if="placeToggle" />
     </div>
     <QuestParseChips
       :matches="parsed.matches"
@@ -304,37 +290,5 @@ async function add(): Promise<void> {
 /* Kept in the page while empty, so the next notice is announced. */
 .quick-add__notice--empty {
   position: absolute;
-}
-
-/* Compact: in a narrow Plan column the field keeps most of the width. */
-.quick-add__place {
-  flex: none;
-  gap: 0.125rem;
-  padding: 0.1875rem;
-}
-
-.quick-add__place > button {
-  display: grid;
-  place-items: center;
-  width: 2rem;
-  min-height: calc(var(--tap) - 0.375rem);
-  padding: 0;
-}
-
-.quick-add__place :deep(svg) {
-  width: 1.125rem;
-  height: 1.125rem;
-}
-
-/* A finger gets a full tap per arrow; a mouse keeps the slim pair. */
-@media (pointer: coarse) {
-  .quick-add__place {
-    padding: 0.125rem;
-  }
-
-  .quick-add__place > button {
-    width: var(--tap);
-    min-height: var(--tap);
-  }
 }
 </style>

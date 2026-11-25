@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useOverlay } from "../composables/useOverlayStack";
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue";
 import AppIcon from "./AppIcon.vue";
 import SoundChoices from "./SoundChoices.vue";
@@ -45,6 +46,8 @@ function close(restoreFocus = true): void {
   open.value = false;
   if (restoreFocus) trigger.value?.focus();
 }
+/* The phone's Back closes the panel first, as Escape does. */
+useOverlay(open, () => close());
 
 async function toggle(): Promise<void> {
   if (open.value) return close();
@@ -135,12 +138,15 @@ function onVolume(event: Event): void {
         <label :for="volumeId">Lautstärke</label>
         <input
           :id="volumeId"
+          class="range"
           type="range"
           min="0"
           max="100"
           step="5"
           :value="percent"
+          :disabled="state === 'off'"
           :aria-valuetext="`${percent} %`"
+          :style="{ '--fill': `${percent}%` }"
           @input="onVolume"
         />
       </div>
@@ -210,12 +216,6 @@ function onVolume(event: Event): void {
   color: var(--color-ink);
   font-size: 0.875rem;
   font-weight: 800;
-}
-
-.focus-sound__volume input {
-  width: 100%;
-  min-height: var(--tap);
-  margin: 0;
 }
 
 .focus-sound__note {

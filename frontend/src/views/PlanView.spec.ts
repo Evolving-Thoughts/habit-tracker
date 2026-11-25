@@ -250,11 +250,20 @@ describe("PlanView", () => {
     expect(menuLabels(wrapper)).toEqual(["Bearbeiten", "Löschen"]);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     await flushPromises();
-    // Every day has its quick add on top, with where new quests go.
+    // Every day has its quick add on top; where new quests go is chosen once, in the head.
     const field = today.get(
       'input[aria-label="Quest für Dienstag, 17. Nov. hinzufügen"]',
     );
-    expect(field.element.closest("form")!.querySelector('[aria-label="Oben einfügen"]')).not.toBeNull();
+    expect(field.element.closest("form")!.querySelector('[aria-label="Oben einfügen"]')).toBeNull();
+    expect(wrapper.findAll('[aria-label="Oben einfügen"]')).toHaveLength(1);
+    expect(wrapper.get("header").find('[aria-label="Oben einfügen"]').exists()).toBe(true);
+    // A visible word sets it apart from the day arrows; the group keeps its name.
+    const place = wrapper.get(".plan-view__place");
+    expect(place.get(".plan-view__place-label").text()).toBe("Neue");
+    expect(place.find('[aria-label="Vorige Tage"]').exists()).toBe(false);
+    expect(place.get("[role=group]").attributes("aria-label")).toBe(
+      "Neue Quests einfügen",
+    );
   });
 
   it("shows as many days as fit beside the Questlog and steps by them", async () => {

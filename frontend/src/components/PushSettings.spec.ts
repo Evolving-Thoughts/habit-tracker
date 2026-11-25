@@ -85,8 +85,9 @@ describe("Push settings", () => {
     const wrapper = await open();
     expect(wrapper.text()).toContain("Server noch nicht eingerichtet");
     // Whoever runs the server learns what is missing and where to read up.
-    expect(wrapper.text()).toContain("Schlüssel für Push (VAPID)");
-    expect(wrapper.text()).toContain("docs/betrieb.md");
+    expect(wrapper.text()).toContain("Frag die Person, die den Server betreibt.");
+    expect(wrapper.text()).not.toContain("VAPID");
+    expect(wrapper.text()).not.toContain("docs/betrieb.md");
     expect(wrapper.find('[role="switch"]').exists()).toBe(false);
   });
   it("says before the first switch that the browser will ask", async () => {

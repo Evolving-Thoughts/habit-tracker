@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useOverlay } from "../composables/useOverlayStack";
 import { computed, nextTick, ref, useId, watch } from "vue";
 import AppIcon from "./AppIcon.vue";
 
@@ -40,6 +41,8 @@ const emit = defineEmits<{ create: [text: string] }>();
 const listId = useId();
 const input = ref<HTMLInputElement | null>(null);
 const open = ref(false);
+/* The phone's Back closes the open list before its dialog, as Escape does. */
+useOverlay(open, () => close());
 /** What is typed while searching; null shows the chosen option. */
 const query = ref<string | null>(null);
 const active = ref(0);

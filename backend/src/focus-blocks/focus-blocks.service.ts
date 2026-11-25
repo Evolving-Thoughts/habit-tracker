@@ -75,6 +75,7 @@ export class FocusBlocksService {
         {
           userId,
           enabled: dto.enabled ?? current.enabled,
+          trigger: dto.trigger ?? current.trigger,
           thresholdMinutes: dto.thresholdMinutes ?? current.thresholdMinutes,
           mode: dto.mode ?? current.mode,
           listMode: dto.listMode ?? current.listMode,
@@ -177,7 +178,7 @@ export class FocusBlocksService {
     });
   }
 
-  /** Lifts a Soft block; a Hardcore block answers 409 until its Soll. */
+  /** Lifts a Soft block; a Hardcore block answers 409. */
   end(userId: string): Promise<FocusBlockStateResponse> {
     return this.unitOfWork.run(userId, async (manager) => {
       const now = this.clock.now();

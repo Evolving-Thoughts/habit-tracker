@@ -5,7 +5,7 @@ export function getCategories(): Promise<CategoryResponse[]> {
   return request<CategoryResponse[]>("/categories");
 }
 
-/** `color` null lets the name pick the colour. */
+/** `color` null: the server gives it the first core colour no category shows. */
 export function createCategory(
   name: string,
   color: string | null = null,
@@ -36,7 +36,7 @@ export function setCategoryTarget(
   });
 }
 
-/** Null goes back to the colour the name picks. */
+/** Null goes back to "Automatisch": a colour no other category shows. */
 export function setCategoryColor(
   id: number,
   color: string | null,

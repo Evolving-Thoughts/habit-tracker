@@ -265,7 +265,11 @@ function menu(entry: WeekPlanEntry): MenuEntry[] {
         The day's open entries in its order, its Google events among them at
         their places (the server's order). Quests, stored runs and, on a
         later day, the events drag, like Heute's; an event keeps its time.
+        The cards' titles are h3: the list carries its h2 for screen readers.
       -->
+      <h2 v-if="open.length" class="visually-hidden">
+        {{ ahead ? "Geplant" : "Offen" }}
+      </h2>
       <div
         v-if="open.length"
         ref="list"

@@ -1,6 +1,6 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { defineComponent, h, KeepAlive, type PropType } from "vue";
+import { defineComponent, h, KeepAlive, ref, type PropType } from "vue";
 import { onShownAgain, whileActive } from "./useActive";
 import { notifyDataChanged, onDataChanged } from "./data-sync";
 import { runShortcut, useShortcutHandlers } from "./useShortcuts";
@@ -97,6 +97,32 @@ describe("onShownAgain", () => {
       await flushPromises();
       expect(shown).toHaveBeenCalledTimes(expected);
     }
+  });
+
+  it("runs when the view comes back for a part that first appeared while it was hidden", async () => {
+    const shown = vi.fn();
+    const ready = ref(false);
+    const Part = defineComponent({
+      setup() {
+        onShownAgain(shown);
+        return () => h("p", "Teil");
+      },
+    });
+    const View = defineComponent({
+      name: "Kept",
+      setup: () => () => h("main", ready.value ? [h(Part)] : []),
+    });
+    const wrapper = mount(host(View));
+    await flushPromises();
+    await wrapper.setProps({ shown: false });
+    await flushPromises();
+    // The view's data arrives while another view is shown.
+    ready.value = true;
+    await flushPromises();
+    expect(shown).not.toHaveBeenCalled();
+    await wrapper.setProps({ shown: true });
+    await flushPromises();
+    expect(shown).toHaveBeenCalledTimes(1);
   });
 });
 

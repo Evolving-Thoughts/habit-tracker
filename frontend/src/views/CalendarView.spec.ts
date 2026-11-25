@@ -870,7 +870,7 @@ describe("CalendarView day", () => {
     expect(earlier.text()).not.toContain("überfällig");
     expect(earlier.text()).toContain("15 Min. geplant");
     const targets = wrapper.get('section[aria-label="Wochenziele"]').text();
-    expect(targets).toContain("Noch 2 von 3 · 1 erledigt");
+    expect(targets).toContain("1 von 3 erledigt · noch 2");
     expect(targets).not.toContain("Gültig");
     expect(wrapper.find(".empty-state").exists()).toBe(false);
   });
@@ -1000,7 +1000,8 @@ describe("CalendarView week", () => {
       ],
     });
     await chooseMode(wrapper, "Woche");
-    expect(wrapper.text()).toContain("Noch 0 von 3 · 3 erledigt");
+    expect(wrapper.text()).toContain("3 von 3 erledigt");
+    expect(wrapper.text()).not.toContain("noch 0");
     expect(wrapper.find(".empty-state").exists()).toBe(false);
     expect(wrapper.findAll(".planned-item")).toHaveLength(0);
   });

@@ -196,9 +196,11 @@ export class TimersService {
     return this.reconcile(manager, userId, current, now);
   }
   /**
-   * The Fokus-Modus started or resumed this stopwatch: a Fokus-Sperre
-   * starts with it when its quest or daily calls for one (an open block
-   * stays as it is). Runs in the stopwatch's own transaction.
+   * This stopwatch started or resumed running, from wherever: a
+   * Fokus-Sperre starts with it when the rule calls for one (an open block
+   * stays as it is). `request` carries Soft or Hardcore as picked in the
+   * Fokus-Modus; without it the default from Einstellungen applies. Runs in
+   * the stopwatch's own transaction.
    */
   private async startFocus(
     manager: EntityManager,
@@ -207,7 +209,7 @@ export class TimersService {
     request: FocusBlockRequestDto | undefined,
     now: Date,
   ): Promise<void> {
-    if (!request) return;
+    if (timer.state !== 'running') return;
     await startFocusBlock(
       manager,
       timer.userId,
@@ -223,7 +225,7 @@ export class TimersService {
             : target.habit.focusBlock) ?? 'default',
         targetMinutes: timer.targetMinutes,
         elapsedMilliseconds: elapsedAt(timer, now),
-        mode: request.mode,
+        mode: request?.mode,
       },
       now,
     );
@@ -357,7 +359,7 @@ export class TimersService {
           : targetReachesAt(timer);
       }
       const saved = await manager.save(timer);
-      if (action === 'resume' && focusBlock)
+      if (action === 'resume')
         await this.startFocus(
           manager,
           saved,

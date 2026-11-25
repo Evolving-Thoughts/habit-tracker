@@ -1,18 +1,21 @@
 <script setup lang="ts">
 import { computed, useId } from "vue";
-import SoundChoices from "./SoundChoices.vue";
 import { useSoundCatalog } from "../composables/useFocusSound";
 import { useFocusSoundSettings } from "../composables/useFocusSoundSettings";
 
 /**
  * Fokus-Klänge in Einstellungen: the same choice and volume as in the
- * Fokus-Modus. Stored on this device (docs/focus-sounds.md). The short
- * sounds have their own section, "Töne" (SoundEffectSettings.vue).
+ * Fokus-Modus, here as one compact select ("Aus", then the groups Musik
+ * and Geräusche) instead of a long radio list. Stored on this device
+ * (docs/focus-sounds.md). The short sounds have their own section, "Töne"
+ * (SoundEffectSettings.vue).
  */
 const { settings, update } = useFocusSoundSettings();
 const { catalog, failed, music, ambience } = useSoundCatalog();
 const id = useId();
 const percent = computed(() => Math.round(settings.value.volume * 100));
+/* Without a sound there is nothing to turn up or down. */
+const silent = computed(() => !settings.value.soundId);
 const empty = computed(
   () => !!catalog.value && !music.value.length && !ambience.value.length,
 );
@@ -31,25 +34,52 @@ const empty = computed(
     <p v-else-if="empty" class="sound-settings__note">
       Noch keine Klänge verfügbar.
     </p>
-    <SoundChoices
-      v-else-if="catalog"
-      label="Klang"
-      :music="music"
-      :ambience="ambience"
-      :model-value="settings.soundId"
-      @update:model-value="(soundId) => update({ soundId })"
-    />
+    <div v-else-if="catalog" class="sound-settings__field">
+      <label :for="`${id}-sound`">Klang</label>
+      <select
+        :id="`${id}-sound`"
+        class="input"
+        name="focusSound"
+        :value="settings.soundId ?? ''"
+        @change="
+          update({
+            soundId: ($event.target as HTMLSelectElement).value || null,
+          })
+        "
+      >
+        <option value="">Aus</option>
+        <template
+          v-for="group in [
+            { title: 'Musik', sounds: music },
+            { title: 'Geräusche', sounds: ambience },
+          ]"
+          :key="group.title"
+        >
+          <optgroup v-if="group.sounds.length" :label="group.title">
+            <option v-for="sound in group.sounds" :key="sound.id" :value="sound.id">
+              {{ sound.title }}
+            </option>
+          </optgroup>
+        </template>
+      </select>
+    </div>
 
-    <div class="sound-settings__volume">
+    <div
+      class="sound-settings__volume"
+      :class="{ 'sound-settings__volume--off': silent }"
+    >
       <label :for="`${id}-volume`">Lautstärke</label>
       <input
         :id="`${id}-volume`"
+        class="range"
         type="range"
         min="0"
         max="100"
         step="5"
         :value="percent"
+        :disabled="silent"
         :aria-valuetext="`${percent} %`"
+        :style="{ '--fill': `${percent}%` }"
         @input="
           update({
             volume: Number(($event.target as HTMLInputElement).value) / 100,
@@ -78,6 +108,7 @@ const empty = computed(
   color: var(--color-ink);
 }
 
+.sound-settings__field,
 .sound-settings__volume {
   display: grid;
   gap: var(--space-1);
@@ -87,9 +118,7 @@ const empty = computed(
   font-weight: 800;
 }
 
-.sound-settings__volume input {
-  width: 100%;
-  min-height: var(--tap);
-  margin: 0;
+.sound-settings__volume--off label {
+  color: var(--color-ink-muted);
 }
 </style>

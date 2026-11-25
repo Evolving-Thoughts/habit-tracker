@@ -16,6 +16,10 @@ import {
   createFocusBlockController,
   focusBlockKey,
 } from "../composables/useFocusBlock";
+import type {
+  FocusBlockNative,
+  FocusBlockNativeStatus,
+} from "../native/focus-block-plugin";
 import type { FocusBlockState } from "../types/focus-block";
 import type {
   DayPlannerHabitItem,
@@ -499,31 +503,62 @@ describe("FocusView: appointments by the rule of Heute's focus card", () => {
 });
 
 describe("FocusView › Fokus-Sperre", () => {
-  const settings = {
+  // The earlier rule by default here; the stopwatch trigger has its own tests.
+  const settings: FocusBlockState["settings"] = {
     enabled: true,
+    trigger: "threshold",
     thresholdMinutes: 15,
-    mode: "soft" as const,
-    listMode: "blocklist" as const,
+    mode: "soft",
+    listMode: "blocklist",
   };
-  const focusState = (block: FocusBlockState["block"] = null) => ({
+  const YOUTUBE: FocusBlockState["lists"]["block"][number] = {
+    id: 1,
+    kind: "domain",
+    value: "youtube.com",
+    label: null,
+  };
+  const focusState = (
+    block: FocusBlockState["block"] = null,
+    change: Partial<FocusBlockState["settings"]> = {},
+    blocked: FocusBlockState["lists"]["block"] = [YOUTUBE],
+  ): FocusBlockState => ({
     version: "v",
     serverNow: new Date().toISOString(),
-    settings,
+    settings: { ...settings, ...change },
     block,
-    lists: { block: [], allow: [] },
+    lists: { block: blocked, allow: [] },
     fixedDomains: [],
   });
+  /** The phone's plugin; null stands for a browser, which cannot block. */
+  const fakeNative = () =>
+    ({
+      getStatus: vi.fn().mockResolvedValue(null),
+      openAccessibilitySettings: vi.fn().mockResolvedValue(undefined),
+      requestVpnPermission: vi.fn().mockResolvedValue({ granted: true }),
+      listInstalledApps: vi.fn().mockResolvedValue([]),
+      setBlock: vi.fn().mockResolvedValue(undefined),
+      onOpenFocus: vi.fn(() => () => {}),
+    }) satisfies FocusBlockNative;
 
   async function mountWithFocus(
     block: FocusBlockState["block"] = null,
     running: Timer | null = null,
+    change: Partial<FocusBlockState["settings"]> = {},
+    device: {
+      native?: boolean;
+      blocked?: FocusBlockState["lists"]["block"];
+      status?: FocusBlockNativeStatus;
+    } = {},
   ) {
     const controller = createTimerController();
     controller.timer.value = running;
     const start = vi.spyOn(controller, "start").mockResolvedValue();
     vi.spyOn(controller, "refresh").mockResolvedValue();
-    const focus = createFocusBlockController(null);
-    focus.state.value = focusState(block);
+    const focus = createFocusBlockController(
+      device.native === false ? null : fakeNative(),
+    );
+    focus.state.value = focusState(block, change, device.blocked);
+    if (device.status) focus.device.value = device.status;
     const end = vi.spyOn(focus, "end").mockResolvedValue(true);
     const startBlock = vi.spyOn(focus, "start").mockResolvedValue(true);
     const wrapper = mount(FocusView, {
@@ -631,6 +666,119 @@ describe("FocusView › Fokus-Sperre", () => {
       "Sperre aktiv · Hardcore · noch 12 Min.",
     );
     expect(button("Sperre aufheben")).toHaveLength(0);
+  });
+
+  it("blocks with the stopwatch trigger also without a Soll, Hardcore until done or stopped", async () => {
+    vi.mocked(getToday).mockResolvedValue(
+      planner([todo({ plannedDurationMinutes: null })]),
+    );
+    const { wrapper, button } = await mountWithFocus(null, null, {
+      trigger: "stopwatch",
+    });
+    const choice = wrapper.get("[data-test='focus-block-choice']");
+    expect(choice.text()).toContain("Pausieren hebt sie auf.");
+    await button("Hardcore")[0]!.trigger("click");
+    expect(choice.text()).toContain(
+      "Die Sperre hält auch in Pausen, bis die Quest erledigt ist oder du die Stoppuhr beendest.",
+    );
+  });
+
+  it("reads a Hardcore block that ends with the stopwatch", async () => {
+    vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+    const { wrapper, button } = await mountWithFocus(
+      {
+        id: "b",
+        title: "Kapitel schreiben",
+        todoId: 1,
+        occurrenceId: null,
+        mode: "hardcore",
+        listMode: "blocklist",
+        startedAt: new Date().toISOString(),
+        endsAt: null,
+      },
+      stopwatch(),
+      { trigger: "stopwatch" },
+    );
+    const state = wrapper.get("[data-test='focus-block-state']");
+    expect(state.get("[role='status']").text()).toBe("Sperre aktiv · Hardcore");
+    expect(state.text()).toContain(
+      "Endet, wenn die Quest erledigt ist oder du die Stoppuhr beendest.",
+    );
+    expect(button("Sperre aufheben")).toHaveLength(0);
+  });
+
+  it("says in one quiet line below the buttons when an empty Sperrliste blocks nothing", async () => {
+    vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+    const { wrapper } = await mountWithFocus(
+      null,
+      null,
+      { trigger: "stopwatch" },
+      { blocked: [] },
+    );
+    // No choice that changes nothing, and no hint above "Starten".
+    expect(wrapper.find("[data-test='focus-block-choice']").exists()).toBe(
+      false,
+    );
+    expect(wrapper.find("[data-test='focus-setup']").exists()).toBe(false);
+    const quiet = wrapper.get("[data-test='focus-block-quiet']");
+    expect(quiet.text().replace(/\s+/g, " ")).toBe(
+      "Fokus-Sperre: Sperrliste leer · Einrichten",
+    );
+    expect(quiet.get("a").attributes("href")).toBe(
+      "#/einstellungen?abschnitt=fokus-sperre",
+    );
+    // Read where it stands, not announced on every open.
+    expect(quiet.attributes("role")).toBeUndefined();
+    expect(quiet.find("strong").exists()).toBe(false);
+    // Below Starten and Erledigt.
+    const actions = wrapper.get(".focus-view__actions").element;
+    expect(
+      actions.compareDocumentPosition(quiet.element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps the choice in a browser, whose block takes effect on the phone", async () => {
+    vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+    const { wrapper } = await mountWithFocus(
+      null,
+      null,
+      { trigger: "stopwatch" },
+      { native: false },
+    );
+    expect(wrapper.find("[data-test='focus-block-choice']").exists()).toBe(
+      true,
+    );
+    expect(wrapper.get("[data-test='focus-block-quiet']").text()).toBe(
+      "Fokus-Sperre: wirkt auf dem Handy in der Android-App",
+    );
+  });
+
+  it("names a missing phone permission compactly below the buttons", async () => {
+    vi.mocked(getToday).mockResolvedValue(planner([todo()]));
+    const { wrapper } = await mountWithFocus(
+      null,
+      null,
+      { trigger: "stopwatch" },
+      { status: { accessibilityEnabled: true, vpnPrepared: false } },
+    );
+    expect(wrapper.find("[data-test='focus-block-choice']").exists()).toBe(
+      true,
+    );
+    expect(wrapper.find("[data-test='focus-block-quiet']").exists()).toBe(
+      false,
+    );
+    const hint = wrapper.get("[data-test='focus-setup']");
+    expect(hint.text()).toContain(
+      "Fokus-Sperre wirkt noch nicht. Websites sperrt sie erst",
+    );
+    expect(hint.attributes("role")).toBeUndefined();
+    expect(hint.find("[data-test='focus-setup-vpn']").exists()).toBe(true);
+    const actions = wrapper.get(".focus-view__actions").element;
+    expect(
+      actions.compareDocumentPosition(hint.element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("starts a block by hand for a stopwatch started elsewhere", async () => {

@@ -130,6 +130,36 @@ describe("PlannerItemEditor", () => {
     vi.mocked(deleteHabit).mockResolvedValue(undefined);
   });
 
+  it("says under Kampagne where the time counts only with a campaign chosen", async () => {
+    const campaign = { id: 40, title: "Halbmarathon schaffen", color: null, icon: null };
+    const hint = (wrapper: ReturnType<typeof mountHabitEditor>) =>
+      wrapper.find("#planner-edit-campaign-hint");
+
+    vi.mocked(getHabit).mockResolvedValueOnce(makeHabit());
+    const loose = mountHabitEditor();
+    await flushPromises();
+    expect(hint(loose).exists()).toBe(false);
+    loose.unmount();
+
+    vi.mocked(getHabit).mockResolvedValueOnce(
+      makeHabit({ campaignId: 40, campaign }),
+    );
+    const named = mountHabitEditor();
+    await flushPromises();
+    expect(hint(named).text()).toBe(
+      "Seine gemessene Zeit zählt dort als Kampagnen-Stunden.",
+    );
+    named.unmount();
+
+    // No campaign of its own, but a campaign's quest counts it.
+    vi.mocked(getHabit).mockResolvedValueOnce(
+      makeHabit({ campaignId: null, campaign }),
+    );
+    const counted = mountHabitEditor();
+    await flushPromises();
+    expect(hint(counted).text()).toBe("Wird von „Halbmarathon schaffen“ gezählt.");
+  });
+
   it("updates or clears a Daily default duration without changing its schedule", async () => {
     vi.mocked(getHabit).mockResolvedValue(
       makeHabit({ plannedDurationMinutes: 10 }),
@@ -217,6 +247,25 @@ describe("PlannerItemEditor", () => {
       );
       expect(vi.mocked(updateTodo).mock.calls[0]![1]).not.toHaveProperty(
         "why",
+      );
+    });
+
+    it("says that sub-quests move along only when the quest has some", async () => {
+      vi.mocked(getTodo).mockResolvedValue({ ...todo, parentId: 4 });
+      const lone = mountQuest();
+      await flushPromises();
+      expect(lone.text()).not.toContain("Alle Unter-Quests ziehen mit.");
+      expect(lone.find("#planner-edit-parent-hint").exists()).toBe(false);
+
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        hierarchyTodo({ id: 4, title: "Buch" }),
+        hierarchyTodo({ id: 1, title: "NestJS lernen", parentId: 4 }),
+        hierarchyTodo({ id: 2, title: "Module", parentId: 1 }),
+      ]);
+      const parent = mountQuest();
+      await flushPromises();
+      expect(parent.get("#planner-edit-parent-hint").text()).toBe(
+        "Alle Unter-Quests ziehen mit.",
       );
     });
 

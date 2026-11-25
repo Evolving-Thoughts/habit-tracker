@@ -60,6 +60,10 @@ a time other than `00:00`–`23:59` answer 400 as well.
   read per month, since months with lines can lie years apart) when the end
   comes into view or on "Ältere Monate laden". The month heading counts
   "12 von 30 Tagen"; in the running month only the days so far count.
+  Without any line yet there is no "Monat wählen"; one calm card holds the
+  title "Das Beste von heute", one sentence and the field, whose
+  placeholder shows a quiet example every four seconds ("Zum Beispiel: ein
+  Gespräch"; with reduced motion the first stays). No count, no streak.
 - **Wochenrückblick:** "Das Beste der Woche" between Erledigt and the three
   questions, Monday to Sunday; a week without lines has no card.
 - **Search:** `kind: "day-best"` text hits, label "Das Beste vom 18. Nov."

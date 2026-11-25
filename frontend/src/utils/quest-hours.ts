@@ -1,6 +1,7 @@
 import type { QuestHoursResponse } from "../types/quest-hours";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
 import { isCampaign } from "./todo-hierarchy";
+import { nextQuest } from "./campaign-next";
 import { formatDuration } from "./today-agenda";
 import { isCampaignColor, isCampaignIcon } from "./campaign-style";
 import type { CampaignColor, CampaignIcon } from "../types/campaign";
@@ -135,6 +136,8 @@ export type CampaignTile = {
   /** Minutes of each of the trend's weeks, oldest first. */
   weeks: number[];
   totalMinutes: number;
+  /** The quest to do next: today's first, then left over, then by day (`nextQuest`). */
+  next: HierarchyTodo | null;
 };
 
 /**
@@ -145,6 +148,7 @@ export type CampaignTile = {
 export function campaignTiles(
   todos: HierarchyTodo[],
   hours: QuestHoursResponse | null,
+  today?: string,
 ): CampaignTile[] {
   const parents = new Set(todos.map((todo) => todo.parentId));
   const counted = new Map(
@@ -167,6 +171,7 @@ export function campaignTiles(
         weeklyTargetMinutes: todo.weeklyTargetMinutes,
         weeks: row?.weeks ?? empty,
         totalMinutes: row?.totalMinutes ?? 0,
+        next: nextQuest(todos, todo.id, today),
       };
     });
 }

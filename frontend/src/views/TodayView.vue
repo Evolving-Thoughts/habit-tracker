@@ -1,6 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onDeactivated, ref } from "vue";
-import { getToday, reorderDay } from "../api/day-planner.api";
+import { computed, nextTick, onDeactivated, ref, watch } from "vue";
+import {
+  getHabits,
+  getToday,
+  getTodos,
+  reorderDay,
+} from "../api/day-planner.api";
 import { whileActive } from "../composables/useActive";
 import { useListFocus } from "../composables/useListFocus";
 import { useSortable } from "../composables/useSortable";
@@ -28,6 +33,9 @@ import PlannerItem from "../components/PlannerItem.vue";
 import QuickAddQuest from "../components/QuickAddQuest.vue";
 import TodayCalendar from "../components/TodayCalendar.vue";
 import TodayOtherDay from "../components/TodayOtherDay.vue";
+import TodayWelcome, {
+  type TodayStarter,
+} from "../components/TodayWelcome.vue";
 import { relationLabel } from "../utils/other-day";
 import EditItemDialog from "../components/EditItemDialog.vue";
 import MoveItemDialog from "../components/MoveItemDialog.vue";
@@ -109,6 +117,8 @@ const postponeOpen = ref(false);
 const creationOpen = ref(false);
 /** Opened by a long press on Plus: the title is dictated at once. */
 const creationDictate = ref(false);
+/** Which form the create dialog opens with; a Daily starter opens "Neues Daily". */
+const creationKind = ref<"todo" | "habit">("todo");
 const creationMessage = ref<string | null>(null);
 const catchUpOpen = ref(false);
 const resolvedOpen = ref(false);
@@ -226,14 +236,19 @@ const weekGoal = computed(() => {
 const wide = useMediaQuery("(min-width: 64rem)");
 /*
  * Narrower, the list and the day calendar take turns: "Liste · Logbuch"
- * under the head, remembered on this device; the list comes first.
+ * under the head, remembered on this device; the list comes first. A day
+ * after today has no log yet, so its pane is "Termine", as the calendar
+ * names itself there.
  */
 type Pane = "list" | "logbook";
 const PANE_KEY = "today:pane";
-const PANES: { value: Pane; label: string }[] = [
+const PANES = computed<{ value: Pane; label: string }[]>(() => [
   { value: "list", label: "Liste" },
-  { value: "logbook", label: "Logbuch" },
-];
+  {
+    value: "logbook",
+    label: shownDate.value > today.value ? "Termine" : "Logbuch",
+  },
+]);
 function storedPane(): Pane {
   try {
     return localStorage.getItem(PANE_KEY) === "logbook" ? "logbook" : "list";
@@ -268,15 +283,31 @@ const hasItems = computed(
     (planner.value?.items.length ?? 0) > 0 ||
     (planner.value?.externalEvents.length ?? 0) > 0,
 );
-/* A daily's goal and its count; which campaign it serves, the chip says. */
-const focusGoal = computed(() => {
-  const goal = agenda.value?.focus?.goal;
-  if (!goal || goal.target === null) return null;
-  const until = goal.periodEnd
-    ? ` bis ${formatDateForGermanDisplay(goal.periodEnd)}`
-    : "";
-  return `${goal.title}: ${goal.completed} von ${goal.target}${until}`;
-});
+/*
+ * A brand-new account (no quest, no daily yet) gets a short welcome on an
+ * empty day instead of the calm line. Asked only while the day is empty,
+ * once per load; a campaign is a quest, so the quests answer for it too.
+ * Once the account holds anything it stays an ordinary account; a failed
+ * question keeps the calm line.
+ */
+const freshAccount = ref(false);
+let accountUsed = false;
+watch(
+  () => (planner.value && !hasItems.value ? planner.value : null),
+  async (emptyDay) => {
+    if (!emptyDay || accountUsed) {
+      freshAccount.value = false;
+      return;
+    }
+    try {
+      const [todos, habits] = await Promise.all([getTodos(), getHabits()]);
+      accountUsed = todos.length > 0 || habits.length > 0;
+    } catch {
+      accountUsed = true;
+    }
+    freshAccount.value = !accountUsed && planner.value === emptyDay;
+  },
+);
 /* Which campaign the focus serves; a campaign's own quest needs no chip. */
 const focusCampaign = computed(() => {
   const focus = agenda.value?.focus;
@@ -284,6 +315,22 @@ const focusCampaign = computed(() => {
   return focus.type === "todo" && focus.campaign.id === focus.todoId
     ? null
     : focus.campaign;
+});
+/*
+ * A daily's goal and its count, after the campaign chip. When the goal is
+ * the campaign the chip already names, the count stands alone:
+ * "[Halbmarathon schaffen] 9 von 24 bis 20.01.2027", never the name twice.
+ */
+const focusGoal = computed(() => {
+  const goal = agenda.value?.focus?.goal;
+  if (!goal || goal.target === null) return null;
+  const until = goal.periodEnd
+    ? ` bis ${formatDateForGermanDisplay(goal.periodEnd)}`
+    : "";
+  const count = `${goal.completed} von ${goal.target}${until}`;
+  return focusCampaign.value?.title === goal.title
+    ? count
+    : `${goal.title}: ${count}`;
 });
 /* An appointment on the focus card names its time range above everything else. */
 const focusSlot = computed(() =>
@@ -581,17 +628,38 @@ async function postponeAll(): Promise<void> {
       : `${items.length} Einträge stehen jetzt bei morgen.`;
 }
 
-function openCreation(dictate = false): void {
-  if (
+const creationBlocked = computed(
+  () =>
     isLoading.value ||
     editorBusy.value ||
     writes.busy.value ||
-    editingTarget.value
-  )
-    return;
+    editingTarget.value !== null,
+);
+function openCreation(
+  dictate = false,
+  kind: "todo" | "habit" = "todo",
+  title = "",
+): void {
+  if (creationBlocked.value) return;
   creationMessage.value = null;
   creationDictate.value = dictate;
+  creationKind.value = kind;
+  creationTitle.value = title;
   creationOpen.value = true;
+}
+
+/*
+ * A starter of the welcome fills in a title and nothing more: a quest the
+ * quick add above (Enter adds it to today), a daily "Neues Daily".
+ */
+const quickAdd = ref<InstanceType<typeof QuickAddQuest> | null>(null);
+const creationTitle = ref("");
+function startWith(starter: TodayStarter): void {
+  if (starter.kind === "todo") {
+    quickAdd.value?.fill(starter.title);
+    return;
+  }
+  openCreation(false, "habit", starter.title);
 }
 async function onCreated(kind: "todo" | "habit"): Promise<void> {
   creationMessage.value =
@@ -643,7 +711,8 @@ function canMoveByDialog(item: DayPlannerItem): boolean {
   return (item.moveUntil ?? "") > item.scheduledDate;
 }
 const router = useRouter();
-function rowMenu(item: DayPlannerItem): MenuEntry[] {
+/** `past`: an appointment that is over but open leads with "Anderer Tag …". */
+function rowMenu(item: DayPlannerItem, past = false): MenuEntry[] {
   const today = planner.value?.date;
   if (!today || item.status !== "pending") return [];
   const busy = isUpdating(item);
@@ -666,6 +735,7 @@ function rowMenu(item: DayPlannerItem): MenuEntry[] {
         ? {
             run: () => openMoving(item),
             appointment: item.type === "todo" && !!item.timeOfDay,
+            lead: past,
           }
         : undefined,
       skip: item.type === "habit" ? () => void skipHabit(item) : undefined,
@@ -806,7 +876,7 @@ useShortcutHandlers(
             >
           </p>
           <p v-if="timeLine && !otherDay" class="today-view__time">
-            <!-- From 40rem each part breaks as a whole, no figure torn apart. -->
+            <!-- Each part breaks as a whole, no figure torn apart. -->
             <template v-for="(part, index) in timeParts" :key="part"
               >{{ index ? " " : ""
               }}<span class="today-view__time-part">{{
@@ -828,50 +898,66 @@ useShortcutHandlers(
             <span :style="{ width: `${weekGoal.filled}%` }" />
           </span>
         </div>
-        <!-- Leaf through the days; "Heute" leads back from another one. -->
-        <div class="today-view__days" role="group" aria-label="Tage">
+        <div class="today-view__controls">
+          <!--
+            Beside the day calendar the plus button would cover the rows' ▶:
+            there "Neue Quest" opens the same dialog from the head instead,
+            as a pill on the ground: "Starten" stays the one primary action.
+          -->
           <button
-            v-if="otherDay"
-            class="btn today-view__back"
+            v-if="wide"
+            class="btn btn--ground today-view__create"
             type="button"
-            @click="showDay(today)"
+            :disabled="creationBlocked"
+            @click="openCreation()"
           >
-            Heute
+            <AppIcon name="plus" />Neue Quest
           </button>
+          <!-- Leaf through the days; "Heute" leads back from another one. -->
+          <div class="today-view__days" role="group" aria-label="Tage">
+            <button
+              v-if="otherDay"
+              class="btn today-view__back"
+              type="button"
+              @click="showDay(today)"
+            >
+              Heute
+            </button>
+            <button
+              class="btn btn--icon"
+              type="button"
+              aria-label="Voriger Tag"
+              @click="stepDay(-1)"
+            >
+              <AppIcon name="chevron-left" />
+            </button>
+            <button
+              class="btn btn--icon"
+              type="button"
+              aria-label="Nächster Tag"
+              @click="stepDay(1)"
+            >
+              <AppIcon name="chevron" />
+            </button>
+          </div>
+          <ActionMenu
+            v-if="postponable.length && phone && !otherDay"
+            title="Heute"
+            label="Weitere Aktionen für heute"
+            :entries="headerMenu"
+            :disabled="isLoading || editorBusy || writes.busy.value"
+          />
           <button
-            class="btn btn--icon"
+            v-else-if="postponable.length && !otherDay"
+            class="today-view__postpone"
             type="button"
-            aria-label="Voriger Tag"
-            @click="stepDay(-1)"
+            :disabled="isLoading || editorBusy || writes.busy.value"
+            @click="postponeOpen = true"
           >
-            <AppIcon name="chevron-left" />
-          </button>
-          <button
-            class="btn btn--icon"
-            type="button"
-            aria-label="Nächster Tag"
-            @click="stepDay(1)"
-          >
-            <AppIcon name="chevron" />
+            <AppIcon name="tomorrow" />
+            <span>Auf morgen</span>
           </button>
         </div>
-        <ActionMenu
-          v-if="postponable.length && phone && !otherDay"
-          title="Heute"
-          label="Weitere Aktionen für heute"
-          :entries="headerMenu"
-          :disabled="isLoading || editorBusy || writes.busy.value"
-        />
-        <button
-          v-else-if="postponable.length && !otherDay"
-          class="today-view__postpone"
-          type="button"
-          :disabled="isLoading || editorBusy || writes.busy.value"
-          @click="postponeOpen = true"
-        >
-          <AppIcon name="tomorrow" />
-          <span>Auf morgen</span>
-        </button>
       </header>
 
       <!-- Narrower than the split: the list or the day calendar, by choice. -->
@@ -895,7 +981,9 @@ useShortcutHandlers(
 
       <CreateItemDialog
         v-if="creationOpen"
+        :kind="creationKind"
         :dictate="creationDictate"
+        :title="creationTitle"
         @close="creationOpen = false"
         @created="onCreated"
       />
@@ -999,6 +1087,7 @@ useShortcutHandlers(
       <div v-if="!otherDay" v-show="showsList" class="today-view__day">
         <QuickAddQuest
           v-if="planner"
+          ref="quickAdd"
           :date="planner.date"
           :order="orderRefs"
           @created="writes.applied()"
@@ -1015,6 +1104,14 @@ useShortcutHandlers(
           <span class="today-view__bone" />
         </div>
 
+        <!-- A brand-new account learns the words first; any other empty day stays calm. -->
+        <TodayWelcome
+          v-else-if="!hasItems && !errorMessage && freshAccount"
+          :action="!wide"
+          :disabled="creationBlocked"
+          @start="startWith"
+          @create="openCreation()"
+        />
         <section v-else-if="!hasItems && !errorMessage" class="today-view__empty">
           <h2>Für heute ist nichts geplant.</h2>
           <p>Genieße den freien Raum oder schreib oben auf, was heute ansteht.</p>
@@ -1098,8 +1195,8 @@ useShortcutHandlers(
                   />{{ agenda.focus.categoryName }}
                 </span>
                 <span v-for="part in focusMeta" :key="part">{{ part }}</span>
-                <span v-if="focusGoal">{{ focusGoal }}</span>
                 <CampaignChip v-if="focusCampaign" :campaign="focusCampaign" />
+                <span v-if="focusGoal">{{ focusGoal }}</span>
               </p>
               <!-- The stopwatch is the primary step, Erledigt the secondary one. -->
               <div class="focus__actions">
@@ -1190,14 +1287,12 @@ useShortcutHandlers(
                 :item="entry.item"
                 :time="entry.time"
                 :is-updating="isUpdating(entry.item)"
-                :menu="rowMenu(entry.item)"
+                :menu="rowMenu(entry.item, entry.past)"
                 :past="entry.past"
-                :movable="canMoveByDialog(entry.item)"
                 :challenge="challengeLine(entry.item)"
                 why-wide-only
                 @toggle="toggleItem"
                 @edit="openEditing"
-                @move="openMoving"
               />
               <CalendarEventRow
                 v-else-if="entry.kind === 'event'"
@@ -1369,12 +1464,14 @@ useShortcutHandlers(
 
     <!-- Stays mounted, so a move that empties the day is still announced. -->
     <p class="visually-hidden" role="status">{{ orderMessage }}</p>
-    <!-- After the content in reading order; fixed in place, it looks the same. -->
+    <!--
+      After the content in reading order; fixed in place, it looks the same.
+      Beside the day calendar "Neue Quest" in the head takes its place.
+    -->
     <CreateButton
+      v-if="!wide"
       label="Eintrag erstellen"
-      :disabled="
-        isLoading || editorBusy || writes.busy.value || editingTarget !== null
-      "
+      :disabled="creationBlocked"
       @click="openCreation()"
       @dictate="openCreation(true)"
     />
@@ -1414,13 +1511,23 @@ useShortcutHandlers(
   min-width: 0;
 }
 
-/* Another day says how far from today it is, above its date. */
+/* Another day says how far from today it is, above its date: a label, not a tap. */
 .today-view__relation {
   margin: 0 0 var(--space-1);
-  color: var(--color-action-strong);
+  color: var(--color-ink-muted);
   font-size: 0.875rem;
   font-weight: 800;
   letter-spacing: 0.02em;
+}
+
+/* Day buttons, "Auf morgen" and, beside the calendar, "Neue Quest". */
+.today-view__controls {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .today-view__days {
@@ -1450,8 +1557,11 @@ useShortcutHandlers(
   font-variant-numeric: tabular-nums;
 }
 
-.today-view__progress-part {
+/* Each part stays whole; a line breaks only between parts. */
+.today-view__progress-part,
+.today-view__time-part {
   display: inline-block;
+  max-width: 100%;
 }
 
 .today-view__time {
@@ -1462,15 +1572,10 @@ useShortcutHandlers(
   font-variant-numeric: tabular-nums;
 }
 
-@media (min-width: 40rem) {
-  .today-view__time-part {
-    display: inline-block;
-  }
-}
-
 /*
- * A phone keeps the head short: the day's count and the time run on as one
- * quiet paragraph, the count first in ink, so the list starts higher up.
+ * A phone keeps the head short: the day's count and the time as two quiet
+ * lines of the same size, the count first in ink, so the list starts higher
+ * up and neither line breaks in the middle of a sense.
  */
 @media (max-width: 39.99rem) {
   .today-view__header {
@@ -1483,17 +1588,16 @@ useShortcutHandlers(
 
   .today-view__progress,
   .today-view__time {
-    display: inline;
     font-size: 0.875rem;
+  }
+
+  .today-view__progress + .today-view__time {
+    margin-top: 0;
   }
 
   .today-view__progress {
     color: var(--color-ink);
     font-weight: 700;
-  }
-
-  .today-view__progress + .today-view__time::before {
-    content: " · " / "";
   }
 }
 
@@ -1993,9 +2097,21 @@ useShortcutHandlers(
     height: calc(100dvh - 3.5rem - var(--space-6));
   }
 
-  /* The plus button stays beside the list, clear of the calendar. */
-  .today-view--split .create-button {
-    right: calc(var(--calendar-width) + var(--space-6) * 2 + var(--space-4));
+  /* No plus button floats here: "Neue Quest" sits in the head. */
+  .today-view--split {
+    padding-bottom: var(--space-6);
+  }
+
+  /*
+   * The head wraps before the title gets cramped: the controls move as one
+   * group to their own line, the title keeps at least 16rem.
+   */
+  .today-view--split .today-view__header {
+    flex-wrap: wrap;
+  }
+
+  .today-view--split .today-view__title {
+    flex: 1 1 16rem;
   }
 }
 

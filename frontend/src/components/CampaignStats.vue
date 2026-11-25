@@ -5,7 +5,8 @@ import { durationParts, type FigurePart } from "../utils/week-review";
 /**
  * The strip above the campaign tiles: campaign hours this week and ever,
  * how many campaigns are running and how many are done. Numbers only; a
- * figure that is not loaded is "–".
+ * figure that is not loaded is "–". A count of zero stays, but quiet: it is
+ * a fact, not a gap to fill.
  */
 const props = defineProps<{
   /** Quest minutes this week; null while the hours are not loaded. */
@@ -45,12 +46,14 @@ const cells = computed(() => [
     label: "Kampagnen aktiv",
     short: "Aktiv",
     parts: count(props.active),
+    zero: props.active === 0,
   },
   {
     key: "done",
     label: "Kampagnen abgeschlossen",
     short: "Abgeschlossen",
     parts: count(props.done),
+    zero: props.done === 0,
   },
 ]);
 </script>
@@ -74,7 +77,10 @@ const cells = computed(() => [
           }}</span>
         </dt>
         <!-- "43 Std. 20 Min.": a line may break between the parts, never inside one. -->
-        <dd class="campaign-stats__value">
+        <dd
+          class="campaign-stats__value"
+          :class="{ 'campaign-stats__value--zero': 'zero' in cell && cell.zero }"
+        >
           <template v-for="(part, index) in cell.parts" :key="index"
             >{{ index ? " " : ""
             }}<span class="campaign-stats__part"
@@ -162,6 +168,12 @@ const cells = computed(() => [
   line-height: 1.15;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+}
+
+/* Zero campaigns: the figure stays, in muted ink and lighter, so it does not lead. */
+.campaign-stats__value--zero {
+  color: var(--color-ink-muted);
+  font-weight: 700;
 }
 
 .campaign-stats__part {

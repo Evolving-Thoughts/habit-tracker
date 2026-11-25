@@ -4,7 +4,8 @@ import { addDays, getCurrentDateInTimeZone } from "../utils/date";
 
 /**
  * The day a quest is planned for. Everything on a day is worked through in
- * its order; only an appointment gets a time (`AppointmentFields`).
+ * its order; only an appointment gets a time (`AppointmentFields`). Only
+ * while no day is set does a hint say where the quest then lives.
  */
 const date = defineModel<string>("date", { required: true });
 defineProps<{ idPrefix: string }>();
@@ -29,7 +30,7 @@ function pick(day: string): void {
         v-model="date"
         name="scheduledDate"
         type="date"
-        :aria-describedby="`${idPrefix}-date-hint`"
+        :aria-describedby="date ? undefined : `${idPrefix}-date-hint`"
       />
       <button
         v-for="day in days"
@@ -42,7 +43,11 @@ function pick(day: string): void {
         {{ day.label }}
       </button>
     </div>
-    <small :id="`${idPrefix}-date-hint`" class="plan-fields__hint">
+    <small
+      v-if="!date"
+      :id="`${idPrefix}-date-hint`"
+      class="plan-fields__hint"
+    >
       Ohne Tag liegt die Quest im Questlog.
     </small>
   </div>

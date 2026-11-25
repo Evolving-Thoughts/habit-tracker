@@ -170,9 +170,11 @@ export class AuthService {
       if (!user || user.passwordHash !== candidate.passwordHash)
         throw new UnauthorizedException('E-Mail oder Passwort ist falsch.');
       if (!user.verifiedAt)
-        throw new UnauthorizedException(
-          'Bitte bestätige zuerst deine E-Mail-Adresse.',
-        );
+        // The code lets the app offer to resend the link only in this case.
+        throw new UnauthorizedException({
+          message: 'Bitte bestätige zuerst deine E-Mail-Adresse.',
+          code: 'EMAIL_UNVERIFIED',
+        });
       const token = randomToken();
       await manager.save(SessionEntity, {
         hash: tokenHash(token),

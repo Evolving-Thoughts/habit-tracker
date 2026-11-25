@@ -14,8 +14,8 @@ loop), `composables/useFocusSoundSettings.ts` (settings),
 `composables/action-sounds.ts` and `utils/milestones.ts` (which sound an
 action gets), `components/SoundEffectSettings.vue` (Einstellungen › Töne),
 `components/FocusSoundMenu.vue` (button and panel in the Fokus-Modus),
-`components/FocusSoundSettings.vue` (Einstellungen), `components/SoundChoices.vue`
-(the choice both share) and `native/focus-sound-plugin.ts`; the Android part
+`components/FocusSoundSettings.vue` (Einstellungen, a select), `components/SoundChoices.vue`
+(the radios of the Fokus-Modus panel) and `native/focus-sound-plugin.ts`; the Android part
 in `frontend/android/app/src/main/java/local/habittracker/app/sound/`.
 
 ## When sound plays
@@ -78,7 +78,13 @@ in Einstellungen › Tastatur turns it off with the others (`keyboard.md`).
 ## Settings, per device
 
 Einstellungen › Fokus-Klänge (after Fokus-Sperre): the same choice and the
-volume. Without any sound on the server it says "Noch keine Klänge
+volume. Here the choice is one native select, labelled "Klang": "Aus",
+then the groups "Musik" and "Geräusche" (`optgroup`), so eleven sounds
+take one field's height; the Fokus-Modus panel keeps its radios
+(`SoundChoices.vue`). The volume slider is drawn in warm tokens: a deep
+apricot track, the part up to the thumb and the thumb in the action colour.
+With "Aus" chosen it is disabled: there is nothing to turn up or down.
+Without any sound on the server it says "Noch keine Klänge
 verfügbar." instead of a list. Everything is stored in `localStorage` under
 `focus:sound`:
 

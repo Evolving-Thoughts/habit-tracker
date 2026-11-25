@@ -118,14 +118,11 @@ describe("PlanDay", () => {
     ).toBe("Quest für Mittwoch, 18. Nov. hinzufügen");
   });
 
-  it("puts the quick add on top, above the cards, with where new quests go", () => {
+  it("puts the quick add on top, above the cards, as wide as the column", () => {
     const wrapper = mountDay({ date: "2026-11-18", entries: [quest(1)] });
     const children = [...wrapper.element.children].map((node) => node.tagName);
     expect(children.indexOf("FORM")).toBeLessThan(children.indexOf("OL"));
-    const toggles = wrapper.get('[role="group"]').findAll("button");
-    expect(toggles.map((button) => button.attributes("aria-label"))).toEqual([
-      "Oben einfügen",
-      "Unten einfügen",
-    ]);
+    // Where new quests go is chosen once, in the Plan's head.
+    expect(wrapper.find('[aria-label="Oben einfügen"]').exists()).toBe(false);
   });
 });

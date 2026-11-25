@@ -107,6 +107,17 @@ public class FocusBlockPolicyTest {
     }
 
     @Test
+    public void hardcoreBoundToTheStopwatchHoldsWithoutAMomentAndCannotBeLiftedHere() {
+        FocusBlockState hardcore = state("hardcore", "blocklist", null, null, null);
+        assertTrue(hardcore.isHardcore());
+        assertFalse(hardcore.hasEndMoment());
+        assertTrue(hardcore.isActive(NOW + 3 * 60 * MINUTE));
+        assertEquals(-1, hardcore.minutesLeft(NOW));
+        assertTrue(hardcore.lifted().isActive(NOW));
+        assertFalse(hardcore.isActive(NOW - 5 * MINUTE + FocusBlockState.SOFT_BLOCK_MAX_MS));
+    }
+
+    @Test
     public void softHoldsUntilLiftedOrTwelveHoursPassed() {
         FocusBlockState soft = blocklist();
         assertTrue(soft.isActive(NOW));

@@ -139,8 +139,10 @@ export only, as Logbuch events (see `logbook.md`).
   "Google-Termine in der Reihenfolge" below). When nothing is up (only appointments are left, none running, and
   the day was never sorted) Heute says "In der Reihenfolge ist nichts mehr
   offen." and names the next appointment. One that is over and
-  still open (`past`) asks quietly "Vorbei – erledigt?" with its ring and
-  "Anderer Tag …". `nextChangeAt` names the next minute at which this can
+  still open (`past`) asks quietly "Vorbei – erledigt?" in one line below
+  its meta; the ring answers it, and "Anderer Tag …" leads its menu
+  (`rowMenu` with `otherDay.lead`). A row with its time in the time column
+  leaves "Termin" out of its meta line; the column says it. `nextChangeAt` names the next minute at which this can
   change (a start, an end), and `composables/useDayClock.ts` sets one
   timeout for exactly that minute instead of polling; it catches up when a
   hidden tab becomes visible again. From 64rem the day calendar
@@ -181,7 +183,7 @@ export only, as Logbuch events (see `logbook.md`).
   confirmed, or taken back, by the reload after the write.
 - Moving a single entry sits in its menu "Aktionen für …" (Morgen, Nächste
   Woche, "Anderer Tag …"; an appointment only "Termin verschieben …", where
-  the move is confirmed). The quick days run the same step as D and W
+  the move is confirmed; a past, still open one "Anderer Tag …" first). The quick days run the same step as D and W
   (`utils/row-actions.ts` `quickMoves` decides which days apply).
 - `QuickAddQuest.vue`: type a title, press Enter, the quest is planned for
   today, at the end or at the head of the order. Two small toggles beside the
@@ -191,6 +193,19 @@ export only, as Logbuch events (see `logbook.md`).
   Plan puts one on top of every day.
 - "Auf morgen" moves everything open that only has its day to tomorrow, after
   asking. Appointments and dailies that cannot move stay.
+- Creating: below 64rem the floating plus button (`CreateButton.vue`, a long
+  press dictates); in the split layout from 64rem, where it would cover the
+  rows' ▶, "Neue Quest" in the head opens the same dialog instead, as a
+  pill on the ground (`btn--ground`), so the focus card's "Starten" stays
+  the one primary action. N still focuses the quick add.
+- An empty day says "Für heute ist nichts geplant." A brand-new account (no
+  quest and no daily, asked with `GET /todos` and `GET /habits` only while
+  the day is empty; a campaign is a quest) gets `TodayWelcome.vue`
+  instead: Quest, Daily, Kampagne and Questlog in one sentence each, three
+  starters that only fill in a title (a quest the quick add, a daily the
+  "Neues Daily" dialog) and "Erste Quest anlegen" (below 64rem; beside the
+  calendar "Neue Quest" in the head is that action). A failed question
+  keeps the calm line.
 - Heute stays alive while another view is shown: `App.vue` wraps the
   `RouterView` in `<KeepAlive include="TodayView">` (only Heute; the
   Fokus-Modus must unmount, its sound stops by design). Coming back from the
@@ -231,7 +246,9 @@ counts one.
   later day they drag like on today (the Plan's `dropEventOnDay`).
 - A past day shows its reflection and its best below the list.
 - No focus card, no stopwatch, no "Nachholen", no "Auf morgen" there:
-  they belong to now. The Logbuch pane shows that day's calendar.
+  they belong to now. The Logbuch pane shows that day's calendar; on a day
+  after today the pane is called "Termine", as the calendar calls itself
+  there.
 - A tap opens the same editor as on today.
 
 ### Google-Termine in der Reihenfolge

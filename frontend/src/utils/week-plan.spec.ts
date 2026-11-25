@@ -28,6 +28,7 @@ import {
   stepDrop,
   stepRunDrop,
   todayScroll,
+  weekOpenMinute,
   planChips,
   startColumn,
   columnAt,
@@ -554,6 +555,16 @@ describe("boardColumns", () => {
   });
 });
 
+describe("weekOpenMinute", () => {
+  it("opens on a full hour: before now, before the first entry, or at 8:00", () => {
+    expect(weekOpenMinute(18 * 60 + 45, 7 * 60)).toBe(17 * 60);
+    expect(weekOpenMinute(18 * 60 + 29, null)).toBe(16 * 60);
+    expect(weekOpenMinute(null, 9 * 60 + 15)).toBe(8 * 60);
+    expect(weekOpenMinute(null, null)).toBe(8 * 60);
+    expect(weekOpenMinute(30, null)).toBe(0);
+  });
+});
+
 describe("todayScroll", () => {
   it("stays at the start while today is fully in view", () => {
     expect(todayScroll({ start: 52, end: 276 }, { width: 380, sticky: 52 })).toBe(0);
@@ -564,6 +575,16 @@ describe("todayScroll", () => {
     expect(todayScroll({ start: 284, end: 508 }, { width: 380, sticky: 52 })).toBe(
       232,
     );
+  });
+
+  it("leads with today when asked, even if it would fit further on", () => {
+    // The Kalender week: hours (48), Monday (120), then today.
+    expect(
+      todayScroll({ start: 168, end: 288 }, { width: 375, sticky: 48, lead: true }),
+    ).toBe(120);
+    expect(
+      todayScroll({ start: 48, end: 168 }, { width: 375, sticky: 48, lead: true }),
+    ).toBe(0);
   });
 });
 

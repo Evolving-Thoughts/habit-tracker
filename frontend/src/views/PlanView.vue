@@ -18,6 +18,7 @@ import {
 } from "../api/day-planner.api";
 import { planQuest, unplanQuest } from "../api/questlog.api";
 import AppIcon from "../components/AppIcon.vue";
+import InsertPlaceToggle from "../components/InsertPlaceToggle.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
 import MoveItemDialog, {
   type MoveTarget,
@@ -1148,6 +1149,15 @@ useShortcutHandlers({
       </h1>
       <!-- "Heute" before the arrows, so they keep their place when it leaves. -->
       <div class="plan-view__nav">
+        <!--
+          Where new quests go, once for every column's quick add. A word and a
+          divider keep it from reading as part of the day arrows; the group's
+          own name ("Neue Quests einfügen") is what screen readers hear.
+        -->
+        <div class="plan-view__place">
+          <span class="plan-view__place-label" aria-hidden="true">Neue</span>
+          <InsertPlaceToggle />
+        </div>
         <button
           v-if="!startsToday"
           type="button"
@@ -1353,6 +1363,22 @@ useShortcutHandlers({
   display: flex;
   gap: var(--space-1);
   align-items: center;
+}
+
+/* The insert choice stands apart from the day arrows: a word, then a rule. */
+.plan-view__place {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-right: var(--space-1);
+  padding-right: var(--space-2);
+  border-right: 1px solid var(--color-line-strong);
+}
+
+.plan-view__place-label {
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
 }
 
 .plan-view__lead {

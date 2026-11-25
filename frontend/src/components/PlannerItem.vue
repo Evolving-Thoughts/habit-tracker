@@ -15,7 +15,9 @@ import { streakLine } from "../utils/streak";
  * A row of Heute on the shared row (ItemRow): ring, title with its meta
  * line, ▶ and the menu the view builds. Carried-over rows are compact and
  * show the view's chips instead of ▶ and the menu. In the order of the day
- * the whole card drags; its menu moves it a place up or down.
+ * the whole card drags; its menu moves it a place up or down. The meta line
+ * wraps on a phone too, as in the Kalender's lists: every part counts, and
+ * the campaign chip moves on to the next line whole instead of shrinking.
  */
 const props = withDefaults(defineProps<{
   item: DayPlannerItem;
@@ -41,10 +43,9 @@ const props = withDefaults(defineProps<{
   whyWideOnly?: boolean;
   /**
    * An appointment that is over but still open: a quiet question takes the
-   * place of the Warum, with "Anderer Tag …" where it can move.
+   * place of the Warum; "Anderer Tag …" leads the view's menu then.
    */
   past?: boolean;
-  movable?: boolean;
   /**
    * Today's run of the Monats-Challenge: "Monats-Challenge · Tag 2 · noch 4"
    * in words in the meta line, which then wraps on a phone too.
@@ -55,7 +56,6 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   toggle: [item: DayPlannerItem];
   edit: [item: DayPlannerItem];
-  move: [item: DayPlannerItem];
 }>();
 
 const state = computed(() =>
@@ -65,6 +65,9 @@ const state = computed(() =>
       ? "skipped"
       : "open",
 );
+
+/** The clock time in the leading column, where the row shows one. */
+const shownTime = computed(() => (props.showDate ? null : props.time || null));
 
 const details = computed(() => {
   const parts: string[] = [];
@@ -82,7 +85,8 @@ const details = computed(() => {
   } else if (props.item.workedMinutes > 0) {
     parts.push(`${props.item.workedMinutes} Min. gearbeitet`);
   }
-  if (props.item.type === "todo" && props.item.timeOfDay)
+  // The time column already says it is an appointment.
+  if (props.item.type === "todo" && props.item.timeOfDay && !shownTime.value)
     parts.push("Termin");
   return parts;
 });
@@ -133,7 +137,7 @@ const measure = computed(() =>
     :campaign-mark="campaignMark"
     :measure="measure"
     :menu="compact || state !== 'open' ? [] : (menu ?? [])"
-    :wrap-meta="!!challenge"
+    wrap-meta
     @toggle="emit('toggle', item)"
     @edit="emit('edit', item)"
   >
@@ -174,22 +178,9 @@ const measure = computed(() =>
       <span v-for="part in details" :key="part">{{ part }}</span>
       <CampaignChip v-if="campaignChip" :campaign="campaignChip" />
     </template>
-    <!-- Over but open: asked, never warned; the ring above answers it. -->
+    <!-- Over but open: asked, never warned; the ring answers it, "…" moves it. -->
     <template v-if="past && state === 'open'" #below>
-      <p class="planner-item__nudge">
-        <span>Vorbei – erledigt?</span>
-        <button
-          v-if="movable"
-          type="button"
-          class="planner-item__nudge-move"
-          data-move-button
-          :disabled="isUpdating"
-          :aria-label="`${item.title} auf einen anderen Tag`"
-          @click="emit('move', item)"
-        >
-          Anderer Tag …
-        </button>
-      </p>
+      <p class="planner-item__nudge">Vorbei – erledigt?</p>
     </template>
     <!-- What it is for, quietly and on one line; done rows need it no more. -->
     <template v-else-if="item.why && state === 'open'" #below>
@@ -239,43 +230,13 @@ const measure = computed(() =>
   }
 }
 
-/* The question of a past appointment: muted ink, its move a quiet pill. */
+/* The question of a past appointment: one quiet line in muted ink. */
 .planner-item__nudge {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-2);
-  align-items: center;
   margin: 0.1rem 0 0;
   color: var(--color-ink-muted);
   font-size: 0.9375rem;
   font-weight: 600;
-}
-
-.planner-item__nudge-move {
-  min-height: var(--tap);
-  padding: 0 var(--space-3);
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-action-tint);
-  color: var(--color-action-strong);
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 420ms var(--spring);
-}
-
-.planner-item__nudge-move:hover:not(:disabled) {
-  background: var(--color-action-tint-hover);
-}
-
-.planner-item__nudge-move:active:not(:disabled) {
-  transform: var(--press);
-  transition-duration: 90ms;
-}
-
-.planner-item__nudge-move:disabled {
-  color: var(--color-ink-soft);
-  cursor: progress;
+  line-height: 1.4;
 }
 
 .planner-item__time {
