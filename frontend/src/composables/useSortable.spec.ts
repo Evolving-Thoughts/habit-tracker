@@ -1,10 +1,17 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { defineComponent, h, nextTick, ref } from "vue";
-import { LIFT_VIBRATION_MS, useSortable } from "./useSortable";
+import {
+  HELD_CLASS,
+  LIFT_VIBRATION_MS,
+  pressesControl,
+  useSortable,
+} from "./useSortable";
 
 type Handlers = {
   onStart: (event: { item: HTMLElement }) => void;
+  onChoose: (event: { item: HTMLElement; originalEvent?: Event }) => void;
+  onUnchoose: (event: { item: HTMLElement }) => void;
   onEnd: (event: Record<string, unknown>) => void;
 };
 const sortables: Handlers[] = [];
@@ -71,7 +78,7 @@ describe("useSortable", () => {
     wrapper.unmount();
   });
 
-  it("buzzes briefly when a card lifts, where the device can", async () => {
+  it("rises and buzzes as soon as a finger has held a card long enough", async () => {
     const vibrate = vi.fn(() => true);
     Object.defineProperty(navigator, "vibrate", {
       configurable: true,
@@ -82,11 +89,60 @@ describe("useSortable", () => {
     const card = (wrapper.element as HTMLElement).querySelector<HTMLElement>(
       '[data-key="A"]',
     )!;
-    sortables.at(-1)!.onStart({ item: card });
+    const handlers = sortables.at(-1)!;
+    const touch = new PointerEvent("pointerdown", { pointerType: "touch" });
+    handlers.onChoose({ item: card, originalEvent: touch });
+    expect(card.classList.contains(HELD_CLASS)).toBe(true);
     expect(vibrate).toHaveBeenCalledWith(LIFT_VIBRATION_MS);
-    // Without the API (desktop browsers, iOS) lifting works all the same.
+    handlers.onUnchoose({ item: card });
+    expect(card.classList.contains(HELD_CLASS)).toBe(false);
+
+    // A mouse press drags as soon as it moves: no sign, no buzz.
+    vibrate.mockClear();
+    const mouse = new PointerEvent("pointerdown", { pointerType: "mouse" });
+    handlers.onChoose({ item: card, originalEvent: mouse });
+    expect(card.classList.contains(HELD_CLASS)).toBe(false);
+    expect(vibrate).not.toHaveBeenCalled();
+
+    // Without the API (desktop browsers, iOS) holding works all the same.
     Reflect.deleteProperty(navigator, "vibrate");
-    expect(() => sortables.at(-1)!.onStart({ item: card })).not.toThrow();
+    expect(() =>
+      handlers.onChoose({ item: card, originalEvent: touch }),
+    ).not.toThrow();
     wrapper.unmount();
+  });
+});
+
+describe("pressesControl", () => {
+  function card(): HTMLElement {
+    const article = document.createElement("article");
+    article.innerHTML = `
+      <h3><button data-edit-button>Steuer</button></h3>
+      <button class="ring">○</button>
+      <p class="meta"><span>30 Min.</span></p>`;
+    return article;
+  }
+
+  it("lets a press on the title lift the card, like one on the card itself", () => {
+    const article = card();
+    expect(pressesControl(article.querySelector("h3 button"), article)).toBe(
+      false,
+    );
+    expect(pressesControl(article.querySelector(".meta span"), article)).toBe(
+      false,
+    );
+  });
+
+  it("keeps the card's other controls to their own tap", () => {
+    const article = card();
+    expect(pressesControl(article.querySelector(".ring"), article)).toBe(true);
+  });
+
+  it("never lifts an anchored card", () => {
+    const article = card();
+    article.classList.add("event");
+    expect(
+      pressesControl(article.querySelector(".meta span"), article, ".event"),
+    ).toBe(true);
   });
 });

@@ -839,11 +839,34 @@ textarea.input {
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
+  transition:
+    transform 140ms ease-out,
+    box-shadow 140ms ease-out;
+}
+
+/*
+ * The finger has held long enough: the card rises under it, so it is plain
+ * that it now moves (with a short buzz where the device can). Shape and
+ * shadow carry it, not a colour.
+ */
+.card-drag.card-drag--held {
+  position: relative;
+  z-index: 1;
+  transform: scale(1.03);
+  box-shadow: var(--shadow-popover);
+  outline: 2px solid var(--color-ink);
+  outline-offset: -2px;
 }
 
 /* What is being dragged, and the gap it leaves behind. */
 .sortable-ghost {
   opacity: 0.35;
+}
+
+.sortable-ghost.card-drag--held {
+  transform: none;
+  box-shadow: none;
+  outline: none;
 }
 
 .sortable-fallback {

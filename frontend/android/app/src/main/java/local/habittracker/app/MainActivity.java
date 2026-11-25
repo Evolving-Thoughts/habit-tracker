@@ -14,5 +14,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(FocusSoundPlugin.class);
         registerPlugin(SpeechPlugin.class);
         super.onCreate(savedInstanceState);
+        // After Capacitor's own edge-to-edge handler, which it replaces.
+        KeyboardInsets.apply(getBridge().getWebView());
     }
 }

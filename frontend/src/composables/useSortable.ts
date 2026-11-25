@@ -2,6 +2,35 @@ import Sortable from "sortablejs";
 import { onBeforeUnmount, watch, type Ref } from "vue";
 import { CARD_CONTROLS, noteDragEnd } from "../utils/card-click";
 
+/**
+ * A card's title is its edit button for keyboards and screen readers, but
+ * for a finger or a mouse it is part of the card: a long press on the words
+ * lifts the card like a press anywhere else on it. A plain tap still edits.
+ */
+const TITLE = "[data-edit-button]";
+
+/** Whether a press starts on a control of the card that keeps its own tap. */
+export function pressesControl(
+  target: EventTarget | null,
+  card: Element,
+  anchor?: string,
+): boolean {
+  if (!(target instanceof Element)) return false;
+  if (anchor && target.closest(anchor)) return true;
+  const control = target.closest(CARD_CONTROLS);
+  return !!control && card.contains(control) && !control.matches(TITLE);
+}
+
+/** Set on a card while a finger holds it long enough to move it. */
+export const HELD_CLASS = "card-drag--held";
+
+function isTouch(event: Event | undefined): boolean {
+  if (!event) return false;
+  if (typeof TouchEvent !== "undefined" && event instanceof TouchEvent)
+    return true;
+  return (event as PointerEvent).pointerType === "touch";
+}
+
 /** Where a drag ended: the list it landed in and its place among all children there. */
 export type SortableDrop = { item: HTMLElement; list: HTMLElement; index: number };
 
@@ -66,9 +95,9 @@ export function useSortable(
       sortable = Sortable.create(element, {
         draggable: options.item,
         // Ring, ▶, "…" and links keep their own tap; they never lift the card.
-        filter: options.anchor
-          ? `${CARD_CONTROLS}, ${options.anchor}`
-          : CARD_CONTROLS,
+        // The title is no such control: see TITLE.
+        filter: (event, item) =>
+          pressesControl(event.target, item, options.anchor),
         preventOnFilter: false,
         group: options.group && {
           name: options.group,
@@ -87,10 +116,22 @@ export function useSortable(
         // The own drag layer behaves the same with mouse, touch and pen.
         forceFallback: true,
         fallbackTolerance: DRAG_DISTANCE_PX,
+        // The finger has held long enough: from now on it moves the card.
+        // The card says so at once (it rises, the device buzzes), before
+        // the finger moves. A mouse needs no such sign: it drags as soon as
+        // it moves.
+        onChoose(event) {
+          const press = (event as unknown as { originalEvent?: Event })
+            .originalEvent;
+          if (!isTouch(press)) return;
+          event.item.classList.add(HELD_CLASS);
+          navigator.vibrate?.(LIFT_VIBRATION_MS);
+        },
+        onUnchoose({ item }) {
+          item.classList.remove(HELD_CLASS);
+        },
         onStart({ item }) {
           lifted = true;
-          // A short buzz where the device can: the card is in the hand.
-          navigator.vibrate?.(LIFT_VIBRATION_MS);
           home = item.parentNode
             ? { parent: item.parentNode, next: item.nextSibling }
             : null;

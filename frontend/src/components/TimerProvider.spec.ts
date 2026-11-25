@@ -65,6 +65,18 @@ describe("global Timer bar", () => {
     expect(timerAction).toHaveBeenLastCalledWith("a", "stop");
     expect(w.find("aside").exists()).toBe(false);
   });
+  it("opens the Fokus-Modus from a tap on the bar, but not from its buttons", async () => {
+    window.location.hash = "#/heute";
+    const w = mount(TimerProvider);
+    await flushPromises();
+    expect(w.get("a.timer-bar__text").attributes("href")).toBe("#/fokus");
+    await w.get('button[aria-label="Stoppuhr pausieren"]').trigger("click");
+    await flushPromises();
+    expect(window.location.hash).toBe("#/heute");
+    await w.get('[aria-label="Gearbeitete Zeit"]').trigger("click");
+    expect(window.location.hash).toBe("#/fokus");
+    window.location.hash = "";
+  });
   it("shows no target for a quest without planned minutes", async () => {
     vi.mocked(getCurrentTimer).mockResolvedValue(
       response("running", 5_000, null),
