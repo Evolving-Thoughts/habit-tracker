@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h, KeepAlive } from "vue";
 import { notifyDataChanged } from "../composables/data-sync";
 import {
+  getPlan,
   getToday,
   reorderDay,
   createTodo,
@@ -43,9 +44,13 @@ import {
 } from "../composables/useTimer";
 
 const routerPush = vi.hoisted(() => vi.fn());
+const routerReplace = vi.hoisted(() => vi.fn());
+/** The address Heute reads its day from (`?tag=`). */
+const route = vi.hoisted(() => ({ query: {} as Record<string, string> }));
 vi.mock("vue-router", async (original) => ({
   ...(await original<typeof import("vue-router")>()),
-  useRouter: () => ({ push: routerPush }),
+  useRouter: () => ({ push: routerPush, replace: routerReplace }),
+  useRoute: () => route,
 }));
 vi.mock("../api/history.api", () => ({ getHistory: vi.fn() }));
 vi.mock("../api/work-logs.api", () => ({
@@ -67,6 +72,7 @@ vi.mock("../api/todo-hierarchy.api", () => ({
 }));
 vi.mock("../api/day-planner.api", () => ({
   getToday: vi.fn(),
+  getPlan: vi.fn(),
   reorderDay: vi.fn(),
   createTodo: vi.fn(),
   createHabit: vi.fn(),
@@ -2114,5 +2120,113 @@ describe("TodayView kept alive behind other views", () => {
     expect(wrapper.get(".today-view__toast").text()).not.toContain(
       "„Erstens“ erledigt",
     );
+  });
+});
+
+describe("TodayView on other days", () => {
+  const plannedQuest = {
+    type: "todo" as const,
+    todoId: 41,
+    title: "Steuer vorbereiten",
+    status: "pending" as const,
+    scheduledDate: "2026-10-03",
+    timeOfDay: null,
+    plannedDurationMinutes: 30,
+    campaign: null,
+    isOverdue: false,
+  };
+  function dayPlan(date: string, entries: unknown[]) {
+    return {
+      startDate: date,
+      endDate: date,
+      today: "2026-10-02",
+      days: [{ date, entries }],
+      overdue: [],
+    } as never;
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T06:00:00Z"));
+    getTodayMock.mockResolvedValue(makePlanner([makeTodo()]));
+    route.query = {};
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    route.query = {};
+  });
+
+  it("leafs to yesterday and tomorrow with the arrows in its head", async () => {
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    await wrapper.get('button[aria-label="Voriger Tag"]').trigger("click");
+    expect(routerReplace).toHaveBeenLastCalledWith({
+      name: "today",
+      query: { tag: "2026-10-01" },
+    });
+    await wrapper.get('button[aria-label="Nächster Tag"]').trigger("click");
+    expect(routerReplace).toHaveBeenLastCalledWith({
+      name: "today",
+      query: { tag: "2026-10-03" },
+    });
+    // Today itself needs no way back.
+    expect(wrapper.find(".today-view__back").exists()).toBe(false);
+  });
+
+  it("shows tomorrow on Heute's cards, ready to plan, without the focus card", async () => {
+    route.query = { tag: "2026-10-03" };
+    vi.mocked(getPlan).mockResolvedValue(
+      dayPlan("2026-10-03", [plannedQuest]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+
+    expect(getPlan).toHaveBeenCalledWith("2026-10-03", 1, expect.anything());
+    expect(wrapper.get(".today-view__relation").text()).toBe("Morgen");
+    expect(wrapper.get("h1").text()).toBe("Samstag, 3. Okt.");
+    expect(wrapper.text()).toContain("1 geplant");
+    expect(wrapper.text()).toContain("Steuer vorbereiten");
+    expect(wrapper.find(".focus").exists()).toBe(false);
+    expect(
+      wrapper.find('input[aria-label="Quest für morgen hinzufügen"]').exists(),
+    ).toBe(true);
+    // Today's own head figures stay with today.
+    expect(wrapper.find(".today-view__progress").exists()).toBe(false);
+
+    await wrapper.get(".today-view__back").trigger("click");
+    expect(routerReplace).toHaveBeenLastCalledWith({ name: "today" });
+  });
+
+  it("shows what was done on a past day, and takes no new quests there", async () => {
+    route.query = { tag: "2026-10-01" };
+    vi.mocked(getPlan).mockResolvedValue(
+      dayPlan("2026-10-01", [
+        { ...plannedQuest, scheduledDate: "2026-10-01", status: "completed" },
+      ]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+
+    expect(wrapper.get(".today-view__relation").text()).toBe("Gestern");
+    expect(wrapper.text()).toContain("1 erledigt");
+    expect(wrapper.get(".other-day__done").text()).toContain(
+      "Steuer vorbereiten",
+    );
+    expect(wrapper.find(".quick-add").exists()).toBe(false);
+  });
+
+  it("opens a quest of another day in the same editor as today's", async () => {
+    route.query = { tag: "2026-10-03" };
+    vi.mocked(getPlan).mockResolvedValue(
+      dayPlan("2026-10-03", [plannedQuest]),
+    );
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    await wrapper
+      .get('button[aria-label="Steuer vorbereiten bearbeiten"]')
+      .trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".item-editor").exists()).toBe(true);
   });
 });

@@ -18,6 +18,7 @@ import { useTargetNotice } from "../composables/useTargetNotice";
 import { writeDone } from "../composables/useTicks";
 import { primeMissingMilestones } from "../composables/action-sounds";
 import { formatStopwatch } from "../utils/stopwatch";
+import { CARD_CONTROLS } from "../utils/card-click";
 import type { MenuEntry } from "../utils/row-actions";
 import ActionMenu from "./ActionMenu.vue";
 import TimerIconButton from "./TimerIconButton.vue";
@@ -57,9 +58,19 @@ watch(
   () => `${timer.value?.id ?? ""}:${timer.value?.state ?? ""}`,
   () => void focusBlock.refresh(),
 );
-const stopOpenFocus = focusBlock.native?.onOpenFocus(() => {
+function openFocus(): void {
   window.location.hash = hrefOf("focus");
-});
+}
+const stopOpenFocus = focusBlock.native?.onOpenFocus(openFocus);
+/** A tap on the bar, not on one of its buttons, opens the Fokus-Modus. */
+function openFocusFromBar(event: MouseEvent): void {
+  if (event.defaultPrevented || event.button !== 0) return;
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  // The words are a link of their own; the buttons keep their own tap.
+  if (target.closest(CARD_CONTROLS)) return;
+  openFocus();
+}
 const notice = useTargetNotice(controller);
 const editingId = ref<string>();
 const editing = ref(false);
@@ -221,8 +232,14 @@ onUnmounted(() => {
     :data-sticky-top="docked ? undefined : ''"
     :data-docked="docked ? '' : undefined"
   >
-    <div v-if="timer" class="timer-bar__row">
-      <div class="timer-bar__text">
+    <div v-if="timer" class="timer-bar__row" @click="openFocusFromBar">
+      <!-- The words lead to the Fokus-Modus for keyboards and screen readers;
+           a tap anywhere on the bar but its buttons does the same. -->
+      <a
+        class="timer-bar__text"
+        :href="hrefOf('focus')"
+        :aria-label="`${timer.title}: Fokus-Modus öffnen`"
+      >
         <small>{{
           timer.state === "paused"
             ? "Pausiert"
@@ -230,7 +247,7 @@ onUnmounted(() => {
               ? "Soll erreicht"
               : "Stoppuhr läuft"
         }}</small><strong>{{ timer.title }}</strong>
-      </div>
+      </a>
       <span class="timer-bar__time">
         <span aria-label="Gearbeitete Zeit">{{ display }}</span>
         <small v-if="timer.targetMinutes !== null" class="timer-bar__target">
@@ -406,6 +423,21 @@ onUnmounted(() => {
   flex: 1;
   min-width: 8rem;
   overflow-wrap: anywhere;
+  color: inherit;
+  text-decoration: none;
+}
+@media (hover: hover) {
+  .timer-bar__text:hover strong {
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+  }
+}
+/* The whole bar leads to the Fokus-Modus, apart from its buttons. */
+.timer-bar__row {
+  cursor: pointer;
+}
+.timer-bar__controls {
+  cursor: default;
 }
 .timer-bar__text small {
   color: var(--color-ink-muted);

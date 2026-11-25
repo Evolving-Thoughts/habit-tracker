@@ -17,9 +17,13 @@ import { streakLine } from "../utils/streak";
  * show the view's chips instead of ▶ and the menu. In the order of the day
  * the whole card drags; its menu moves it a place up or down.
  */
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   item: DayPlannerItem;
   isUpdating: boolean;
+  /** Shows the ring; a forecast run on another day has none. */
+  checkable?: boolean;
+  /** Shows ▶; another day has none, the stopwatch is for today. */
+  measurable?: boolean;
   /** Clock time shown in the leading column; null keeps the column empty. */
   time?: string | null;
   /** Shows the original day instead of a time, for items carried over. */
@@ -46,7 +50,7 @@ const props = defineProps<{
    * in words in the meta line, which then wraps on a phone too.
    */
   challenge?: string | null;
-}>();
+}>(), { checkable: true, measurable: true });
 
 const emit = defineEmits<{
   toggle: [item: DayPlannerItem];
@@ -100,7 +104,7 @@ const leading = computed(() =>
 );
 
 const measure = computed(() =>
-  props.compact
+  props.compact || !props.measurable
     ? null
     : {
         kind:
@@ -122,6 +126,8 @@ const measure = computed(() =>
     :class="{ 'planner-item--overdue': item.isOverdue }"
     :title="item.title"
     :state="state"
+    :checkable="checkable"
+    :keep-ring-column="!checkable"
     :busy="isUpdating"
     :draggable="sortable"
     :campaign-mark="campaignMark"
