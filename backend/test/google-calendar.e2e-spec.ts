@@ -519,6 +519,72 @@ describe('Google calendar sync (e2e)', () => {
     ).toHaveLength(2);
   });
 
+  it('keeps the place an event was sorted into across syncs', async () => {
+    await connect();
+    google.add('primary', {
+      summary: 'Besprechung',
+      ...timed('2026-10-30T08:00:00.000Z', '2026-10-30T09:00:00.000Z'),
+    });
+    await sync();
+    type Planner = {
+      externalEvents: {
+        id: number;
+        title: string;
+        dayPosition: number | null;
+      }[];
+    };
+    const read = async () =>
+      (
+        (await request(server).get('/day-planner/today').expect(200))
+          .body as Planner
+      ).externalEvents;
+    const [event] = await read();
+    expect(event.dayPosition).toBeNull();
+    const todo = await request(server)
+      .post('/todos')
+      .send({ title: 'Bewerbung', scheduledDate: '2026-10-30' })
+      .expect(201);
+
+    await request(server)
+      .put('/day-planner/order')
+      .send({
+        items: [
+          { type: 'todo', id: (todo.body as { id: number }).id },
+          { type: 'event', id: event.id },
+        ],
+      })
+      .expect(204);
+    expect((await read())[0].dayPosition).toBe(1);
+    // The Plan shows it at the same place, as an entry of the day.
+    const plan = await request(server)
+      .get('/day-planner/plan?from=2026-10-30&days=1')
+      .expect(200);
+    expect(
+      (
+        plan.body as {
+          days: { entries: { type: string; title: string }[] }[];
+        }
+      ).days[0].entries.map(({ type, title }) => [type, title]),
+    ).toEqual([
+      ['todo', 'Bewerbung'],
+      ['event', 'Besprechung'],
+    ]);
+
+    // A sync replaces the rows; the place stays, and an old id is skipped.
+    await sync();
+    const [again] = await read();
+    expect(again.dayPosition).toBe(1);
+    await request(server)
+      .put('/day-planner/order')
+      .send({
+        items: [
+          { type: 'event', id: event.id === again.id ? 2147483647 : event.id },
+        ],
+      })
+      .expect(204);
+    expect((await read())[0].dayPosition).toBe(1);
+  });
+
   it('counts events by the time they occupy, not by their start', async () => {
     await connect();
     google.add('primary', {

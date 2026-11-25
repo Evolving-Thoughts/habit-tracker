@@ -22,7 +22,7 @@ import AppIcon from "./AppIcon.vue";
 import MicButton from "./MicButton.vue";
 import QuestParseChips from "./QuestParseChips.vue";
 
-type OrderedItem = { type: "todo" | "habit"; id: number };
+type OrderedItem = { type: "todo" | "habit" | "event"; id: number };
 
 /**
  * One line to put a quest on a day, or into the Questlog: type a title,

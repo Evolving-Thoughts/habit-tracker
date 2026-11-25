@@ -1,5 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
-import { addDays, dayOf } from '../common/date/local-day';
+import {
+  addDays,
+  dayOf,
+  endOfDay,
+  startOfDay,
+  timeOfDayOf,
+} from '../common/date/local-day';
+import type { ExternalEventEntity } from '../calendar/calendar.entities';
 import { NO_STREAK, Streak } from '../habits/streaks';
 import { HistoryPlannedItem } from '../history/history.dto';
 import { historyRange } from '../history/history-range';
@@ -170,6 +177,47 @@ export function resolvedHabitCandidate(
       id: occurrence.id,
     },
   };
+}
+
+/**
+ * A Google event on each of `dates` it occupies. On a day it began before,
+ * it stands at midnight. Its place in the order is the one stored for it.
+ */
+export function eventCandidates(
+  events: readonly ExternalEventEntity[],
+  dates: readonly string[],
+): WeekCandidate[] {
+  return events.flatMap((event) =>
+    dates
+      .filter(
+        (date) => event.start < endOfDay(date) && event.end > startOfDay(date),
+      )
+      .map((date): WeekCandidate => {
+        const timeOfDay =
+          event.start < startOfDay(date) ? '00:00' : timeOfDayOf(event.start);
+        return {
+          date,
+          entry: {
+            type: 'event',
+            eventId: event.id,
+            status: 'pending',
+            start: event.start.toISOString(),
+            end: event.end.toISOString(),
+            title: event.title,
+            timeOfDay,
+            plannedDurationMinutes: null,
+            campaign: null,
+            isOverdue: false,
+          },
+          order: {
+            scheduledDate: date,
+            timeOfDay,
+            dayPosition: event.dayPosition,
+            id: event.id,
+          },
+        };
+      }),
+  );
 }
 
 const isOpen = (entry: WeekPlanEntryDto): boolean => entry.status === 'pending';

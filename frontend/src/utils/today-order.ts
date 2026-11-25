@@ -1,25 +1,32 @@
 import type { DayPlannerItem, DayPlannerResponse } from "../types/day-planner";
-import { anchoredOrder, clockBoundIndex } from "./day-order";
-import { withDayOrder, type TodayAgenda } from "./today-agenda";
+import { anchoredOrder, clockBoundIndex, type OrderRef } from "./day-order";
+import {
+  isEventSlot,
+  withDayOrder,
+  type OrderRow,
+  type TodayAgenda,
+} from "./today-agenda";
 
-/** How the server names an item of the order (`PUT /day-planner/order`). */
-export type OrderRef = { type: "todo" | "habit"; id: number };
+export type { OrderRef };
 
-export function orderRef(item: DayPlannerItem): OrderRef {
-  return item.type === "todo"
-    ? { type: "todo", id: item.todoId }
-    : { type: "habit", id: item.occurrenceId };
+export function orderRef(row: OrderRow): OrderRef {
+  if (isEventSlot(row)) return { type: "event", id: row.event.id };
+  return row.type === "todo"
+    ? { type: "todo", id: row.todoId }
+    : { type: "habit", id: row.occurrenceId };
 }
 
 /**
  * The rows Heute lets you sort, top to bottom: the focus card first, then
- * the list below it. A Google event holds its row as null: it can be
- * crossed but has no stored place.
+ * the list below it. A Google event holds its row: it never lifts, but a
+ * card dropped next to it keeps that place.
  */
-export function sortableRows(agenda: TodayAgenda): (DayPlannerItem | null)[] {
+export function sortableRows(agenda: TodayAgenda): OrderRow[] {
   return [
     ...(agenda.focus ? [agenda.focus] : []),
-    ...agenda.list.map((entry) => (entry.kind === "event" ? null : entry.item)),
+    ...agenda.list.map((entry) =>
+      entry.kind === "event" ? entry.slot : entry.item,
+    ),
   ];
 }
 
@@ -34,10 +41,12 @@ export type DayMove = {
 };
 
 /**
- * Drags the row at `from` onto `to` (indices into `sortableRows`). Only
- * stored items crossed on screen count: the focus card stands apart from
- * its stored place and events have none. An appointment stays on the clock
- * among the others. The Monats-Challenge's run in the evening
+ * Drags the row at `from` onto `to` (indices into `sortableRows`). The
+ * rows crossed on screen count, Google events too: a card dropped right
+ * after one stays after it. A Google event drags as well, among the cards
+ * without a time; like an appointment it stays on the clock among the
+ * other appointments and events. The focus card stands apart from its
+ * stored place. The Monats-Challenge's run in the evening
  * (`eveningChallenge`) also stands apart from its stored place: a drag of
  * it, or onto it, sorts by what is on screen, and while it is open it keeps
  * showing right below the focus card wherever it was stored. One carried
@@ -53,24 +62,27 @@ export function dropInDay(
   if (from === to) return null;
   const rows = sortableRows(agenda);
   const item = rows[from];
-  if (!item || item.isOverdue) return null;
+  if (!item || (!isEventSlot(item) && item.isOverdue)) return null;
   const down = from < to;
   const crossed = down
     ? rows.slice(from + 1, to + 1).reverse()
     : rows.slice(to, from);
-  // Only today's items have a place: events and a carried-over run are crossed.
-  const placed = (entry: DayPlannerItem | null): entry is DayPlannerItem =>
-    entry !== null && !entry.isOverdue;
+  // Today's items and events have a place; a carried-over run is crossed.
+  const placed = (entry: OrderRow | undefined): entry is OrderRow =>
+    !!entry && (isEventSlot(entry) || !entry.isOverdue);
   const neighbour = crossed.find(placed);
   if (!neighbour) return null;
-  // Moving the focus card or the evening's challenge run, or past one,
-  // sorts by what is on screen.
-  const apart = (entry: DayPlannerItem) =>
-    entry === agenda.focus || entry === agenda.eveningChallenge;
+  // Moving the focus card or the evening's challenge run, or past one or
+  // a Google event, sorts by what is on screen: the focus card heads the
+  // screen wherever it is stored, and an event never sorted heads the day.
+  const apart = (entry: OrderRow) =>
+    entry === agenda.focus ||
+    entry === agenda.eveningChallenge ||
+    isEventSlot(entry);
   const base =
     apart(item) || apart(neighbour)
       ? rows.filter(placed)
-      : agenda.sequence;
+      : agenda.dayOrder;
   const sequence = anchoredOrder(base.filter((entry) => entry !== item));
   const index = clockBoundIndex(
     sequence,
@@ -78,10 +90,15 @@ export function dropInDay(
     sequence.indexOf(neighbour) + Number(down),
   );
   sequence.splice(index, 0, item);
+  // A card counts among the own entries, an event among all rows.
+  const counted = isEventSlot(item)
+    ? sequence
+    : sequence.filter((row) => !isEventSlot(row));
+  const title = isEventSlot(item) ? item.event.title : item.title;
   return {
     planner: withDayOrder(planner, sequence),
     order: sequence.map(orderRef),
-    message: `„${item.title}“ steht jetzt an Stelle ${sequence.indexOf(item) + 1} von ${sequence.length}.`,
+    message: `„${title}“ steht jetzt an Stelle ${counted.indexOf(item) + 1} von ${counted.length}.`,
   };
 }
 
@@ -95,9 +112,10 @@ export function dropInDay(
  */
 export function stepInDay(
   agenda: TodayAgenda,
-  item: DayPlannerItem,
+  item: OrderRow,
   direction: -1 | 1,
 ): number | null {
+  if (isEventSlot(item)) return null;
   const rows = sortableRows(agenda);
   const from = rows.indexOf(item);
   if (from === -1) return null;
@@ -109,7 +127,7 @@ export function stepInDay(
     to += direction
   ) {
     const row = rows[to];
-    if (!row || row === pinned) continue;
+    if (!row || isEventSlot(row) || row === pinned) continue;
     const time = row.timeOfDay;
     if (
       item.timeOfDay &&

@@ -135,8 +135,8 @@ export only, as Logbuch events (see `logbook.md`).
   one; when several overlap, the one that began last. Otherwise the first
   item without a time in the order. Every other appointment sits in Heute's
   list with its time, anchored in the order of the day (`list`, the server's
-  order, with the calendar's events by clock among the appointments on a
-  phone). When nothing is up (only appointments are left, none running, and
+  order, with the calendar's events at their places among them, see
+  "Google-Termine in der Reihenfolge" below). When nothing is up (only appointments are left, none running, and
   the day was never sorted) Heute says "In der Reihenfolge ist nichts mehr
   offen." and names the next appointment. One that is over and
   still open (`past`) asks quietly "Vorbei – erledigt?" with its ring and
@@ -145,7 +145,7 @@ export only, as Logbuch events (see `logbook.md`).
   timeout for exactly that minute instead of polling; it catches up when a
   hidden tab becomes visible again. From 64rem the day calendar
   (`DayCalendar.vue`, see `logbook.md`) stands beside the list and shows
-  the events there instead.
+  the events there too.
 - The focus card always heads Heute's list. In the evening (from the
   Monats-Challenge's reminder time, 19:00 without one) today's open run of
   the challenge stands right below it, out of its stored place, until it is
@@ -163,7 +163,8 @@ export only, as Logbuch events (see `logbook.md`).
 - Heute sorts by drag and drop: the focus card and the rows after it are one
   list (`useSortable`, SortableJS). Quests, stored runs and appointments drag.
   Timed cards can cross flexible cards and stop at the adjacent appointment
-  in clock order. Google events are read-only. Every write sends the whole day. A card passes another once the pointer crosses its
+  in clock order. Google events drag too, among the untimed cards, with
+  their time fixed (below). Every write sends the whole day. A card passes another once the pointer crosses its
   middle (`swapThreshold` 0.5), so cards of different heights do not jump. A mouse lifts
   it after 6px, a finger only after a 300ms press (`delayOnTouchOnly`), so a
   swipe still scrolls and a short tap still opens the editor; the card's own
@@ -172,7 +173,9 @@ export only, as Logbuch events (see `logbook.md`).
   one anywhere else. Once a finger has held long enough, the card rises
   under it (`card-drag--held`: larger, shadow, outline) and the device buzzes
   briefly (`navigator.vibrate`, the app's `VIBRATE` permission), before the
-  finger moves; a mouse gets no such sign, it drags as soon as it moves. The keyboard sorts with "Nach oben" and "Nach
+  finger moves; a mouse gets no such sign, it drags as soon as it moves.
+  The card under the finger (`.sortable-fallback`) has no transition: it
+  follows the finger with every move instead of trailing behind it. The keyboard sorts with "Nach oben" and "Nach
   unten" in the card's menu; the focus stays on its menu button and a status
   line announces the new place. The new order shows at once and is
   confirmed, or taken back, by the reload after the write.
@@ -201,7 +204,8 @@ export only, as Logbuch events (see `logbook.md`).
   `useInsertPlace`; each starts again when Heute is shown. `useLoader`
   then loads quietly once (`onShownAgain`, no skeleton), Heute's data and
   the day calendar's, so a quest completed elsewhere is there after the
-  reload. Leaving ends what belongs to the view, as unmounting did: open
+  reload; while shown, changes from other devices arrive live
+  ([live-sync.md](live-sync.md)). Leaving ends what belongs to the view, as unmounting did: open
   dialogs close (their scroll lock with them), an open "…" menu and a
   Logbuch drag end, dictation in the quick add stops, the campaign
   question says no, a held undo goes through and old notices go.
@@ -223,10 +227,41 @@ counts one.
   stored runs by dragging (the Plan's `dropOnDay` / `dropRunOnDay`) and
   moves them with the quick moves of their menu. Quests tick; runs only
   tick on their own day.
+- Its Google events are entries of the Plan's day, at their places; on a
+  later day they drag like on today (the Plan's `dropEventOnDay`).
 - A past day shows its reflection and its best below the list.
 - No focus card, no stopwatch, no "Nachholen", no "Auf morgen" there:
   they belong to now. The Logbuch pane shows that day's calendar.
 - A tap opens the same editor as on today.
+
+### Google-Termine in der Reihenfolge
+
+Events from the person's other Google calendars are read only
+(`calendar.events.readonly`); the app never writes there. Everywhere a day
+is sorted (Heute, its other days, the Plan) they still stand in the order
+of the day like an appointment: at their start on the clock among the
+timed items, and between those wherever the person put them or the quests
+around them. Their time and day never change.
+
+- `external_events.dayPosition` holds the place, counted like the items'
+  (`PUT /day-planner/order` takes `{ type: "event", id }` among the
+  items). A sync replaces the rows, so `eventId` (the event's id in its
+  calendar) carries the place over (`replaceExternal`). An event id a sync
+  has replaced meanwhile is skipped; its place stays a gap.
+- `GET /day-planner/plan` puts them among each day's entries
+  (`type: "event"`, `eventCandidates`), sorted by the one rule
+  (`sortInDay`); one that began the day before stands at 00:00 there.
+- `GET /day-planner/today` sends each event's `dayPosition`. Heute joins
+  them into the server's order (`withAnchors` in `utils/day-order.ts`):
+  on the clock among the timed items and, between them, before the first
+  item stored after it; one never sorted right after the appointment
+  before it, or at the head of the day.
+- An event counts as a row: a card dropped right after it stays after it,
+  and the event itself drags among the untimed cards, stopping at the
+  appointments and events before and after it on the clock
+  (`clockBoundIndex`, in `dropInDay` on Heute and `dropEventOnDay` on the
+  Plan's days). It opens no editor and counts in no tally. The keyboard's
+  "Nach oben" / "Nach unten" step over events; they have no menu.
 
 ## Migration
 
@@ -235,3 +270,6 @@ keeps its Berlin wall clock as `timeOfDay`, a flexible one only its Berlin day)
 and drops `scheduledAt`, `isFixed`, `users.dayEndMinutes`,
 `external_calendars.blocksPlanning` and `external_events.busy`. The migration
 test starts from the baseline schema with data and checks the conversion.
+
+`1796700000000-EventPlaces` adds `external_events.eventId` and
+`dayPosition`; rows from before get their id at the next sync.

@@ -39,7 +39,26 @@ export type WeekPlanHabitEntry = {
   monthChallenge?: boolean;
 } & WeekPlanEntryContext;
 
-export type WeekPlanEntry = WeekPlanTodoEntry | WeekPlanHabitEntry;
+/**
+ * A Google event on the day: read-only and always open; it keeps its time
+ * but takes a place in the order like an appointment.
+ */
+export type WeekPlanEventEntry = {
+  type: "event";
+  /** The event's row (`externalEvents[].id` of Heute). */
+  eventId: number;
+  status: "pending";
+  start: string;
+  end: string;
+} & WeekPlanEntryContext;
+
+export type WeekPlanEntry =
+  | WeekPlanTodoEntry
+  | WeekPlanHabitEntry
+  | WeekPlanEventEntry;
+
+/** An entry that is the person's own: a quest or a daily's run. */
+export type WeekPlanOwnEntry = WeekPlanTodoEntry | WeekPlanHabitEntry;
 
 export type WeekPlanDay = {
   date: string;

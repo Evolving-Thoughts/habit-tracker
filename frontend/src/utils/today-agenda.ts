@@ -4,10 +4,27 @@ import type {
   DayPlannerResponse,
 } from "../types/day-planner";
 import type { MonthChallenge } from "../types/month-challenge";
-import { anchoredOrder } from "./day-order";
+import { anchoredOrder, withAnchors } from "./day-order";
 import { tallyOfPlanner, type DayTally } from "./day-tally";
 
 export type ExternalEvent = DayPlannerResponse["externalEvents"][number];
+
+/**
+ * A Google event in the order of the day: it holds a place among the quests
+ * and dailies, at its start on the clock, but never moves in time.
+ */
+export type EventSlot = {
+  event: ExternalEvent;
+  timeOfDay: string;
+  dayPosition: number | null;
+};
+
+/** A row of the order of the day: an own item or a Google event. */
+export type OrderRow = DayPlannerItem | EventSlot;
+
+export function isEventSlot(row: OrderRow): row is EventSlot {
+  return "event" in row;
+}
 
 /**
  * An appointment of the day: a timed item or a calendar event, at its start.
@@ -27,6 +44,7 @@ export type AppointmentEntry =
       time: string;
       past: boolean;
       event: ExternalEvent;
+      slot: EventSlot;
     };
 
 /**
@@ -49,8 +67,8 @@ export type TodayAgenda = {
   appointments: AppointmentEntry[];
   /**
    * The rest of the day in one sequence, without the focus: the order of
-   * the day with the appointments anchored in it (`day-order.ts`), and the
-   * calendar's events by clock among the appointments. In the evening
+   * the day with the appointments and the calendar's events anchored in it
+   * (`day-order.ts`). In the evening
    * today's open run of the Monats-Challenge leads it (`eveningChallenge`).
    */
   list: DayEntry[];
@@ -68,6 +86,8 @@ export type TodayAgenda = {
    * what a new order is written from, so appointments keep their place.
    */
   sequence: DayPlannerItem[];
+  /** `sequence` with the Google events at their places: what a drag writes. */
+  dayOrder: OrderRow[];
   /** The first of `appointments` that has not begun yet. */
   nextAppointment: AppointmentEntry | null;
   /**
@@ -274,12 +294,16 @@ export function arrangeToday(
   const queue = pending.filter((item) => plannedClock(item) === null);
   const focus = currentItem(pending, queue, now);
 
-  const events: AppointmentEntry[] = planner.externalEvents.map((event) => ({
-    kind: "event",
-    ...clockOf(event.start),
-    past: eventEnd(event) <= now,
-    event,
-  }));
+  const events: AppointmentEntry[] = planner.externalEvents.map((event) => {
+    const clock = clockOf(event.start);
+    return {
+      kind: "event",
+      ...clock,
+      past: eventEnd(event) <= now,
+      event,
+      slot: { event, timeOfDay: clock.time, dayPosition: event.dayPosition },
+    };
+  });
   const items: AppointmentEntry[] = timed
     .filter(({ item }) => item !== focus)
     .map(({ item, clock }) => ({
@@ -292,28 +316,22 @@ export function arrangeToday(
     (first, second) => first.minutes - second.minutes,
   );
 
-  // The server sends the day in its order: appointments already anchored.
-  const list: DayEntry[] = pending
-    .filter((item) => item !== focus)
-    .map(
-      (item) =>
-        items.find((entry) => entry.kind === "item" && entry.item === item) ?? {
-          kind: "row",
-          item,
-        },
+  // The server sends the day in its order; the events join at their places
+  // (one never sorted right after the appointment before it on the clock).
+  const dayOrder = withAnchors<OrderRow>(
+    pending,
+    events.flatMap((entry) => (entry.kind === "event" ? [entry.slot] : [])),
+  );
+  const list: DayEntry[] = dayOrder
+    .filter((row) => row !== focus)
+    .map((row) =>
+      isEventSlot(row)
+        ? events.find((entry) => entry.kind === "event" && entry.slot === row)!
+        : (items.find((entry) => entry.kind === "item" && entry.item === row) ?? {
+            kind: "row",
+            item: row,
+          }),
     );
-  for (const event of [...events].sort((a, b) => a.minutes - b.minutes)) {
-    const timed = list.flatMap((entry, index) =>
-      entry.kind === "row" ? [] : [{ entry, index }],
-    );
-    const later = timed.find(({ entry }) => entry.minutes > event.minutes);
-    const at = later
-      ? later.index
-      : timed.length
-        ? timed[timed.length - 1]!.index + 1
-        : 0;
-    list.splice(at, 0, event);
-  }
 
   // "Am Ende vom Tag": the challenge's open run moves up below the focus.
   const run = openChallengeRun(planner);
@@ -338,7 +356,8 @@ export function arrangeToday(
     appointments,
     list,
     eveningChallenge,
-    sequence: pending,
+    sequence: dayOrder.filter((row): row is DayPlannerItem => !isEventSlot(row)),
+    dayOrder,
     nextAppointment:
       appointments.find((entry) => entry.minutes >= now) ?? null,
     queue,
@@ -380,15 +399,28 @@ export function moved<T>(list: readonly T[], from: number, to: number): T[] {
 }
 
 /**
- * The planner with today's open items in the order `sequence` gives,
- * appointments kept on the clock. Everything else keeps its place, so the
- * result reads like the server's answer.
+ * The planner with today's open items and events in the order `sequence`
+ * gives, appointments and events kept on the clock. Everything else keeps
+ * its place, so the result reads like the server's answer.
  */
 export function withDayOrder(
   planner: DayPlannerResponse,
-  sequence: readonly DayPlannerItem[],
+  sequence: readonly OrderRow[],
 ): DayPlannerResponse {
-  return withQueueOrder(planner, anchoredOrder(sequence).map((item, dayPosition) => ({ ...item, dayPosition })));
+  const order = anchoredOrder(sequence);
+  const places = new Map<number, number>();
+  const items = order.flatMap((row, dayPosition) => {
+    if (!isEventSlot(row)) return [{ ...row, dayPosition }];
+    places.set(row.event.id, dayPosition);
+    return [];
+  });
+  return {
+    ...withQueueOrder(planner, items),
+    externalEvents: planner.externalEvents.map((event) => ({
+      ...event,
+      dayPosition: places.get(event.id) ?? event.dayPosition,
+    })),
+  };
 }
 
 /**

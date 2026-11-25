@@ -9,7 +9,7 @@ Browser ─HTTPS─> Caddy (Host, Port 443) ─> nginx im Container web (127.0.0
 ```
 
 - **Caddy** auf dem Host holt und erneuert das Zertifikat selbst und leitet an `127.0.0.1:8080` weiter. Der Port ist `APP_PORT` aus `.env.production` (Standard 8080); belegt ihn auf dem Host schon etwas anderes, dort einen anderen eintragen und Caddy darauf zeigen lassen. Weitere Projekte bekommen dort eigene Subdomains.
-- **nginx** im Container `web` liefert das Frontend aus und leitet `/api/` an das Backend. HTTP/2 ist dort bewusst nicht aktiv.
+- **nginx** im Container `web` liefert das Frontend aus und leitet `/api/` an das Backend; `/api/live` (Live-Updates, [live-sync.md](live-sync.md)) ungepuffert. HTTP/2 ist dort bewusst nicht aktiv.
 - Nur `web` hat einen Port, und nur auf `127.0.0.1`. Backend und Datenbank sind ausschließlich im Compose-Netz.
 - Mails gehen über einen SMTP-Dienst mit TLS (derzeit Resend, Sende-Domain `send.evolving-thoughts.com`).
 

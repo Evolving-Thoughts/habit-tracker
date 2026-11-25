@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { eventsOfDays } from '../calendar/day-events';
+import { ExternalEventEntity } from '../calendar/calendar.entities';
 import { dayOf, weekRange } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
@@ -51,6 +52,7 @@ import {
 import { WeekPlanResponseDto } from './dto/week-plan.dto';
 import {
   arrangePlan,
+  eventCandidates,
   planDates,
   plannedHabitCandidate,
   resolvedHabitCandidate,
@@ -156,12 +158,15 @@ export class DayPlannerService {
     return new DayPlannerResponseDto({
       date: today,
       items,
-      externalEvents: externalEvents.map(({ id, title, start, end }) => ({
-        id,
-        title,
-        start: start.toISOString(),
-        end: end.toISOString(),
-      })),
+      externalEvents: externalEvents.map(
+        ({ id, title, start, end, dayPosition }) => ({
+          id,
+          title,
+          start: start.toISOString(),
+          end: end.toISOString(),
+          dayPosition,
+        }),
+      ),
       workedMinutes: workedMinutes(logs, today),
       questHours: {
         ...questSoFar(
@@ -295,7 +300,14 @@ export class DayPlannerService {
         startDate: firstDay,
         endDate: lastDay,
         today,
-        ...arrangePlan(dates, candidates),
+        ...arrangePlan(dates, [
+          ...candidates,
+          // Google events stand among them at their places.
+          ...eventCandidates(
+            await eventsOfDays(manager, { userId }, firstDay, lastDay),
+            dates,
+          ),
+        ]),
       };
     });
   }
@@ -304,13 +316,14 @@ export class DayPlannerService {
    * Stores the order the user sorted a day into: every item takes its index
    * as position. It works for any day, because a position only counts among
    * the items of the day an item is on. Nothing is written unless all items
-   * are the user's own.
+   * are the user's own. A Google event takes its place too; one that a sync
+   * has replaced meanwhile is skipped, its place stays a gap.
    */
   reorder(
     userId: string,
-    items: { type: 'todo' | 'habit'; id: number }[],
+    items: { type: 'todo' | 'habit' | 'event'; id: number }[],
   ): Promise<void> {
-    const idsOf = (type: 'todo' | 'habit'): number[] => [
+    const idsOf = (type: 'todo' | 'habit' | 'event'): number[] => [
       ...new Set(
         items.filter((item) => item.type === type).map(({ id }) => id),
       ),
@@ -334,10 +347,17 @@ export class DayPlannerService {
       ]);
       if (todos !== todoIds.length || occurrences !== occurrenceIds.length)
         throw new NotFoundException('An item to sort was not found');
-      for (const [dayPosition, { type, id }] of items.entries())
+      for (const [dayPosition, { type, id }] of items.entries()) {
+        if (type === 'event') {
+          await manager
+            .getRepository(ExternalEventEntity)
+            .update({ id, userId }, { dayPosition });
+          continue;
+        }
         await manager
           .getRepository(type === 'todo' ? TodoEntity : HabitOccurrenceEntity)
           .update({ id }, { dayPosition });
+      }
     });
   }
 

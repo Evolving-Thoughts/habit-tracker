@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { WEEK_ENTRY_FIELDS, WEEK_HABIT_FIELDS } from "../types/fixtures";
 import type {
   WeekPlanDay,
+  WeekPlanEventEntry,
   WeekPlanHabitEntry,
   WeekPlanResponse,
   WeekPlanTodoEntry,
@@ -12,6 +13,7 @@ import {
   boardDrop,
   dayOrder,
   dropOnDay,
+  dropEventOnDay,
   dropRunOnDay,
   entryKey,
   firstDayFromQuery,
@@ -599,5 +601,53 @@ describe("the phone's board: chips, start column and the column in view", () => 
     expect(columnAt(99_999, 340, 5)).toBe(4);
     expect(columnAt(-20, 340, 5)).toBe(0);
     expect(columnAt(100, 0, 5)).toBe(0);
+  });
+});
+
+describe("a Google event on the Plan", () => {
+  const event = (
+    eventId: number,
+    timeOfDay: string,
+  ): WeekPlanEventEntry => ({
+    ...WEEK_ENTRY_FIELDS,
+    type: "event",
+    eventId,
+    status: "pending",
+    start: `${WEDNESDAY}T10:00:00Z`,
+    end: `${WEDNESDAY}T11:00:00Z`,
+    title: `Termin ${eventId}`,
+    timeOfDay,
+  });
+  const titles = (plan: WeekPlanResponse, date: string) =>
+    plan.days.find((day) => day.date === date)!.entries.map(({ title }) => title);
+
+  it("drags among the cards without a time and writes its place", () => {
+    const plan = week({
+      [WEDNESDAY]: [event(9, "11:00"), quest(1, { scheduledDate: WEDNESDAY }), quest(2, { scheduledDate: WEDNESDAY })],
+    });
+    const result = dropEventOnDay(plan, { eventId: 9, toDate: WEDNESDAY, index: 2 })!;
+    expect(titles(result.plan, WEDNESDAY)).toEqual(["Quest 1", "Quest 2", "Termin 9"]);
+    expect(result.order).toEqual([
+      { type: "todo", id: 1 },
+      { type: "todo", id: 2 },
+      { type: "event", id: 9 },
+    ]);
+  });
+
+  it("never passes an appointment and stays on its own day", () => {
+    const plan = week({
+      [WEDNESDAY]: [
+        event(9, "11:00"),
+        quest(1, { scheduledDate: WEDNESDAY }),
+        quest(3, { scheduledDate: WEDNESDAY, timeOfDay: "13:00" }),
+      ],
+    });
+    const past = dropEventOnDay(plan, { eventId: 9, toDate: WEDNESDAY, index: 2 })!;
+    expect(titles(past.plan, WEDNESDAY)).toEqual(["Quest 1", "Termin 9", "Quest 3"]);
+    expect(dropEventOnDay(plan, { eventId: 9, toDate: TODAY, index: 0 })).toBeNull();
+  });
+
+  it("is not counted as open work", () => {
+    expect(openSummary({ date: WEDNESDAY, entries: [event(9, "11:00")] })).toBe("");
   });
 });

@@ -316,6 +316,7 @@ describe("TodayView", () => {
           title: "Mittagessen",
           start: "2026-10-02T10:00:00.000Z",
           end: "2026-10-02T11:00:00.000Z",
+          dayPosition: null,
         },
       ],
     });

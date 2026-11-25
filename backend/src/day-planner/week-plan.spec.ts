@@ -1,7 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
+import type { ExternalEventEntity } from '../calendar/calendar.entities';
 import { HistoryPlannedItem } from '../history/history.dto';
 import {
   arrangePlan,
+  eventCandidates,
   MAX_PLAN_DAYS,
   planDates,
   plannedHabitCandidate,
@@ -228,5 +230,67 @@ describe('arrangePlan', () => {
     const days = arrangeWeek([todo(1, { scheduledDate: '2026-11-30' })]);
     expect(days.map(({ date }) => date)).toEqual(WEEK);
     expect(days.every(({ entries }) => entries.length === 0)).toBe(true);
+  });
+});
+
+describe('eventCandidates', () => {
+  const event = (
+    start: string,
+    end: string,
+    dayPosition: number | null = null,
+  ): ExternalEventEntity =>
+    ({
+      id: 9,
+      userId: 'u',
+      calendarId: 'primary',
+      eventId: 'g9',
+      title: 'Zahnarzt',
+      start: new Date(start),
+      end: new Date(end),
+      dayPosition,
+    }) as ExternalEventEntity;
+
+  it('puts an event on its day at its Berlin start, with its place', () => {
+    const [candidate, ...rest] = eventCandidates(
+      [event('2026-11-17T13:00:00Z', '2026-11-17T14:00:00Z', 2)],
+      WEEK,
+    );
+    expect(rest).toHaveLength(0);
+    expect(candidate.date).toBe(TODAY);
+    expect(candidate.entry).toMatchObject({
+      type: 'event',
+      eventId: 9,
+      status: 'pending',
+      timeOfDay: '14:00',
+      title: 'Zahnarzt',
+    });
+    expect(candidate.order.dayPosition).toBe(2);
+  });
+
+  it('stands at midnight on a day it began before', () => {
+    const days = eventCandidates(
+      [event('2026-11-17T21:00:00Z', '2026-11-18T09:00:00Z')],
+      WEEK,
+    );
+    expect(days.map(({ date, entry }) => [date, entry.timeOfDay])).toEqual([
+      ['2026-11-17', '22:00'],
+      ['2026-11-18', '00:00'],
+    ]);
+  });
+
+  it('sorts among the day like an appointment', () => {
+    const { days } = arrangePlan(WEEK, [
+      todo(1, { dayPosition: 0 }),
+      todo(2, { dayPosition: 2 }),
+      ...eventCandidates(
+        [event('2026-11-17T13:00:00Z', '2026-11-17T14:00:00Z', 1)],
+        WEEK,
+      ),
+    ]);
+    expect(
+      days
+        .find(({ date }) => date === TODAY)!
+        .entries.map(({ title }) => title),
+    ).toEqual(['Quest 1', 'Zahnarzt', 'Quest 2']);
   });
 });

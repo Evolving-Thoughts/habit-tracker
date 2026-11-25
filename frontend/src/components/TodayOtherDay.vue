@@ -5,6 +5,7 @@ import DayReflection from "./DayReflection.vue";
 import PlannerItem from "./PlannerItem.vue";
 import QuickAddQuest from "./QuickAddQuest.vue";
 import AppIcon from "./AppIcon.vue";
+import CalendarEventRow from "./CalendarEventRow.vue";
 import {
   getPlan,
   rescheduleOccurrence,
@@ -15,6 +16,7 @@ import {
 import { useLoader } from "../composables/useLoader";
 import { useSortable } from "../composables/useSortable";
 import { useWrites } from "../composables/useWrites";
+import { useEventDrop } from "../composables/useEventDrop";
 import type { WeekPlanEntry, WeekPlanResponse } from "../types/week-plan";
 import { dayRelation, tallyLine } from "../utils/day-tally";
 import { asPlannerItem, relationLabel, tallyOfEntries } from "../utils/other-day";
@@ -30,6 +32,7 @@ import {
   dropOnDay,
   dropRunOnDay,
   entryKey,
+  isEvent,
   isMovable,
   isMovableRun,
   openEntries,
@@ -100,6 +103,7 @@ useSortable(list, {
     if (!drop || busy.value) return;
     if (drop.kind === "day") void applyDrop(drop.drop);
     else if (drop.kind === "run") void applyRunDrop(drop.drop);
+    else if (drop.kind === "event") void applyEventDrop(drop.drop);
   },
 });
 
@@ -145,8 +149,14 @@ async function applyRunDrop(
   );
 }
 
+/* A Google event sorted within the day: the rule all day views share. */
+const applyEventDrop = useEventDrop(plan, writes, {
+  key: "day",
+  said: (line) => (status.value = line),
+});
+
 function edit(entry: WeekPlanEntry): void {
-  if (busy.value) return;
+  if (busy.value || isEvent(entry)) return;
   if (entry.type === "todo") emit("edit", { kind: "todo", entityId: entry.todoId });
   else
     emit("edit", {
@@ -251,28 +261,41 @@ function menu(entry: WeekPlanEntry): MenuEntry[] {
         }}
       </p>
 
-      <!-- The day's open entries in its order: they drag, like Heute's. -->
+      <!--
+        The day's open entries in its order, its Google events among them at
+        their places (the server's order). Quests, stored runs and, on a
+        later day, the events drag, like Heute's; an event keeps its time.
+      -->
       <div
         v-if="open.length"
         ref="list"
         class="other-day__list"
         :data-date="date"
       >
-        <PlannerItem
-          v-for="entry in open"
-          :key="entryKey(entry, date)"
-          :data-todo-id="isMovable(entry) ? entry.todoId : undefined"
-          :data-run-id="isMovableRun(entry) ? entry.occurrenceId : undefined"
-          :item="asPlannerItem(entry, date)"
-          :is-updating="busy"
-          :checkable="entry.type === 'todo'"
-          :measurable="false"
-          :menu="menu(entry)"
-          :sortable="isMovable(entry) || isMovableRun(entry)"
-          :time="entry.timeOfDay"
-          @toggle="toggle(entry)"
-          @edit="edit(entry)"
-        />
+        <template v-for="entry in open" :key="entryKey(entry, date)">
+          <CalendarEventRow
+            v-if="isEvent(entry)"
+            :data-event-id="ahead ? entry.eventId : undefined"
+            :draggable="ahead"
+            :time="entry.timeOfDay ?? ''"
+            :title="entry.title"
+            :past="!ahead"
+          />
+          <PlannerItem
+            v-else
+            :data-todo-id="isMovable(entry) ? entry.todoId : undefined"
+            :data-run-id="isMovableRun(entry) ? entry.occurrenceId : undefined"
+            :item="asPlannerItem(entry, date)"
+            :is-updating="busy"
+            :checkable="entry.type === 'todo'"
+            :measurable="false"
+            :menu="menu(entry)"
+            :sortable="isMovable(entry) || isMovableRun(entry)"
+            :time="entry.timeOfDay"
+            @toggle="toggle(entry)"
+            @edit="edit(entry)"
+          />
+        </template>
       </div>
 
       <section v-if="done.length" class="other-day__done" aria-label="Abgeschlossen">

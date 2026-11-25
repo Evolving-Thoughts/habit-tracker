@@ -60,11 +60,11 @@ const habit = (
 });
 const planner = (
   items: DayPlannerResponse["items"],
-  externalEvents: DayPlannerResponse["externalEvents"] = [],
+  events: Omit<DayPlannerResponse["externalEvents"][number], "dayPosition">[] = [],
 ): DayPlannerResponse => ({
   date: "2026-10-02",
   items,
-  externalEvents,
+  externalEvents: events.map((event) => ({ dayPosition: null, ...event })),
   workedMinutes: 0,
   questHours: NO_QUEST_HOURS,
 });

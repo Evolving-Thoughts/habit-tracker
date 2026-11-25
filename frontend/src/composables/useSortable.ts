@@ -13,10 +13,8 @@ const TITLE = "[data-edit-button]";
 export function pressesControl(
   target: EventTarget | null,
   card: Element,
-  anchor?: string,
 ): boolean {
   if (!(target instanceof Element)) return false;
-  if (anchor && target.closest(anchor)) return true;
   const control = target.closest(CARD_CONTROLS);
   return !!control && card.contains(control) && !control.matches(TITLE);
 }
@@ -48,12 +46,6 @@ type SortableOptions = {
   accepts?: () => boolean;
   /** False for a list whose items only leave it, never change places in it. */
   sort?: boolean;
-  /**
-   * Selector of items that hold their place: a card can be dropped next to
-   * them, but they never lift (a read-only calendar event on Heute). They
-   * still count in `onMove`'s places.
-   */
-  anchor?: string;
 };
 
 /** A finger has to rest this long before a card lifts, so a swipe still scrolls. */
@@ -97,7 +89,7 @@ export function useSortable(
         // Ring, ▶, "…" and links keep their own tap; they never lift the card.
         // The title is no such control: see TITLE.
         filter: (event, item) =>
-          pressesControl(event.target, item, options.anchor),
+          pressesControl(event.target, item),
         preventOnFilter: false,
         group: options.group && {
           name: options.group,

@@ -12,6 +12,7 @@ import { PushModule } from './push/push.module';
 import { TimersModule } from './timers/timers.module';
 import { AuthModule } from './auth/auth.module';
 import { CalendarModule } from './calendar/calendar.module';
+import { LiveModule } from './live/live.module';
 import { CategoriesModule } from './categories/categories.module';
 import { Module } from '@nestjs/common';
 import { CommonModule } from './common/clock';
@@ -38,6 +39,7 @@ import { DayPlannerModule } from './day-planner/day-planner.module';
       }),
     }),
     CommonModule,
+    LiveModule,
     AuthModule,
     CategoriesModule,
     TimersModule,

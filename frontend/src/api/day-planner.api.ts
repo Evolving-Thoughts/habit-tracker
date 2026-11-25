@@ -34,7 +34,7 @@ export function getPlan(
 
 /** Stores the order any day was sorted into; habits go by their occurrence. */
 export function reorderDay(
-  items: { type: "todo" | "habit"; id: number }[],
+  items: { type: "todo" | "habit" | "event"; id: number }[],
 ): Promise<void> {
   return request<void>("/day-planner/order", {
     method: "PUT",

@@ -869,9 +869,15 @@ textarea.input {
   outline: none;
 }
 
+/*
+ * The card under the finger. SortableJS moves it by an inline transform on
+ * every pointer move; the lift's transition would ease each of those steps
+ * and leave the card trailing behind the finger, so it has none.
+ */
 .sortable-fallback {
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-popover);
   cursor: grabbing;
+  transition: none !important;
 }
 
 .visually-hidden {
