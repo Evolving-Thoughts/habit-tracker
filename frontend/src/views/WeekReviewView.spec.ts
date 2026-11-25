@@ -144,7 +144,7 @@ describe("WeekReviewView", () => {
     expect(dailies.get("dt").text()).toBe("Dailies im Wochensoll");
     expect(dailies.get(".figures__value").text()).toBe("5 von 8");
     expect(dailies.get(".figures__perfect").text()).toBe(
-      "Perfekte Woche: Sport 1 von 2",
+      "Wochensoll je Kategorie: Sport 1 von 2",
     );
     expect(wrapper.findAll(".figures__item")).toHaveLength(4);
     expect(sectionTitles(wrapper)).not.toContain("Perfekte Woche");

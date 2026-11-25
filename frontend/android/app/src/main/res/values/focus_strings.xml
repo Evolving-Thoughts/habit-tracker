@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="focus_accessibility_label">Fokus-Sperre</string>
-    <string name="focus_accessibility_description">Die Fokus-Sperre erkennt, welche App gerade vorne ist (nur ihren Paketnamen), und legt während einer Sperre aus dem Fokus-Modus den Sperrbildschirm über Apps deiner Sperrliste. Sie liest keine Inhalte von Bildschirmen, keine Eingaben und sendet nichts davon irgendwohin. Ausschalten hebt die Sperre auf.</string>
+    <string name="focus_accessibility_description">Die Fokus-Sperre erkennt, welche App gerade vorne ist (nur ihren Paketnamen), und legt während einer Sperre, solange deine Stoppuhr läuft, den Sperrbildschirm über Apps deiner Sperrliste. Sie liest keine Inhalte von Bildschirmen, keine Eingaben und sendet nichts davon irgendwohin. Ausschalten hebt die Sperre auf.</string>
     <string name="focus_block_eyebrow">Fokus-Sperre</string>
     <string name="focus_block_title">Fokus läuft: %1$s</string>
     <plurals name="focus_block_minutes_left">
@@ -9,11 +9,12 @@
         <item quantity="other">noch %1$d Min. · Hardcore</item>
     </plurals>
     <string name="focus_block_almost_done">Gleich vorbei · Hardcore</string>
-    <string name="focus_block_soft">Soft: Du kannst die Sperre aufheben.</string>
+    <string name="focus_block_hardcore_until_stop">Hardcore: bis die Quest erledigt ist oder die Stoppuhr endet.</string>
+    <string name="focus_block_soft">Soft: Pausierst du die Stoppuhr, ist die Sperre aus. Aufheben geht auch hier.</string>
     <string name="focus_block_back">Zurück zur Quest</string>
     <string name="focus_block_lift">Sperre aufheben</string>
     <string name="focus_block_lift_question">Sperre aufheben?</string>
-    <string name="focus_block_lift_detail">Apps und Websites der Liste sind dann wieder frei. Die Stoppuhr läuft weiter.</string>
+    <string name="focus_block_lift_detail">Apps und Websites der Liste sind dann wieder frei. Die Stoppuhr läuft weiter; nach einer Pause sperrt sie beim Fortsetzen wieder.</string>
     <string name="focus_block_keep">Weiter sperren</string>
     <string name="focus_vpn_session">Fokus-Sperre (nur DNS)</string>
     <string name="focus_vpn_channel">Fokus-Sperre</string>

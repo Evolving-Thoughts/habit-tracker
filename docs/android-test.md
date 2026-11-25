@@ -49,7 +49,30 @@ Grenzen: Push geht ohne HTTPS nicht, und unterwegs ohne dieses WLAN lädt die Ap
 
 ## Ergebnis
 
-Die APK liegt danach unter `frontend/android/app/build/outputs/apk/debug/app-debug.apk`. Die JVM-Tests des Android-Codes (Fokus-Sperre, Cache der Fokus-Klänge) laufen mit `cd android && ./gradlew.bat test`.
+Die APK liegt danach unter `frontend/android/app/build/outputs/apk/debug/app-debug.apk`. Die JVM-Tests des Android-Codes (Fokus-Sperre, Cache der Fokus-Klänge, Zurück-Taste) laufen mit `cd android && ./gradlew.bat test`.
+
+## Zurück
+
+Capacitor hat ohne das npm-Plugin `@capacitor/app` keine eigene Zurück-Taste, jede Zurück-Geste schloss die App. Das eigene Plugin `BackButton` (`frontend/android/.../back/BackButtonPlugin.java`, `frontend/src/native/back-button-plugin.ts`) nimmt jede Zurück-Taste und Zurück-Geste (auch die vorausschauende ab Android 13) und gibt sie an die Seite. Die Seite (`composables/useBackButton.ts`) macht genau einen Schritt, in dieser Reihenfolge:
+
+1. Ist etwas offen (ein Dialog oder Editor, das Befehlsmenü, ein „…“-Menü, das Blatt „Mehr“), schließt das oberste, genauso wie sein ✕ oder Escape. Ein Dialog, der gerade speichert, bleibt offen. Alles, was sich öffnet, steht dafür in `composables/useOverlayStack.ts`; `ModalDialog`, `ActionMenu` und `AppNavigation` melden sich dort an.
+2. Sonst, wenn man in der App von einer Ansicht hierher kam: einen Schritt zurück (`router.back()`). Was nur die Adresse ersetzt (`?tag=`, `?ab=`), ist kein eigener Schritt.
+3. Sonst, außerhalb von Heute: nach Heute (ersetzt die Adresse).
+4. Sonst (Heute, nichts offen): Android macht sein eigenes Zurück, die App geht in den Hintergrund.
+
+Antwortet die Seite nicht binnen 0,8 s (hängt oder lädt neu), macht Android sein eigenes Zurück; die Logik dafür (`BackPress`) hat JVM-Tests. Eine offene Tastatur schließt Android selbst mit dem ersten Zurück. Als installierte Web-App schließt die Zurück-Geste Dialoge von selbst (`<dialog>`) und Menüs und „Mehr“ über `CloseWatcher`, wo der Browser es kann (Chrome); Ansichten gehen dort über die Browser-Historie zurück.
+
+Am Handy prüfen:
+
+1. App frisch starten (aus den letzten Apps wischen), Heute: Zurück → App geht in den Hintergrund.
+2. Heute › Kalender › Questlog, dann Zurück, Zurück: Questlog → Kalender → Heute; noch einmal Zurück → App geht.
+3. „Mehr“ öffnen: Zurück schließt nur das Blatt. „Mehr“ › Einstellungen, Zurück → zurück, wo man war.
+4. In Heute „…“ an einer Quest: Zurück schließt nur das Menü. „…“ › Bearbeiten (Editor offen): Zurück schließt den Editor, die Ansicht bleibt.
+5. Im Editor ein Feld antippen (Tastatur offen): erstes Zurück schließt die Tastatur, zweites den Editor.
+6. „Mehr“ › Suchen (Befehlsmenü): Zurück schließt es. Ein Dialog über einem Dialog (z. B. Löschen-Rückfrage aus dem Editor): Zurück schließt nur den oberen.
+7. Fokus-Modus aus Heute öffnen, Zurück → Heute.
+8. Schritt 3 ist am Handy selten zu sehen (die App startet auf Heute); er greift, wenn die Seite auf einer anderen Ansicht neu lädt, und ist mit Unit-Tests abgedeckt.
+9. Mit der Wisch-Geste vom Rand dasselbe wie mit der Taste.
 
 ## Fokus-Sperre am Handy einrichten
 

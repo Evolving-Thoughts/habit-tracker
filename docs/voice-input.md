@@ -28,7 +28,7 @@ Code:
 | Reflexion (`DayReflection.vue`) | lang, oben rechts im Feld | an der Schreibmarke; „Speichern“ erscheint wie beim Tippen |
 | Wochenrückblick (`ReviewAnswers.vue`) | lang, je Antwort oben rechts | an der Schreibmarke; das automatische Speichern greift wie beim Tippen |
 
-- **Im Feld:** Ein Feld mit Mikrofon steckt in `.mic-field` (`style.css`), der Knopf hat `placement="field"`. Nur solange das Mikrofon da ist, hält der Text rechts Abstand. Der Platzhalter des Schnell-Anlegens (`utils/fit-text.ts`) misst ohne diesen Abstand und nimmt so die kurze Form, wo der Platz nicht reicht.
+- **Im Feld:** Ein Feld mit Mikrofon steckt in `.mic-field` (`style.css`), der Knopf hat `placement="field"` und deckt an der rechten Kante die volle Tap-Fläche; seine sichtbare Fläche liegt 2px innen, damit der Feldrahmen frei bleibt. Nur solange das Mikrofon da ist, hält der Text rechts Abstand. Der Platzhalter des Schnell-Anlegens (`utils/fit-text.ts`) misst ohne diesen Abstand und nimmt so die kurze Form, wo der Platz nicht reicht.
 - **Langes Drücken auf Plus** (`CreateButton.vue`): Nach 500 ms, mit Finger oder Maus, öffnet sich „Neue Quest“ (auch aus den Dailies), und das Diktat des Titels läuft schon (`dictate` an `CreateItemDialog` und `CreateTodoForm`). Ein kurzes Brummen (`vibrate(10)`) bestätigt. Wer früher loslässt oder sich mehr als 10 px bewegt, tippt normal. Enter und Leertaste tippen immer. Den Hinweis „Lange drücken zum Diktieren“ trägt der Knopf als `aria-description`, aber nur, wenn ein Mikrofon da ist; ohne Mikrofon gibt es kein langes Drücken.
 
 ## Regeln
@@ -164,7 +164,7 @@ Passt ein Name **nach seinem Schlüsselwort** zu keiner Kampagne bzw. Kategorie 
 - Eine erledigte Kampagne zählt nicht als vorhanden: „Kampagne Umzug“ bietet dann eine neue an.
 - `matches` liefert die neue als `campaign` bzw. `category` mit `isNew: true` (ohne `id`), das Ergebnis `newCampaign` bzw. `newCategory`.
 - **Chip:** „Neue Kampagne: Umzug“ bzw. „Neue Kategorie: Haushalt“, mit Plus statt Symbol oder Marke, dem Wort „Neue“ und gestricheltem Rand statt Füllung, nie nur Farbe. Der Name sagt „…, wird beim Anlegen erstellt, entfernen“. Ein ✕ verwirft ihn wie die anderen: Seine Wörter bleiben im Titel, und nichts wird angelegt.
-- **Beim Anlegen** entsteht erst das Neue, dann die Quest (`createNewPlaces` in `api/new-places.api.ts`): zuerst die Kategorie, wie in ihrem Auswahlfeld (`createCategory`, die Farbe wählt der Name), dann die Kampagne, wie „Gehört zu“ sie anlegt (`createCampaign`: oberste Quest ohne Tag und Dauer, in der Farbe ihres Titels), danach die Quest mit `parentId` der Kampagne.
+- **Beim Anlegen** entsteht erst das Neue, dann die Quest (`createNewPlaces` in `api/new-places.api.ts`): zuerst die Kategorie, wie in ihrem Auswahlfeld (`createCategory`; der Server gibt ihr die erste Kernfarbe, die noch keine Kategorie zeigt), dann die Kampagne, wie „Gehört zu“ sie anlegt (`createCampaign`: oberste Quest ohne Tag und Dauer, in der Farbe ihres Titels), danach die Quest mit `parentId` der Kampagne.
   - Eine neue Kampagne bekommt die genannte Kategorie (neu oder vorhanden), die Quest dieselbe. Ohne genannte Kategorie bekommen beide keine.
   - Scheitert das Anlegen, entsteht keine Quest, der Text bleibt, und die Fehlerzeile sagt, was nicht ging: „Die Kategorie „Haushalt“ konnte nicht angelegt werden, die Quest ist nicht erstellt.“ und dahinter der Grund vom Server.
   - Was schon entstanden ist (die Kategorie, bevor die Kampagne scheiterte), kennt der nächste Versuch: Es wird nicht doppelt angelegt.

@@ -12,7 +12,7 @@ const plan = async (request: APIRequestContext, data: object) => {
   return (await response.json()) as { id: number };
 };
 
-test("Fokus-Sperre: settings and both lists in Einstellungen, honest about where blocking happens", async ({
+test("Fokus-Sperre: in the browser Einstellungen stay editable, only the device setup is the phone's", async ({
   page,
   request,
 }) => {
@@ -20,72 +20,56 @@ test("Fokus-Sperre: settings and both lists in Einstellungen, honest about where
   await openView(page, "Einstellungen");
   const section = page.getByRole("region", { name: "Fokus-Sperre" });
   await expect(section).toBeVisible();
-  // In the browser: blocking happens in the Android app.
+  // On by default, blocking whenever a stopwatch runs.
   await expect(
-    section.getByText("Gesperrt wird zurzeit in der Android-App."),
-  ).toBeVisible();
-  await expect(section.getByText(/kein Schloss/)).toBeVisible();
-
-  const trigger = section.getByRole("switch", { name: "Beim Fokus sperren" });
-  await expect(trigger).toHaveAttribute("aria-checked", "false");
-  await trigger.click();
-  await expect(trigger).toHaveAttribute("aria-checked", "true");
-  const minutes = section.getByLabel("ab einem Soll von (Minuten)");
-  await minutes.fill("20");
-  await minutes.press("Tab");
-  await expect(section.getByRole("status").last()).toHaveText("Gespeichert.");
-  await section.getByRole("radio", { name: "Hardcore" }).check();
-  await expect(section.getByText(/Pausieren hebt sie nicht auf/)).toBeVisible();
-  await expect
-    .poll(async () => (await focusState(request)).settings)
-    .toEqual({
-      enabled: true,
-      thresholdMinutes: 20,
-      mode: "hardcore",
-      listMode: "blocklist",
-    });
-
-  // A website as typed becomes its host; it covers every subdomain.
-  const blockList = section.getByRole("region", { name: "Sperrliste" });
-  await blockList.getByLabel("Website").fill("https://www.YouTube.com/watch");
-  await blockList.getByRole("button", { name: "Hinzufügen" }).click();
-  await expect(blockList.getByText("youtube.com", { exact: true })).toBeVisible();
-  await expect(blockList.getByText("Website mit allen Subdomains")).toBeVisible();
-  await expect(blockList.getByLabel("Website")).toHaveValue("");
-  // Apps come from the phone.
+    section.getByRole("switch", { name: "Bei der Arbeit sperren" }),
+  ).toHaveAttribute("aria-checked", "true");
   await expect(
-    blockList.getByText(/Apps fügst du in der Android-App hinzu/),
-  ).toBeVisible();
-
-  const allowList = section.getByRole("region", { name: "Erlaubt-Liste" });
-  await expect(allowList.getByText("Telefon und Notruf")).toBeVisible();
-  await expect(allowList.getByText("Habit Tracker (diese App)")).toBeVisible();
-  await allowList.getByLabel("Website").fill("wikipedia.org");
-  await allowList.getByRole("button", { name: "Hinzufügen" }).click();
+    section.getByRole("radio", { name: /Solange die Stoppuhr läuft/ }),
+  ).toBeChecked();
+  // Settings and lists live on the server: a website goes on the list here.
+  const list = section.getByRole("region", { name: "Sperrliste" });
+  await list.getByRole("textbox", { name: "Website" }).fill("youtube.com");
+  await list.getByRole("button", { name: "Hinzufügen" }).click();
+  await expect(list.getByText("youtube.com", { exact: true })).toBeVisible();
+  expect((await focusState(request)).lists.block).toEqual([
+    expect.objectContaining({ kind: "domain", value: "youtube.com" }),
+  ]);
+  // The device setup is the Android app's (unit-tested with a fake bridge
+  // in FocusBlockSettings.spec.ts); here one sentence says so.
   await expect(
-    allowList.getByText("wikipedia.org", { exact: true }),
+    section.getByText(/Gesperrt wird auf dem Android-Handy/),
   ).toBeVisible();
-  await section
-    .getByRole("radio", { name: /Alles außer der Erlaubt-Liste/ })
-    .check();
-  await expect
-    .poll(async () => (await focusState(request)).settings.listMode)
-    .toBe("allowlist");
+  await expect(
+    section.getByRole("button", { name: "App hinzufügen" }),
+  ).toHaveCount(0);
+});
 
-  // A typo is refused with the server's words.
-  await blockList.getByLabel("Website").fill("youtube");
-  await blockList.getByRole("button", { name: "Hinzufügen" }).click();
-  await expect(section.getByRole("alert")).toContainText("keine Website");
-
-  await allowList
-    .getByRole("button", { name: "wikipedia.org von der Erlaubt-Liste nehmen" })
+test("Fokus-Sperre: a stopwatch started on Heute blocks without a Soll; Soft pauses with it", async ({
+  page,
+  request,
+}) => {
+  const date = await today(request);
+  await plan(request, { title: "Mails", scheduledDate: date });
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Stoppuhr für Mails starten", exact: true })
     .click();
-  await expect(allowList.getByText("wikipedia.org", { exact: true })).toHaveCount(
-    0,
-  );
-  const lists = (await focusState(request)).lists;
-  expect(lists.block.map((entry) => entry.value)).toEqual(["youtube.com"]);
-  expect(lists.allow).toEqual([]);
+  await expect
+    .poll(async () => (await focusState(request)).block?.mode)
+    .toBe("soft");
+  await page
+    .getByRole("button", { name: "Stoppuhr pausieren", exact: true })
+    .first()
+    .click();
+  await expect.poll(async () => (await focusState(request)).block).toBeNull();
+  await page
+    .getByRole("button", { name: "Stoppuhr fortsetzen", exact: true })
+    .first()
+    .click();
+  await expect
+    .poll(async () => (await focusState(request)).block?.mode)
+    .toBe("soft");
 });
 
 test("Fokus-Sperre: a quest's own choice in its editor, and the block in the Fokus-Modus", async ({
@@ -96,7 +80,7 @@ test("Fokus-Sperre: a quest's own choice in its editor, and the block in the Fok
   expect(
     (
       await request.put(`${API_URL}/focus-block/settings`, {
-        data: { enabled: true, thresholdMinutes: 15 },
+        data: { enabled: true, trigger: "threshold", thresholdMinutes: 15 },
       })
     ).status(),
   ).toBe(200);
@@ -125,14 +109,22 @@ test("Fokus-Sperre: a quest's own choice in its editor, and the block in the Fok
     "always",
   );
 
-  // The Fokus-Modus offers Soft or Hardcore before the start.
+  // With nothing on the Sperrliste (and in a browser, which cannot block)
+  // the Fokus-Modus offers no Soft or Hardcore, only one quiet line below
+  // its buttons; the choice itself is unit-tested in FocusView.spec.ts.
   await page.getByRole("link", { name: "Fokus-Modus", exact: true }).click();
   await expect(page).toHaveURL(/#\/fokus$/);
-  const choice = page.getByRole("group", { name: "Art der Fokus-Sperre" });
-  await expect(choice.getByRole("button", { name: "Soft" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
+  const quiet = page.locator("[data-test='focus-block-quiet']");
+  // A string match ignores the template's line breaks around the text.
+  await expect(quiet).toHaveText("Fokus-Sperre: Sperrliste leer · Einrichten");
+  await expect(quiet.getByRole("link", { name: "Einrichten" })).toHaveAttribute(
+    "href",
+    "#/einstellungen?abschnitt=fokus-sperre",
   );
+  await expect(
+    page.getByRole("group", { name: "Art der Fokus-Sperre" }),
+  ).toHaveCount(0);
+  // The rule still starts a block with the stopwatch, Soft by default.
   await page.getByRole("button", { name: "Starten", exact: true }).click();
   const line = page.locator("[data-test='focus-block-state'] [role='status']");
   await expect(line).toHaveText("Sperre aktiv · Soft");
@@ -158,17 +150,11 @@ test("Fokus-Sperre: a quest's own choice in its editor, and the block in the Fok
   await expect(line).toHaveCount(0);
   expect((await focusState(request)).block).toBeNull();
 
-  // Hardcore: started by hand for the running stopwatch, no way to lift it.
-  await choice.getByRole("button", { name: "Hardcore" }).click();
-  await page.getByRole("button", { name: "Sperre starten", exact: true }).click();
-  await expect(line).toHaveText(/^Sperre aktiv · Hardcore · noch (10|9) Min\.$/);
+  // A block that would block nothing is not offered by hand either.
+  await expect(quiet).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Sperre aufheben", exact: true }),
+    page.getByRole("button", { name: "Sperre starten", exact: true }),
   ).toHaveCount(0);
-  expect(
-    (await request.post(`${API_URL}/focus-block/end`, { data: {} })).status(),
-  ).toBe(409);
-  // Done ends Hardcore too.
   await page.getByRole("button", { name: "Kapitel schreiben erledigen" }).click();
   await expect.poll(async () => (await focusState(request)).block).toBeNull();
 });

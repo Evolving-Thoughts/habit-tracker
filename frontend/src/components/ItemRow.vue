@@ -46,7 +46,7 @@ const props = withDefaults(
     menuKey?: string | number;
     /**
      * The meta line wraps on a phone too, instead of ending in one line:
-     * for lists where every part counts (the Kalender's day lists).
+     * for lists where every part counts (Heute, the Kalender's day lists).
      */
     wrapMeta?: boolean;
   }>(),
@@ -291,19 +291,23 @@ const timerState = computed(() =>
   color: var(--color-ink-muted);
   font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
+  /*
+   * Its parts must not widen the list it sits in: a long campaign name
+   * ends in an ellipsis within the row (the chip never breaks its name).
+   */
+  contain: inline-size;
 }
 
 /*
  * A phone keeps the meta line to one line, so a row stays short; the last
  * part (usually the campaign, also named by the stripe) ends in an ellipsis.
+ * Lists where every part counts opt out with `wrapMeta`.
  */
 @media (max-width: 39.99rem) {
   .item-row:not(.item-row--wrap-meta) .item-row__meta {
     flex-wrap: nowrap;
     overflow: hidden;
     white-space: nowrap;
-    /* Its unbroken line must not widen the list it sits in. */
-    contain: inline-size;
   }
 
   .item-row:not(.item-row--wrap-meta) .item-row__meta > *,

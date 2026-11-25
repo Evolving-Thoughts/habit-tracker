@@ -13,11 +13,13 @@ import {
   FOCUS_ENTRY_KINDS,
   FOCUS_LIST_MODES,
   FOCUS_LISTS,
+  FOCUS_TRIGGERS,
   MAX_THRESHOLD_MINUTES,
   type FocusBlockMode,
   type FocusEntryKind,
   type FocusList,
   type FocusListMode,
+  type FocusTriggerKind,
 } from './focus-block-rules';
 
 /** PUT /focus-block/settings: any of these; what is left out stays. */
@@ -25,6 +27,10 @@ export class SaveFocusSettingsDto {
   @IsOptional()
   @IsBoolean()
   readonly enabled?: boolean;
+
+  @IsOptional()
+  @IsIn(FOCUS_TRIGGERS)
+  readonly trigger?: FocusTriggerKind;
 
   @IsOptional()
   @IsInt()
@@ -65,7 +71,8 @@ export class AddFocusEntryDto {
 /**
  * Soft or Hardcore, picked on the Fokus screen; without it the default
  * from Einstellungen. Rides along on POST /timers and POST
- * /timers/:id/resume from the Fokus-Modus, and on POST /focus-block.
+ * /timers/:id/resume from the Fokus-Modus, and on POST /focus-block. The
+ * rule whether a block starts does not depend on it.
  */
 export class FocusBlockRequestDto {
   @IsOptional()
@@ -88,7 +95,10 @@ export type FocusBlockSessionResponse = {
   mode: FocusBlockMode;
   listMode: FocusListMode;
   startedAt: string;
-  /** Hardcore: when the Soll is reached and the block ends. Null for Soft. */
+  /**
+   * Hardcore with the threshold trigger: when the Soll is reached and the
+   * block ends. Null for Soft and for Hardcore that ends with its stopwatch.
+   */
   endsAt: string | null;
 };
 
@@ -103,6 +113,7 @@ export type FocusBlockStateResponse = {
   serverNow: string;
   settings: {
     enabled: boolean;
+    trigger: FocusTriggerKind;
     thresholdMinutes: number;
     mode: FocusBlockMode;
     listMode: FocusListMode;

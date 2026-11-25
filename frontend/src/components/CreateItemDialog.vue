@@ -15,8 +15,10 @@ const props = withDefaults(
     kind?: "todo" | "habit";
     /** A long press on Plus: the quest form with its title being dictated. */
     dictate?: boolean;
+    /** A suggested title both forms start from. */
+    title?: string;
   }>(),
-  { kind: "todo", dictate: false },
+  { kind: "todo", dictate: false, title: "" },
 );
 const emit = defineEmits<{ close: []; created: [kind: "todo" | "habit"] }>();
 const current = ref<"todo" | "habit">(props.dictate ? "todo" : props.kind);
@@ -61,12 +63,14 @@ function created(kind: "todo" | "habit"): void {
         <CreateTodoForm
           v-if="current === 'todo'"
           :dictate="dictate"
+          :initial-title="title"
           @busy="formBusy = $event"
           @created="created('todo')"
           @cancel="close"
         />
         <CreateHabitForm
           v-else
+          :initial="title ? { title, why: '', categoryId: null, campaignId: null } : undefined"
           @busy="formBusy = $event"
           @created="created('habit')"
           @cancel="close"

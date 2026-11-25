@@ -161,13 +161,10 @@ onMounted(() => run(() => Promise.resolve()));
   </div>
   <p v-else-if="error" class="form-error" role="alert">{{ error }}</p>
   <div v-else-if="status" class="calendar-connection__hint">
+    <!-- Plain words only; the operator's steps are in docs/betrieb.md. -->
     <p>Google Kalender ist auf dem Server noch nicht eingerichtet.</p>
     <p class="calendar-connection__operator">
-      Auf dem Server fehlen die Google-Zugangsdaten
-      (<code>GOOGLE_CLIENT_ID</code>,
-      <code>GOOGLE_CLIENT_SECRET</code>, <code>GOOGLE_REDIRECT_URI</code>,
-      <code>GOOGLE_TOKEN_KEY</code>). Wie man sie einrichtet, steht in
-      <code>docs/betrieb.md</code>.
+      Frag die Person, die den Server betreibt.
     </p>
   </div>
 </template>
@@ -189,7 +186,7 @@ p.calendar-connection__text {
   text-wrap: pretty;
 }
 
-/* Like the push hint: a calm note in apricot, the operator's part quieter. */
+/* Like the push hint: a calm note in apricot, who can help quieter. */
 .calendar-connection__hint {
   display: grid;
   gap: var(--space-2);
@@ -208,7 +205,6 @@ p.calendar-connection__text {
 .calendar-connection__operator {
   color: var(--color-ink-muted);
   font-size: 0.875rem;
-  overflow-wrap: anywhere;
 }
 
 .calendar-connection__state {

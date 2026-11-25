@@ -5,12 +5,15 @@ import AppNavigation from "./components/AppNavigation.vue";
 import AppShortcuts from "./components/AppShortcuts.vue";
 import TimerProvider from "./components/TimerProvider.vue";
 import AuthView from "./views/AuthView.vue";
+import { useBackButton } from "./composables/useBackButton";
 import { getMe, logout } from "./api/auth.api";
 import type { User } from "./api/auth.api";
 import type { AuthLink } from "./router";
 
 const router = useRouter();
 const route = useRoute();
+// Android's Back: closes what is open, then goes back (docs/android-test.md).
+useBackButton(router);
 const user = ref<User | null>(null);
 const loading = ref(true);
 /** Boot failure: null detail means the server could not be reached at all. */

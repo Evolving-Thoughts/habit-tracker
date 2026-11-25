@@ -1,11 +1,12 @@
 # Fokus-Sperre
 
-While the Fokus-Modus measures work on one quest or daily run, the Android
-app blocks apps and websites that distract. The person decides what with two
-lists in Einstellungen, when with a threshold and a per-task choice, and how
-hard with Soft or Hardcore. The server holds all of it; the phone enforces
-it. The code lives in `backend/src/focus-blocks/`, the web parts in
+While a stopwatch runs, wherever it was started, the Android app blocks
+apps and websites that distract. The person decides what with two lists in
+Einstellungen, when with a trigger and a per-task choice, and how hard with
+Soft or Hardcore. The server holds all of it and starts and ends blocks with
+the stopwatch; the phone enforces it. The code lives in `backend/src/focus-blocks/`, the web parts in
 `FocusBlockSettings.vue` (Einstellungen), `FocusBlockOverride.vue` (editor),
+`FocusBlockSetupHint.vue` (what keeps it from working),
 `FocusView.vue` (Fokus-Modus), `composables/useFocusBlock.ts` and
 `native/focus-block-plugin.ts`; the Android part in
 `frontend/android/app/src/main/java/local/habittracker/app/focus/`.
@@ -39,61 +40,99 @@ The UI says so in Einstellungen.
     `FRONTEND_URL`, i.e. `plan.evolving-thoughts.com` in production).
     Google Calendar needs nothing here: the sync runs on the server.
 - **Trigger** (`blockApplies`): a quest's or daily's own `focusBlock`
-  decides: `always` blocks (even without a Soll), `never` never; `default`
-  follows Einstellungen: on/off plus "ab Soll von N Min." (`enabled`,
-  `thresholdMinutes`, default off and 15). The Soll is the stopwatch's
-  `targetMinutes`. Without a Soll, `default` never blocks.
-- **Start**: only the Fokus-Modus starts a block. Its "Starten" and
-  "Fortsetzen" send `focusBlock: { mode }` with `POST /timers` and
-  `POST /timers/:id/resume`; the server starts a block in the same
-  transaction when the rule says so. Starting a stopwatch anywhere else
-  never blocks. When the Fokus-Modus opens on a stopwatch that already
-  runs, "Sperre starten" asks for one by hand (`POST /focus-block`, no
-  trigger rule). At most one block is open per person; an open one stays
-  as it is.
+  decides first: `never` never blocks, `always` always does (also while
+  Einstellungen have it off, and without a Soll). `default` follows
+  Einstellungen: `enabled` (default on) and `trigger`:
+  - `stopwatch` (default, "Solange die Stoppuhr läuft"): every running
+    stopwatch blocks; no Soll needed, no minimum.
+  - `threshold` ("Erst ab einem Soll", the earlier rule): only a stopwatch
+    whose Soll (`targetMinutes`) is at least `thresholdMinutes` (default
+    15) blocks; without a Soll never. Decided: it applies to a stopwatch
+    started anywhere, like the default, not only in the Fokus-Modus.
+- **One place**: the server ties blocks to the stopwatch's transitions, so
+  it does not matter where the stopwatch is started (Heute, Fokus-Modus,
+  Plan, Questlog, command menu, a notification, another device). Every
+  start, every start on the stopwatch already running and every resume
+  (`TimersService.startFocus`) starts a block when the rule says so, in
+  the same transaction; every pause and stop runs through
+  `recordTransition` (`timers/timer-target.ts`), which calls
+  `focusBlockFollowsStopwatch` (`focus-block-store.ts`), the forgotten
+  stretch cut and target releases (completion, deletion, skipped run)
+  included. The Fokus-Modus only adds the mode picked there
+  (`focusBlock: { mode }` on `POST /timers` and `POST /timers/:id/resume`);
+  without it the default from Einstellungen applies. "Sperre starten" in
+  the Fokus-Modus asks for a block by hand for a running stopwatch
+  (`POST /focus-block`, no trigger rule), e.g. after lifting one; it sits
+  with the Soft/Hardcore choice and shows only where that choice shows. At most
+  one block is open per person; an open one stays as it is.
 - **Soft or Hardcore** (`mode`): the default comes from Einstellungen; the
-  Fokus-Modus offers both with one tap before the start.
-  - Soft ends when the stopwatch ends (stop, completion, "Später",
-    switching to another target) and by hand ("Sperre aufheben", after
-    "Sperre aufheben?"). Leaving the Fokus-Modus asks that question first;
-    "Weiter sperren" stays. Pausing does not end it. A Soft block nobody
-    ends lifts itself after twelve hours, like a forgotten stopwatch.
-  - Hardcore ends at `endsAt`, the moment the stopwatch reaches its Soll,
-    computed at the start (`hardcoreEndsAt`: start + Soll − time already
-    worked), or when its quest or run is completed. Pausing, stopping the
-    stopwatch or changing the Soll later do not move it. There is no lift
-    button; `POST /focus-block/end` answers 409 `HARDCORE_BLOCK`. Without a
-    Soll still ahead there is nothing to reach: such a block starts as
-    Soft, and the Fokus screen says so beforehand.
-  - During Hardcore the lists only get stricter: adding to the Sperrliste
-    works, removing from it or adding to the Erlaubt-Liste answers 409.
-    The list mode of a block is fixed at its start.
+  Fokus-Modus offers both with one tap before the start, but only where a
+  block would block something: the Sperrliste is not empty (or strict mode)
+  (also in a browser, whose block takes effect on the phone). Otherwise it
+  shows one quiet
+  line below its buttons instead, no status announcement: "Fokus-Sperre:
+  Sperrliste leer · Einrichten" (link to Einstellungen › Fokus-Sperre) or,
+  in a browser, "Fokus-Sperre: wirkt auf dem Handy in der Android-App" (the Soft/Hardcore choice stays there, since a block started in the browser takes effect on the phone). The rule
+  still starts a block with the stopwatch, in the default mode.
+  - Soft holds while the stopwatch runs: pausing ends it (reason
+    `paused`), resuming starts a new one, and it ends when the stopwatch
+    ends (stop, completion, "Später", switching to another target). By
+    hand: "Sperre aufheben" after "Sperre aufheben?"; it stays lifted until
+    the next start or resume. With the threshold trigger, leaving the
+    Fokus-Modus asks that question first ("Weiter sperren" stays); with the
+    stopwatch trigger the block belongs to the stopwatch, so leaving asks
+    nothing. A Soft block nobody ends lifts itself after twelve hours.
+  - Hardcore with the stopwatch trigger has no `endsAt`: it holds through
+    pauses until its quest or run is completed or its stopwatch ends
+    (stopped, switched). Without anyone ending it, after twelve hours.
+  - Hardcore with the threshold trigger ends at `endsAt`, the moment the
+    stopwatch reaches its Soll, computed at the start (`hardcoreEndsAt`:
+    start + Soll − time already worked), or when its quest or run is
+    completed. Pausing, stopping the stopwatch or changing the Soll later do
+    not move it. Without a Soll still ahead such a block starts as Soft,
+    and the Fokus screen says so beforehand (`blockShape`).
+  - Hardcore has no lift button; `POST /focus-block/end` answers 409
+    `HARDCORE_BLOCK`. During Hardcore the lists only get stricter: adding
+    to the Sperrliste works, removing from it or adding to the
+    Erlaubt-Liste answers 409. The list mode of a block is fixed at its
+    start.
 - **Time**: ending at `endsAt` needs no worker. Every read closes a block
   past its moment (`openFocusBlock` sets `endedAt = endsAt`, reason
-  `target_reached`, or `expired` for Soft after twelve hours). Devices
-  count down on the server's clock (`serverNow`).
+  `target_reached`, or `expired` after twelve hours for a block without
+  `endsAt`). Devices count down on the server's clock (`serverNow`).
 
 ## Data
 
-- `focus_block_settings (userId PK, enabled, thresholdMinutes 1–600, mode,
-  listMode, updatedAt)`; no row means the defaults.
+- `focus_block_settings (userId PK, enabled, trigger stopwatch|threshold,
+  thresholdMinutes 1–600, mode, listMode, updatedAt)`; no row means the
+  defaults (on, `stopwatch`, 15, Soft, Sperrliste).
 - `focus_block_entries (id, userId, list block|allow, kind app|domain,
   value, label, createdAt)`, unique `(userId, list, kind, value)`.
 - `focus_blocks (id uuid, userId, todoId, occurrenceId, title, mode,
   listMode, startedAt, endsAt, endedAt, endReason)`; a partial unique index
-  keeps one open block (`endedAt IS NULL`) per user. Checks: Hardcore
-  exactly when `endsAt` is set; `endReason` exactly when `endedAt` is set,
-  one of `lifted`, `stopwatch_stopped`, `completed`, `target_reached`,
-  `expired`. `title` keeps the quest's name for the block screen.
+  keeps one open block (`endedAt IS NULL`) per user. Checks: `endsAt` only
+  for Hardcore (Hardcore without it ends with its stopwatch); `endReason`
+  exactly when `endedAt` is set, one of `lifted`, `stopwatch_stopped`,
+  `paused`, `completed`, `target_reached`, `expired`. A quest completed
+  while its stopwatch runs stops the stopwatch first, so a block bound to
+  it ends as `stopwatch_stopped`. `title` keeps the quest's name for the
+  block screen.
 - `todos.focusBlock`, `habits.focusBlock`: `default | always | never`.
 - All three tables reference `users` with `ON DELETE CASCADE`; `todoId` and
   `occurrenceId` are `ON DELETE SET NULL` (migration
   `1796600000000-FocusBlocks`).
+- Migration `1796800000000-FocusBlockWhileRunning` adds `trigger` (every
+  existing row becomes `stopwatch`), makes `enabled` default to true for
+  new rows, allows Hardcore without `endsAt` and the reason `paused`.
+  Existing rows keep their `enabled`: a row is only written by a change in
+  Einstellungen, and it has no creation time, so an untouched "off" cannot
+  be told from a chosen one. People without a row get the new defaults.
 
-Writes run in the per-user unit of work. Ending is part of the change that
-causes it: `stopTimer` (`timers/timer-target.ts`) ends Soft blocks,
-`saveQuest` and `HabitSchedulingService.setRunStatus` end the blocks of what
-they complete (`focus-block-store.ts`, no Nest dependencies).
+Writes run in the per-user unit of work. Starting and ending are part of
+the change that causes them: the stopwatch's transitions (see Rules › One
+place), and `saveQuest` and `HabitSchedulingService.setRunStatus` end the
+blocks of what they complete (`focus-block-store.ts`, no Nest
+dependencies).
 
 ## API
 
@@ -104,14 +143,15 @@ fixedDomains }`.
 - `GET /focus-block` with `ETag: "<version>"`. `version` hashes everything
   but `serverNow`, so a device polling with `If-None-Match` gets a
   bodiless 304 while nothing changed (Express answers it).
-- `PUT /focus-block/settings` with any of `enabled`, `thresholdMinutes`,
-  `mode`, `listMode`.
+- `PUT /focus-block/settings` with any of `enabled`, `trigger`,
+  `thresholdMinutes`, `mode`, `listMode`.
 - `POST /focus-block/entries` `{ list, kind, value, label? }` (400 for no
   website or package name); `DELETE /focus-block/entries/:id`.
 - `POST /focus-block` `{ mode? }`: a block for the running or paused
   stopwatch (409 `NO_ACTIVE_TIMER` without one).
 - `POST /focus-block/end`: lifts Soft; Hardcore 409 `HARDCORE_BLOCK`.
-- `POST /timers` and `POST /timers/:id/resume` take `focusBlock: { mode? }`.
+- `POST /timers` and `POST /timers/:id/resume` take `focusBlock: { mode? }`
+  (only the mode; whether a block starts does not depend on it).
 - `focusBlock` on todos and habits (create, update, responses) and on the
   day planner's items.
 
@@ -119,15 +159,36 @@ fixedDomains }`.
 
 `TimerProvider.vue` holds the state for every view beside the stopwatch
 (`createFocusBlockController`): it reads it on load, whenever the stopwatch
-changes, after target changes, on focus and every 30 seconds. Einstellungen
-(`#/einstellungen?abschnitt=fokus-sperre`) edit it; the editors of quests
-and dailies carry "Fokus-Sperre: Standard | Immer | Nie" behind a
-disclosure that opens by itself when not Standard. The Fokus-Modus shows
-"Sperre aktiv · Hardcore · noch 12 Min." or "Sperre aktiv · Soft" and, in a
+changes, after target changes, on focus and every 30 seconds; in the
+Android app each read also reads the phone's two permissions
+(`getStatus`). Einstellungen (`#/einstellungen?abschnitt=fokus-sperre`)
+edit it; the editors of quests and dailies carry "Fokus-Sperre: Standard |
+Immer | Nie" behind a disclosure that opens by itself when not Standard. The
+Fokus-Modus shows "Sperre aktiv · Hardcore · noch 12 Min.", "Sperre aktiv ·
+Hardcore" (ends with the stopwatch) or "Sperre aktiv · Soft" and, in a
 browser, that blocking happens in the Android app.
 
+**What keeps it from working** (`focusSetupIssues`, shown by
+`FocusBlockSetupHint.vue`): an empty Sperrliste in Sperrliste mode (nothing
+to block), apps on the list while the accessibility service is off, websites
+on the list (or strict mode) without the VPN consent. The hint names it with
+the button that fixes it ("Bedienungshilfe einschalten", "VPN erlauben") in
+Einstellungen (the empty list there with its sentence only, the list being
+right below). The Fokus-Modus shows only the two permissions, compact and
+centred below its buttons, without `role="status"`; the empty list is its
+quiet line there. The stopwatch bar shows the two permissions in one line
+while a block holds.
+A person who never filled a list sees no hint in the bar.
+
 In a browser nothing is blocked; a browser extension for the PC is a later
-step.
+step. Settings and lists live on the server, so Einstellungen edit them on
+every device; only picking installed apps and the device setup need the
+Android app (where the bridge `focusBlockNative()` exists). A browser shows
+one sentence in their place: blocking happens on the Android phone, which is
+set up there, and a stopwatch started here blocks there too. Switched off,
+the section shows only the switch and its sentence; the trigger (with the
+threshold when chosen), the mode, the lists and the device setup appear once
+it is on, with their stored values.
 
 ## Android
 
@@ -136,6 +197,14 @@ A Capacitor plugin of the app itself (`FocusBlockPlugin`, registered in
 plugin through the bridge Capacitor injects (`window.Capacitor`); the web
 build bundles no Capacitor code.
 
+- **Why nothing may block** (owner's report, 2026-11): before the stopwatch
+  trigger, only the Fokus-Modus started blocks, the feature was off until
+  switched on, and `default` blocked only from a Soll of 15 minutes; a
+  stopwatch started on Heute never blocked. On the phone, apps need the
+  accessibility service and websites the VPN consent; on Android 13 and
+  newer an app installed outside the Play Store must first be allowed
+  "Eingeschränkte Einstellungen" in its app info before its accessibility
+  service can be switched on. An empty Sperrliste blocks nothing.
 - **Plugin API**: `getStatus()` (`accessibilityEnabled`, `vpnPrepared`),
   `openAccessibilitySettings()`, `requestVpnPermission()` (Android's VPN
   consent dialog), `listInstalledApps()` (apps with a launcher icon, label
@@ -155,9 +224,11 @@ build bundles no Capacitor code.
   `TYPE_WINDOW_STATE_CHANGED` with the package name
   (`canRetrieveWindowContent="false"`, no key events, no gestures). During
   a block it opens `BlockActivity` over an app the block covers: "Fokus
-  läuft: <Quest>", "noch 18 Min. · Hardcore" or the Soft line, "Zurück zur
+  läuft: <Quest>", "noch 18 Min. · Hardcore", "Hardcore: bis die Quest
+  erledigt ist oder die Stoppuhr endet." or the Soft line, "Zurück zur
   Quest" (opens the app in the Fokus-Modus) and, for Soft only, "Sperre
-  aufheben" after "Sperre aufheben?". Back leads home. Lifting on the
+  aufheben" after "Sperre aufheben?". The phone treats every `hardcore`
+  block as not liftable, with or without `endsAt` (`FocusBlockState`). Back leads home. Lifting on the
   phone holds there at once and reaches the server with `POST
   /api/focus-block/end` (Origin and JSON as the server requires), later if
   offline.
@@ -205,16 +276,20 @@ without keeping them. No telemetry, no third party.
 
 ## Tests
 
-- Backend unit: `focus-block-rules.spec.ts` (trigger with per-task choice,
-  Hardcore end, 409 on early lifting, stricter lists, host and package
-  rules).
-- Backend e2e: `test/focus-blocks.e2e-spec.ts` (endpoints, 304, timer
-  start and resume, Soft ending with the stopwatch, Hardcore through pause
-  and stop, ending at the Soll and by completion of a quest or run).
-- Frontend unit: `utils/focus-block.spec.ts`, `useFocusBlock.spec.ts`,
-  `FocusBlockSettings.spec.ts`, the editors (`editor-changes.spec.ts`,
+- Backend unit: `focus-block-rules.spec.ts` (both triggers with per-task
+  choice, block shape, Hardcore end, 409 on lifting, stricter lists, host
+  and package rules).
+- Backend e2e: `test/focus-blocks.e2e-spec.ts` (defaults, endpoints, 304,
+  a stopwatch started without `focusBlock` and without a Soll, Soft ending
+  on pause and starting again on resume, switching targets, Hardcore
+  through pauses until the stopwatch ends, the threshold trigger with
+  Hardcore until the Soll, completion of a quest or run, by hand).
+- Frontend unit: `utils/focus-block.spec.ts` (with `focusSetupIssues`),
+  `useFocusBlock.spec.ts`, `FocusBlockSettings.spec.ts` (browser keeps
+  the options, setup hint), the editors (`editor-changes.spec.ts`,
   `PlannerItemEditor.spec.ts`) and `FocusView.spec.ts`.
-- Playwright: `e2e/focus-block.spec.ts` (Einstellungen, editor choice,
-  Fokus-Modus with Soft and Hardcore).
+- Playwright: `e2e/focus-block.spec.ts` (Einstellungen in the browser, a
+  stopwatch from Heute with pause and resume, editor choice, Fokus-Modus
+  with the threshold trigger, Soft and Hardcore).
 - Android JVM: `FocusBlockPolicyTest`, `DnsPacketTest`, `UpstreamDnsTest`
   (`cd frontend/android && ./gradlew.bat test`).

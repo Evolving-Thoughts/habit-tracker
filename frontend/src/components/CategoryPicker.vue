@@ -2,7 +2,8 @@
 import { computed, onMounted, ref } from "vue";
 import { createCategory, getCategories } from "../api/categories.api";
 import type { CategoryResponse } from "../types/category";
-import { categoryMark } from "../utils/category-mark";
+import { markToken } from "../utils/campaign-style";
+import { categoryMark, newCategoryColor } from "../utils/category-mark";
 import ComboBox, { type ComboOption } from "./ComboBox.vue";
 
 /**
@@ -62,7 +63,12 @@ const options = computed<ComboOption[]>(() => [
         {
           value: PENDING,
           label: `Neue Kategorie: ${props.pending}`,
-          mark: categoryMark(props.pending!),
+          mark: markToken(
+            newCategoryColor(
+              props.pending!,
+              categories.value.map((category) => category.color),
+            ),
+          ),
           icon: "plus" as const,
         },
       ]

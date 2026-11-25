@@ -48,8 +48,8 @@ const failure = (what: string, name: string, error: unknown) =>
 /**
  * Creates a named category and campaign that do not exist yet, the
  * category first: a new campaign takes it, or `categoryId`, a category
- * that exists. The category is created as in its picker (the name picks
- * the colour), the campaign as in "Gehört zu" (`createCampaign`).
+ * that exists. The category is created as in its picker (the server
+ * gives it a colour no other category shows), the campaign as in "Gehört zu" (`createCampaign`).
  */
 export async function createNewPlaces(
   wanted: NewPlaces,

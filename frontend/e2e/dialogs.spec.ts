@@ -31,32 +31,36 @@ for (const view of ["Questlog", "Heute", "Dailies"] as const) {
       expect(response.status()).toBe(201);
     }
     await visit(page, view);
-    const plus = page.locator(".create-button");
-    const top = await plus.boundingBox();
-    expect(top).not.toBeNull();
-    await page.evaluate(() =>
-      window.scrollTo(0, document.documentElement.scrollHeight),
-    );
-    if (isMobile) {
-      // A phone's plus button steps aside while the page scrolls down and
-      // comes back, at the same place, on the way up.
-      await expect(plus).toHaveAttribute("data-hidden");
-      await page.evaluate(() => window.scrollBy(0, -120));
-      await expect(plus).not.toHaveAttribute("data-hidden");
+    // Beside Heute's day calendar "Neue Quest" in the head takes its place.
+    const split = view === "Heute" && !isMobile;
+    const plus = page.locator(split ? ".today-view__create" : ".create-button");
+    if (!split) {
+      const top = await plus.boundingBox();
+      expect(top).not.toBeNull();
+      await page.evaluate(() =>
+        window.scrollTo(0, document.documentElement.scrollHeight),
+      );
+      if (isMobile) {
+        // A phone's plus button steps aside while the page scrolls down and
+        // comes back, at the same place, on the way up.
+        await expect(plus).toHaveAttribute("data-hidden");
+        await page.evaluate(() => window.scrollBy(0, -120));
+        await expect(plus).not.toHaveAttribute("data-hidden");
+      }
+      await expect
+        .poll(async () => Math.round((await plus.boundingBox())!.y))
+        .toBe(Math.round(top!.y));
+      const geometry = await plus.locator("svg").evaluate((svg) => {
+        const icon = svg.getBoundingClientRect(),
+          button = svg.closest("button")!.getBoundingClientRect();
+        return {
+          dx: Math.abs((icon.left + icon.right - button.left - button.right) / 2),
+          dy: Math.abs((icon.top + icon.bottom - button.top - button.bottom) / 2),
+        };
+      });
+      expect(geometry.dx).toBeLessThan(1);
+      expect(geometry.dy).toBeLessThan(1);
     }
-    await expect
-      .poll(async () => Math.round((await plus.boundingBox())!.y))
-      .toBe(Math.round(top!.y));
-    const geometry = await plus.locator("svg").evaluate((svg) => {
-      const icon = svg.getBoundingClientRect(),
-        button = svg.closest("button")!.getBoundingClientRect();
-      return {
-        dx: Math.abs((icon.left + icon.right - button.left - button.right) / 2),
-        dy: Math.abs((icon.top + icon.bottom - button.top - button.bottom) / 2),
-      };
-    });
-    expect(geometry.dx).toBeLessThan(1);
-    expect(geometry.dy).toBeLessThan(1);
     const edit = page.getByRole("button", {
       name: "Quest 20 bearbeiten",
       exact: true,

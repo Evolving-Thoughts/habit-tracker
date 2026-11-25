@@ -85,6 +85,7 @@ const PAIRS: Pair[] = [
   ),
   pair("action", "surface-raised", NON_TEXT, "Erledigt on the focus card"),
   pair("line-strong", "surface-raised", NON_TEXT, "field on the sign-in card"),
+  pair("ink", "logo-disc", NON_TEXT, "logo on its disc, sign-in card"),
   // Placeholders (ink-soft) on the field itself: fields are surface.
   pair("ink-soft", "surface", TEXT, "placeholder in a field"),
 ];
@@ -116,7 +117,9 @@ function failures(tokens: Tokens): string[] {
       `color-${background}`,
     );
     return ratio + 1e-9 < min
-      ? [`${foreground} on ${background}: ${ratio.toFixed(2)} < ${min} (${use})`]
+      ? [
+          `${foreground} on ${background}: ${ratio.toFixed(2)} < ${min} (${use})`,
+        ]
       : [];
   });
   const stacked = LAYERED.flatMap(({ foreground, layers, use }) => {
@@ -155,6 +158,13 @@ describe("theme tokens", () => {
       "color-surface",
     );
     expect(step).toBeGreaterThan(1.1);
+  });
+
+  it("keeps the logo disc visible on the dark sign-in card", () => {
+    // By day the warm tint on white is enough; at night it must stand out.
+    expect(
+      tokenContrast(themes.dark, "color-logo-disc", "color-surface-raised"),
+    ).toBeGreaterThanOrEqual(NON_TEXT);
   });
 
   it("keeps the chart bars calmer than the text at night", () => {

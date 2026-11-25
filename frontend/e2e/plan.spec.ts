@@ -129,10 +129,8 @@ test("Plan: opens on today, steps through the days by as many as fit and keeps t
   await expect
     .poll(() => storedDay(request, next))
     .toEqual(["Geschenk besorgen", "Karte schreiben"]);
-  // ↑ puts the next one on top of the day.
-  await column(page, next)
-    .getByRole("button", { name: "Oben einfügen", exact: true })
-    .click();
+  // ↑ in the head puts the next one on top of the day.
+  await page.getByRole("button", { name: "Oben einfügen", exact: true }).click();
   await field.fill("Zuerst anrufen");
   await field.press("Enter");
   await expect
@@ -148,7 +146,7 @@ test("Plan: opens on today, steps through the days by as many as fit and keeps t
   ]);
   // The choice of ↑ holds on this device.
   await expect(
-    column(page, next).getByRole("button", { name: "Oben einfügen", exact: true }),
+    page.getByRole("button", { name: "Oben einfügen", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
 
   // Today has the plain address; Back returns to the days before.

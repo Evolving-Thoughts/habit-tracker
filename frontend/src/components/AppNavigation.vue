@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import AppIcon from "./AppIcon.vue";
+import { useOverlay } from "../composables/useOverlayStack";
 import { isMac, overlay } from "../composables/useShortcuts";
 import { VIEWS } from "../router";
 import { ariaKeys, keyCaps, shortcutById } from "../utils/shortcuts";
@@ -48,6 +49,8 @@ watch(
   () => route.name,
   () => close(),
 );
+// Back on the phone closes the Mehr sheet, as Escape does.
+useOverlay(open, () => close(true));
 
 /*
  * The focus goes back to Mehr first, so it returns there when the menu

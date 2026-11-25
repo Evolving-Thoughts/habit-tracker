@@ -12,6 +12,7 @@ import AppIcon from "../components/AppIcon.vue";
 import FocusSoundMenu from "../components/FocusSoundMenu.vue";
 import { useFocusSound } from "../composables/useFocusSound";
 import ModalDialog from "../components/ModalDialog.vue";
+import FocusBlockSetupHint from "../components/FocusBlockSetupHint.vue";
 import { useFocusBlock } from "../composables/useFocusBlock";
 import type { FocusBlockMode } from "../types/focus-block";
 import { blockApplies, blockStatusLine } from "../utils/focus-block";
@@ -179,9 +180,10 @@ async function act(work: () => Promise<unknown>, fallback: string) {
 }
 
 /*
- * Fokus-Sperre: starting (or resuming) the stopwatch here starts a block
- * when the quest or daily calls for one; Soft or Hardcore is picked with
- * one tap beforehand. The server applies the rule; the screen shows it.
+ * Fokus-Sperre: a stopwatch that starts or resumes running, here or
+ * anywhere, starts a block when the rule calls for one; here Soft or
+ * Hardcore is picked with one tap beforehand. The server applies the rule
+ * (useFocusBlock); the screen shows it and what keeps it from working.
  */
 const focusBlock = useFocusBlock();
 const activeBlock = computed(() => focusBlock?.block.value ?? null);
@@ -198,6 +200,29 @@ const blockWanted = computed(() => {
     blockApplies(settings, item.focusBlock, item.plannedDurationMinutes)
   );
 });
+/*
+ * The choice of Soft or Hardcore only where a block would block something:
+ * a list to block and a phone that can. Otherwise one quiet line below the
+ * buttons says why not (`blockQuiet`), instead of a choice that changes
+ * nothing.
+ */
+const blockEmpty = computed(
+  () => focusBlock?.setupIssues.value.includes("empty") ?? false,
+);
+// A browser can choose too: a block started here takes effect on the phone.
+const blockChoice = computed(() => blockWanted.value && !blockEmpty.value);
+const blockQuiet = computed<"empty" | "browser" | null>(() => {
+  if (blockEmpty.value && (activeBlock.value || blockWanted.value))
+    return "empty";
+  if (!activeBlock.value && blockWanted.value && !focusBlock?.native)
+    return "browser";
+  return null;
+});
+const focusSettingsHref = `${hrefOf("settings")}?abschnitt=fokus-sperre`;
+/** Hardcore with the stopwatch trigger holds until done or stopped, not to the Soll. */
+const untilStopped = computed(
+  () => focusBlock?.state.value?.settings.trigger !== "threshold",
+);
 const blockLine = computed(() =>
   activeBlock.value && focusBlock
     ? blockStatusLine(activeBlock.value, focusBlock.serverNow())
@@ -222,9 +247,14 @@ function keepBlock(): void {
   confirmLift.value = false;
   leaveTo = null;
 }
-/* Leaving the Fokus-Modus asks first while a Soft block holds. */
+/*
+ * With the threshold trigger, leaving the Fokus-Modus asks first while a
+ * Soft block holds. With the stopwatch trigger the block belongs to the
+ * stopwatch, which runs on outside this view, so leaving asks nothing.
+ */
 onBeforeRouteLeave((to) => {
-  if (leaving || activeBlock.value?.mode !== "soft") return true;
+  if (leaving || untilStopped.value || activeBlock.value?.mode !== "soft")
+    return true;
   leaveTo = to;
   confirmLift.value = true;
   return false;
@@ -401,8 +431,11 @@ useShortcutHandlers({
           v-if="activeBlock.mode === 'hardcore'"
           class="focus-view__block-hint"
         >
-          Endet mit dem Soll oder wenn die Quest erledigt ist. Pausieren hebt
-          sie nicht auf.
+          {{
+            activeBlock.endsAt
+              ? "Endet mit dem Soll oder wenn die Quest erledigt ist. Pausieren hebt sie nicht auf."
+              : "Endet, wenn die Quest erledigt ist oder du die Stoppuhr beendest. Pausieren hebt sie nicht auf."
+          }}
         </p>
         <p v-if="!focusBlock?.native" class="focus-view__block-hint">
           Gesperrt wird auf dem Handy in der Android-App.
@@ -418,7 +451,7 @@ useShortcutHandlers({
         </button>
       </div>
       <div
-        v-else-if="blockWanted"
+        v-else-if="blockChoice"
         class="focus-view__block"
         data-test="focus-block-choice"
       >
@@ -441,14 +474,16 @@ useShortcutHandlers({
         <p class="focus-view__block-hint">
           {{
             blockMode === "soft"
-              ? "Die Sperre beginnt mit der Stoppuhr und endet mit ihr."
-              : current.plannedDurationMinutes === null
-                ? "Ohne Soll läuft die Sperre als Soft."
-                : "Die Sperre hält, bis die Quest erledigt oder das Soll erreicht ist."
+              ? "Die Sperre gilt, solange die Stoppuhr läuft; Pausieren hebt sie auf."
+              : untilStopped
+                ? "Die Sperre hält auch in Pausen, bis die Quest erledigt ist oder du die Stoppuhr beendest."
+                : current.plannedDurationMinutes === null
+                  ? "Ohne Soll läuft die Sperre als Soft."
+                  : "Die Sperre hält, bis die Quest erledigt oder das Soll erreicht ist."
           }}
         </p>
         <button
-          v-if="timed"
+          v-if="running"
           class="btn btn--quiet"
           type="button"
           :disabled="focusBlock?.busy.value"
@@ -509,6 +544,19 @@ useShortcutHandlers({
           Überspringen
         </button>
       </div>
+      <!-- Why the Fokus-Sperre blocks nothing here, read where it stands. -->
+      <p
+        v-if="blockQuiet"
+        class="focus-view__block-quiet"
+        data-test="focus-block-quiet"
+      >
+        <template v-if="blockQuiet === 'empty'">
+          Fokus-Sperre: Sperrliste leer ·
+          <a class="btn btn--link" :href="focusSettingsHref">Einrichten</a>
+        </template>
+        <template v-else>Fokus-Sperre: wirkt auf dem Handy in der Android-App</template>
+      </p>
+      <FocusBlockSetupHint v-if="activeBlock || blockChoice" where="focus" />
 
       <!-- A quest's notes, or those of this one run of a daily. -->
       <QuestNotes
@@ -561,7 +609,7 @@ useShortcutHandlers({
     >
       <p class="focus-view__dialog-text">
         Apps und Websites der Liste sind dann wieder frei. Die Stoppuhr läuft
-        weiter.
+        weiter; nach einer Pause sperrt sie beim Fortsetzen wieder.
       </p>
       <div class="focus-view__dialog-actions">
         <button class="btn btn--primary" type="button" @click="liftBlock">
@@ -773,6 +821,19 @@ useShortcutHandlers({
   color: var(--color-ink-muted);
   font-size: 0.875rem;
   text-wrap: pretty;
+}
+
+/* No block would apply: one quiet line, its link the only tap in it. */
+.focus-view__block-quiet {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.focus-view__block-quiet .btn--link {
+  padding: 0 var(--space-1);
+  font-size: inherit;
 }
 
 .focus-view__dialog-text {

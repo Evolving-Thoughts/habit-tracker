@@ -16,7 +16,7 @@ export class CategoryInputDto {
   @MaxLength(60)
   readonly name!: string;
 
-  /** One of the campaign colours; without one the name picks it. */
+  /** One of the campaign colours; without one it gets the first free core colour. */
   @IsOptional()
   @IsIn(CAMPAIGN_COLORS)
   readonly color?: CampaignColor | null;
@@ -35,7 +35,7 @@ export class UpdateCategoryDto {
   @Max(1000)
   readonly weeklyTarget?: number | null;
 
-  /** Null goes back to the colour the name picks. */
+  /** Null stops choosing: the category shows a colour no other one shows. */
   @IsOptional()
   @IsIn(CAMPAIGN_COLORS)
   readonly color?: CampaignColor | null;
@@ -45,6 +45,8 @@ export type CategoryResponse = {
   id: number;
   name: string;
   weeklyTarget: number | null;
-  /** The chosen colour; null while the name picks it. */
-  color: CampaignColor | null;
+  /** The colour it shows (`shownCategoryColors`), chosen or not. */
+  color: CampaignColor;
+  /** False while no colour is stored, so the settings show "Automatisch". */
+  colorChosen: boolean;
 };

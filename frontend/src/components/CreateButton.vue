@@ -9,7 +9,9 @@ import { useScrollDirection } from "../composables/useScrollDirection";
  * bar, steps aside while the page scrolls down (so it never covers the row
  * one is reading) and comes back on the first scroll up. Keyboard focus
  * always shows it. From 56rem or with a mouse it is docked beside the page
- * column and stays.
+ * column and stays. Heute leaves it out beside its day calendar (from
+ * 64rem), where it would cover the rows' ▶: "Neue Quest" in its head
+ * opens the same dialog there.
  *
  * Held for half a second (finger or mouse), it asks for a new quest by
  * voice instead (`dictate`, docs/voice-input.md), with a short buzz; moving

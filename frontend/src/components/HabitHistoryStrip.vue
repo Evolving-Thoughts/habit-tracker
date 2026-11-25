@@ -1,17 +1,10 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import type { HabitResponse } from "../types/habit";
+import HistoryDayMark from "./HistoryDayMark.vue";
 import { formatDateForGermanDisplay } from "../utils/date";
+import { DAY_MARKS, type HistoryDay } from "../utils/day-marks";
 
-type Days = NonNullable<HabitResponse["streak"]["recentDays"]>;
-const props = defineProps<{ days: Days }>();
-const marks = {
-  done: ["✓", "Erledigt"],
-  missed: ["−", "Verpasst"],
-  open: ["○", "Noch offen"],
-  skipped: ["↷", "Übersprungen"],
-  free: ["·", "Kein Eintrag"],
-} as const;
+const props = defineProps<{ days: HistoryDay[] }>();
 
 /*
  * Where the fourteen days do not fit, the strip scrolls in itself and starts
@@ -59,15 +52,15 @@ watch(
         v-for="day in days"
         :key="day.date"
         :title="
-          formatDateForGermanDisplay(day.date) + ' · ' + marks[day.state][1]
+          formatDateForGermanDisplay(day.date) + ' · ' + DAY_MARKS[day.state].label
         "
       >
         <span class="visually-hidden"
           >{{ formatDateForGermanDisplay(day.date) }} ·
-          {{ marks[day.state][1] }}</span
+          {{ DAY_MARKS[day.state].label }}</span
         >
         <span aria-hidden="true" class="date">{{ Number(day.date.slice(-2)) }}.</span>
-        <b aria-hidden="true" :class="day.state">{{ marks[day.state][0] }}</b>
+        <HistoryDayMark :state="day.state" />
       </li>
     </ol>
   </div>
@@ -114,24 +107,5 @@ li {
   white-space: nowrap;
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
-}
-b {
-  display: grid;
-  place-items: center;
-  inline-size: 1.5rem;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  line-height: 1;
-}
-.done {
-  background: var(--color-ink-muted);
-  color: var(--color-surface);
-}
-.missed {
-  border: 1px dashed var(--color-ink-soft);
-}
-.open,
-.skipped {
-  border: 1px solid var(--color-line-strong);
 }
 </style>

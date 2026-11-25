@@ -2,6 +2,7 @@ import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import AppNavigation from "./AppNavigation.vue";
+import { closeTopOverlay } from "../composables/useOverlayStack";
 import { overlay } from "../composables/useShortcuts";
 import { VIEWS } from "../router";
 
@@ -64,6 +65,16 @@ describe("AppNavigation: Mehr", () => {
     await flushPromises();
     expect(more.attributes("aria-expanded")).toBe("false");
     expect(document.activeElement).toBe(more.element);
+  });
+
+  it("closes with Back on the phone, as with Escape", async () => {
+    const { more } = await mountNavigation();
+    await more.trigger("click");
+    expect(closeTopOverlay()).toBe(true);
+    await flushPromises();
+    expect(more.attributes("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(more.element);
+    expect(closeTopOverlay()).toBe(false);
   });
 
   it("closes on a click outside, but not on a click inside", async () => {

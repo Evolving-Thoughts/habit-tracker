@@ -103,7 +103,7 @@ export async function visit(
 ) {
   await page.goto("/");
   await openView(page, view);
-  await expect(page.locator(".create-button")).toBeEnabled();
+  await expect(page.locator(CREATE)).toBeEnabled();
 }
 /**
  * Picks an option of a combobox ("Gehört zu", "Kategorie", "Kampagne") the
@@ -115,11 +115,16 @@ export async function pick(field: Locator, text: string) {
   await expect(field).toHaveAttribute("aria-expanded", "false");
 }
 /**
+ * What creates an entry: the plus button, or "Neue Quest" in Heute's head
+ * beside its day calendar (from 64rem), where no plus button floats.
+ */
+const CREATE = ".create-button, .today-view__create";
+/**
  * The plus button, in reach: on a phone it steps aside while the page
  * scrolls down, and a short scroll up brings it back.
  */
 export async function plusButton(page: Page): Promise<Locator> {
-  const plus = page.locator(".create-button");
+  const plus = page.locator(CREATE);
   if (await plus.evaluate((button) => button.hasAttribute("data-hidden"))) {
     await page.evaluate(() => window.scrollBy(0, -120));
     await expect(plus).not.toHaveAttribute("data-hidden");

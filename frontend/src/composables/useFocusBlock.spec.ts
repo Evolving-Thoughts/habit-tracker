@@ -20,6 +20,7 @@ const state = (block: FocusBlockState["block"] = null): FocusBlockState => ({
   serverNow: SERVER_NOW,
   settings: {
     enabled: true,
+    trigger: "stopwatch",
     thresholdMinutes: 15,
     mode: "hardcore",
     listMode: "blocklist",
@@ -64,6 +65,30 @@ describe("createFocusBlockController", () => {
     expect(native.setBlock).toHaveBeenCalledWith(state(hardcore));
     focus.dispose();
     expect(native.setBlock).toHaveBeenLastCalledWith(null);
+  });
+
+  it("reads the phone's permissions with every refresh and names what is missing", async () => {
+    const native = fakeNative();
+    native.getStatus.mockResolvedValue({
+      accessibilityEnabled: false,
+      vpnPrepared: true,
+    });
+    vi.mocked(getFocusBlock).mockResolvedValue({
+      ...state(),
+      lists: {
+        block: [{ id: 1, kind: "app", value: "com.example", label: null }],
+        allow: [],
+      },
+    });
+    const focus = createFocusBlockController(native);
+    await focus.refresh();
+    expect(focus.setupIssues.value).toEqual(["accessibility"]);
+    native.getStatus.mockResolvedValue({
+      accessibilityEnabled: true,
+      vpnPrepared: true,
+    });
+    await focus.refresh();
+    expect(focus.setupIssues.value).toEqual([]);
   });
 
   it("counts a Hardcore block down on the server's clock", async () => {

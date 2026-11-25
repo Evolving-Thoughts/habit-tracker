@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import css from "./style.css?raw";
 import { CAMPAIGN_COLORS, CORE_COLORS } from "./types/campaign";
+import { AUTO_COLOR_ORDER } from "./utils/category-mark";
 import {
   layeredContrast,
   parseColor,
@@ -22,6 +23,10 @@ import {
 const CORE_MIN = 9;
 const ALL_MIN = 8;
 const NON_TEXT = 3;
+/** The first four automatic category colours, under red-green blindness. */
+const AUTO_FIRST_MIN = 13;
+/** The same four for every kind of eye: still above the core minimum. */
+const AUTO_FIRST_ALL_MIN = 10.5;
 
 type Vision = "normal" | "protan" | "deutan" | "tritan";
 type Matrix = [number, number, number][];
@@ -157,6 +162,22 @@ describe("mark palette", () => {
         const { pair, value } = closest(tokens, CORE_COLORS, vision);
         expect(value, pair).toBeGreaterThanOrEqual(CORE_MIN);
       });
+
+    /*
+     * Categories without a chosen colour get them in AUTO_COLOR_ORDER, so the
+     * first few a person creates must stay further apart than the core
+     * minimum, above all for red-green blindness (the owner's eyes).
+     */
+    it(`keeps the first automatic category colours well apart in the ${theme} theme`, () => {
+      for (const vision of ["protan", "deutan"] as const) {
+        const { pair, value } = closest(tokens, AUTO_COLOR_ORDER.slice(0, 4), vision);
+        expect(value, `${vision} ${pair}`).toBeGreaterThanOrEqual(AUTO_FIRST_MIN);
+      }
+      for (const vision of VISIONS) {
+        const { pair, value } = closest(tokens, AUTO_COLOR_ORDER.slice(0, 4), vision);
+        expect(value, `${vision} ${pair}`).toBeGreaterThanOrEqual(AUTO_FIRST_ALL_MIN);
+      }
+    });
 
     it(`keeps all marks apart for full colour vision in the ${theme} theme`, () => {
       const { pair, value } = closest(tokens, CAMPAIGN_COLORS, "normal");

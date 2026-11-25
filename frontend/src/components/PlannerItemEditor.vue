@@ -277,6 +277,20 @@ function readParents(choices: ParentChoice[], todos: HierarchyTodo[]): void {
   hasChildren.value = todos.some((todo) => todo.parentId === props.entityId);
 }
 
+/*
+ * Under the campaign field: with one chosen, where the daily's time counts;
+ * without, the campaign whose quest counts the daily, if one does (the
+ * server's `campaign` falls back to it); otherwise nothing.
+ */
+const campaignHint = computed(() => {
+  if (campaignId.value !== null)
+    return "Seine gemessene Zeit zählt dort als Kampagnen-Stunden.";
+  const counting = loadedHabit.value?.campaign;
+  return loadedHabit.value?.campaignId === null && counting
+    ? `Wird von „${counting.title}“ gezählt.`
+    : null;
+});
+
 /**
  * A daily's campaign changed: its reason comes from there; without one in
  * the campaign, the goal counting the daily (the server's answer) still
@@ -574,11 +588,15 @@ onMounted(loadEntity);
               :none-label="
                 hasChildren ? 'Keine (eigene Kampagne)' : 'Keine (lose Quest)'
               "
-              described-by="planner-edit-parent-hint"
+              :described-by="hasChildren ? 'planner-edit-parent-hint' : undefined"
               @chosen="chooseParent"
               @ready="readParents"
             />
-            <small id="planner-edit-parent-hint" class="item-editor__hint"
+            <!-- Only a quest with sub-quests takes something along. -->
+            <small
+              v-if="hasChildren"
+              id="planner-edit-parent-hint"
+              class="item-editor__hint"
               >Alle Unter-Quests ziehen mit.</small
             >
           </div>
@@ -844,11 +862,14 @@ onMounted(loadEntity);
                 id="planner-edit-campaign"
                 v-model="campaignId"
                 campaigns-only
-                described-by="planner-edit-campaign-hint"
+                :described-by="campaignHint ? 'planner-edit-campaign-hint' : undefined"
                 @chosen="chooseCampaign"
               />
-              <small id="planner-edit-campaign-hint" class="item-editor__hint"
-                >Seine gemessene Zeit zählt dort als Kampagnen-Stunden.</small
+              <small
+                v-if="campaignHint"
+                id="planner-edit-campaign-hint"
+                class="item-editor__hint"
+                >{{ campaignHint }}</small
               >
             </div>
           </div>

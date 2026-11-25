@@ -43,7 +43,16 @@ test("Monats-Challenge: started on a Daily, its run in Heute's order, ticked the
   await expect(
     section.getByRole("heading", { name: "Monats-Challenge", exact: true }),
   ).toBeVisible();
-  await section.getByRole("button", { name: "Challenge starten" }).click();
+  // From the 16th the card offers next month first; this month is the
+  // second button ("Doch noch für November").
+  await section
+    .getByRole("button", {
+      name:
+        Number(date.slice(8, 10)) >= 16
+          ? /^Doch noch für /
+          : "Challenge starten",
+    })
+    .click();
 
   const dialog = page.getByRole("dialog", { name: "Monats-Challenge starten" });
   await expect(dialog).toContainText(

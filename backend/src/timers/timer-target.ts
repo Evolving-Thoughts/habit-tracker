@@ -4,7 +4,7 @@ import { WorkLogEntity } from '../work-logs/work-log.entity';
 import { coveredMilliseconds } from '../work-logs/work-time';
 import { TimerEntity } from './timer.entity';
 import { StopwatchEvent, StopwatchState, transition } from './timer-transition';
-import { endSoftFocusBlocks } from '../focus-blocks/focus-block-store';
+import { focusBlockFollowsStopwatch } from '../focus-blocks/focus-block-store';
 
 /**
  * Timer targets: which todo or habit occurrence may carry a stopwatch, the
@@ -44,7 +44,9 @@ export function isOccurrenceTimerEligible(
  * loads what it needs, writes its log operations and puts the next state on
  * the timer; the caller saves the timer. The block's log is read locked, so
  * a correction or deletion of it either happened before or waits until this
- * transaction ends.
+ * transaction ends. A pause or stop also ends the Fokus-Sperre that ends
+ * with it (`focusBlockFollowsStopwatch`); a start or resume starts one in
+ * `TimersService`, which knows the quest or daily.
  */
 export async function recordTransition(
   manager: EntityManager,
@@ -89,6 +91,8 @@ export async function recordTransition(
       state.workLogId = (identifiers[0] as { id: number }).id;
   }
   Object.assign(timer, state);
+  if (type !== 'resume')
+    await focusBlockFollowsStopwatch(manager, timer.userId, type, at);
 }
 
 function stopwatchState(timer: TimerEntity): StopwatchState {
@@ -121,7 +125,7 @@ export async function loggedMilliseconds(
 
 /**
  * Ends a stopwatch for good: its work stays on record, its row stops
- * counting, and a Soft Fokus-Sperre ends with it.
+ * counting, and a Fokus-Sperre bound to it ends with it.
  */
 export async function stopTimer(
   manager: EntityManager,
@@ -130,7 +134,6 @@ export async function stopTimer(
 ): Promise<TimerEntity> {
   await recordTransition(manager, timer, 'stop', at);
   timer.targetReachesAt = null;
-  await endSoftFocusBlocks(manager, timer.userId, at);
   return manager.save(TimerEntity, timer);
 }
 

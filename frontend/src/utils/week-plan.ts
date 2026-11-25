@@ -659,14 +659,29 @@ export type ColumnSpan = { start: number; end: number };
  * Where the board opens when its columns do not all fit: at the start while
  * today is fully visible from there, otherwise just far enough that today
  * stands right beside the Questlog column, which stays in place (`sticky`
- * is its width with the gap).
+ * is its width with the gap). With `lead` (the Kalender week) today always
+ * comes first beside the sticky column, even when it would fit further on.
  */
 export function todayScroll(
   today: ColumnSpan,
-  view: { width: number; sticky: number },
+  view: { width: number; sticky: number; lead?: boolean },
 ): number {
-  if (today.end <= view.width) return 0;
+  if (!view.lead && today.end <= view.width) return 0;
   return Math.max(0, today.start - view.sticky);
+}
+
+/**
+ * The minute of the day the Kalender week opens on: an hour and a half
+ * before now in the current week, else half an hour before the first entry,
+ * else 8:00. Always a full hour, so the first hour's label stands whole
+ * under the sticky heads instead of half cut off by them.
+ */
+export function weekOpenMinute(
+  now: number | null,
+  firstEntry: number | null,
+): number {
+  const target = now !== null ? now - 90 : firstEntry !== null ? firstEntry - 30 : 8 * 60;
+  return Math.max(0, Math.floor(target / 60) * 60);
 }
 
 /*

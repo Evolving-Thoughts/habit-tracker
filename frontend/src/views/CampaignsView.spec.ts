@@ -160,7 +160,55 @@ describe("CampaignsView", () => {
       ]);
     });
 
-    it("renders independent checkboxes, progress and hierarchy depth", async () => {
+    it("puts open quests first and folds the done ones under N erledigt", async () => {
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        campaignNode(9, { color: "berry", progress: below(4, 2) }),
+        { ...node(3, 9), completed: true },
+        node(1, 9, below(1)),
+        node(2, 1),
+        { ...node(4, 9), completed: true },
+        node(5, 9),
+      ]);
+      const w = view();
+      await flushPromises();
+      const ids = () =>
+        w.findAll("[data-todo-id]").map((row) => row.attributes("data-todo-id"));
+      expect(ids()).toEqual(["1", "2", "5"]);
+      const toggle = button(w, "2 erledigt");
+      expect(toggle.attributes("aria-expanded")).toBe("false");
+      await toggle.trigger("click");
+      expect(toggle.attributes("aria-expanded")).toBe("true");
+      expect(ids()).toEqual(["1", "2", "5", "3", "4"]);
+      expect(w.get("#campaign-done-list").attributes("aria-label")).toBe(
+        "Erledigte Quests der Kampagne",
+      );
+    });
+
+    it("keeps a done quest with an open quest below it among the open ones", async () => {
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        campaignNode(9, { color: "berry", progress: below(3, 2) }),
+        { ...node(1, 9, below(1)), completed: true },
+        node(2, 1),
+        { ...node(3, 9), completed: true },
+      ]);
+      const w = view();
+      await flushPromises();
+      expect(
+        w.findAll("[data-todo-id]").map((row) => row.attributes("data-todo-id")),
+      ).toEqual(["1", "2"]);
+      expect(button(w, "1 erledigt").exists()).toBe(true);
+    });
+
+    it("makes the campaign the page's heading, with the way back above it", async () => {
+      const w = view();
+      await flushPromises();
+      expect(w.find(".page-header").exists()).toBe(false);
+      expect(w.get("h1").text()).toBe("Kampagne 9");
+      expect(w.get("h1").attributes("id")).toBe("campaign-detail-title");
+      expect(w.text()).toContain("Alle Kampagnen");
+    });
+
+        it("renders independent checkboxes, progress and hierarchy depth", async () => {
       const w = view();
       await flushPromises();
       expect(w.findAll("[data-todo-id]")).toHaveLength(2);
@@ -423,6 +471,22 @@ describe("CampaignsView", () => {
       expect(value("total")).toBe("50 Std.");
       expect(value("active")).toBe("1");
       expect(value("done")).toBe("1");
+      expect(w.find(".campaign-stats__value--zero").exists()).toBe(false);
+    });
+
+    it("keeps a count of zero, only quieter", async () => {
+      vi.mocked(getTodoHierarchy).mockResolvedValue([
+        campaignNode(1, { color: "berry", progress: below(1) }),
+        node(2, 1),
+      ]);
+      const w = view();
+      await flushPromises();
+      const done = w.get('[data-stat="done"] dd');
+      expect(done.text()).toBe("0");
+      expect(done.classes()).toContain("campaign-stats__value--zero");
+      expect(w.get('[data-stat="active"] dd').classes()).not.toContain(
+        "campaign-stats__value--zero",
+      );
     });
 
     it("says – for hours it could not read", async () => {
@@ -456,7 +520,13 @@ describe("CampaignsView", () => {
       ]);
       const w = view();
       await flushPromises();
-      await w.get('[aria-label="Kampagne 1 abschließen"]').trigger("click");
+      // With quests open, "Abschließen" waits in the tile's "…".
+      expect(w.find(".campaign-tile__complete").exists()).toBe(false);
+      const completeFromMenu = async () => {
+        await w.get('[aria-label="Aktionen für Kampagne 1"]').trigger("click");
+        await w.get('[role=menuitem][aria-label="Kampagne 1 abschließen"]').trigger("click");
+      };
+      await completeFromMenu();
       await flushPromises();
       expect(w.get("[role=dialog]").text()).toContain(
         "2 Quests in „Kampagne 1“ sind noch offen. Sie bleiben offen",
@@ -467,7 +537,7 @@ describe("CampaignsView", () => {
       expect(w.find("[role=dialog]").exists()).toBe(false);
       expect(updateTodoCompletion).not.toHaveBeenCalled();
 
-      await w.get('[aria-label="Kampagne 1 abschließen"]').trigger("click");
+      await completeFromMenu();
       await flushPromises();
       await w.get("[data-campaign-confirm]").trigger("click");
       await flushPromises();
@@ -621,9 +691,10 @@ describe("CampaignsView", () => {
       );
       // Each number once: no second "Verlauf" line or loose total.
       expect(card.text().match(/insgesamt/g)).toHaveLength(1);
+      // Quests are open: "Abschließen" waits in the "…".
       expect(
         card.findAll(".campaign-detail__actions button").map((b) => b.text()),
-      ).toEqual(["Bearbeiten", "Abschließen"]);
+      ).toEqual(["Bearbeiten"]);
     });
 
     it("leaves out what a campaign does not have: no Warum, no goal bar, no progress", async () => {
@@ -674,10 +745,11 @@ describe("CampaignsView", () => {
         "In Kampagne verschieben …",
         "Löschen",
       ]);
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-      await flushPromises();
-      // The visible button asks like the ring did.
-      await w.get(".campaign-detail [data-complete-button]").trigger("click");
+      // A quest is open: no visible pill, the menu entry asks like the ring did.
+      expect(w.find(".campaign-detail [data-complete-button]").exists()).toBe(
+        false,
+      );
+      await menu.findAll("[role=menuitem]")[0]!.trigger("click");
       await flushPromises();
       expect(w.get("[role=dialog]").text()).toContain(
         "1 Quest in „Kampagne 1“ ist noch offen",
@@ -689,6 +761,39 @@ describe("CampaignsView", () => {
       expect(
         w.get(".campaign-detail [data-edit-button]").attributes("aria-label"),
       ).toBe("Kampagne Kampagne 1 bearbeiten");
+    });
+
+    it("shows Abschließen as a pill only when no quest and no daily goal is open", async () => {
+      const goal = (reached: boolean) => ({
+        habitId: 3,
+        habitTitle: "Laufen gehen",
+        target: 24,
+        completed: reached ? 24 : 9,
+        reached,
+      });
+      const pill = async (habitGoal: ReturnType<typeof goal> | null) => {
+        vi.mocked(getTodoHierarchy).mockResolvedValue([
+          campaignNode(1, {
+            progress: below(1, 1),
+            habitGoal,
+            periodStart: "2026-11-01",
+            periodEnd: "2099-01-20",
+          }),
+          { ...node(2, 1), completed: true },
+        ]);
+        const w = view();
+        await flushPromises();
+        await button(w, "Kampagne 1").trigger("click");
+        await flushPromises();
+        const found = w.find(".campaign-detail [data-complete-button]");
+        const text = found.exists() ? found.text() : null;
+        w.unmount();
+        await router.push("/kampagnen");
+        return text;
+      };
+      expect(await pill(goal(false))).toBeNull();
+      expect(await pill(goal(true))).toBe("Abschließen");
+      expect(await pill(null)).toBe("Abschließen");
     });
 
     it("says so when an opened campaign has no quests yet", async () => {

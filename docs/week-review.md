@@ -74,6 +74,12 @@ Pure functions in `backend/src/week-review/week-review.ts`, each with a spec.
   see deleted todos or a completion that was reopened, which is why a
   snapshot wins; the answer says `source: 'reconstructed'`, and the view
   adds one quiet line saying so.
+- **Demo data** (`backend/scripts/seed-demo.ts`, local only) plays three
+  weeks back with a moved clock. The database stamps `createdAt` with the
+  real time and the hourly snapshot job runs on the real clock, so the
+  script dates its quests back to the first day and records a snapshot at
+  the end of every played day; otherwise every campaign started its weeks
+  at "0 %" (nothing existed yet) and the burn-up began today.
 - **End of the week**: the live todos for the running week (`source: 'live'`);
   for a past week the latest snapshot dated in the week, else read back at
   the end of Sunday. A week still ahead shows the live state on both sides,
@@ -125,8 +131,12 @@ Monday that has begun; a week ahead is 400. The answer is the stored
      without a goal), the daily average over the days begun, the share of
      quest work in all measured time, and "Dailies im Wochensoll" ("5 von
      8", "fälligen Ausführungen erledigt"; "–" when nothing was due) with
-     the perfect week in one line below it ("Perfekte Woche: Sport ✓, Lesen
-     2 von 3"; "Perfekte Woche!" when every category reached its target).
+     the perfect week below it: "Wochensoll je Kategorie:" on a line of its
+     own, then the categories in one flow ("Sport ✓  Lesen 2 von 3"), each
+     one unit of mark, name and count that never breaks apart, set apart by
+     space instead of commas;
+     "Perfekte Woche!" instead of the label when every category reached
+     its target.
      The Dailies come from the review read; when it fails or the week lies
      ahead the row has three cards. The quest hours are the view's one
      lifted card. The share is said only here: the split card below shows

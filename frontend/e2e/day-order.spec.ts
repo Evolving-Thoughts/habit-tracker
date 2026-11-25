@@ -285,8 +285,12 @@ test("Heute: an appointment is the focus card from its start to its end", async 
   const past = page.locator(".today-view__appointment--past");
   await expect(past).toContainText("Teamrunde");
   await expect(past).toContainText("Vorbei – erledigt?");
+  // Its move leads the card's "…" menu; the card itself stays compact.
   await past
-    .getByRole("button", {
+    .getByRole("button", { name: "Aktionen für Teamrunde", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", {
       name: "Teamrunde auf einen anderen Tag",
       exact: true,
     })

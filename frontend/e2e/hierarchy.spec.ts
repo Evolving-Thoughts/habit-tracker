@@ -62,7 +62,7 @@ const cardMenuAction = async (page: Page, title: string, name: string) => {
     .click();
 };
 
-test("Kampagne: a new quest from its page, collapse, the visible Abschließen and reopening persist", async ({
+test("Kampagne: a new quest from its page, collapse, Abschließen and reopening persist", async ({
   page,
   request,
 }) => {
@@ -96,12 +96,15 @@ test("Kampagne: a new quest from its page, collapse, the visible Abschließen an
   await expect(card.locator(".campaign-detail__count")).toHaveText(
     "0 von 1 Quest · 0 von 90 Min.",
   );
-  // The campaign still has an open quest: it asks first, the quest stays open.
-  const complete = card.getByRole("button", {
-    name: "Kampagne Lernprojekt abschließen abschließen",
-    exact: true,
-  });
-  await complete.click();
+  // An open quest: "Abschließen" waits in the card's "…", and it asks first.
+  await expect(card.locator("[data-complete-button]")).toHaveCount(0);
+  const complete = () =>
+    cardMenuAction(
+      page,
+      "Lernprojekt abschließen",
+      "Lernprojekt abschließen abschließen",
+    );
+  await complete();
   const question = page.getByRole("dialog", { name: "Kampagne abschließen?" });
   await expect(question).toContainText(
     "1 Quest in „Lernprojekt abschließen“ ist noch offen. Sie bleibt offen",
@@ -111,7 +114,7 @@ test("Kampagne: a new quest from its page, collapse, the visible Abschließen an
     .click();
   await expect(question).toHaveCount(0);
   await expect(card.locator(".campaign-detail__state")).toHaveCount(0);
-  await complete.click();
+  await complete();
   await question
     .getByRole("button", { name: "Kampagne abschließen", exact: true })
     .click();
@@ -121,10 +124,15 @@ test("Kampagne: a new quest from its page, collapse, the visible Abschließen an
   await expect(row(page, child.id).getByRole("checkbox")).not.toBeChecked();
   const toast = page.locator(".undo-toast");
   await expect(toast).toContainText("„Lernprojekt abschließen“ abgeschlossen");
-  await row(page, child.id).getByRole("checkbox").check();
+  // Done, the quest folds away under "1 erledigt" below the open ones.
+  await row(page, child.id).getByRole("checkbox").click();
   await expect(card.locator(".campaign-detail__count")).toHaveText(
     "1 von 1 Quest · 90 von 90 Min.",
   );
+  await expect(row(page, child.id)).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "1 erledigt", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
   // The toast takes the tick back, as on Heute.
   await expect(toast).toContainText("„Oberfläche entwickeln“ erledigt");
   await toast.getByRole("button", { name: "Rückgängig", exact: true }).click();
@@ -426,6 +434,8 @@ test("Tree: review paused timer, cancel deletion, reject stale preview then conf
     "Lernprojekt mit allen Unter-Quests löschen",
   );
   await expect(dialog).toBeVisible();
+  // The preview must be loaded before the subtree changes, or it is fresh.
+  await expect(dialog).toContainText("Komponenten ausprobieren");
   await create(request, "Neu hinzugefügt", root.id);
   await dialog
     .getByRole("button", { name: "Ja, löschen", exact: true })
@@ -506,12 +516,13 @@ test("Kampagnen: the overview shows figures and tiles; a campaign's quests show 
   await expect(row(page, series.id)).toHaveAttribute("data-depth", "0");
   await expect(row(page, chapter.id)).toHaveAttribute("data-depth", "1");
   const card = page.locator(".campaign-detail");
+  // Quests are still open: no Abschließen pill, only the entry in "…".
   await expect(
     card.getByRole("button", {
       name: "Kampagne Buch schreiben abschließen",
       exact: true,
     }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await card
     .getByRole("button", { name: "Aktionen für Buch schreiben", exact: true })
     .click();

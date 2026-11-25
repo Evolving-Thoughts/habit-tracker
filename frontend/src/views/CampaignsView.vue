@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import { getQuestHours } from "../api/quest-hours.api";
@@ -47,6 +47,7 @@ import {
 } from "../utils/date";
 import { formatDuration } from "../utils/today-agenda";
 import { againstTargetParts, campaignTiles } from "../utils/quest-hours";
+import { readyToComplete } from "../utils/campaign-next";
 import type { QuestHoursResponse } from "../types/quest-hours";
 import {
   rowMenu as cardMenu,
@@ -117,6 +118,12 @@ const openTile = computed(() => {
   const id = Number(route.query.kampagne);
   return tiles.value.find((tile) => tile.todo.id === id) ?? null;
 });
+/** An opened campaign is the page: its title is the heading, "Alle Kampagnen" above it. */
+const campaignOpen = computed(
+  () =>
+    route.query.kampagne !== undefined &&
+    (openTile.value !== null || loading.value),
+);
 const openMark = computed(() =>
   openTile.value
     ? campaignMark({
@@ -130,6 +137,16 @@ const weekShare = computed(() => {
   const tile = openTile.value;
   if (!tile?.weeklyTargetMinutes) return 0;
   return Math.min(100, (tile.minutes / tile.weeklyTargetMinutes) * 100);
+});
+/*
+ * "Abschließen" stands as a pill only when nothing is open (no quest, no
+ * running daily goal), the tiles' rule; otherwise it waits in the "…".
+ * A completed campaign keeps "Wieder öffnen" visible.
+ */
+const completeVisible = computed(() => {
+  const tile = openTile.value;
+  if (!tile) return false;
+  return checked(tile.todo) || readyToComplete(tile.todo);
 });
 /** "1 von 3 Quests", with the minutes when the bar counts them. */
 function questCount(progress: TodoProgress): string {
@@ -158,13 +175,35 @@ async function closeCampaign() {
 const campaignIds = computed(
   () => new Set(tiles.value.map((tile) => tile.todo.id)),
 );
-const rows = computed(() =>
+/*
+ * Open quests first, in their order; the done ones fold away below under
+ * "N erledigt", like in the Questlog. A quest goes with everything below it,
+ * so only one whose whole branch is done folds away: a done quest with an
+ * open quest below it stays with the open ones, and nothing open hides.
+ */
+function settled(todo: HierarchyTodo): boolean {
+  return (
+    todo.completed &&
+    (children.value.get(todo.id) ?? []).every((child) => settled(child))
+  );
+}
+const rowsWhere = (completed: boolean, folded = collapsed.value) =>
   openTile.value
-    ? visibleHierarchy(todos.value, collapsed.value, {
+    ? visibleHierarchy(todos.value, folded, {
         under: openTile.value.todo.id,
+        keepTop: (todo) => settled(todo) === completed,
       })
-    : [],
+    : [];
+const doneOpen = ref(false);
+watch(
+  () => openTile.value?.todo.id,
+  () => (doneOpen.value = false),
 );
+const doneQuests = computed(() => rowsWhere(true, new Set()).length);
+const lists = computed(() => [
+  { key: "open", rows: rowsWhere(false) },
+  { key: "done", rows: doneOpen.value ? rowsWhere(true) : [] },
+]);
 const children = computed(() => hierarchyChildren(todos.value));
 const titles = computed(
   () => new Map(todos.value.map((todo) => [todo.id, todo.title])),
@@ -404,7 +443,7 @@ useShortcutHandlers({
 </script>
 <template>
   <main ref="page" class="page hierarchy">
-    <header class="page-header">
+    <header v-if="!campaignOpen" class="page-header">
       <h1 class="page-title">Kampagnen</h1>
       <p class="page-lead">Deine längerfristigen Ziele und wie weit sie sind.</p>
     </header>
@@ -452,9 +491,9 @@ useShortcutHandlers({
               <AppIcon :name="openTile.icon ?? 'campaigns'" />
             </span>
             <div class="campaign-detail__name">
-              <h2 id="campaign-detail-title" tabindex="-1">
+              <h1 id="campaign-detail-title" tabindex="-1">
                 {{ openTile.todo.title }}
-              </h2>
+              </h1>
               <p v-if="checked(openTile.todo)" class="campaign-detail__state">
                 Abgeschlossen
               </p>
@@ -553,6 +592,7 @@ useShortcutHandlers({
               <AppIcon name="edit" />Bearbeiten
             </button>
             <button
+              v-if="completeVisible"
               class="btn"
               type="button"
               data-complete-button
@@ -571,18 +611,38 @@ useShortcutHandlers({
           </div>
         </section>
         <h2 class="section-title">Quests der Kampagne</h2>
-        <p v-if="!rows.length" class="status-line">
+        <p v-if="!lists[0]!.rows.length && !doneQuests" class="status-line">
           Noch keine Quests. Der Plus-Button legt die erste an.
         </p>
-      <ul class="tree" aria-label="Quests der Kampagne">
+      <template v-for="list in lists" :key="list.key">
+      <!-- An h2 like the rows' titles, so no level is skipped. -->
+      <h2 v-if="list.key === 'done' && doneQuests" class="done-heading">
+        <button
+          class="fold-toggle done-toggle"
+          type="button"
+          :aria-expanded="doneOpen"
+          aria-controls="campaign-done-list"
+          @click="doneOpen = !doneOpen"
+        >
+          {{ doneQuests }} erledigt
+          <AppIcon name="chevron" />
+        </button>
+      </h2>
+      <ul
+        v-if="list.rows.length"
+        :id="list.key === 'done' ? 'campaign-done-list' : undefined"
+        class="tree"
+        :aria-label="list.key === 'done' ? 'Erledigte Quests der Kampagne' : 'Quests der Kampagne'"
+      >
         <li
-          v-for="{ todo, depth } in rows"
+          v-for="{ todo, depth } in list.rows"
           :key="todo.id"
           class="row card-target"
           :class="{
             'row--over': dropTarget === todo.id,
             'row--done': checked(todo),
             'row--nested': depth > 0,
+            'row--leaf': !children.get(todo.id)?.length,
           }"
           :style="{ '--indent': Math.min(depth, 6) }"
           :data-todo-id="todo.id"
@@ -687,6 +747,7 @@ useShortcutHandlers({
           </div>
         </li>
       </ul>
+      </template>
       <div
         v-if="dragged !== null"
         class="root-target"
@@ -719,6 +780,7 @@ useShortcutHandlers({
         :completed="(tile) => checked(tile.todo)"
         @open="openCampaign"
         @complete="(tile) => toggleCompletion(tile.todo)"
+        @edit="(tile) => open('edit', tile.todo)"
         @create="create()"
       />
     </template>
@@ -851,6 +913,11 @@ useShortcutHandlers({
   width: var(--tap);
 }
 
+.page-lead {
+  /* No single word ("sind.") alone on the last line. */
+  text-wrap: pretty;
+}
+
 .row__end {
   display: flex;
   align-items: center;
@@ -875,7 +942,9 @@ useShortcutHandlers({
   font-size: 1.0625rem;
   font-weight: 700;
   line-height: 1.35;
-  overflow-wrap: anywhere;
+  /* Whole-Word: "Wohnungsübergabe-Protokoll" breaks at its hyphen, not mid-word. */
+  overflow-wrap: break-word;
+  hyphens: manual;
 }
 
 .row--done h2 {
@@ -886,6 +955,8 @@ useShortcutHandlers({
 
 .row__title {
   display: inline;
+  /* A button sizes to its longest word: held to the column, it wraps there. */
+  max-width: 100%;
   padding: 0;
   border: 0;
   background: none;
@@ -966,6 +1037,17 @@ useShortcutHandlers({
   font-variant-numeric: tabular-nums;
 }
 
+/* Done quests fold away, like in the Questlog; the heading only carries the level. */
+.done-heading {
+  margin: 0;
+  font: inherit;
+}
+
+/* The shared disclosure (.fold-toggle in style.css); only its place here. */
+.done-toggle {
+  margin: var(--space-3) 0 var(--space-1);
+}
+
 .root-target {
   margin-top: var(--space-3);
   padding: var(--space-4);
@@ -1008,12 +1090,13 @@ useShortcutHandlers({
   font-weight: 700;
 }
 
-.campaign-detail__head h2 {
+.campaign-detail__head h1 {
   margin: 0;
   font-size: 1.375rem;
   font-weight: 800;
   line-height: 1.25;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  hyphens: manual;
 }
 
 .campaign-detail__badge {
@@ -1129,6 +1212,19 @@ useShortcutHandlers({
 
   .row--nested::before {
     left: -0.375rem;
+  }
+
+  /*
+   * Only a row that can fold keeps the expander column: a leaf gives its
+   * width to the title, so "Wohnungsübergabe-Protokoll" breaks at its hyphen.
+   */
+  .row--leaf {
+    grid-template-columns: var(--tap) minmax(0, 1fr) auto;
+    padding-left: var(--space-2);
+  }
+
+  .row--leaf .row__spacer {
+    display: none;
   }
 
   .campaign-detail__actions {

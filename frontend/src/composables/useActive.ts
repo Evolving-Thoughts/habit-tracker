@@ -1,4 +1,10 @@
-import { onActivated, onBeforeUnmount, onDeactivated, onMounted } from "vue";
+import {
+  getCurrentInstance,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  onMounted,
+} from "vue";
 
 /**
  * Heute stays alive while another view is shown (`<KeepAlive>` in App.vue):
@@ -41,6 +47,14 @@ export function whileActive(
  */
 export function onShownAgain(handler: () => void): void {
   let away = false;
+  // A part that first appears while its view is hidden (Heute's data
+  // arriving after another view was opened) did its mount work out of
+  // sight; the view coming back is then a return for it as well.
+  const instance = getCurrentInstance();
+  onMounted(() => {
+    for (let current = instance; current; current = current.parent)
+      if (current.isDeactivated) away = true;
+  });
   onDeactivated(() => {
     away = true;
   });

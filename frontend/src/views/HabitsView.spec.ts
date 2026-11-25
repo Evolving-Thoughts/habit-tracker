@@ -148,9 +148,47 @@ describe("HabitsView", () => {
   it("shows an empty state with no persistent creation form", async () => {
     const wrapper = mount(HabitsView);
     await flushPromises();
-    expect(wrapper.text()).toContain("Du hast noch keine Dailies.");
+    expect(wrapper.text()).toContain("Dein erstes Daily");
     expect(wrapper.find("dialog").exists()).toBe(false);
     expect(wrapper.find("form").exists()).toBe(false);
+  });
+  it("opens the Daily form with a starter idea filled in", async () => {
+    const wrapper = mount(HabitsView, { attachTo: document.body });
+    await flushPromises();
+    const ideas = wrapper.findAll(".habits-start__ideas button");
+    expect(ideas.map((idea) => idea.text())).toEqual([
+      "Wasser trinken",
+      "10 Min. lesen",
+      "Spazieren gehen",
+    ]);
+    await ideas[1]!.trigger("click");
+    await flushPromises();
+    const dialog = wrapper.get("dialog");
+    expect(dialog.text()).toContain("Neues Daily");
+    expect(
+      dialog.get<HTMLInputElement>('input[name="title"]').element.value,
+    ).toBe("10 Min. lesen");
+  });
+  it("explains the history marks once, above the first card", async () => {
+    const recentDays = [
+      { date: "2026-10-02", state: "done" as const },
+      { date: "2026-10-03", state: "open" as const },
+    ];
+    vi.mocked(getHabits).mockResolvedValue([
+      habit({ streak: { ...HABIT_FIELDS.streak, recentDays } }),
+      habit({ id: 11, title: "Lesen", streak: { ...HABIT_FIELDS.streak, recentDays } }),
+    ]);
+    const wrapper = mount(HabitsView);
+    await flushPromises();
+    const legends = wrapper.findAll(".history-legend");
+    expect(legends).toHaveLength(1);
+    expect(legends[0]!.text()).toBe(
+      "Letzte 14 Tage:✓erledigt−verpasst↷übersprungen○noch offen·kein Eintrag",
+    );
+    // The legend draws the strip's own marks.
+    const stripMark = wrapper.get(".history .day-mark.done");
+    const legendMark = legends[0]!.get(".day-mark.done");
+    expect(legendMark.text()).toBe(stripMark.text());
   });
   it("groups active and paused habits and says their schedules in plain words", async () => {
     vi.mocked(getHabits).mockResolvedValueOnce([
@@ -436,7 +474,7 @@ describe("HabitsView", () => {
     expect(wrapper.get('[role="alert"]').text()).toBe(
       "Backend nicht erreichbar",
     );
-    expect(wrapper.text()).not.toContain("Du hast noch keine Dailies.");
+    expect(wrapper.text()).not.toContain("Dein erstes Daily");
   });
   it("preserves loaded habits when a refresh fails", async () => {
     vi.mocked(getHabits)
@@ -590,7 +628,7 @@ describe("HabitsView", () => {
     await flushPromises();
     expect(deleteHabit).toHaveBeenCalledWith(10);
     expect(wrapper.find('[data-habit-id="10"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain("Du hast noch keine Dailies.");
+    expect(wrapper.text()).toContain("Dein erstes Daily");
   });
   it("keeps the editor and list when saving fails", async () => {
     vi.mocked(getHabits).mockResolvedValue([habit()]);

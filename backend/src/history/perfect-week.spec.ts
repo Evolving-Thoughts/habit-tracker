@@ -31,7 +31,7 @@ describe('perfectWeek', () => {
         {
           id: 2,
           name: 'Musik',
-          color: null,
+          color: 'teal', // shown, not stored: the colour its name picks
           target: 1,
           completed: 1,
           reached: true,
@@ -70,7 +70,7 @@ describe('perfectWeekOf', () => {
         {
           id: 2,
           name: 'Musik',
-          color: null,
+          color: 'teal',
           target: 1,
           completed: 0,
           reached: false,

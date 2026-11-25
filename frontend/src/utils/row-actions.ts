@@ -150,8 +150,17 @@ export function timerStep(
 export type RowMenuSteps = {
   /** Heute, Morgen, Nächste Woche, from \`quickMoveEntries\`. */
   quickMoves?: MenuEntry[];
-  /** Picks a day; an appointment's move is confirmed ("Termin verschieben …"). */
-  otherDay?: { run: () => void; appointment?: boolean; plan?: boolean };
+  /**
+   * Picks a day; an appointment's move is confirmed ("Termin verschieben …").
+   * `lead`: an appointment that is over but still open answers its question
+   * here, so "Anderer Tag …" comes first, before the quick moves.
+   */
+  otherDay?: {
+    run: () => void;
+    appointment?: boolean;
+    plan?: boolean;
+    lead?: boolean;
+  };
   /** A daily's run: skip it for this day. */
   skip?: () => void;
   edit?: () => void;
@@ -168,7 +177,8 @@ export type RowMenuSteps = {
 };
 
 /**
- * Every card's menu in the one order: quick moves, "Anderer Tag …",
+ * Every card's menu in the one order: quick moves, "Anderer Tag …" (first
+ * for a past, still open appointment),
  * Überspringen, Bearbeiten, Fokus-Modus, Stoppuhr, Unter-Quest,
  * "In Kampagne verschieben …", "Zur Monats-Challenge", Nach oben / Nach
  * unten, and Löschen last,
@@ -179,11 +189,20 @@ export function rowMenu(
   steps: RowMenuSteps,
   disabled = false,
 ): MenuEntry[] {
-  const entries: MenuEntry[] = [...(steps.quickMoves ?? [])];
+  const entries: MenuEntry[] = [];
   const add = (entry: Omit<MenuEntry, "disabled"> & { disabled?: boolean }) =>
     entries.push({ ...entry, disabled: disabled || entry.disabled });
   const { otherDay, timer, remove } = steps;
-  if (otherDay)
+  if (otherDay?.lead)
+    add({
+      id: "move",
+      label: "Anderer Tag …",
+      icon: "move",
+      ariaLabel: `${title} auf einen anderen Tag`,
+      run: otherDay.run,
+    });
+  entries.push(...(steps.quickMoves ?? []));
+  if (otherDay && !otherDay.lead)
     add({
       id: "move",
       label: otherDay.appointment ? "Termin verschieben …" : "Anderer Tag …",

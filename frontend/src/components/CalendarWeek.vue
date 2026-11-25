@@ -28,6 +28,7 @@ import {
   logBlocks,
   planBlocks,
 } from "../utils/logbook";
+import { todayScroll, weekOpenMinute } from "../utils/week-plan";
 
 type Day = HistoryResponse["days"][number];
 
@@ -89,7 +90,11 @@ function description(day: Day): string {
     : summary;
 }
 
-/* Opens on now in the current week, else on the first entry or the morning. */
+/*
+ * Opens on now in the current week, else on the first entry or the morning.
+ * Sideways, where the seven columns do not fit (a phone), the current week
+ * starts with today right beside the hours, any other week with Monday.
+ */
 const board = ref<HTMLElement | null>(null);
 async function scrollToStart(): Promise<void> {
   await nextTick();
@@ -98,16 +103,37 @@ async function scrollToStart(): Promise<void> {
   const first = Math.min(
     ...props.result.days.flatMap(blocksOf).map((block) => block.start),
   );
-  const target = hasToday.value
-    ? now.value - 90
-    : Number.isFinite(first)
-      ? first - 30
-      : 8 * 60;
+  const target = weekOpenMinute(
+    hasToday.value ? now.value : null,
+    Number.isFinite(first) ? first : null,
+  );
   const rem =
     parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   element.scrollTop = Math.max(
     0,
     ((target - hours.value.from * 60) / 60) * HOUR_REM * rem,
+  );
+  element.scrollLeft = sidewaysStart(element);
+}
+
+function sidewaysStart(element: HTMLElement): number {
+  const head = hasToday.value
+    ? element.querySelector<HTMLElement>(`.week-head[data-date="${today.value}"]`)
+    : null;
+  const hoursColumn = element.querySelector<HTMLElement>(".calendar-week__corner");
+  if (!head || !hoursColumn) return 0;
+  const box = element.getBoundingClientRect();
+  const column = head.getBoundingClientRect();
+  const start = column.left - box.left + element.scrollLeft;
+  // Only when at least a whole column is hidden; a few pixels short keeps Monday.
+  const lead = element.scrollWidth - element.clientWidth >= column.width;
+  return todayScroll(
+    { start, end: start + column.width },
+    {
+      width: element.clientWidth,
+      sticky: hoursColumn.getBoundingClientRect().width,
+      lead,
+    },
   );
 }
 onMounted(scrollToStart);
@@ -146,6 +172,9 @@ watch(() => props.result.startDate, scrollToStart);
         :aria-describedby="`week-head-${day.date}`"
         @click="emit('openDay', day.date)"
       >
+        <!-- Today says so in words, not only by its line: on a phone it is
+             the first column in view while the title names the whole week. -->
+        <span v-if="day.date === today" class="week-head__today">Heute</span>
         <span class="week-head__day">
           <strong>{{ weekday(day.date) }}</strong>
           {{ shortDate(day.date) }}
@@ -254,6 +283,12 @@ watch(() => props.result.startDate, scrollToStart);
 /* Today: a line of ink under its head, as in the review's day chart. */
 .week-head--today {
   box-shadow: inset 0 -2px 0 var(--color-ink);
+}
+
+.week-head__today {
+  font-size: 0.8125rem;
+  font-weight: 800;
+  line-height: 1.2;
 }
 
 .week-head__day {

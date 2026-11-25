@@ -10,7 +10,10 @@ import java.util.List;
  * tested on the JVM (see FocusBlockPolicy).
  */
 public final class FocusBlockState {
-    /** A Soft block whose stopwatch nobody ends lifts itself after this long. */
+    /**
+     * A block without a Soll moment (Soft, or Hardcore bound to its
+     * stopwatch) whose stopwatch nobody ends lifts itself after this long.
+     */
     public static final long SOFT_BLOCK_MAX_MS = 12L * 60 * 60 * 1000;
 
     public final String version;
@@ -22,7 +25,7 @@ public final class FocusBlockState {
     /** "blocklist" or "allowlist". */
     public final String listMode;
     public final long startedAtMs;
-    /** Hardcore: when the Soll is reached. Null for Soft. */
+    /** Hardcore with the threshold trigger: when the Soll is reached. Else null. */
     public final Long endsAtMs;
     public final List<String> blockApps;
     public final List<String> allowApps;
@@ -91,8 +94,14 @@ public final class FocusBlockState {
         return values == null ? Collections.<String>emptyList() : Collections.unmodifiableList(values);
     }
 
+    /** No lifting on the phone; with or without a Soll moment. */
     public boolean isHardcore() {
-        return "hardcore".equals(mode) && endsAtMs != null;
+        return "hardcore".equals(mode);
+    }
+
+    /** Hardcore that ends at its Soll moment (threshold trigger). */
+    public boolean hasEndMoment() {
+        return isHardcore() && endsAtMs != null;
     }
 
     public boolean isStrict() {
@@ -106,20 +115,22 @@ public final class FocusBlockState {
 
     /**
      * Whether the block holds at this moment of the device clock: open on
-     * the server, not lifted here, and before its end (Hardcore at the
-     * Soll, Soft after twelve hours, as on the server).
+     * the server, not lifted here (Soft only), and before its end (at the
+     * Soll moment if it has one, else after twelve hours, as on the
+     * server). A pause or stop ends Soft on the server; the phone hears it
+     * with the next answer.
      */
     public boolean isActive(long deviceNowMs) {
         if (blockId == null) return false;
         if (!isHardcore() && blockId.equals(liftedBlockId)) return false;
         long now = serverNow(deviceNowMs);
-        if (isHardcore()) return now < endsAtMs;
+        if (hasEndMoment()) return now < endsAtMs;
         return now < startedAtMs + SOFT_BLOCK_MAX_MS;
     }
 
-    /** Whole minutes left of a Hardcore block, rounded up; -1 for Soft. */
+    /** Whole minutes left until the Soll moment, rounded up; -1 without one. */
     public long minutesLeft(long deviceNowMs) {
-        if (!isHardcore()) return -1;
+        if (!hasEndMoment()) return -1;
         long left = endsAtMs - serverNow(deviceNowMs);
         if (left <= 0) return 0;
         return (left + 59_999) / 60_000;

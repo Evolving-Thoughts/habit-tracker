@@ -130,7 +130,10 @@ public class BlockActivity extends AppCompatActivity {
             return;
         }
         title.setText(getString(R.string.focus_block_title, state.title));
-        if (state.isHardcore()) {
+        if (state.isHardcore() && !state.hasEndMoment()) {
+            detail.setText(R.string.focus_block_hardcore_until_stop);
+            lift.setVisibility(android.view.View.GONE);
+        } else if (state.isHardcore()) {
             long minutes = state.minutesLeft(now);
             detail.setText(
                 minutes > 0

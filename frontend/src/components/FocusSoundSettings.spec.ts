@@ -46,33 +46,41 @@ const stored = () =>
   JSON.parse(localStorage.getItem(FOCUS_SOUND_STORAGE_KEY) ?? "null");
 
 describe("FocusSoundSettings", () => {
-  it("lists Aus, Musik and Geräusche as one radio choice, chimes left out", async () => {
+  it("offers Aus, Musik and Geräusche in one compact select, chimes left out", async () => {
     const wrapper = await mountSettings();
     expect(wrapper.text()).toContain("Gilt auf diesem Gerät.");
-    expect(wrapper.findAll("legend").map((legend) => legend.text())).toEqual([
-      "Klang",
+    const select = wrapper.get<HTMLSelectElement>('select[name="focusSound"]');
+    // Labelled for screen readers by its visible label.
+    expect(
+      wrapper.get(`label[for="${select.attributes("id")}"]`).text(),
+    ).toBe("Klang");
+    expect(select.get(":scope > option").text()).toBe("Aus");
+    const groups = select.findAll("optgroup");
+    expect(groups.map((group) => group.attributes("label"))).toEqual([
       "Musik",
       "Geräusche",
     ]);
-    const radios = wrapper.findAll<HTMLInputElement>('input[type="radio"]');
     expect(
-      radios.map((radio) => radio.element.parentElement!.textContent!.trim()),
-    ).toEqual(["Aus", "Lo-Fi warm", "Regen", "Café"]);
-    // One name: the arrow keys move through all of them.
-    expect(new Set(radios.map((radio) => radio.attributes("name"))).size).toBe(
-      1,
-    );
-    expect(radios[0]!.element.checked).toBe(true);
+      groups.map((group) => group.findAll("option").map((option) => option.text())),
+    ).toEqual([["Lo-Fi warm"], ["Regen", "Café"]]);
+    expect(select.element.value).toBe("");
   });
 
   it("stores sound and volume on this device; the short sounds are elsewhere", async () => {
     const wrapper = await mountSettings();
-    await wrapper.findAll('input[type="radio"]')[2]!.setValue(true);
+    const select = wrapper.get('select[name="focusSound"]');
+    await select.setValue("rain");
     expect(stored()).toMatchObject({ soundId: "rain" });
+    await select.setValue("");
+    expect(stored()).toMatchObject({ soundId: null });
+    // The volume only turns with a sound chosen.
+    await select.setValue("cafe");
 
     const volume = wrapper.get<HTMLInputElement>('input[type="range"]');
     expect(volume.element.value).toBe("60");
-    expect(wrapper.get("label[for]").text()).toBe("Lautstärke");
+    expect(
+      wrapper.get(`label[for="${volume.attributes("id")}"]`).text(),
+    ).toBe("Lautstärke");
     await volume.setValue("35");
     expect(stored().volume).toBe(0.35);
     expect(volume.attributes("aria-valuetext")).toBe("35 %");
@@ -83,11 +91,21 @@ describe("FocusSoundSettings", () => {
     expect(stored()).not.toHaveProperty("chimes");
   });
 
+  it("turns the volume off with the sound", async () => {
+    const wrapper = await mountSettings();
+    const volume = wrapper.get<HTMLInputElement>('input[type="range"]');
+    expect(volume.element.disabled).toBe(true);
+    await wrapper.get('select[name="focusSound"]').setValue("rain");
+    expect(volume.element.disabled).toBe(false);
+    await wrapper.get('select[name="focusSound"]').setValue("");
+    expect(volume.element.disabled).toBe(true);
+  });
+
   it("says so when the server has no sounds yet", async () => {
     vi.mocked(listSounds).mockResolvedValue([]);
     const wrapper = await mountSettings();
     expect(wrapper.text()).toContain("Noch keine Klänge verfügbar.");
-    expect(wrapper.find('input[type="radio"]').exists()).toBe(false);
+    expect(wrapper.find("select").exists()).toBe(false);
   });
 
   it("says so calmly when the list cannot be read", async () => {

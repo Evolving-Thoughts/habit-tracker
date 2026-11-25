@@ -88,10 +88,41 @@ describe("ReviewFigures", () => {
       "fälligen Ausführungen erledigt",
     );
     // A reached target is a check, named for screen readers; a missed one a number.
-    expect(dailies.get(".figures__perfect").text()).toBe(
-      "Perfekte Woche: Sport erreicht, Lesen 2 von 3",
+    expect(dailies.get(".figures__perfect-label").text()).toBe(
+      "Wochensoll je Kategorie:",
     );
+    // Separate units, set apart by space: no trailing commas.
+    expect(
+      dailies.findAll(".figures__categories li").map((item) => item.text()),
+    ).toEqual(["Sport erreicht", "Lesen 2 von 3"]);
     expect(dailies.html()).not.toMatch(/danger|warn/);
+  });
+
+  it("celebrates a perfect week instead of the label, each category one unit", () => {
+    const wrapper = mount(ReviewFigures, {
+      props: {
+        hours: questHours(),
+        dailies: {
+          quota: { completed: 6, total: 6, percentage: 100 },
+          perfectWeek: {
+            perfect: true,
+            categories: [
+              { id: 1, name: "Sport", color: "teal", target: 3, completed: 3, reached: true },
+              { id: 2, name: "Lesen", color: null, target: 3, completed: 3, reached: true },
+            ],
+          },
+        },
+      },
+    });
+    const perfect = wrapper.get(".figures__perfect");
+    expect(perfect.get(".figures__perfect-label").text()).toBe("Perfekte Woche!");
+    // Mark, name and check sit in one item, so the line breaks between them;
+    // space sets the items apart, no commas.
+    expect(perfect.findAll("li").map((item) => item.text())).toEqual([
+      "Sport erreicht",
+      "Lesen erreicht",
+    ]);
+    expect(perfect.text()).not.toContain(",");
   });
 
   it("dashes the Dailies when none were due", () => {

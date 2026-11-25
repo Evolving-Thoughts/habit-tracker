@@ -200,6 +200,28 @@ const offersToday = computed(
     !entries.value.some((entry) => entry.date === today.value),
 );
 
+/*
+ * The first line's placeholder: a few quiet examples, one after the other
+ * every few seconds; with reduced motion the first one stays.
+ */
+const EXAMPLES = [
+  "ein Gespräch",
+  "etwas, das gut geschmeckt hat",
+  "ein Moment draußen",
+];
+const exampleAt = ref(0);
+const example = computed(() => `Zum Beispiel: ${EXAMPLES[exampleAt.value]}`);
+let exampleTimer: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  exampleTimer = setInterval(() => {
+    if (empty.value) exampleAt.value = (exampleAt.value + 1) % EXAMPLES.length;
+  }, 4000);
+});
+onBeforeUnmount(() => {
+  if (exampleTimer) clearInterval(exampleTimer);
+});
+
 /* "Heute vor einem Jahr", when that day has a line. */
 const memory = ref<DayBest | null>(null);
 watch(
@@ -345,7 +367,9 @@ async function showNewest(): Promise<void> {
         <button v-if="anchored" type="button" class="btn" @click="showNewest">
           Heute
         </button>
+        <!-- Without any line there is no month to go to. -->
         <button
+          v-if="!empty"
           type="button"
           class="btn"
           :aria-expanded="jumpOpen"
@@ -362,7 +386,7 @@ async function showNewest(): Promise<void> {
     </header>
 
     <nav
-      v-show="jumpOpen"
+      v-show="jumpOpen && !empty"
       id="day-best-jump"
       class="card day-best-jump"
       aria-label="Monat wählen"
@@ -428,22 +452,32 @@ async function showNewest(): Promise<void> {
       <span />
     </div>
     <template v-else>
-      <div v-if="empty" class="empty-state day-best-view__empty">
-        <strong>Noch keine Zeile.</strong>
-        <span
-          >Schreib jeden Abend auf, was das Beste am Tag war. Mit der Zeit
-          entsteht ein Jahr, durch das du zurückblättern kannst.</span
-        >
-      </div>
-
+      <!-- Nothing yet: what it is and today's field in one calm card. -->
       <div v-if="offersToday" class="card day-best-view__today">
+        <template v-if="empty">
+          <h2 class="card-title">Das Beste von heute</h2>
+          <p class="day-best-view__start">
+            Eine Zeile über den schönsten oder eindrücklichsten Moment, nur für
+            dich. Mit der Zeit entsteht ein Jahr, durch das du zurückblättern
+            kannst.
+          </p>
+        </template>
         <DayBestField
           :date="today"
           text=""
           label="Das Beste von heute"
-          placeholder="Was war heute das Beste?"
+          :hide-label="empty"
+          :placeholder="empty ? example : 'Was war heute das Beste?'"
           @saved="onSaved"
         />
+      </div>
+      <div v-else-if="empty" class="empty-state day-best-view__empty">
+        <strong>Noch keine Zeile.</strong>
+        <span
+          >Eine Zeile über den schönsten oder eindrücklichsten Moment, nur für
+          dich. Mit der Zeit entsteht ein Jahr, durch das du zurückblättern
+          kannst.</span
+        >
       </div>
 
       <section
@@ -625,7 +659,20 @@ a.day-best-jump__month[aria-current="true"] {
 }
 
 .day-best-view__today {
+  display: grid;
+  gap: var(--space-2);
   margin-bottom: var(--space-2);
+}
+
+.day-best-view__today > .card-title {
+  margin: 0;
+}
+
+.day-best-view__start {
+  max-width: 60ch;
+  margin: 0 0 var(--space-1);
+  color: var(--color-ink-muted);
+  text-wrap: pretty;
 }
 
 /* Month headings stay at the top while their days scroll beneath. */

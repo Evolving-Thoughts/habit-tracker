@@ -3,7 +3,18 @@ import { computed, ref } from "vue";
 import { campaignMark } from "../utils/category-mark";
 import { formatDuration } from "../utils/today-agenda";
 import { againstTargetParts, type CampaignTile } from "../utils/quest-hours";
+import {
+  goalWords,
+  questDay,
+  readyToComplete,
+  runningGoal,
+} from "../utils/campaign-next";
+import { getCurrentDateInTimeZone } from "../utils/date";
+import { questWord } from "../utils/todo-hierarchy";
+import type { MenuEntry } from "../utils/row-actions";
+import ActionMenu from "./ActionMenu.vue";
 import AppIcon from "./AppIcon.vue";
+import ItemPlayButton from "./ItemPlayButton.vue";
 import QuestTrend from "./QuestTrend.vue";
 
 const props = defineProps<{
@@ -16,11 +27,15 @@ const props = defineProps<{
   busy?: boolean;
   /** Done as shown, while a tap on "Abschließen" is still being saved. */
   completed?: (tile: CampaignTile) => boolean;
+  /** Today's date, for "heute" and "morgen" beside the next quest. */
+  today?: string;
 }>();
-defineEmits<{
+const emit = defineEmits<{
   open: [id: number];
-  /** "Abschließen" or "Wieder öffnen" on a tile. */
+  /** "Abschließen" or "Wieder öffnen" on a tile or in its "…". */
   complete: [tile: CampaignTile];
+  /** "Bearbeiten" in a tile's "…". */
+  edit: [tile: CampaignTile];
   /** The dashed tile after the active ones. */
   create: [];
 }>();
@@ -35,6 +50,47 @@ const markOf = (tile: CampaignTile): string =>
   campaignMark({ title: tile.todo.title, color: tile.color })!;
 const share = (tile: CampaignTile): number =>
   Math.min(100, (tile.minutes / tile.weeklyTargetMinutes!) * 100);
+
+/* Fortschritt is the server's, as on the campaign's page: the quests below it. */
+const hasQuests = (tile: CampaignTile): boolean =>
+  tile.todo.progress.todoCount > 0;
+const allDone = (tile: CampaignTile): boolean =>
+  hasQuests(tile) &&
+  tile.todo.progress.doneCount === tile.todo.progress.todoCount;
+const questShare = (tile: CampaignTile): number =>
+  (tile.todo.progress.doneCount / tile.todo.progress.todoCount) * 100;
+const questCount = (tile: CampaignTile): string =>
+  `${tile.todo.progress.doneCount} von ${tile.todo.progress.todoCount} ${questWord(tile.todo.progress.todoCount)}`;
+const todayDate = (): string => props.today ?? getCurrentDateInTimeZone();
+const dayOf = (tile: CampaignTile): string | null =>
+  questDay(tile.next?.scheduledDate ?? null, todayDate());
+/** A daily goal of the campaign that still runs counts as open. */
+const goalOf = (tile: CampaignTile) => runningGoal(tile.todo, todayDate());
+/** "Abschließen" stands on the tile once nothing is open; else in its "…". */
+const completeOnTile = (tile: CampaignTile): boolean =>
+  done(tile) || readyToComplete(tile.todo, todayDate());
+function menu(tile: CampaignTile): MenuEntry[] {
+  const entries: MenuEntry[] = [
+    {
+      id: "edit",
+      label: "Bearbeiten",
+      icon: "edit",
+      ariaLabel: `Kampagne ${tile.todo.title} bearbeiten`,
+      disabled: props.busy,
+      run: () => emit("edit", tile),
+    },
+  ];
+  if (!completeOnTile(tile))
+    entries.push({
+      id: "complete",
+      label: "Kampagne abschließen",
+      icon: "check",
+      ariaLabel: `${tile.todo.title} abschließen`,
+      disabled: props.busy,
+      run: () => emit("complete", tile),
+    });
+  return entries;
+}
 </script>
 
 <template>
@@ -88,7 +144,53 @@ const share = (tile: CampaignTile): number =>
               {{ tile.todo.title }}
             </button>
           </h3>
+          <!-- A wrapper carries the class: the menu has two roots (button, teleport). -->
+          <span v-if="!done(tile)" class="campaign-tile__menu">
+            <ActionMenu
+              :title="tile.todo.title"
+              :entries="menu(tile)"
+              :disabled="busy"
+              :trigger-key="tile.todo.id"
+            />
+          </span>
         </div>
+        <!-- How far it is: the quests below it, never the campaign itself. -->
+        <template v-if="hasQuests(tile)">
+          <p class="campaign-tile__progress">
+            <strong class="campaign-tile__figure">{{ questCount(tile) }}</strong
+            >{{ " " }}erledigt
+          </p>
+          <span class="campaign-tile__bar" aria-hidden="true">
+            <span :style="{ width: `${questShare(tile)}%` }" />
+          </span>
+        </template>
+        <div v-if="tile.next && !done(tile)" class="campaign-tile__next">
+          <ItemPlayButton
+            class="campaign-tile__play"
+            kind="todo"
+            :target-id="tile.next.id"
+            :title="tile.next.title"
+            :eligible="tile.next.timerEligible"
+            :disabled="busy"
+          />
+          <p class="campaign-tile__next-text">
+            Als Nächstes:
+            <strong>{{ tile.next.title }}</strong
+            ><span v-if="dayOf(tile)" class="campaign-tile__figure"
+              >&nbsp;· {{ dayOf(tile) }}</span
+            >
+          </p>
+        </div>
+        <!-- Every quest done, but its daily goal still runs: that is open. -->
+        <p
+          v-else-if="goalOf(tile) && !done(tile)"
+          class="campaign-tile__next-text"
+        >
+          Noch offen: <strong>{{ goalWords(goalOf(tile)!) }}</strong>
+        </p>
+        <p v-else-if="allDone(tile) && !done(tile)" class="campaign-tile__next-text">
+          Alle Quests erledigt.
+        </p>
         <template v-if="counted">
           <!-- Wraps between the figures, never inside one ("diese / Woche"). -->
           <p class="campaign-tile__week">
@@ -128,6 +230,7 @@ const share = (tile: CampaignTile): number =>
           </p>
         </template>
         <button
+          v-if="completeOnTile(tile)"
           type="button"
           class="btn campaign-tile__complete"
           :disabled="busy"
@@ -193,7 +296,7 @@ const share = (tile: CampaignTile): number =>
   transition: transform 420ms var(--spring);
 }
 
-.campaign-tile:not(.campaign-tile--new):active:not(:has(.campaign-tile__complete:active)) {
+.campaign-tile:not(.campaign-tile--new):active:not(:has(.campaign-tile__complete:active, .campaign-tile__play:active, .campaign-tile__menu :active)) {
   transform: var(--press);
   transition-duration: 90ms;
 }
@@ -214,6 +317,60 @@ const share = (tile: CampaignTile): number =>
   min-width: 0;
 }
 
+.campaign-tile__title {
+  flex: 1 1 auto;
+}
+
+/* Above the title button's cover, so it is its own target. */
+.campaign-tile__menu,
+.campaign-tile__play {
+  position: relative;
+  z-index: 1;
+  flex: none;
+}
+
+.campaign-tile__menu {
+  margin-right: calc(var(--space-2) * -1);
+}
+
+.campaign-tile__progress {
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  text-wrap: pretty;
+  font-variant-numeric: tabular-nums;
+}
+
+.campaign-tile__progress strong {
+  color: var(--color-ink);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+/* The next quest with its ▶: one step from the overview to the work. */
+.campaign-tile__next {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-width: 0;
+  margin-left: calc(var(--space-2) * -1);
+}
+
+.campaign-tile__next-text {
+  min-width: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.9375rem;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+  hyphens: manual;
+  /* No single word ("27.11.") alone on the last line. */
+  text-wrap: pretty;
+}
+
+.campaign-tile__next-text strong {
+  color: var(--color-ink);
+  font-weight: 700;
+}
+
 .campaign-tile__badge {
   display: grid;
   flex: none;
@@ -231,10 +388,13 @@ const share = (tile: CampaignTile): number =>
   font-size: 1.0625rem;
   font-weight: 800;
   line-height: 1.3;
-  overflow-wrap: anywhere;
+  /* Whole-Word: breaks between words, never mid-word on its own. */
+  overflow-wrap: break-word;
+  hyphens: manual;
 }
 
 .campaign-tile__open {
+  max-width: 100%;
   min-height: var(--tap);
   padding: 0;
   border: 0;

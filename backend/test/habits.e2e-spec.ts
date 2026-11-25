@@ -57,6 +57,9 @@ describe('Habit domain and day planner (e2e)', () => {
     // would count as time worked today.
     await dataSource.query('DELETE FROM work_logs');
     await dataSource.query('DELETE FROM timers');
+    // A weekly Quest target another suite left behind would show in the
+    // planner's quest hours.
+    await dataSource.query('DELETE FROM weekly_quest_targets');
     await dataSource.transaction(async (manager) => {
       await manager
         .getRepository(HabitOccurrenceEntity)

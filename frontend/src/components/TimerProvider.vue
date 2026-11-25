@@ -24,6 +24,7 @@ import ActionMenu from "./ActionMenu.vue";
 import TimerIconButton from "./TimerIconButton.vue";
 import ModalDialog from "./ModalDialog.vue";
 import NoticeToast from "./NoticeToast.vue";
+import FocusBlockSetupHint from "./FocusBlockSetupHint.vue";
 import { startLiveSync } from "../composables/live-sync";
 
 /**
@@ -48,9 +49,11 @@ const controller = createTimerController();
 provide(timerKey, controller);
 const { timer, elapsed, reached, error, busy, switching } = controller;
 /*
- * The Fokus-Sperre lives beside the stopwatch: it starts and ends with it,
- * so it is read again whenever the stopwatch changes, and on Android handed
- * to the plugin after every read.
+ * The Fokus-Sperre lives beside the stopwatch: the server starts and ends
+ * it with every start, resume, pause and stop, wherever they happen, so it
+ * is read again whenever the stopwatch changes, and on Android handed to
+ * the plugin after every read. While a block holds, the bar says when the
+ * phone lacks a permission to enforce it.
  */
 const focusBlock = createFocusBlockController();
 provide(focusBlockKey, focusBlock);
@@ -313,6 +316,7 @@ onUnmounted(() => {
     <p v-if="timer && reached" class="timer-bar__hint" role="status">
       Soll erreicht. Die Stoppuhr läuft weiter, bis du pausierst oder beendest.
     </p>
+    <FocusBlockSetupHint v-if="timer && focusBlock.block.value" where="bar" />
   </aside>
   <slot />
   <NoticeToast :message="notice.message.value" @close="notice.dismiss" />

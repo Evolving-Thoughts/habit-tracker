@@ -36,8 +36,9 @@ describe("CalendarConnection", () => {
     await flushPromises();
     expect(wrapper.find("section").exists()).toBe(false);
     expect(wrapper.text()).toContain("nicht eingerichtet");
-    expect(wrapper.text()).toContain("fehlen die Google-Zugangsdaten");
-    expect(wrapper.text()).toContain("docs/betrieb.md");
+    expect(wrapper.text()).toContain("Frag die Person, die den Server betreibt.");
+    // No operator detail in the app.
+    expect(wrapper.text()).not.toMatch(/GOOGLE_|betrieb.md/);
     expect(wrapper.find("button").exists()).toBe(false);
   });
 

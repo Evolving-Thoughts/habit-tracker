@@ -199,13 +199,11 @@ function onSaved(minutes: number | null): void {
         </dd>
         <dd v-if="perfectWeek" class="figures__perfect">
           <span class="figures__perfect-label">{{
-            perfectWeek.perfect ? "Perfekte Woche! " : "Perfekte Woche: "
+            perfectWeek.perfect ? "Perfekte Woche! " : "Wochensoll je Kategorie: "
           }}</span>
           <ul class="figures__categories">
-            <li
-              v-for="(category, index) in perfectWeek.categories"
-              :key="category.id"
-            >
+            <!-- Each category is its own unit: no commas between them. -->
+            <li v-for="category in perfectWeek.categories" :key="category.id">
               <i
                 class="figures__swatch"
                 :style="{ background: categoryMark(category.name, category.color) }"
@@ -217,9 +215,7 @@ function onSaved(minutes: number | null): void {
               </template>
               <span v-else class="figures__count"
                 >{{ category.completed }} von {{ category.target }}</span
-              ><template v-if="index < perfectWeek.categories.length - 1"
-                >,
-              </template>
+              >
             </li>
           </ul>
         </dd>
@@ -367,21 +363,28 @@ function onSaved(minutes: number | null): void {
   font-variant-numeric: tabular-nums;
 }
 
+/* The label on its own line, the categories flowing below it. */
 .figures__perfect-label {
+  display: block;
   color: var(--color-ink);
   font-weight: 700;
 }
 
 .figures__categories {
-  display: inline;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-/* Inline, so the commas and spaces between them flow like a sentence. */
+/*
+ * Each category is one unit (mark, name, count), set apart by space rather
+ * than commas: the line breaks between categories, never inside one, unless
+ * a name alone is too long.
+ */
 .figures__categories li {
-  display: inline;
+  display: inline-block;
+  max-width: 100%;
+  margin-right: var(--space-3);
   font-weight: 700;
 }
 

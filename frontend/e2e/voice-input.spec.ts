@@ -184,6 +184,9 @@ test("a long press on Plus opens Neue Quest with the title being dictated", asyn
   await hear(page, "Zahnarzt anrufen morgen");
   const tomorrow = daysAfter(await today(request), 1);
   await page.goto("/");
+  // The Questlog has the plus at every width; Heute shows "Neue Quest" in
+  // its head from 64rem instead, without a long press.
+  await openView(page, "Questlog");
   const plus = await plusButton(page);
   await expect(plus).toHaveAttribute(
     "aria-description",

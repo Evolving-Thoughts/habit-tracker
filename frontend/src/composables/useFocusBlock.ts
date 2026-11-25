@@ -10,6 +10,7 @@ import {
 import {
   focusBlockNative,
   type FocusBlockNative,
+  type FocusBlockNativeStatus,
 } from "../native/focus-block-plugin";
 import type {
   AddFocusEntryInput,
@@ -17,18 +18,23 @@ import type {
   FocusBlockState,
   FocusSettings,
 } from "../types/focus-block";
-import { remainingMinutes } from "../utils/focus-block";
+import { focusSetupIssues, remainingMinutes } from "../utils/focus-block";
 
 /**
  * The Fokus-Sperre of the signed-in user for everything below
  * `TimerProvider`: settings, lists and the open block, read from the server
- * and changed there. On Android every answer also goes to the plugin, which
- * stores it and enforces the block on its own, also once this page is gone.
+ * and changed there. Whether a block starts is the server's decision on
+ * every stopwatch start, resume, pause and stop; this only reads it. On
+ * Android every answer also goes to the plugin, which stores it and
+ * enforces the block on its own, also once this page is gone, and the
+ * phone's two permissions are read with each refresh (`setupIssues`).
  */
 export function createFocusBlockController(
   native: FocusBlockNative | null = focusBlockNative(),
 ) {
   const state = ref<FocusBlockState | null>(null);
+  /** The phone's permissions; null in a browser or before the first read. */
+  const device = ref<FocusBlockNativeStatus | null>(null);
   const error = ref("");
   const busy = ref(false);
   /** Device clock minus server clock, from the last answer. */
@@ -46,8 +52,19 @@ export function createFocusBlockController(
     void native?.setBlock(next).catch(() => {});
   }
 
+  async function readDevice(): Promise<void> {
+    if (!native) return;
+    try {
+      const next = await native.getStatus();
+      if (alive && next) device.value = next;
+    } catch {
+      // The stand stays as last read.
+    }
+  }
+
   async function refresh(): Promise<void> {
     if (!alive || busy.value) return;
+    void readDevice();
     const version = revision;
     try {
       const next = await getFocusBlock();
@@ -85,6 +102,10 @@ export function createFocusBlockController(
   }
 
   const block = computed(() => state.value?.block ?? null);
+  /** What keeps a block from stopping anything (`focusSetupIssues`). */
+  const setupIssues = computed(() =>
+    focusSetupIssues(state.value, device.value),
+  );
   /** Minutes left of a Hardcore block, on the server's clock; else null. */
   const minutesLeft = computed(() => {
     const endsAt = block.value?.endsAt;
@@ -94,10 +115,26 @@ export function createFocusBlockController(
   return {
     state,
     block,
+    device,
+    setupIssues,
     error,
     busy,
     minutesLeft,
     native,
+    readDevice,
+    /** Android's accessibility settings; the stand is read on return. */
+    openAccessibilitySettings: async () => {
+      await native?.openAccessibilitySettings().catch(() => {});
+    },
+    /** Android's VPN consent dialog, then the stand again. */
+    allowVpn: async () => {
+      try {
+        await native?.requestVpnPermission();
+      } catch {
+        // Declined or failed: the stand says so.
+      }
+      await readDevice();
+    },
     /** The server's "now" as the device sees it, for countdowns. */
     serverNow: () => now.value - skew,
     refresh,

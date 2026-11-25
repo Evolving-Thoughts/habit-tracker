@@ -6,7 +6,11 @@ vi.mock("./api/auth.api", () => ({
   getMe: vi.fn(async () => ({ id: "user-a", email: "a@example.test" })),
   logout: vi.fn(async () => undefined),
 }));
-import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
+import {
+  enableAutoUnmount,
+  flushPromises as flushMicrotasks,
+  mount,
+} from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h } from "vue";
 import { createMemoryHistory } from "vue-router";
@@ -23,6 +27,12 @@ beforeEach(() => {
   vi.mocked(logout).mockResolvedValue();
 });
 enableAutoUnmount(afterEach);
+/** Views but Heute load on demand (router.ts): wait for their chunks too. */
+async function flushPromises(): Promise<void> {
+  await flushMicrotasks();
+  await vi.dynamicImportSettled();
+  await flushMicrotasks();
+}
 function mountApp() {
   return mount(App, {
     global: {

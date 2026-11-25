@@ -67,7 +67,10 @@ async function expectFits(page: Page, where: string): Promise<void> {
   const tabBar = page.locator(".tab-bar");
   await expect(tabBar, `${where}: tab bar`).toBeInViewport({ ratio: 1 });
   const box = (await tabBar.boundingBox())!;
-  expect(Math.round(box.y + box.height)).toBe(page.viewportSize()!.height);
+  expect(
+    Math.round(box.y + box.height),
+    `${where}: tab bar at the bottom`,
+  ).toBe(page.viewportSize()!.height);
 }
 
 /** Waits until a view has drawn its content (no loading status left). */

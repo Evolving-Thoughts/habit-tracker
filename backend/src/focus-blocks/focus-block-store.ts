@@ -5,31 +5,42 @@ import {
 } from './focus-block.entities';
 import {
   blockApplies,
+  blockShape,
   DEFAULT_THRESHOLD_MINUTES,
-  hardcoreEndsAt,
   lapsedReason,
   lapsesAt,
   type FocusBlockMode,
   type FocusBlockOverride,
   type FocusListMode,
+  type FocusTriggerKind,
 } from './focus-block-rules';
 
 /**
  * Reading and writing block sessions inside a caller's transaction. No Nest
- * dependencies, so the stopwatch (`timer-target.ts`), quests and dailies can
- * start and end blocks in the same transaction as their own change without
- * module cycles. Callers hold the per-user unit of work (`UserUnitOfWork`).
+ * dependencies, so the stopwatch (`timer-target.ts`, `timers.service.ts`),
+ * quests and dailies can start and end blocks in the same transaction as
+ * their own change without module cycles. Callers hold the per-user unit of
+ * work (`UserUnitOfWork`).
+ *
+ * The block follows the stopwatch in one place: every stopwatch that starts
+ * or resumes running calls `startFocusBlock` (`TimersService`), every pause
+ * and stop goes through `recordTransition`, which calls
+ * `focusBlockFollowsStopwatch`. Where the stopwatch was started (Heute,
+ * Fokus-Modus, Plan, Questlog, a notification) does not matter.
  */
 
 export type FocusSettings = {
   enabled: boolean;
+  trigger: FocusTriggerKind;
   thresholdMinutes: number;
   mode: FocusBlockMode;
   listMode: FocusListMode;
 };
 
+/** On, whenever the stopwatch runs, Soft, Sperrliste. */
 export const DEFAULT_FOCUS_SETTINGS: FocusSettings = {
-  enabled: false,
+  enabled: true,
+  trigger: 'stopwatch',
   thresholdMinutes: DEFAULT_THRESHOLD_MINUTES,
   mode: 'soft',
   listMode: 'blocklist',
@@ -41,13 +52,13 @@ export async function readFocusSettings(
 ): Promise<FocusSettings> {
   const row = await manager.findOneBy(FocusBlockSettingsEntity, { userId });
   if (!row) return { ...DEFAULT_FOCUS_SETTINGS };
-  const { enabled, thresholdMinutes, mode, listMode } = row;
-  return { enabled, thresholdMinutes, mode, listMode };
+  const { enabled, trigger, thresholdMinutes, mode, listMode } = row;
+  return { enabled, trigger, thresholdMinutes, mode, listMode };
 }
 
 /**
  * The person's open block, or null. A block past its moment (Hardcore at
- * its Soll, Soft after 12 hours) is closed here with that moment, so every
+ * its Soll moment, any other after 12 hours) is closed here with that moment, so every
  * reader sees it over as soon as the clock passes it.
  */
 export async function openFocusBlock(
@@ -83,10 +94,10 @@ export type FocusStart = {
 };
 
 /**
- * Starts a block for the stopwatch the Fokus-Modus just started or resumed,
- * when its quest or daily calls for one (`blockApplies`). An open block
- * stays as it is. Hardcore needs a Soll still ahead; without one the block
- * starts as Soft (the Fokus screen says so).
+ * Starts a block for a stopwatch that just started or resumed running,
+ * wherever that happened, when the rule calls for one (`blockApplies`). An
+ * open block stays as it is. Its end follows `blockShape`: Hardcore with
+ * the threshold trigger needs a Soll still ahead, else it starts as Soft.
  */
 export async function startFocusBlock(
   manager: EntityManager,
@@ -102,11 +113,13 @@ export async function startFocusBlock(
     !blockApplies(settings, start.override, start.targetMinutes)
   )
     return null;
-  const wanted = start.mode ?? settings.mode;
-  const endsAt =
-    wanted === 'hardcore'
-      ? hardcoreEndsAt(start.targetMinutes, start.elapsedMilliseconds, now)
-      : null;
+  const { mode, endsAt } = blockShape(
+    start.mode ?? settings.mode,
+    settings.trigger,
+    start.targetMinutes,
+    start.elapsedMilliseconds,
+    now,
+  );
   return manager.save(
     FocusBlockEntity,
     manager.create(FocusBlockEntity, {
@@ -115,7 +128,7 @@ export async function startFocusBlock(
       occurrenceId:
         'occurrenceId' in start.target ? start.target.occurrenceId : null,
       title: start.title,
-      mode: endsAt ? 'hardcore' : 'soft',
+      mode,
       listMode: settings.listMode,
       startedAt: now,
       endsAt,
@@ -126,22 +139,35 @@ export async function startFocusBlock(
 }
 
 /**
- * The stopwatch ended: an open Soft block ends with it. Hardcore stays
- * until its Soll moment or until its quest or run is done.
+ * The stopwatch paused or ended. Pausing ends a Soft block (resuming starts
+ * a new one); Hardcore holds through pauses. Ending the stopwatch also ends
+ * Hardcore without a Soll moment (stopwatch trigger); Hardcore with one
+ * (threshold trigger) holds until that moment or until its quest or run is
+ * done. A block started after `at` (a stretch cut in hindsight) ends at
+ * its own start.
  */
-export async function endSoftFocusBlocks(
+export async function focusBlockFollowsStopwatch(
   manager: EntityManager,
   userId: string,
+  event: 'pause' | 'stop',
   at: Date,
 ): Promise<void> {
   await manager
     .getRepository(FocusBlockEntity)
     .createQueryBuilder()
     .update()
-    .set({ endedAt: at, endReason: 'stopwatch_stopped' })
+    .set({
+      endedAt: () => 'GREATEST(CAST(:at AS timestamptz), "startedAt")',
+      endReason: event === 'pause' ? 'paused' : 'stopwatch_stopped',
+    })
+    .setParameter('at', at)
     .where('"userId" = :userId', { userId })
     .andWhere('"endedAt" IS NULL')
-    .andWhere(`"mode" = 'soft'`)
+    .andWhere(
+      event === 'pause'
+        ? `"mode" = 'soft'`
+        : `("mode" = 'soft' OR "endsAt" IS NULL)`,
+    )
     .execute();
 }
 

@@ -290,7 +290,7 @@ test("Calendar week: open plans, overdue Quests and weekly targets stay calm", a
     exact: true,
   });
   await expect(planned).toContainText("Tägliche Gitarre");
-  await expect(targets).toContainText("Noch 3 von 3");
+  await expect(targets).toContainText("0 von 3 erledigt · noch 3");
   const before = await Promise.all(
     habits.map(async (h) => {
       const result = await request.get(`${API_URL}/habits/${h.id}/occurrences`);
@@ -309,7 +309,7 @@ test("Calendar week: open plans, overdue Quests and weekly targets stay calm", a
     "1 von früher",
   );
   await expect(targets).toContainText("Leseziel");
-  await expect(targets).toContainText("Noch 3 von 3 · 0 erledigt");
+  await expect(targets).toContainText("0 von 3 erledigt · noch 3");
   await expect(targets).not.toContainText("Gültig");
   await day.click();
   const earlier = page.getByRole("region", { name: "Von früher", exact: true });

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useOverlay } from "../composables/useOverlayStack";
 import {
   computed,
   inject,
@@ -143,6 +144,8 @@ function pickDate(): void {
 
 /* Filter menu */
 const filterOpen = ref(false);
+/* The phone's Back closes the filter first, as Escape does. */
+useOverlay(filterOpen, () => closeFilter());
 const filterButton = ref<HTMLButtonElement | null>(null);
 const filterMenu = ref<HTMLElement | null>(null);
 function menuItems(): HTMLButtonElement[] {

@@ -2,8 +2,7 @@ import { BadRequestException, ConflictException } from '@nestjs/common';
 
 /**
  * The rules of the Fokus-Sperre that need no database (docs/focus-block.md):
- * when starting the stopwatch from the Fokus-Modus starts a block, when a
- * block ends by itself, who may lift it, what a list entry looks like and
+ * when a running stopwatch starts a block, when a block ends by itself, who may lift it, what a list entry looks like and
  * which hosts a list blocks. The Android plugin repeats the host and package
  * rules in `FocusBlockPolicy`; both follow this file.
  */
@@ -19,6 +18,13 @@ export type FocusListMode = (typeof FOCUS_LIST_MODES)[number];
 export const FOCUS_BLOCK_OVERRIDES = ['default', 'always', 'never'] as const;
 export type FocusBlockOverride = (typeof FOCUS_BLOCK_OVERRIDES)[number];
 
+/**
+ * When the stopwatch blocks: whenever it runs (the default), or only from
+ * a Soll of `thresholdMinutes` on (the earlier rule, kept as a choice).
+ */
+export const FOCUS_TRIGGERS = ['stopwatch', 'threshold'] as const;
+export type FocusTriggerKind = (typeof FOCUS_TRIGGERS)[number];
+
 export const FOCUS_LISTS = ['block', 'allow'] as const;
 export type FocusList = (typeof FOCUS_LISTS)[number];
 
@@ -28,6 +34,7 @@ export type FocusEntryKind = (typeof FOCUS_ENTRY_KINDS)[number];
 export const FOCUS_END_REASONS = [
   'lifted',
   'stopwatch_stopped',
+  'paused',
   'completed',
   'target_reached',
   'expired',
@@ -38,20 +45,26 @@ export type FocusEndReason = (typeof FOCUS_END_REASONS)[number];
 export const DEFAULT_THRESHOLD_MINUTES = 15;
 export const MAX_THRESHOLD_MINUTES = 600;
 /**
- * A Soft block whose stopwatch nobody ends lifts itself after this long,
- * like the stopwatch's own cut for forgotten stretches.
+ * A block bound to its stopwatch (Soft, or Hardcore without a Soll moment)
+ * lifts itself after this long if nobody ends it, like the stopwatch's own
+ * cut for forgotten stretches.
  */
 export const SOFT_BLOCK_MAX_MS = 12 * 60 * 60_000;
 /** At most this many entries per list and kind. */
 export const MAX_ENTRIES_PER_LIST = 200;
 
-export type FocusTrigger = { enabled: boolean; thresholdMinutes: number };
+export type FocusTrigger = {
+  enabled: boolean;
+  trigger: FocusTriggerKind;
+  thresholdMinutes: number;
+};
 
 /**
- * Whether starting the stopwatch in the Fokus-Modus starts a block: a
- * quest's or daily's own "Immer" or "Nie" decides; "Standard" follows
- * Einstellungen, which block from a Soll of `thresholdMinutes` on. Without
- * a Soll, "Standard" never blocks.
+ * Whether a stopwatch that starts or resumes running blocks, wherever it
+ * was started: a quest's or daily's own "Nie" never blocks, "Immer" always
+ * does (also while Einstellungen have it off); "Standard" follows
+ * Einstellungen: on, and then either always (`stopwatch`) or from a Soll
+ * of `thresholdMinutes` on (`threshold`, never without a Soll).
  */
 export function blockApplies(
   trigger: FocusTrigger,
@@ -60,11 +73,29 @@ export function blockApplies(
 ): boolean {
   if (override === 'always') return true;
   if (override === 'never') return false;
-  return (
-    trigger.enabled &&
-    sollMinutes !== null &&
-    sollMinutes >= trigger.thresholdMinutes
-  );
+  if (!trigger.enabled) return false;
+  if (trigger.trigger === 'stopwatch') return true;
+  return sollMinutes !== null && sollMinutes >= trigger.thresholdMinutes;
+}
+
+/**
+ * The end a new block gets. Soft never has a moment. Hardcore with the
+ * stopwatch trigger has none either: it holds through pauses until its
+ * quest or run is done or its stopwatch ends. Hardcore with the threshold
+ * trigger ends at the Soll moment (`hardcoreEndsAt`); without a Soll still
+ * ahead such a block starts as Soft.
+ */
+export function blockShape(
+  wanted: FocusBlockMode,
+  trigger: FocusTriggerKind,
+  targetMinutes: number | null,
+  elapsedMilliseconds: number,
+  now: Date,
+): { mode: FocusBlockMode; endsAt: Date | null } {
+  if (wanted === 'soft') return { mode: 'soft', endsAt: null };
+  if (trigger === 'stopwatch') return { mode: 'hardcore', endsAt: null };
+  const endsAt = hardcoreEndsAt(targetMinutes, elapsedMilliseconds, now);
+  return endsAt ? { mode: 'hardcore', endsAt } : { mode: 'soft', endsAt: null };
 }
 
 /**
@@ -92,21 +123,22 @@ export type BlockTiming = {
 
 /**
  * Why a block that nobody ended is over at `now`, or null while it holds:
- * Hardcore at its Soll moment, Soft after `SOFT_BLOCK_MAX_MS`.
+ * Hardcore with a Soll moment at that moment, every other block after
+ * `SOFT_BLOCK_MAX_MS`.
  */
 export function lapsedReason(
   block: BlockTiming,
   now: Date,
 ): 'target_reached' | 'expired' | null {
   if (block.endedAt) return null;
-  if (block.mode === 'hardcore')
-    return block.endsAt && block.endsAt <= now ? 'target_reached' : null;
+  if (block.mode === 'hardcore' && block.endsAt)
+    return block.endsAt <= now ? 'target_reached' : null;
   return block.startedAt.getTime() + SOFT_BLOCK_MAX_MS <= now.getTime()
     ? 'expired'
     : null;
 }
 
-/** When a block lapses by itself: Hardcore at its Soll, Soft after 12 hours. */
+/** When a block lapses by itself: at its Soll moment, else after 12 hours. */
 export function lapsesAt(block: BlockTiming): Date {
   return block.mode === 'hardcore' && block.endsAt
     ? block.endsAt
@@ -114,14 +146,15 @@ export function lapsesAt(block: BlockTiming): Date {
 }
 
 /**
- * Lifting by hand: Soft always; Hardcore never before its Soll, which the
- * server answers with 409 `HARDCORE_BLOCK`.
+ * Lifting by hand: Soft always; Hardcore never, which the server answers
+ * with 409 `HARDCORE_BLOCK`.
  */
 export function assertLiftable(block: BlockTiming, now: Date): void {
   if (block.mode === 'soft' || lapsedReason(block, now)) return;
   throw new ConflictException({
-    message:
-      'Eine Hardcore-Sperre endet erst mit dem Soll oder wenn die Quest erledigt ist.',
+    message: block.endsAt
+      ? 'Eine Hardcore-Sperre endet erst mit dem Soll oder wenn die Quest erledigt ist.'
+      : 'Eine Hardcore-Sperre endet erst, wenn die Quest erledigt ist oder die Stoppuhr endet.',
     code: 'HARDCORE_BLOCK',
   });
 }

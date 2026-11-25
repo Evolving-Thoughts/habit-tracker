@@ -44,7 +44,7 @@ together. Paused stretches are gaps without units. `unit` says what the
 numbers count: `weeks` while the rhythm in force (else the first one) is a
 weekly goal, otherwise `runs`.
 
-The category-grouped Dailies list also shows the last 14 calendar days directly on each card. Completed, missed, open and manually skipped runs have distinct marks. Days without a run stay neutral. For weekly goals the strip shows completion dates, while the series and record still count weeks.
+The category-grouped Dailies list also shows the last 14 calendar days directly on each card. Completed, missed, open and manually skipped runs have distinct marks. Days without a run stay neutral. For weekly goals the strip shows completion dates, while the series and record still count weeks. One legend above the first card (`HabitHistoryLegend.vue`) names the marks; strip and legend draw them with the same component (`HistoryDayMark.vue`, glyphs and words in `utils/day-marks.ts`).
 
 ## API
 

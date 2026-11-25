@@ -104,8 +104,9 @@ test("Fokus-Klänge: chosen per device in Einstellungen", async ({ page }) => {
   const section = page.getByRole("region", { name: "Fokus-Klänge" });
   await expect(section).toBeVisible();
   // Only the files the server has: here the "rain" fixture.
-  await expect(section.getByRole("radio")).toHaveCount(2);
-  await section.getByRole("radio", { name: "Regen" }).check();
+  const choice = section.getByRole("combobox", { name: "Klang" });
+  await expect(choice.locator("option")).toHaveText(["Aus", "Regen"]);
+  await choice.selectOption({ label: "Regen" });
   const stored = await page.evaluate(() => localStorage.getItem("focus:sound"));
   expect(JSON.parse(stored!)).toMatchObject({ soundId: "rain" });
 

@@ -41,6 +41,18 @@ describe("PlanFields", () => {
     expect(date.value).toBe("");
   });
 
+  it("says where a quest without a day lives only while no day is set", async () => {
+    const { wrapper, chip } = mountFields();
+    const input = () => wrapper.get('input[name="scheduledDate"]');
+    expect(wrapper.get("#t-date-hint").text()).toBe(
+      "Ohne Tag liegt die Quest im Questlog.",
+    );
+    expect(input().attributes("aria-describedby")).toBe("t-date-hint");
+    await chip("Heute").trigger("click");
+    expect(wrapper.find("#t-date-hint").exists()).toBe(false);
+    expect(input().attributes("aria-describedby")).toBeUndefined();
+  });
+
   it("asks for the day only; the time belongs to an appointment", () => {
     const { wrapper } = mountFields();
     expect(wrapper.find('input[name="timeOfDay"]').exists()).toBe(false);

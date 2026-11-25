@@ -405,7 +405,7 @@ useShortcutHandlers({
           class="dump-done__heading"
         >
           <button
-            class="dump-done__toggle"
+            class="fold-toggle dump-done__toggle"
             type="button"
             :aria-expanded="doneOpen"
             aria-controls="dump-done-list"
@@ -543,35 +543,9 @@ useShortcutHandlers({
   font: inherit;
 }
 
+/* The shared disclosure (.fold-toggle in style.css); only its place here. */
 .dump-done__toggle {
-  display: inline-flex;
-  gap: var(--space-2);
-  align-items: center;
-  min-height: var(--tap);
   margin: var(--space-5) 0 var(--space-2);
-  padding: 0 var(--space-3);
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--color-ink-muted);
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 420ms var(--spring);
-}
-
-.dump-done__toggle:active {
-  transform: var(--press);
-  transition-duration: 90ms;
-}
-
-.dump-done__toggle :deep(svg) {
-  width: 1.25rem;
-  height: 1.25rem;
-  transition: transform 200ms var(--ease-out);
-}
-
-.dump-done__toggle[aria-expanded="true"] :deep(svg) {
-  transform: rotate(90deg);
 }
 
 </style>

@@ -5,8 +5,10 @@ import { getHabits } from "../api/day-planner.api";
 import { getMonthChallenges } from "../api/month-challenges.api";
 import { useCategoryLabels } from "../composables/useCategoryLabels";
 import { useListFocus } from "../composables/useListFocus";
+import HabitHistoryLegend from "../components/HabitHistoryLegend.vue";
 import HabitHistoryStrip from "../components/HabitHistoryStrip.vue";
 import ActionMenu from "../components/ActionMenu.vue";
+import AppIcon from "../components/AppIcon.vue";
 import CampaignChip from "../components/CampaignChip.vue";
 import ChallengeMark from "../components/ChallengeMark.vue";
 import MonthChallengeSection from "../components/MonthChallengeSection.vue";
@@ -20,7 +22,9 @@ import { useLoader } from "../composables/useLoader";
 import { useTicks } from "../composables/useTicks";
 import { useWrites } from "../composables/useWrites";
 import CreateButton from "../components/CreateButton.vue";
+import CreateHabitForm from "../components/CreateHabitForm.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
+import ModalDialog from "../components/ModalDialog.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
 import { getHistory } from "../api/history.api";
 import type { HabitResponse, HabitScheduleRule } from "../types/habit";
@@ -57,6 +61,11 @@ const editorBusy = ref(false);
 const creationOpen = ref(false);
 /** Opened by a long press on Plus: a quest, its title dictated at once. */
 const creationDictate = ref(false);
+/** The empty list's starter idea the Daily form opens with, if one was tapped. */
+const starterTitle = ref<string | null>(null);
+const starterBusy = ref(false);
+/** Ideas the empty list offers; each opens "Neues Daily" with its title. */
+const STARTERS = ["Wasser trinken", "10 Min. lesen", "Spazieren gehen"];
 
 /** Category names and marks for the meta line. */
 const { load: loadCategories, labelOf, list: categories } = useCategoryLabels();
@@ -111,6 +120,7 @@ const {
     editingId.value === null &&
     !deleting.value &&
     !creationOpen.value &&
+    starterTitle.value === null &&
     !challengeActive.value &&
     !writes.busy.value,
 });
@@ -179,6 +189,12 @@ function chosen(event: Event): number | typeof WITHOUT | null {
   return value ? Number(value) : null;
 }
 const campaignOptions = computed(() => dailyCampaigns(habits.value));
+/* The legend of the history strip stands only where a strip does. */
+const anyHistory = computed(() =>
+  groups.value.some((group) =>
+    group.habits.some((habit) => habit.streak.recentDays),
+  ),
+);
 /* Grouped by category; the paused ones last. */
 const groups = computed(() =>
   dailyGroups(
@@ -295,6 +311,20 @@ async function onCreated(): Promise<void> {
   await applied();
   creationOpen.value = false;
 }
+function openStarter(title: string): void {
+  if (isBusy.value || editingId.value !== null) return;
+  successMessage.value = null;
+  starterTitle.value = title;
+}
+function closeStarter(): void {
+  if (!starterBusy.value) starterTitle.value = null;
+}
+async function onStarterCreated(): Promise<void> {
+  successMessage.value = "Daily erstellt.";
+  await applied();
+  starterBusy.value = false;
+  starterTitle.value = null;
+}
 </script>
 
 <template>
@@ -311,6 +341,20 @@ async function onCreated(): Promise<void> {
       @close="creationOpen = false"
       @created="onCreated"
     />
+    <!-- A starter idea: the Daily form at once, its title filled in. -->
+    <ModalDialog
+      v-if="starterTitle !== null"
+      title="Neues Daily"
+      :busy="starterBusy"
+      @close="closeStarter"
+    >
+      <CreateHabitForm
+        :initial="{ title: starterTitle, why: '', categoryId: null, campaignId: null }"
+        @busy="starterBusy = $event"
+        @created="onStarterCreated"
+        @cancel="closeStarter"
+      />
+    </ModalDialog>
     <EditItemDialog
       v-if="editingId !== null"
       :key="editingId"
@@ -367,13 +411,39 @@ async function onCreated(): Promise<void> {
       <span />
       <span />
     </div>
-    <div
+    <section
       v-else-if="hasLoaded && habits.length === 0 && !errorMessage"
-      class="empty-state"
+      class="empty-state habits-start"
+      aria-labelledby="habits-start-title"
     >
-      <strong>Du hast noch keine Dailies.</strong>
-      <span>Tippe auf Plus, um dein erstes Daily anzulegen.</span>
-    </div>
+      <h2 id="habits-start-title" class="habits-start__title">
+        Dein erstes Daily
+      </h2>
+      <p class="habits-start__lead">
+        Etwas, das du regelmäßig tun willst, in deinem Rhythmus. Heute zeigt
+        dir jeden fälligen Lauf.
+      </p>
+      <div class="habits-start__ideas" role="group" aria-label="Ideen zum Anfangen">
+        <button
+          v-for="idea in STARTERS"
+          :key="idea"
+          class="btn"
+          type="button"
+          :disabled="isBusy"
+          @click="openStarter(idea)"
+        >
+          {{ idea }}
+        </button>
+      </div>
+      <button
+        class="btn btn--primary"
+        type="button"
+        :disabled="isBusy"
+        @click="openCreation()"
+      >
+        <AppIcon name="plus" />Daily anlegen
+      </button>
+    </section>
     <template v-else-if="habits.length > 0">
       <!-- Narrows the list; the choice stays in the address. -->
       <div class="habit-filter" role="group" aria-label="Dailies filtern">
@@ -444,6 +514,8 @@ async function onCreated(): Promise<void> {
           <p v-if="group.key === 'paused'" class="habit-group__hint">
             Pausierte Dailies stehen nicht in Heute.
           </p>
+          <!-- Once, above the first card: what the history marks mean. -->
+          <HabitHistoryLegend v-if="group === groups[0] && anyHistory" />
           <ul class="habit-group__items">
             <li
               v-for="habit in group.habits"
@@ -554,6 +626,27 @@ async function onCreated(): Promise<void> {
 </template>
 
 <style scoped>
+/* The empty list: what a Daily is, a few ideas to tap, one main action. */
+.habits-start__title {
+  margin: 0;
+  color: var(--color-ink);
+  font-size: 1.125rem;
+  font-weight: 800;
+}
+
+.habits-start__lead {
+  max-width: 32rem;
+  margin: 0;
+}
+
+.habits-start__ideas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: center;
+  margin-block: var(--space-2);
+}
+
 .habits-view__alert,
 .habits-view__status {
   margin: 0 0 var(--space-4);

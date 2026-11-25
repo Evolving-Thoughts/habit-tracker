@@ -245,25 +245,42 @@ defineExpose({
  * The selectors name `.mic` first: a dialog styles every button in it, and
  * the microphone keeps its own look there.
  *
- * Inside a field: 2px in from its border, so the hover tint never covers
- * the frame; an invisible rim keeps the full tap size.
+ * Inside a field the button covers the full tap size in its right edge,
+ * but what shows of it (hover, listening, the ring) sits 2px in from the
+ * border, so the tint never covers the frame. That surface is a layer below
+ * the icon; isolation keeps it above the field.
  */
 .mic--field {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 0;
+  right: 0;
 }
 
 .mic.mic--field .mic__button {
-  min-width: calc(var(--tap) - 4px);
-  min-height: calc(var(--tap) - 4px);
-  border-radius: calc(var(--radius-control) - 2px);
+  isolation: isolate;
+  border-radius: var(--radius-control);
 }
 
 .mic.mic--field .mic__button::before {
   position: absolute;
-  inset: -2px;
+  z-index: -1;
+  inset: 2px;
+  border-radius: calc(var(--radius-control) - 2px);
   content: "";
+  transition: background-color 160ms var(--ease-out);
+}
+
+.mic.mic--field .mic__button:is(:hover, [aria-pressed="true"]) {
+  background: transparent;
+}
+
+.mic.mic--field .mic__button:is(:hover, [aria-pressed="true"])::before {
+  background: var(--color-action-tint);
+}
+
+.mic.mic--field .mic__button[aria-pressed="true"]::after {
+  inset: 2px;
+  border-radius: calc(var(--radius-control) - 2px);
 }
 
 .mic .mic__button :deep(.app-icon) {

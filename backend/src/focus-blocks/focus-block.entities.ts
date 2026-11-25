@@ -21,13 +21,15 @@ import {
   type FocusEntryKind,
   type FocusList,
   type FocusListMode,
+  type FocusTriggerKind,
 } from './focus-block-rules';
 
 /**
- * Einstellungen › Fokus-Sperre: whether starting the stopwatch in the
- * Fokus-Modus blocks from a Soll of `thresholdMinutes` on, Soft or Hardcore
- * by default, and which list decides. One row per person, written on the
- * first change; without one the defaults hold (off, 15, Soft, Sperrliste).
+ * Einstellungen › Fokus-Sperre: whether a running stopwatch blocks, always
+ * (`trigger` = `stopwatch`) or from a Soll of `thresholdMinutes` on
+ * (`threshold`), Soft or Hardcore by default, and which list decides. One
+ * row per person, written on the first change; without one the defaults
+ * hold (on, whenever the stopwatch runs, 15, Soft, Sperrliste).
  */
 @Entity('focus_block_settings')
 @Check(
@@ -38,6 +40,10 @@ import {
 @Check(
   'CHK_focus_block_settings_list_mode',
   `"listMode" IN ('blocklist', 'allowlist')`,
+)
+@Check(
+  'CHK_focus_block_settings_trigger',
+  `"trigger" IN ('stopwatch', 'threshold')`,
 )
 export class FocusBlockSettingsEntity {
   @PrimaryColumn({ type: 'uuid' })
@@ -50,8 +56,11 @@ export class FocusBlockSettingsEntity {
   })
   user?: UserEntity;
 
-  @Column({ type: 'boolean', default: false })
+  @Column({ type: 'boolean', default: true })
   enabled!: boolean;
+
+  @Column({ type: 'varchar', length: 16, default: 'stopwatch' })
+  trigger!: FocusTriggerKind;
 
   @Column({ type: 'smallint', default: DEFAULT_THRESHOLD_MINUTES })
   thresholdMinutes!: number;
@@ -109,11 +118,12 @@ export class FocusBlockEntryEntity {
 }
 
 /**
- * A block session: started with the stopwatch in the Fokus-Modus, at most
- * one open per person. Soft ends with its stopwatch or by hand; Hardcore
- * at `endsAt` (the Soll moment) or when its quest or run is done. A block
- * past its moment counts as over at once and is closed on the next read,
- * so no worker is needed. `title` keeps the quest's name for the block
+ * A block session: started with a running stopwatch, at most one open per
+ * person. Soft ends when its stopwatch pauses or ends, or by hand;
+ * Hardcore when its quest or run is done, and either when its stopwatch
+ * ends (no `endsAt`, stopwatch trigger) or at `endsAt` (the Soll moment,
+ * threshold trigger). A block past its moment counts as over at once and
+ * is closed on the next read, so no worker is needed. `title` keeps the quest's name for the block
  * screen and for a block whose target is gone.
  */
 @Entity('focus_blocks')
@@ -123,17 +133,14 @@ export class FocusBlockEntryEntity {
 })
 @Check('CHK_focus_blocks_mode', `"mode" IN ('soft', 'hardcore')`)
 @Check('CHK_focus_blocks_list_mode', `"listMode" IN ('blocklist', 'allowlist')`)
-@Check(
-  'CHK_focus_blocks_ends_at',
-  `("mode" = 'hardcore') = ("endsAt" IS NOT NULL)`,
-)
+@Check('CHK_focus_blocks_ends_at', `"mode" = 'hardcore' OR "endsAt" IS NULL`)
 @Check(
   'CHK_focus_blocks_end_reason',
   `("endedAt" IS NULL) = ("endReason" IS NULL)`,
 )
 @Check(
   'CHK_focus_blocks_reason',
-  `"endReason" IN ('lifted', 'stopwatch_stopped', 'completed', 'target_reached', 'expired')`,
+  `"endReason" IN ('lifted', 'stopwatch_stopped', 'paused', 'completed', 'target_reached', 'expired')`,
 )
 export class FocusBlockEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -187,7 +194,7 @@ export class FocusBlockEntity {
   @Column({ type: 'timestamptz' })
   startedAt!: Date;
 
-  /** Hardcore: the Soll moment it ends at. Null for Soft. */
+  /** Hardcore with the threshold trigger: the Soll moment it ends at. */
   @Column({ type: 'timestamptz', nullable: true })
   endsAt!: Date | null;
 
