@@ -167,7 +167,12 @@ export only, as Logbuch events (see `logbook.md`).
   middle (`swapThreshold` 0.5), so cards of different heights do not jump. A mouse lifts
   it after 6px, a finger only after a 300ms press (`delayOnTouchOnly`), so a
   swipe still scrolls and a short tap still opens the editor; the card's own
-  controls never start a drag. The keyboard sorts with "Nach oben" and "Nach
+  controls never start a drag, except the title: it is the edit button for
+  keyboards and screen readers, but a press on the words lifts the card like
+  one anywhere else. Once a finger has held long enough, the card rises
+  under it (`card-drag--held`: larger, shadow, outline) and the device buzzes
+  briefly (`navigator.vibrate`, the app's `VIBRATE` permission), before the
+  finger moves; a mouse gets no such sign, it drags as soon as it moves. The keyboard sorts with "Nach oben" and "Nach
   unten" in the card's menu; the focus stays on its menu button and a status
   line announces the new place. The new order shows at once and is
   confirmed, or taken back, by the reload after the write.
@@ -200,6 +205,28 @@ export only, as Logbuch events (see `logbook.md`).
   dialogs close (their scroll lock with them), an open "…" menu and a
   Logbuch drag end, dictation in the quick add stops, the campaign
   question says no, a held undo goes through and old notices go.
+
+### Andere Tage
+
+‹ › in Heute's head leaf through the days; "Heute" beside them leads back.
+The day lives only in the address (`#/heute?tag=YYYY-MM-DD`, replaced, not
+pushed), so the tab bar always opens today. Another day
+(`TodayOtherDay.vue`) reads the Plan's endpoint for that one day
+(`GET /day-planner/plan?from=…&days=1`), so it follows the Plan's rules: a
+past day lists what was done and skipped, a later day what is planned,
+with the runs the schedule forecasts. Its entries wear Heute's cards
+(`utils/other-day.ts` `asPlannerItem`), above them the relation
+("Gestern", "Morgen", "in 3 Tagen") and the day counted as every view
+counts one.
+
+- A later day takes quests in its quick add, sorts its open quests and
+  stored runs by dragging (the Plan's `dropOnDay` / `dropRunOnDay`) and
+  moves them with the quick moves of their menu. Quests tick; runs only
+  tick on their own day.
+- A past day shows its reflection and its best below the list.
+- No focus card, no stopwatch, no "Nachholen", no "Auf morgen" there:
+  they belong to now. The Logbuch pane shows that day's calendar.
+- A tap opens the same editor as on today.
 
 ## Migration
 

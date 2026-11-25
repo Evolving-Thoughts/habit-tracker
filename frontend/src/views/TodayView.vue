@@ -26,6 +26,8 @@ import ItemPlayButton from "../components/ItemPlayButton.vue";
 import PlannerItem from "../components/PlannerItem.vue";
 import QuickAddQuest from "../components/QuickAddQuest.vue";
 import TodayCalendar from "../components/TodayCalendar.vue";
+import TodayOtherDay from "../components/TodayOtherDay.vue";
+import { relationLabel } from "../utils/other-day";
 import EditItemDialog from "../components/EditItemDialog.vue";
 import MoveItemDialog from "../components/MoveItemDialog.vue";
 import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
@@ -40,7 +42,12 @@ import type {
   DayPlannerItem,
   DayPlannerResponse,
 } from "../types/day-planner";
-import { addDays, formatDateForGermanDisplay, weekStart } from "../utils/date";
+import {
+  addDays,
+  formatDateForGermanDisplay,
+  getCurrentDateInTimeZone,
+  weekStart,
+} from "../utils/date";
 import { dayLabel, fullStop } from "../utils/history";
 import {
   arrangeToday,
@@ -62,8 +69,8 @@ import { categoryMark } from "../utils/category-mark";
 import { workLine } from "../utils/quest-hours";
 import { CHALLENGE_HREF, runLine } from "../utils/month-challenge";
 import { streakLine } from "../utils/streak";
-import { useRouter } from "vue-router";
-import { hrefOf } from "../routes";
+import { useRoute, useRouter } from "vue-router";
+import { DAY_QUERY, hrefOf } from "../routes";
 import { onCardClick } from "../utils/card-click";
 import {
   quickMoveEntries,
@@ -138,8 +145,47 @@ const now = useDayClock((minutes) =>
 const agenda = computed(() =>
   planner.value ? arrangeToday(planner.value, now.value) : null,
 );
+
+/*
+ * ‹ › in the head leaf through the days: `?tag=YYYY-MM-DD` shows another
+ * day on Heute's cards (TodayOtherDay), plain `#/heute` is today. Only the
+ * address holds the day, so the tab bar always leads back to today.
+ */
+const route = useRoute() as ReturnType<typeof useRoute> | undefined;
+const today = computed(
+  () => planner.value?.date ?? getCurrentDateInTimeZone(),
+);
+const otherDay = computed(() => {
+  const tag = route?.query[DAY_QUERY];
+  return typeof tag === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(tag) &&
+    tag !== today.value
+    ? tag
+    : null;
+});
+const shownDate = computed(() => otherDay.value ?? today.value);
+const relation = computed(() =>
+  otherDay.value ? relationLabel(otherDay.value, today.value) : null,
+);
+function showDay(date: string): void {
+  void router.replace(
+    date === today.value
+      ? { name: "today" }
+      : { name: "today", query: { [DAY_QUERY]: date } },
+  );
+}
+function stepDay(by: -1 | 1): void {
+  showDay(addDays(shownDate.value, by));
+}
+function editOtherDay(target: EditingTarget): void {
+  if (editorBusy.value || writes.busy.value) return;
+  editingTarget.value = target;
+}
+
 const heading = computed(() =>
-  planner.value ? formatDayHeading(planner.value.date) : "Heute",
+  otherDay.value || planner.value
+    ? formatDayHeading(shownDate.value)
+    : "Heute",
 );
 /* Counted like every view counts a day: "1 von 7 erledigt · 1 von früher". */
 const progress = computed(() =>
@@ -748,9 +794,10 @@ useShortcutHandlers(
     <div class="today-view__list">
       <header class="today-view__header">
         <div class="today-view__title">
+          <p v-if="relation" class="today-view__relation">{{ relation }}</p>
           <h1>{{ heading }}</h1>
           <!-- Breaks only between its parts: "1 von 7 erledigt" · "1 von früher". -->
-          <p v-if="progress" class="today-view__progress">
+          <p v-if="progress && !otherDay" class="today-view__progress">
             <template v-for="(part, index) in progressParts" :key="part"
               >{{ index ? " " : ""
               }}<span class="today-view__progress-part">{{
@@ -758,7 +805,7 @@ useShortcutHandlers(
               }}</span></template
             >
           </p>
-          <p v-if="timeLine" class="today-view__time">
+          <p v-if="timeLine && !otherDay" class="today-view__time">
             <!-- From 40rem each part breaks as a whole, no figure torn apart. -->
             <template v-for="(part, index) in timeParts" :key="part"
               >{{ index ? " " : ""
@@ -769,7 +816,7 @@ useShortcutHandlers(
           </p>
           <!-- The week against its goal at a glance; behind is a number, not a warning. -->
           <span
-            v-if="weekGoal"
+            v-if="weekGoal && !otherDay"
             class="today-view__week-bar"
             role="progressbar"
             aria-label="Kampagnen-Stunden diese Woche gegen das Wochenziel"
@@ -781,15 +828,42 @@ useShortcutHandlers(
             <span :style="{ width: `${weekGoal.filled}%` }" />
           </span>
         </div>
+        <!-- Leaf through the days; "Heute" leads back from another one. -->
+        <div class="today-view__days" role="group" aria-label="Tage">
+          <button
+            v-if="otherDay"
+            class="btn today-view__back"
+            type="button"
+            @click="showDay(today)"
+          >
+            Heute
+          </button>
+          <button
+            class="btn btn--icon"
+            type="button"
+            aria-label="Voriger Tag"
+            @click="stepDay(-1)"
+          >
+            <AppIcon name="chevron-left" />
+          </button>
+          <button
+            class="btn btn--icon"
+            type="button"
+            aria-label="Nächster Tag"
+            @click="stepDay(1)"
+          >
+            <AppIcon name="chevron" />
+          </button>
+        </div>
         <ActionMenu
-          v-if="postponable.length && phone"
+          v-if="postponable.length && phone && !otherDay"
           title="Heute"
           label="Weitere Aktionen für heute"
           :entries="headerMenu"
           :disabled="isLoading || editorBusy || writes.busy.value"
         />
         <button
-          v-else-if="postponable.length"
+          v-else-if="postponable.length && !otherDay"
           class="today-view__postpone"
           type="button"
           :disabled="isLoading || editorBusy || writes.busy.value"
@@ -901,7 +975,16 @@ useShortcutHandlers(
         @close="closeMoving"
       />
 
-      <div v-if="errorMessage" class="alert today-view__error">
+      <TodayOtherDay
+        v-if="otherDay"
+        v-show="showsList"
+        :date="otherDay"
+        :today="today"
+        :held="editingTarget !== null || editorBusy || creationOpen"
+        @edit="editOtherDay"
+      />
+
+      <div v-else-if="errorMessage" class="alert today-view__error">
         <p role="alert">{{ errorMessage }}</p>
         <button
           class="btn btn--ground"
@@ -913,7 +996,7 @@ useShortcutHandlers(
         </button>
       </div>
 
-      <div v-show="showsList" class="today-view__day">
+      <div v-if="!otherDay" v-show="showsList" class="today-view__day">
         <QuickAddQuest
           v-if="planner"
           :date="planner.date"
@@ -1272,9 +1355,9 @@ useShortcutHandlers(
       it scrolls; narrower as the "Logbuch" pane, scrolling with the page.
     -->
     <TodayCalendar
-      v-if="showsCalendar && planner"
+      v-if="showsCalendar && (planner || otherDay)"
       class="today-view__calendar"
-      :date="planner.date"
+      :date="shownDate"
       :hidden-logs="hiddenLogs"
       :flow="!wide"
       @remove-log="removeLog"
@@ -1326,6 +1409,31 @@ useShortcutHandlers(
   align-items: flex-start;
   justify-content: space-between;
   margin-bottom: var(--space-5);
+}
+
+.today-view__title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Another day says how far from today it is, above its date. */
+.today-view__relation {
+  margin: 0 0 var(--space-1);
+  color: var(--color-action-strong);
+  font-size: 0.875rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.today-view__days {
+  display: flex;
+  flex: none;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.today-view__days .btn {
+  background: var(--color-surface);
 }
 
 .today-view__title h1 {
