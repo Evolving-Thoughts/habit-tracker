@@ -126,7 +126,8 @@ export function plannedHabitCandidate(
     order: {
       scheduledDate: item.isOverdue ? item.scheduledDate : date,
       timeOfDay: item.timeOfDay,
-      dayPosition: item.id === null ? null : dayPosition,
+      // A forecast run's place waits until its day stores it.
+      dayPosition,
       id: item.id ?? Number.MAX_SAFE_INTEGER,
     },
   };

@@ -1,6 +1,6 @@
 # Spracheingabe
 
-Quests, Notizen, Reflexion, Das Beste des Tages und die Antworten im Wochenrückblick lassen sich diktieren. Ein Mikrofon-Knopf neben dem Feld startet das Diktat; beim Anlegen einer Quest liest die App aus dem Text auch Tag und Dauer („Steuererklärung morgen, 30 Minuten“) sowie Kampagne und Kategorie („Kapitel 4 gliedern, Kampagne Buch schreiben, Kategorie Schreiben“).
+Quests, Notizen, Reflexion, Das Beste des Tages und die Antworten im Wochenrückblick lassen sich diktieren. Ein Mikrofon-Knopf neben dem Feld startet das Diktat; beim Anlegen einer Quest liest die App aus dem Text auch Tag, Uhrzeit und Dauer („Zahnarzt morgen um 13 Uhr, 30 Minuten“) sowie Kampagne und Kategorie („Kapitel 4 gliedern, Kampagne Buch schreiben, Kategorie Schreiben“).
 
 Die Erkennung läuft **nur auf dem Gerät**. Keine Aufnahme geht an den eigenen Server oder an einen fremden Dienst.
 
@@ -99,13 +99,14 @@ Der Reihe nach, ohne Umweg über das Netz:
   - heute, morgen, übermorgen
   - Wochentage: „Freitag“ ist der nächste Freitag, an einem Freitag also der in einer Woche. „Diesen Freitag“ darf heute sein. „Nächsten Freitag“ ist der Freitag der nächsten Kalenderwoche.
   - Daten wie „am 3.12.“, „3.12.2026“, „3.12.26“, „3. Dezember“, „24. Nov. 2028“. Ein Datum ohne Jahr, das dieses Jahr schon vorbei ist, gilt fürs nächste Jahr.
+- **Uhrzeiten:** „um 13 Uhr“, „13:30“, „13 Uhr 30“, „um 9.15“, „9.15 Uhr“, „um dreizehn Uhr“, „gegen 8 Uhr“. Mit Punkt oder als bloße Stunde braucht sie „Uhr“ danach oder „um“ davor, damit „13.12.“ ein Datum bleibt. Sie wird zur festen Uhrzeit, die Quest also zum Termin; ohne Tag gilt der Tag der Zeile, im Questlog heute. Chip mit Uhr-Symbol: „13:00 Uhr“, vorgelesen „Uhrzeit: 13:00 Uhr, entfernen“.
 - **Dauern:**
   - „30 Minuten“, „30 min“, „1 Stunde“, „2 Std.“, „2h“, „1,5 h“
   - „anderthalb“ bzw. „eineinhalb Stunden“, „zweieinhalb Stunden“, „eine halbe Stunde“, „eine Viertelstunde“, „eine Dreiviertelstunde“
   - „1 Stunde und 30 Minuten“
   - Zahlwörter bis sechzig („zwanzig“, „fünfundvierzig“), höchstens ein Tag
-- Es zählt nur der erste Tag und die erste Dauer; alles Weitere bleibt im Titel.
-- Verbindungswörter davor („am“, „bis“, „für“, „ca.“, „etwa“) gehören zum Erkannten. Übrige Kommas und ein „und“ dazwischen verschwinden. Ein großer Anfangsbuchstabe bleibt groß.
+- Es zählt nur der erste Tag, die erste Uhrzeit und die erste Dauer; alles Weitere bleibt im Titel. Die Uhrzeit wird vor Tag und Dauer gesucht.
+- Verbindungswörter davor („am“, „bis“, „für“, „um“, „gegen“, „ca.“, „etwa“) gehören zum Erkannten. Übrige Kommas und ein „und“ dazwischen verschwinden. Ein großer Anfangsbuchstabe bleibt groß.
 - Erkennt sie nichts, bleibt der Text, wie er ist. Bliebe nach dem Entfernen nichts übrig, bleibt der ganze Text der Titel.
 - `matches` liefert für jede Erkennung Art, Wert, Beschriftung („morgen“, „Fr., 27.11.“, „30 Min.“) und die Stelle im Text.
 

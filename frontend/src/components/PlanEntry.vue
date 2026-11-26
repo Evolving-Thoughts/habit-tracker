@@ -45,7 +45,11 @@ function onArrow(event: KeyboardEvent, key: "up" | "down" | "left" | "right") {
 /** A Google event: read-only, it drags within its day but opens no editor. */
 const event = computed(() => props.entry.type === "event");
 const movable = computed(
-  () => isMovable(props.entry) || isMovableRun(props.entry) || event.value,
+  () =>
+    isMovable(props.entry) ||
+    isMovableRun(props.entry) ||
+    event.value ||
+    forecast.value,
 );
 function openFromCard(click: MouseEvent): void {
   if (!props.busy && !event.value) onCardClick(click, () => emit("edit"));

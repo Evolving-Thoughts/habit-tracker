@@ -1,3 +1,4 @@
+import type { OrderRef } from "../utils/day-order";
 import type {
   DayPlannerResponse,
   HabitOccurrenceStatus,
@@ -33,9 +34,7 @@ export function getPlan(
 }
 
 /** Stores the order any day was sorted into; habits go by their occurrence. */
-export function reorderDay(
-  items: { type: "todo" | "habit" | "event"; id: number }[],
-): Promise<void> {
+export function reorderDay(items: OrderRef[]): Promise<void> {
   return request<void>("/day-planner/order", {
     method: "PUT",
     body: JSON.stringify({ items }),

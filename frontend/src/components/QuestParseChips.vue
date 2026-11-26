@@ -24,6 +24,7 @@ const emit = defineEmits<{ remove: [kind: QuestParseKind] }>();
 
 const KIND_NAME: Record<QuestParseKind, string> = {
   date: "Tag",
+  time: "Uhrzeit",
   duration: "Dauer",
   campaign: "Kampagne",
   category: "Kategorie",
@@ -65,6 +66,7 @@ function chipName(match: QuestParseMatch, moves?: boolean): string {
       >
         <AppIcon v-if="match.isNew" name="plus" />
         <AppIcon v-else-if="match.kind === 'date'" name="calendar" />
+        <AppIcon v-else-if="match.kind === 'time'" name="clock" />
         <AppIcon v-else-if="match.kind === 'duration'" name="timer" />
         <AppIcon
           v-else-if="match.kind === 'campaign'"

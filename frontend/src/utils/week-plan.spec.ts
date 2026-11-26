@@ -15,6 +15,7 @@ import {
   dayOrder,
   dropOnDay,
   dropEventOnDay,
+  dropForecastOnDay,
   dropRunOnDay,
   doneEntries,
   isForecast,
@@ -152,44 +153,55 @@ describe("entryKey", () => {
 });
 
 describe("dayOrder", () => {
-  it("names what the day's stored order holds: appointments too, no forecast", () => {
+  it("names what the day's order holds: appointments, stored runs and forecasts with their day", () => {
     expect(
-      dayOrder([
-        quest(2, { timeOfDay: "09:00" }),
-        quest(3),
-        daily(7),
-        daily(null),
-      ]),
+      dayOrder(
+        [quest(2, { timeOfDay: "09:00" }), quest(3), daily(7), daily(null)],
+        "2026-11-27",
+      ),
     ).toEqual([
       { type: "todo", id: 2 },
       { type: "todo", id: 3 },
       { type: "habit", id: 7 },
+      { type: "forecast", id: 5, date: "2026-11-27" },
     ]);
   });
 });
 
 describe("arrangeOpen", () => {
-  it("anchors forecast appointments by clock while sending only stored positions", () => {
+  it("keeps the server's order and holds appointments on the clock, forecasts among them", () => {
     const early = daily(null, { timeOfDay: "09:00" });
     const late = daily(null, { timeOfDay: "16:00" });
     const noon = quest(2, { timeOfDay: "12:00" });
     const first = quest(1);
     const last = quest(3);
-    const arranged = arrangeOpen([first, noon, last, late, early]);
-    expect(arranged).toEqual([early, first, noon, late, last]);
-    expect(dayOrder(arranged)).toEqual(dayOrder([first, noon, last]));
+    // The server's order: as sent, it stays.
+    expect(arrangeOpen([early, first, noon, late, last])).toEqual([
+      early,
+      first,
+      noon,
+      late,
+      last,
+    ]);
+    // A forecast without a time sorted between two quests stays there.
+    const read = daily(null, { title: "Lesen" });
+    expect(arrangeOpen([first, read, last])).toEqual([first, read, last]);
   });
+});
 
-  it("sorts like the server: the order with appointments on the clock, then forecasts", () => {
+describe("dropForecastOnDay", () => {
+  it("sorts a forecast run within its day and writes its place with the day", () => {
+    const later = WEDNESDAY;
+    const plan = week({ [later]: [quest(1, { scheduledDate: later }), quest(2, { scheduledDate: later }), daily(null, { title: "Lesen" })] });
+    const result = dropForecastOnDay(plan, { habitId: 5, toDate: later, index: 1 })!;
+    expect(result.order).toEqual([
+      { type: "todo", id: 1 },
+      { type: "forecast", id: 5, date: later },
+      { type: "todo", id: 2 },
+    ]);
     expect(
-      arrangeOpen([
-        daily(null, { title: "Vorhersage" }),
-        quest(1),
-        quest(2, { timeOfDay: "14:00" }),
-        quest(4, { timeOfDay: "08:00" }),
-        quest(5),
-      ]).map(({ title }) => title),
-    ).toEqual(["Quest 1", "Quest 4", "Quest 2", "Quest 5", "Vorhersage"]);
+      result.plan.days.find((day) => day.date === later)!.entries.map(({ title }) => title),
+    ).toEqual(["Quest 1", "Lesen", "Quest 2"]);
   });
 });
 
@@ -316,10 +328,10 @@ describe("dropOnDay", () => {
 describe("stepDrop", () => {
   const plan = week({
     [MONDAY]: [],
-    [TODAY]: [quest(1, { timeOfDay: "09:00" }), quest(2), daily(null), quest(3)],
+    [TODAY]: [quest(1, { timeOfDay: "09:00" }), quest(2), quest(3)],
   });
 
-  it("steps over rows that are not part of the order", () => {
+  it("steps one place up, and not past the end", () => {
     const drop = stepDrop(plan, 3, "up")!;
     expect(dropOnDay(plan, drop)!.write.order).toEqual([
       { type: "todo", id: 1 },

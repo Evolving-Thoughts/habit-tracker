@@ -25,6 +25,9 @@ export type RunDrop = { occurrenceId: number; toDate: string; index: number };
  */
 export type EventDrop = { eventId: number; toDate: string; index: number };
 
+/** A forecast run sorted within its day (it never moves to another). */
+export type ForecastDrop = { habitId: number; toDate: string; index: number };
+
 /** A quest dropped into the Questlog column, at `index` of its list. */
 export type ShelfDrop = { todoId: number; index: number };
 
@@ -33,6 +36,9 @@ export type BoardDrop =
   | { kind: "day"; drop: Drop }
   | { kind: "run"; drop: RunDrop }
   | { kind: "event"; drop: EventDrop }
+  | { kind: "forecast"; drop: ForecastDrop }
+  /** A card dropped where it may not go: the view says why. */
+  | { kind: "refused"; reason: "forecast"; title: string }
   | { kind: "questlog"; drop: ShelfDrop };
 
 /** What a drop asks of the server: move the quest, then sort its day. */
@@ -96,7 +102,8 @@ export function shiftedStart(
 }
 
 /** What drags: open quests, open stored runs and Google events. */
-export const DRAGGABLE = "[data-todo-id], [data-run-id], [data-event-id]";
+export const DRAGGABLE =
+  "[data-todo-id], [data-run-id], [data-event-id], [data-forecast-id]";
 
 /** A key unique on the board; quests keep the key Heute uses. */
 export function entryKey(entry: WeekPlanEntry, date: string): string {
@@ -191,19 +198,22 @@ export function withEventDone(
  * the server. Appointments take part as anchors, held on the clock.
  */
 function isSequenced(entry: WeekPlanEntry): boolean {
-  if (entry.status !== "pending") return false;
-  return entry.type !== "habit" || entry.occurrenceId !== null;
+  // A forecast run takes part too: its place waits for its day.
+  return entry.status === "pending";
 }
 
-/** The order of a day as the server stores it. */
-export function dayOrder(open: readonly WeekPlanEntry[]): OrderRef[] {
-  return open.filter(isSequenced).map((entry) =>
-    entry.type === "todo"
-      ? { type: "todo", id: entry.todoId }
-      : entry.type === "event"
-        ? { type: "event", id: entry.eventId }
-        : { type: "habit", id: entry.occurrenceId! },
-  );
+/** The order of the day `date` as the server stores it. */
+export function dayOrder(
+  open: readonly WeekPlanEntry[],
+  date: string,
+): OrderRef[] {
+  return open.filter(isSequenced).map((entry): OrderRef => {
+    if (entry.type === "todo") return { type: "todo", id: entry.todoId };
+    if (entry.type === "event") return { type: "event", id: entry.eventId };
+    return entry.occurrenceId === null
+      ? { type: "forecast", id: entry.habitId, date }
+      : { type: "habit", id: entry.occurrenceId };
+  });
 }
 
 /**
@@ -265,8 +275,8 @@ function place(
   rows.splice(clockBoundIndex(rows, placed, Math.max(0, Math.min(index, rows.length))), 0, placed);
   const arranged = arrangeOpen(rows);
 
-  const before = dayOrder(openEntries(target));
-  const after = dayOrder(arranged);
+  const before = dayOrder(openEntries(target), toDate);
+  const after = dayOrder(arranged, toDate);
   const sorted =
     from.moves || JSON.stringify(before) !== JSON.stringify(after);
   if (!from.moves && !sorted) return null;
@@ -401,6 +411,28 @@ export function dropEventOnDay(
   const entry = day?.entries.find(
     (item): item is WeekPlanEventEntry =>
       isEvent(item) && item.eventId === drop.eventId,
+  );
+  if (!day || !entry) return null;
+  const result = place(
+    plan,
+    entry,
+    entry,
+    { source: day, overdue: false, moves: false },
+    drop.toDate,
+    drop.index,
+  );
+  return result?.order ? { plan: result.plan, order: result.order } : null;
+}
+
+/** A forecast run sorted within its day: the day's new order to write. */
+export function dropForecastOnDay(
+  plan: WeekPlanResponse,
+  drop: ForecastDrop,
+): { plan: WeekPlanResponse; order: OrderRef[] } | null {
+  const day = plan.days.find((item) => item.date === drop.toDate);
+  const entry = day?.entries.find(
+    (item) =>
+      isForecast(item) && item.type === "habit" && item.habitId === drop.habitId,
   );
   if (!day || !entry) return null;
   const result = place(
@@ -583,6 +615,15 @@ export function boardDrop(
   list: HTMLElement,
   index: number,
 ): BoardDrop | null {
+  const habitId = Number(item.dataset.forecastId);
+  if (habitId) {
+    // A forecast run sorts within its day; it is stored only there.
+    const toDate = list.dataset.date;
+    if (!toDate) return null;
+    return toDate === item.dataset.forecastDate
+      ? { kind: "forecast", drop: { habitId, toDate, index } }
+      : { kind: "refused", reason: "forecast", title: item.dataset.title ?? "" };
+  }
   const eventId = Number(item.dataset.eventId);
   if (eventId) {
     const toDate = list.dataset.date;

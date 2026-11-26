@@ -671,3 +671,56 @@ describe("new campaigns and categories", () => {
     });
   });
 });
+
+describe("times of day", () => {
+  const read = (text: string) => parseQuest(text, { today: TODAY_FOR_TIME });
+  const TODAY_FOR_TIME = "2026-11-26";
+
+  it("reads the usual ways to say a time, 'um' taken in", () => {
+    expect(read("Zahnarzt um 13 Uhr")).toMatchObject({
+      title: "Zahnarzt",
+      timeOfDay: "13:00",
+    });
+    expect(read("Zahnarzt 13:30").timeOfDay).toBe("13:30");
+    expect(read("Zahnarzt um 9.15 Uhr").timeOfDay).toBe("09:15");
+    expect(read("Zahnarzt um 9.15").timeOfDay).toBe("09:15");
+    expect(read("Zahnarzt 13 Uhr 30").timeOfDay).toBe("13:30");
+    expect(read("Zahnarzt um dreizehn Uhr").timeOfDay).toBe("13:00");
+    expect(read("Anruf gegen 8 Uhr")).toMatchObject({
+      title: "Anruf",
+      timeOfDay: "08:00",
+    });
+  });
+
+  it("goes with a day and a duration, each its own chip", () => {
+    const parsed = read("morgen um 13 Uhr Zahnarzt für 45 Minuten");
+    expect(parsed).toMatchObject({
+      title: "Zahnarzt",
+      scheduledDate: "2026-11-27",
+      timeOfDay: "13:00",
+      plannedDurationMinutes: 45,
+    });
+    expect(parsed.matches.map(({ kind, label }) => [kind, label])).toEqual([
+      ["date", "morgen"],
+      ["time", "13:00 Uhr"],
+      ["duration", "45 Min."],
+    ]);
+  });
+
+  it("never takes a date, a duration or an impossible hour for a time", () => {
+    expect(read("Steuer 13.12.").timeOfDay).toBeUndefined();
+    expect(read("Steuer 13.12.").scheduledDate).toBe("2026-12-13");
+    expect(read("Lernen 2 Stunden").timeOfDay).toBeUndefined();
+    expect(read("Party um 25 Uhr").timeOfDay).toBeUndefined();
+    expect(read("Bus 13 Uhr 30 Minuten")).toMatchObject({
+      timeOfDay: "13:00",
+      plannedDurationMinutes: 30,
+    });
+  });
+
+  it("leaves the words in the title when the chip is discarded", () => {
+    expect(
+      parseQuest("Zahnarzt um 13 Uhr", { today: TODAY_FOR_TIME, ignore: ["time"] }),
+    ).toMatchObject({ title: "Zahnarzt um 13 Uhr" });
+  });
+});

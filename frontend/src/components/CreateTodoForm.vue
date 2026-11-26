@@ -24,6 +24,7 @@ import {
 } from "../utils/parent-choice";
 import { categoryMark } from "../utils/category-mark";
 import { isCampaignIcon } from "../utils/campaign-style";
+import { getCurrentDateInTimeZone } from "../utils/date";
 import { parseQuest, type QuestParseKind } from "../utils/quest-parse";
 import { whyBelow } from "../utils/why";
 import CampaignFields from "./CampaignFields.vue";
@@ -105,6 +106,7 @@ const titleId = useId();
 const mic = ref<InstanceType<typeof MicButton> | null>(null);
 const untouched = (): Record<QuestParseKind, boolean> => ({
   date: false,
+  time: false,
   duration: false,
   campaign: Boolean(props.parent),
   category: false,
@@ -147,7 +149,7 @@ const parsed = computed(() =>
     : parseQuest(title.value, {
         ignore: [
           ...ignored.value,
-          ...(["date", "duration", "campaign", "category"] as const).filter(
+          ...(["date", "time", "duration", "campaign", "category"] as const).filter(
             (kind) => touched.value[kind],
           ),
         ],
@@ -157,7 +159,12 @@ const parsed = computed(() =>
 );
 watch(parsed, (result) => {
   if (!result) return;
-  if (!touched.value.date) date.value = result.scheduledDate ?? "";
+  if (!touched.value.date)
+    // A time without a day is an appointment today.
+    date.value =
+      result.scheduledDate ??
+      (result.timeOfDay ? getCurrentDateInTimeZone() : "");
+  if (!touched.value.time) time.value = result.timeOfDay ?? "";
   if (!touched.value.duration)
     durationMinutes.value = result.plannedDurationMinutes ?? "";
   const campaign = campaignChoices.value.find(
@@ -430,6 +437,7 @@ async function submit(): Promise<void> {
         <div v-else class="create-todo__more">
           <AppointmentFields
             v-model:time="time"
+            @update:time="touched.time = true"
             :date="date"
             id-prefix="todo"
           />

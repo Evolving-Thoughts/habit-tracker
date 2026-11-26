@@ -16,11 +16,16 @@ import {
 import { useLoader } from "../composables/useLoader";
 import { DAY_DROP, useSortable } from "../composables/useSortable";
 import { useEventTick } from "../composables/useEventTick";
-import { eventStaysLine, runWindowLine } from "../utils/day-drop";
+import {
+  eventStaysLine,
+  forecastStaysLine,
+  runWindowLine,
+} from "../utils/day-drop";
 import { useWrites } from "../composables/useWrites";
-import { useEventDrop } from "../composables/useEventDrop";
+import { useEventDrop, useForecastDrop } from "../composables/useEventDrop";
 import type { WeekPlanEntry, WeekPlanResponse } from "../types/week-plan";
 import { dayRelation, tallyLine } from "../utils/day-tally";
+import { dayLabel } from "../utils/history";
 import { asPlannerItem, relationLabel, tallyOfEntries } from "../utils/other-day";
 import {
   quickMoveEntries,
@@ -93,9 +98,14 @@ const tally = computed(() =>
     ? tallyLine(tallyOfEntries(day.value.entries), relation.value)
     : null,
 );
-const name = computed(
-  () => relationLabel(props.date, props.today)?.toLowerCase() ?? "heute",
-);
+/* "morgen", "gestern"; a day further away by its date ("Donnerstag, 3. Dez."). */
+const name = computed(() => {
+  const relation = relationLabel(props.date, props.today);
+  if (!relation) return "heute";
+  return /^(in|vor) /.test(relation)
+    ? dayLabel(props.date)
+    : relation.toLowerCase();
+});
 
 const busy = computed(() => props.held || writes.busy.value);
 
@@ -111,6 +121,8 @@ useSortable(list, {
     if (drop.kind === "day") void applyDrop(drop.drop);
     else if (drop.kind === "run") void applyRunDrop(drop.drop);
     else if (drop.kind === "event") void applyEventDrop(drop.drop);
+    else if (drop.kind === "forecast") void applyForecastDrop(drop.drop);
+    else if (drop.kind === "refused") emit("notice", forecastStaysLine(drop.title));
   },
   // A card dropped on "Heute" in the head moves to today.
   dropTarget: {
@@ -146,6 +158,11 @@ useSortable(list, {
           (isEvent(item) && item.eventId === eventId) ||
           (isMovableRun(item) && item.occurrenceId === runId),
       );
+      const forecastId = Number(card.dataset.forecastId);
+      if (forecastId) {
+        emit("notice", forecastStaysLine(card.dataset.title ?? ""));
+        return;
+      }
       if (!entry) return;
       if (isEvent(entry)) emit("notice", eventStaysLine(entry.title));
       else if (isMovableRun(entry))
@@ -223,6 +240,11 @@ async function applyRunDrop(
 
 /* A Google event sorted within the day: the rule all day views share. */
 const applyEventDrop = useEventDrop(plan, writes, {
+  key: "day",
+  said: (line) => (status.value = line),
+});
+/* A forecast run sorted within the day: its place waits for the day. */
+const applyForecastDrop = useForecastDrop(plan, writes, {
   key: "day",
   said: (line) => (status.value = line),
 });
@@ -364,12 +386,15 @@ function menu(entry: WeekPlanEntry): MenuEntry[] {
             v-else
             :data-todo-id="isMovable(entry) ? entry.todoId : undefined"
             :data-run-id="isMovableRun(entry) ? entry.occurrenceId : undefined"
+            :data-forecast-id="ahead && isForecast(entry) && entry.type === 'habit' ? entry.habitId : undefined"
+            :data-forecast-date="ahead && isForecast(entry) ? date : undefined"
+            :data-title="ahead && isForecast(entry) ? entry.title : undefined"
             :item="asPlannerItem(entry, date)"
             :is-updating="busy"
             :checkable="entry.type === 'todo'"
             :measurable="false"
             :menu="menu(entry)"
-            :sortable="isMovable(entry) || isMovableRun(entry)"
+            :sortable="isMovable(entry) || isMovableRun(entry) || (ahead && isForecast(entry))"
             :forecast="isForecast(entry)"
             :time="entry.timeOfDay"
             @toggle="toggle(entry)"

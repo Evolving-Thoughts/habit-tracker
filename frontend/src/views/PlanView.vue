@@ -42,7 +42,8 @@ import {
 import { toggleTimer, useTimer } from "../composables/useTimer";
 import { useTicks } from "../composables/useTicks";
 import { useWrites } from "../composables/useWrites";
-import { useEventDrop } from "../composables/useEventDrop";
+import { useEventDrop, useForecastDrop } from "../composables/useEventDrop";
+import { forecastStaysLine } from "../utils/day-drop";
 import type {
   WeekPlanEntry,
   WeekPlanResponse,
@@ -332,6 +333,14 @@ const applyEventDrop = useEventDrop(plan, writes, {
 });
 /** Said in sight when a drop could not land, such as a run beyond its window. */
 const notice = ref("");
+/* A forecast run sorted within its day: its place waits for that day. */
+const applyForecastDrop = useForecastDrop(plan, writes, {
+  key: "plan",
+  said: (line) => {
+    notice.value = "";
+    status.value = line;
+  },
+});
 
 /** Where an open entry now stands, for the live region. */
 function placeLine(
@@ -594,6 +603,14 @@ function onMove(move: BoardDrop): void {
   }
   if (move.kind === "event") {
     void applyEventDrop(move.drop);
+    return;
+  }
+  if (move.kind === "forecast") {
+    void applyForecastDrop(move.drop);
+    return;
+  }
+  if (move.kind === "refused") {
+    notice.value = forecastStaysLine(move.title);
     return;
   }
   const drop = move.drop;

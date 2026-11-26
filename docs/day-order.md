@@ -252,14 +252,30 @@ counts one.
   later day they drag like on today (the Plan's `dropEventOnDay`).
 - A run the schedule only forecasts (`isForecast`: no occurrence stored
   yet) shows as planned, not there: no ring, no fill, a dashed edge, here
-  and in the Plan. It neither ticks, sorts nor moves until its day stores
-  it.
+  and in the Plan. See "Vorhergesagte Läufe" below.
 - A past day shows its reflection and its best below the list.
 - No focus card, no stopwatch, no "Nachholen", no "Alles Offene auf morgen" there:
   they belong to now. The Logbuch pane shows that day's calendar; on a day
   after today the pane is called "Termine", as the calendar calls itself
   there.
 - A tap opens the same editor as on today.
+
+### Vorhergesagte Läufe
+
+A habit has one open run at a time (`UQ_habit_occurrences_pending`), so a
+daily's run on a later day is not stored before its day; the Plan forecasts
+it from the schedule. It still takes a place in that day's order:
+
+- It drags within its day like a card (`data-forecast-id`, `boardDrop`
+  kind `forecast`, `dropForecastOnDay`) and is written as
+  `{ type: "forecast", id: habitId, date }` among the day's items
+  (`PUT /day-planner/order`).
+- `habit_forecast_places` (habit, day, position) keeps the place; the Plan
+  sorts the forecast by it (`plannedHabitCandidate`).
+- When its day comes and the run is stored (`reconcile`), the run takes the
+  place over as its `dayPosition`, and the habit's places up to today go.
+- It never moves to another day: dropped there, or on "Heute" in the head,
+  it stays and says so ("… ist erst eingeplant und bleibt an seinem Tag.").
 
 ### Ablegen auf "Auf morgen" und "Heute"
 

@@ -80,6 +80,35 @@ describe("QuickAddQuest", () => {
     ).toBe("");
   });
 
+  it("makes an appointment of a time it reads, on the field's day or today", async () => {
+    const { type } = mountField();
+    await type("Zahnarzt um 13 Uhr");
+    expect(createTodo).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        title: "Zahnarzt",
+        scheduledDate: "2026-10-02",
+        timeOfDay: "13:00",
+      }),
+    );
+    // From the Questlog a time alone plans it for today.
+    vi.useFakeTimers({ now: new Date("2026-11-26T09:00:00Z"), toFake: ["Date"] });
+    try {
+      const questlog = mount(QuickAddQuest, { props: { date: null } });
+      await questlog.get('input[name="quickTitle"]').setValue("Anruf 15:30");
+      await questlog.get("form").trigger("submit");
+      await flushPromises();
+      expect(createTodo).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          title: "Anruf",
+          scheduledDate: "2026-11-26",
+          timeOfDay: "15:30",
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("puts a quest into the Questlog at the head or the end, as chosen", async () => {
     const wrapper = mount(QuickAddQuest, {
       props: { date: null, label: "Quest ins Questlog hinzufügen" },

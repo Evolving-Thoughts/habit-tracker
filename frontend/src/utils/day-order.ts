@@ -1,9 +1,13 @@
 /**
  * How the server names a row of a day's order (`PUT /day-planner/order`):
- * a quest, a daily's stored run, or a Google event holding its place. Heute,
- * its other days and the Plan all write it.
+ * a quest, a daily's stored run, a Google event holding its place, or a run
+ * the schedule only forecasts on a later day (its habit and that day; the
+ * run takes the place over when its day stores it). Heute, its other days
+ * and the Plan all write it.
  */
-export type OrderRef = { type: "todo" | "habit" | "event"; id: number };
+export type OrderRef =
+  | { type: "todo" | "habit" | "event"; id: number }
+  | { type: "forecast"; id: number; date: string };
 
 /**
  * `items` in the order given, with the timed ones (appointments, timed

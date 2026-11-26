@@ -25,7 +25,12 @@ import {
  * of them comes back as one to create (`newCampaign`, `newCategory`).
  */
 
-export type QuestParseKind = "date" | "duration" | "campaign" | "category";
+export type QuestParseKind =
+  | "date"
+  | "time"
+  | "duration"
+  | "campaign"
+  | "category";
 
 type MatchBase = {
   /** For the chip: "morgen", "Fr., 27.11.", "30 Min.", "Buch schreiben". */
@@ -39,6 +44,7 @@ type MatchBase = {
 
 export type QuestParseMatch =
   | (MatchBase & { kind: "date"; date: string; isNew?: never })
+  | (MatchBase & { kind: "time"; time: string; isNew?: never })
   | (MatchBase & { kind: "duration"; minutes: number; isNew?: never })
   | (MatchBase & {
       kind: "campaign";
@@ -60,6 +66,8 @@ export type QuestParse = {
   title: string;
   /** YYYY-MM-DD (Berlin day). */
   scheduledDate?: string;
+  /** HH:mm, from "um 13 Uhr", "13:30", "um 9.15 Uhr": an appointment. */
+  timeOfDay?: string;
   plannedDurationMinutes?: number;
   /** The campaign named ("Kampagne Buch schreiben", "für Buch schreiben"). */
   campaignId?: number;
@@ -225,6 +233,19 @@ const HALVES = re(`${B}${HALF}\\s+${HOUR_UNIT}${E}`);
 const HOURS = re(`${B}${NUMBER}\\s*${HOUR_UNIT}(?![\\p{L}\\d])`);
 const MINUTES = re(`${B}${NUMBER}\\s*${MINUTE_UNIT}(?![\\p{L}\\d])`);
 
+// A time of day: "13:30" stands alone; with a dot or a bare hour it needs
+// "Uhr" after it ("13.30 Uhr", "13 Uhr", "13 Uhr 30", "dreizehn Uhr") or
+// "um" before it ("um 9.15"), so "13.11." stays a date.
+const HOUR_WORDS = alternation(
+  Object.keys(NUMBER_WORDS).filter((word) => NUMBER_WORDS[word]! <= 24),
+);
+const CLOCK_COLON = re(`${B}(\\d{1,2}):(\\d{2})(?:\\s*uhr)?${E}`);
+const CLOCK_DOT_UHR = re(`${B}(\\d{1,2})\\.(\\d{2})\\s*uhr${E}`);
+const CLOCK_DOT_UM = re(`${B}um\\s+(\\d{1,2})\\.(\\d{2})${E}`);
+const CLOCK_UHR = re(
+  `${B}(\\d{1,2}|${HOUR_WORDS})\\s*uhr(?:\\s+(\\d{1,2})(?!\\s*${MINUTE_UNIT}))?${E}`,
+);
+const TIME_CONNECTORS = ["um", "gegen", "ab"];
 const DATE_CONNECTORS = ["am", "bis", "für", "ab"];
 const DURATION_CONNECTORS = ["für", "ca.", "circa", "etwa", "ungefähr", "rund"];
 
@@ -435,6 +456,39 @@ function findDuration(text: string): Candidate | null {
   };
 }
 
+/** "13:05" from an hour and minutes; null outside the day. */
+function clock(hour: number | null, minute: number): string | null {
+  if (hour === null || !Number.isInteger(hour) || hour < 0 || hour > 23)
+    return null;
+  if (minute < 0 || minute > 59) return null;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+/** The first time of day the text names, "um" before it taken in. */
+function findTime(text: string): Candidate | null {
+  const read =
+    (hourAt: number, minuteAt: number) =>
+    (match: RegExpExecArray): Omit<Candidate, "start" | "end"> | null => {
+      const time = clock(
+        numberValue(match[hourAt]!),
+        match[minuteAt] ? Number(match[minuteAt]) : 0,
+      );
+      return time ? { value: time, label: `${time} Uhr` } : null;
+    };
+  const found = first([
+    ...scan(CLOCK_COLON, text, read(1, 2)),
+    ...scan(CLOCK_DOT_UHR, text, read(1, 2)),
+    ...scan(CLOCK_DOT_UM, text, read(1, 2)),
+    ...scan(CLOCK_UHR, text, read(1, 2)),
+  ]);
+  return (
+    found && {
+      ...found,
+      start: withConnectors(text, found.start, TIME_CONNECTORS),
+    }
+  );
+}
+
 /** Blanks a range, keeping every other index where it was. */
 const blank = (text: string, start: number, end: number) =>
   text.slice(0, start) + " ".repeat(end - start) + text.slice(end);
@@ -564,6 +618,7 @@ export function parseQuest(
     ...dateCandidates(searched, today).map((found) =>
       withConnectors(searched, found.start, DATE_CONNECTORS),
     ),
+    ...(findTime(searched) ? [findTime(searched)!.start] : []),
     ...keywordStarts(searched, "kampagne"),
     ...keywordStarts(searched, "kategorie"),
   ];
@@ -602,7 +657,13 @@ export function parseQuest(
     });
   }
 
-  // Durations before days, so "1,5 h" is never read as a date.
+  // The time of day first, so "13.30 Uhr" is never read as a date, then
+  // durations before days, so "1,5 h" is never read as one either.
+  const time = ignore.has("time") ? null : findTime(searched);
+  if (time) {
+    removed.push(time);
+    searched = blank(searched, time.start, time.end);
+  }
   const duration = ignore.has("duration") ? null : findDuration(searched);
   if (duration) {
     removed.push(duration);
@@ -619,6 +680,15 @@ export function parseQuest(
       start: date.start,
       end: date.end,
       text: text.slice(date.start, date.end),
+    });
+  if (time)
+    matches.push({
+      kind: "time",
+      time: String(time.value),
+      label: time.label,
+      start: time.start,
+      end: time.end,
+      text: text.slice(time.start, time.end),
     });
   if (duration)
     matches.push({
@@ -637,6 +707,7 @@ export function parseQuest(
   return {
     title,
     ...(date ? { scheduledDate: String(date.value) } : {}),
+    ...(time ? { timeOfDay: String(time.value) } : {}),
     ...(duration ? { plannedDurationMinutes: Number(duration.value) } : {}),
     ...(campaign ? { campaignId: campaign.entry.id } : {}),
     ...(category ? { categoryId: category.entry.id } : {}),

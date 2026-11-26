@@ -14,6 +14,7 @@ import {
   entryKey,
   isEvent,
   isMovable,
+  isForecast,
   isMovableRun,
   openEntries,
   openSummary,
@@ -89,7 +90,7 @@ useSortable(list, {
     <QuickAddQuest
       class="plan-day__add"
       :date="day.date"
-      :order="dayOrder(open)"
+      :order="dayOrder(open, day.date)"
       :label="`Quest für ${dayLabel(day.date)} hinzufügen`"
       :place-toggle="false"
       @created="emit('created')"
@@ -109,6 +110,17 @@ useSortable(list, {
         :data-run-id="isMovableRun(entry) ? entry.occurrenceId : undefined"
         :data-event-id="
           isEvent(entry) && day.date >= today ? entry.eventId : undefined
+        "
+        :data-forecast-id="
+          isForecast(entry) && entry.type === 'habit' && day.date > today
+            ? entry.habitId
+            : undefined
+        "
+        :data-forecast-date="
+          isForecast(entry) && day.date > today ? day.date : undefined
+        "
+        :data-title="
+          isForecast(entry) && day.date > today ? entry.title : undefined
         "
       >
         <PlanEntry

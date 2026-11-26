@@ -159,10 +159,12 @@ describe("PlanEntry", () => {
       true,
     );
 
-    // A run the schedule only forecasts opens its daily but does not drag.
+    // A run the schedule only forecasts opens its daily and sorts within
+    // its day, shown as planned, not there yet.
     const forecast = mountEntry({ ...run, occurrenceId: null, streak: WEEK_HABIT_FIELDS.streak });
     expect(parts(forecast)).toEqual(["Daily", "30 Min."]);
     expect(forecast.classes()).toContain("card-target");
-    expect(forecast.classes()).not.toContain("card-drag");
+    expect(forecast.classes()).toContain("card-drag");
+    expect(forecast.classes()).toContain("plan-entry--forecast");
   });
 });
