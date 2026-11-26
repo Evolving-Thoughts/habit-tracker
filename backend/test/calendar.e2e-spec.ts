@@ -30,7 +30,7 @@ describe('Calendar month view (e2e)', () => {
   });
   beforeEach(() =>
     db.query(
-      'TRUNCATE timers, habit_occurrences, habit_schedule_versions, habits, todos CASCADE',
+      'TRUNCATE timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos CASCADE',
     ),
   );
   afterAll(() => app.close());

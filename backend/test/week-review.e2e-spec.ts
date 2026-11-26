@@ -71,7 +71,7 @@ describe('Week review (e2e)', () => {
   });
   beforeEach(() =>
     db.query(
-      'TRUNCATE week_reviews, goal_snapshots, work_logs, timers, habit_occurrences, habit_schedule_versions, habits, todos, categories CASCADE',
+      'TRUNCATE week_reviews, goal_snapshots, work_logs, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos, categories CASCADE',
     ),
   );
   afterAll(() => app.close());

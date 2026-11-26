@@ -88,7 +88,7 @@ describe('Quest hours (e2e)', () => {
   });
   beforeEach(async () => {
     await db.query(
-      'TRUNCATE weekly_quest_targets, work_logs, timers, habit_occurrences, habit_schedule_versions, habits, todos CASCADE',
+      'TRUNCATE weekly_quest_targets, work_logs, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos CASCADE',
     );
   });
   afterAll(() => app.close());

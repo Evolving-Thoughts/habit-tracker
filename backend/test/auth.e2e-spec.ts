@@ -88,7 +88,7 @@ describe('Authentication and ownership (e2e)', () => {
   });
   beforeEach(async () => {
     await db.query(
-      'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, categories, reflections, week_reviews, day_bests, day_best_settings, month_challenges, focus_blocks, focus_block_entries, focus_block_settings, work_logs, goal_snapshots, auth_tokens, auth_sessions, auth_rate_limits, weekly_quest_targets, users RESTART IDENTITY',
+      'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos, categories, reflections, week_reviews, day_bests, day_best_settings, month_challenges, focus_blocks, focus_block_entries, focus_block_settings, work_logs, goal_snapshots, auth_tokens, auth_sessions, auth_rate_limits, weekly_quest_targets, users RESTART IDENTITY',
     );
     messages.length = 0;
     mailer.send.mockClear();
@@ -96,7 +96,7 @@ describe('Authentication and ownership (e2e)', () => {
   afterAll(async () => {
     if (db?.isInitialized)
       await db.query(
-        'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_occurrences, habit_schedule_versions, habits, todos, categories, reflections, week_reviews, day_bests, day_best_settings, month_challenges, focus_blocks, focus_block_entries, focus_block_settings, work_logs, goal_snapshots, auth_tokens, auth_sessions, auth_rate_limits, weekly_quest_targets, users RESTART IDENTITY',
+        'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos, categories, reflections, week_reviews, day_bests, day_best_settings, month_challenges, focus_blocks, focus_block_entries, focus_block_settings, work_logs, goal_snapshots, auth_tokens, auth_sessions, auth_rate_limits, weekly_quest_targets, users RESTART IDENTITY',
       );
     await app?.close();
   });
