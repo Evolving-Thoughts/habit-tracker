@@ -54,6 +54,14 @@ export async function openView(page: Page, name: string) {
   if (!(await target.isVisible()))
     await navigation.getByRole("button", { name: "Mehr", exact: true }).click();
   await target.click();
+  // The views load on demand: the route, and with it the view, changes only
+  // once its code is there. Until then the old view is still on screen.
+  // (A view in "Mehr" has a second, hidden link; both turn current.)
+  await expect(
+    navigation
+      .getByRole("link", { name, exact: true, includeHidden: true })
+      .first(),
+  ).toHaveAttribute("aria-current", "page");
 }
 /** Opens Kalender (Monat by default) and waits until it has loaded. */
 export async function openCalendar(

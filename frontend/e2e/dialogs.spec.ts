@@ -35,6 +35,8 @@ for (const view of ["Questlog", "Heute", "Dailies"] as const) {
     const split = view === "Heute" && !isMobile;
     const plus = page.locator(split ? ".today-view__create" : ".create-button");
     if (!split) {
+      await expect(plus).toBeVisible();
+      await expect(plus).not.toHaveAttribute("data-hidden");
       const top = await plus.boundingBox();
       expect(top).not.toBeNull();
       await page.evaluate(() =>
