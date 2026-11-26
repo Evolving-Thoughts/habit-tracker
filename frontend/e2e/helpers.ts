@@ -53,7 +53,15 @@ export async function openView(page: Page, name: string) {
   await expect(navigation).toBeVisible();
   if (!(await target.isVisible()))
     await navigation.getByRole("button", { name: "Mehr", exact: true }).click();
+  const href = (await target.getAttribute("href"))?.split("?")[0];
   await target.click();
+  // The views load on demand: the route, and with it the view, changes only
+  // once its code is there. Until then the old view is still on screen.
+  // (The URL, not the link: the Fokus-Modus hides the tab bar on a phone.)
+  if (href)
+    await expect(page).toHaveURL(
+      (url) => url.hash.split("?")[0] === href,
+    );
 }
 /** Opens Kalender (Monat by default) and waits until it has loaded. */
 export async function openCalendar(
