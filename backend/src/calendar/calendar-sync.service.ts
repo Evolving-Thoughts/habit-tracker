@@ -432,14 +432,23 @@ export class CalendarSyncService {
       await calendars.remove(known.filter((c) => !current.has(c.calendarId)));
     }
     const repository = manager.getRepository(ExternalEventEntity);
-    // The rows are replaced, the places the user sorted them into stay.
-    const places = new Map(
+    // The rows are replaced; the places the user sorted them into and the
+    // ticks they gave them stay.
+    const kept = new Map(
       (
         await repository.find({
-          select: { calendarId: true, eventId: true, dayPosition: true },
-          where: { userId, dayPosition: Not(IsNull()) },
+          select: {
+            calendarId: true,
+            eventId: true,
+            dayPosition: true,
+            doneAt: true,
+          },
+          where: [
+            { userId, dayPosition: Not(IsNull()) },
+            { userId, doneAt: Not(IsNull()) },
+          ],
         })
-      ).map((row) => [placeKey(row.calendarId, row.eventId), row.dayPosition]),
+      ).map((row) => [placeKey(row.calendarId, row.eventId), row]),
     );
     await repository.delete({ userId });
     for (const { calendar, events } of read) {
@@ -465,7 +474,9 @@ export class CalendarSyncService {
             start: times.start,
             end: times.end,
             eventId: event.id,
-            dayPosition: places.get(placeKey(calendar.id, event.id)) ?? null,
+            dayPosition:
+              kept.get(placeKey(calendar.id, event.id))?.dayPosition ?? null,
+            doneAt: kept.get(placeKey(calendar.id, event.id))?.doneAt ?? null,
           }),
         ];
       });

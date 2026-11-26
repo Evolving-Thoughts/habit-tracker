@@ -87,6 +87,8 @@ export type DayPlannerExternalEventDto = {
    * clock among the appointments).
    */
   dayPosition: number | null;
+  /** Ticked off in the list (only in the app, never in Google). */
+  done: boolean;
 };
 
 export class DayPlannerResponseDto {

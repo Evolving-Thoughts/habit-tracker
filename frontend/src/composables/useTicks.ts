@@ -53,9 +53,17 @@ export function writeDone(target: TickTarget, done: boolean): Promise<void> {
 }
 
 /** Moves a target onto `date` without a dialog. */
-export function writeMove(target: TickTarget, date: string): Promise<unknown> {
+/**
+ * Moves a quest or run to `date`. `confirmFixed` moves an appointment too,
+ * keeping its time (a drop on a day says so plainly; the menu asks first).
+ */
+export function writeMove(
+  target: TickTarget,
+  date: string,
+  confirmFixed = false,
+): Promise<unknown> {
   return target.kind === "todo"
-    ? rescheduleTodo(target.id, date, false)
+    ? rescheduleTodo(target.id, date, confirmFixed)
     : rescheduleOccurrence(target.id, date);
 }
 
@@ -165,9 +173,13 @@ export function useTicks(
   function move(
     target: TickTarget,
     date: string,
-    { key, fallbackError }: { key?: string; fallbackError?: string } = {},
+    {
+      key,
+      fallbackError,
+      confirmFixed = false,
+    }: { key?: string; fallbackError?: string; confirmFixed?: boolean } = {},
   ): Promise<boolean> {
-    return write(() => writeMove(target, date), {
+    return write(() => writeMove(target, date, confirmFixed), {
       key,
       fallbackError: fallbackError ?? failedText(target, "verschoben"),
     });

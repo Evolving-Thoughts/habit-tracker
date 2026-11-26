@@ -157,7 +157,7 @@ test("Heute: quick add puts a quest at the end or at the head of today", async (
   ]);
 });
 
-test("Heute: appointments sit in the list by their time and stay when the rest moves to tomorrow", async ({
+test("Heute: appointments sit in the list by their time and move along with the rest, keeping it", async ({
   page,
   request,
 }) => {
@@ -180,28 +180,40 @@ test("Heute: appointments sit in the list by their time and stay when the rest m
   await expect(appointment).toContainText("23:58");
   await expect(appointment).toHaveAttribute("data-sort-key", /todo-/);
 
-  // On a phone "Auf morgen" waits in the header's "…" menu.
-  if ((page.viewportSize()?.width ?? 1280) < 640) {
-    await page
-      .getByRole("button", { name: "Weitere Aktionen für heute", exact: true })
-      .click();
-    await page
-      .getByRole("menuitem", {
-        name: "Offenes auf morgen verschieben",
-        exact: true,
-      })
-      .click();
-  } else {
-    await page.getByRole("button", { name: "Auf morgen", exact: true }).click();
-  }
+  // "Auf morgen" before ‹ › in the head, on every width.
+  await page
+    .getByRole("button", { name: "Offenes auf morgen verschieben", exact: true })
+    .click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog).toContainText("2 offene Einträge wandern auf morgen");
+  await expect(dialog).toContainText(
+    "3 offene Einträge wandern auf morgen und reihen sich dort hinten ein. Termine behalten ihre Uhrzeit.",
+  );
   await dialog
     .getByRole("button", { name: "Auf morgen verschieben", exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
+  const moved = (await (await request.get(`${API_URL}/todos`)).json()) as {
+    title: string;
+    scheduledDate: string;
+    timeOfDay: string | null;
+  }[];
+  expect(
+    Object.fromEntries(
+      moved.map((todo) => [todo.title, [todo.scheduledDate, todo.timeOfDay]]),
+    ),
+  ).toEqual({
+    Zahnarzt: [daysAfter(date, 1), "23:58"],
+    Aufräumen: [daysAfter(date, 1), null],
+    Einkaufen: [daysAfter(date, 1), null],
+  });
 
   // An appointment never stands in for an empty order: it waits in the list.
+  await plan(request, {
+    title: "Zahnarzt",
+    scheduledDate: date,
+    timeOfDay: "23:58",
+  });
+  await page.reload();
   await expect(page.locator("#focus-title")).toHaveCount(0);
   await expect(
     page.locator(
@@ -212,17 +224,6 @@ test("Heute: appointments sit in the list by their time and stay when the rest m
     "Nächster Termin: 23:58 Zahnarzt.",
   );
   await expect(appointment).toBeVisible();
-  const todos = (await (await request.get(`${API_URL}/todos`)).json()) as {
-    title: string;
-    scheduledDate: string;
-  }[];
-  expect(
-    Object.fromEntries(todos.map((todo) => [todo.title, todo.scheduledDate])),
-  ).toEqual({
-    Zahnarzt: date,
-    Aufräumen: daysAfter(date, 1),
-    Einkaufen: daysAfter(date, 1),
-  });
 });
 
 test("Heute: an appointment is the focus card from its start to its end", async ({

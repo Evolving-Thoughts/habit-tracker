@@ -42,6 +42,14 @@ export function reorderDay(
   });
 }
 
+/** Ticks a Google event off in the app or opens it again; Google stays as it is. */
+export function setEventDone(eventId: number, done: boolean): Promise<void> {
+  return request<void>(`/day-planner/events/${eventId}/done`, {
+    method: "PUT",
+    body: JSON.stringify({ done }),
+  });
+}
+
 export function getTodos(): Promise<TodoResponse[]> {
   return request<TodoResponse[]>("/todos");
 }

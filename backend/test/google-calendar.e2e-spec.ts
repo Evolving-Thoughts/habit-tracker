@@ -585,6 +585,62 @@ describe('Google calendar sync (e2e)', () => {
     expect((await read())[0].dayPosition).toBe(1);
   });
 
+  it('ticks an event off in the app only, and keeps the tick across syncs', async () => {
+    await connect();
+    google.add('primary', {
+      summary: 'Vermittlungsgespräch',
+      ...timed('2026-10-30T07:00:00.000Z', '2026-10-30T08:00:00.000Z'),
+    });
+    await sync();
+    type Planner = {
+      externalEvents: { id: number; title: string; done: boolean }[];
+    };
+    const read = async () =>
+      (
+        (await request(server).get('/day-planner/today').expect(200))
+          .body as Planner
+      ).externalEvents;
+    const [event] = await read();
+    expect(event.done).toBe(false);
+    const writesBefore = google.writes.length;
+
+    await request(server)
+      .put(`/day-planner/events/${event.id}/done`)
+      .send({ done: true })
+      .expect(204);
+    expect((await read())[0].done).toBe(true);
+    // The Plan lists it as done; Google heard nothing of it.
+    const plan = await request(server)
+      .get('/day-planner/plan?from=2026-10-30&days=1')
+      .expect(200);
+    expect(
+      (
+        plan.body as { days: { entries: { type: string; status: string }[] }[] }
+      ).days[0].entries.map(({ type, status }) => [type, status]),
+    ).toEqual([['event', 'completed']]);
+    expect(google.writes).toHaveLength(writesBefore);
+
+    // A sync replaces the rows; the tick stays.
+    await sync();
+    const [again] = await read();
+    expect(again.done).toBe(true);
+    await request(server)
+      .put(`/day-planner/events/${again.id}/done`)
+      .send({ done: false })
+      .expect(204);
+    expect((await read())[0].done).toBe(false);
+
+    // Only true or false; a gone row or another user's is not found.
+    await request(server)
+      .put(`/day-planner/events/${again.id}/done`)
+      .send({ done: 'ja' })
+      .expect(400);
+    await request(server)
+      .put('/day-planner/events/2147483647/done')
+      .send({ done: true })
+      .expect(404);
+  });
+
   it('counts events by the time they occupy, not by their start', async () => {
     await connect();
     google.add('primary', {

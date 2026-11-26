@@ -159,12 +159,13 @@ export class DayPlannerService {
       date: today,
       items,
       externalEvents: externalEvents.map(
-        ({ id, title, start, end, dayPosition }) => ({
+        ({ id, title, start, end, dayPosition, doneAt }) => ({
           id,
           title,
           start: start.toISOString(),
           end: end.toISOString(),
           dayPosition,
+          done: doneAt !== null,
         }),
       ),
       workedMinutes: workedMinutes(logs, today),
@@ -359,6 +360,17 @@ export class DayPlannerService {
           .update({ id }, { dayPosition });
       }
     });
+  }
+
+  /**
+   * Ticks a Google event off or opens it again. Only the app's copy
+   * changes; the sync keeps the tick (see `replaceExternal`).
+   */
+  async setEventDone(userId: string, id: number, done: boolean): Promise<void> {
+    const result = await this.db
+      .getRepository(ExternalEventEntity)
+      .update({ id, userId }, { doneAt: done ? new Date() : null });
+    if (!result.affected) throw new NotFoundException('Event not found');
   }
 
   /** Titles of the direct parents: the goal a todo is a step towards. */

@@ -73,6 +73,8 @@ The time-based replanner ("Neu planen"), the day-end setting and the per-calenda
   this order, with what is overdue apart; see `week-plan.md`.
 - `PUT /todos/backlog/order` with `{ ids: number[] }` stores the Questlog's
   order (below).
+- `PUT /day-planner/events/:id/done` with `{ done: boolean }` ticks a Google
+  event off in the app or opens it again (below, Google-Termine abhaken).
 
 ## The Questlog's order
 
@@ -191,8 +193,12 @@ export only, as Logbuch events (see `logbook.md`).
   which; the choice holds per device for every quick add
   (`composables/useInsertPlace.ts`, `localStorage` `quickAdd:place`). The
   Plan puts one on top of every day.
-- "Auf morgen" moves everything open that only has its day to tomorrow, after
-  asking. Appointments and dailies that cannot move stay.
+- "Auf morgen" (the pill before ‹ › in the head) moves everything open to
+  tomorrow after asking: today's entries in their order, then what is
+  carried over ("Nachholen"); an appointment keeps its time. What cannot
+  move stays, and the question names it with its reason
+  (`utils/postpone.ts`): a run whose window ends today, an entry whose
+  stopwatch runs. Google events are not part of it.
 - Creating: below 64rem the floating plus button (`CreateButton.vue`, a long
   press dictates); in the split layout from 64rem, where it would cover the
   rows' ▶, "Neue Quest" in the head opens the same dialog instead, as a
@@ -244,12 +250,54 @@ counts one.
   tick on their own day.
 - Its Google events are entries of the Plan's day, at their places; on a
   later day they drag like on today (the Plan's `dropEventOnDay`).
+- A run the schedule only forecasts (`isForecast`: no occurrence stored
+  yet) shows as planned, not there: no ring, no fill, a dashed edge, here
+  and in the Plan. It neither ticks, sorts nor moves until its day stores
+  it.
 - A past day shows its reflection and its best below the list.
-- No focus card, no stopwatch, no "Nachholen", no "Auf morgen" there:
+- No focus card, no stopwatch, no "Nachholen", no "Alles Offene auf morgen" there:
   they belong to now. The Logbuch pane shows that day's calendar; on a day
   after today the pane is called "Termine", as the calendar calls itself
   there.
 - A tap opens the same editor as on today.
+
+### Ablegen auf "Auf morgen" und "Heute"
+
+‹ › close Heute's head on every day, in the same place. Before them stands
+one pill: on today "Auf morgen" (everything open after asking), on
+another day "Heute" (back). The pill is a drop target (`data-day-drop`
+with the day in `data-date`): a card dragged onto it and released there
+moves to that day, without a question. The rule is `useSortable`'s `dropTarget`, shared by every list
+that sorts by dragging: while a card is dragged the pointer is followed
+(the drag layer lets it through), the target under it is marked
+(`drop-target--over`), and on release the card goes back to its place in
+the list and `onDrop` runs instead of `onMove`.
+
+- A quest moves at once, an appointment with its time (`confirmFixed`;
+  the menu's "Termin verschieben …" still asks); a run takes only a day
+  of its window (`runMayMoveTo` on other days). A line above the list
+  says where it went.
+- What a target does not take does not light up but fades
+  (`drop-target--refused`), and on release it says why (`onRefuse`, words in `utils/day-drop.ts`): a Google event stays on
+  its day, a run outside its window names where its window ends.
+
+### Google-Termine abhaken
+
+A Google event in Heute's list and on its other days has a ring. Ticked
+off, it leaves the open list for "abgeschlossen" (crossed out), the day
+calendar on the side keeps it, and it counts in no tally; the same ring
+opens it again there. Only by hand: an event that is over is only shown
+quieter.
+
+- `external_events.doneAt` holds the tick, only the app's: nothing is
+  written to Google. A sync carries it over by `eventId` like the place
+  (`replaceExternal`).
+- `GET /day-planner/today` sends `done` per event; the Plan's entries say
+  `status: "completed"` and stand among the day's done entries.
+- The frontend shows the tick at once and writes it after
+  (`useEventTick`, the same in Heute and on its other days); a failure
+  takes it back. An id a sync has replaced meanwhile answers 404, and the
+  view loads the day again.
 
 ### Google-Termine in der Reihenfolge
 

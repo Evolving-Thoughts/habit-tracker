@@ -206,6 +206,7 @@ describe("a Google event in the order of the day", () => {
     start: `2026-10-02T${String(hour - 2).padStart(2, "0")}:00:00Z`,
     end: `2026-10-02T${String(hour - 1).padStart(2, "0")}:00:00Z`,
     dayPosition,
+    done: false,
   });
 
   const names = (rows: ReturnType<typeof sortableRows>) =>

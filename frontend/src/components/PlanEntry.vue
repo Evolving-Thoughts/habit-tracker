@@ -10,7 +10,7 @@ import { campaignMark as markOf } from "../utils/category-mark";
 import { shortDate } from "../utils/history";
 import type { MenuEntry } from "../utils/row-actions";
 import { streakLine } from "../utils/streak";
-import { isMovable, isMovableRun } from "../utils/week-plan";
+import { isForecast, isMovable, isMovableRun } from "../utils/week-plan";
 
 /**
  * One card of the Plan, compact enough for its narrowest columns. A quest
@@ -51,6 +51,8 @@ function openFromCard(click: MouseEvent): void {
   if (!props.busy && !event.value) onCardClick(click, () => emit("edit"));
 }
 const done = computed(() => props.entry.status !== "pending");
+/** A run the schedule only forecasts: planned, not there yet. */
+const forecast = computed(() => isForecast(props.entry));
 
 const details = computed(() => {
   const parts: string[] = [];
@@ -88,6 +90,7 @@ const campaign = computed(() => {
       'plan-entry--done': done,
       'plan-entry--campaign': campaignMark,
       'plan-entry--event': event,
+      'plan-entry--forecast': forecast,
       'card-target': true,
       'card-drag': movable,
     }"
@@ -121,6 +124,9 @@ const campaign = computed(() => {
           {{ entry.title }}
         </button>
       </h3>
+      <p v-if="forecast" class="visually-hidden">
+        Eingeplant; der Lauf entsteht an seinem Tag.
+      </p>
       <p
         v-if="entry.type === 'habit' || details.length"
         class="plan-entry__details"
@@ -149,6 +155,13 @@ const campaign = computed(() => {
   container-type: inline-size;
   border-radius: var(--radius-control);
   background: var(--color-surface);
+}
+
+/* Planned, not there yet: no fill, a dashed edge inside the card. */
+.plan-entry--forecast {
+  background: transparent;
+  outline: 1.5px dashed var(--color-line-strong);
+  outline-offset: -1.5px;
 }
 
 /* A Google event: the flat white of appointments elsewhere, never a button. */

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { WEEK_ENTRY_FIELDS, WEEK_HABIT_FIELDS } from "../types/fixtures";
 import type {
   WeekPlanDay,
+  WeekPlanEntry,
   WeekPlanEventEntry,
   WeekPlanHabitEntry,
   WeekPlanResponse,
@@ -15,6 +16,10 @@ import {
   dropOnDay,
   dropEventOnDay,
   dropRunOnDay,
+  doneEntries,
+  isForecast,
+  openEntries,
+  withEventDone,
   entryKey,
   firstDayFromQuery,
   fittingDays,
@@ -625,6 +630,16 @@ describe("the phone's board: chips, start column and the column in view", () => 
   });
 });
 
+describe("isForecast", () => {
+  it("is a run the schedule only forecasts: open and not stored", () => {
+    const run = (occurrenceId: number | null, status: "pending" | "completed" = "pending") =>
+      ({ ...WEEK_ENTRY_FIELDS, ...WEEK_HABIT_FIELDS, type: "habit", occurrenceId, status }) as WeekPlanEntry;
+    expect(isForecast(run(null))).toBe(true);
+    expect(isForecast(run(92))).toBe(false);
+    expect(isForecast(run(null, "completed"))).toBe(false);
+  });
+});
+
 describe("a Google event on the Plan", () => {
   const event = (
     eventId: number,
@@ -641,6 +656,21 @@ describe("a Google event on the Plan", () => {
   });
   const titles = (plan: WeekPlanResponse, date: string) =>
     plan.days.find((day) => day.date === date)!.entries.map(({ title }) => title);
+
+  it("ticked off, it stands among the day's done entries, and opens again", () => {
+    const plan = week({
+      [WEDNESDAY]: [event(9, "11:00"), quest(1, { scheduledDate: WEDNESDAY })],
+    });
+    const day = (shown: WeekPlanResponse) =>
+      shown.days.find((entry) => entry.date === WEDNESDAY)!;
+    const ticked = withEventDone(plan, 9, true);
+    expect(openEntries(day(ticked)).map(({ title }) => title)).toEqual(["Quest 1"]);
+    expect(doneEntries(day(ticked)).map(({ title }) => title)).toEqual(["Termin 9"]);
+    const opened = withEventDone(ticked, 9, false);
+    expect(doneEntries(day(opened))).toEqual([]);
+    // Another event keeps its state.
+    expect(withEventDone(plan, 4, true)).toEqual(plan);
+  });
 
   it("drags among the cards without a time and writes its place", () => {
     const plan = week({

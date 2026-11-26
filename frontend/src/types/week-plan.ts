@@ -47,7 +47,8 @@ export type WeekPlanEventEntry = {
   type: "event";
   /** The event's row (`externalEvents[].id` of Heute). */
   eventId: number;
-  status: "pending";
+  /** Ticked off in a day's list (only in the app, never in Google). */
+  status: "pending" | "completed";
   start: string;
   end: string;
 } & WeekPlanEntryContext;

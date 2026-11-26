@@ -200,7 +200,7 @@ export function eventCandidates(
           entry: {
             type: 'event',
             eventId: event.id,
-            status: 'pending',
+            status: event.doneAt ? 'completed' : 'pending',
             start: event.start.toISOString(),
             end: event.end.toISOString(),
             title: event.title,

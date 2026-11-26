@@ -5,7 +5,6 @@ import type {
   WeekPlanEntry,
   WeekPlanEventEntry,
   WeekPlanHabitEntry,
-  WeekPlanOwnEntry,
   WeekPlanResponse,
   WeekPlanTodoEntry,
 } from "../types/week-plan";
@@ -129,6 +128,18 @@ export function isMovableRun(entry: WeekPlanEntry): entry is OpenRun {
   );
 }
 
+/**
+ * A run the schedule only forecasts on a later day: nothing is stored yet,
+ * so it neither ticks, sorts nor moves; it shows as planned, not there.
+ */
+export function isForecast(entry: WeekPlanEntry): boolean {
+  return (
+    entry.type === "habit" &&
+    entry.status === "pending" &&
+    entry.occurrenceId === null
+  );
+}
+
 /** Whether a run may lie on `date`: from today to the end of its window. */
 export function runMayMoveTo(
   entry: OpenRun,
@@ -147,12 +158,32 @@ export function openEntries(day: WeekPlanDay): WeekPlanEntry[] {
   return day.entries.filter((entry) => entry.status === "pending");
 }
 
-/** What is done or skipped; a Google event is never either. */
-export function doneEntries(day: WeekPlanDay): WeekPlanOwnEntry[] {
-  return day.entries.filter(
-    (entry): entry is WeekPlanOwnEntry =>
-      entry.type !== "event" && entry.status !== "pending",
-  );
+/** What is done or skipped, a Google event ticked off among them. */
+export function doneEntries(day: WeekPlanDay): WeekPlanEntry[] {
+  return day.entries.filter((entry) => entry.status !== "pending");
+}
+
+/**
+ * The plan with the Google event `eventId` ticked off or open again on
+ * every day it stands, shown before the server answers.
+ */
+export function withEventDone(
+  plan: WeekPlanResponse,
+  eventId: number,
+  done: boolean,
+): WeekPlanResponse {
+  const status = done ? "completed" : "pending";
+  return {
+    ...plan,
+    days: plan.days.map((day) => ({
+      ...day,
+      entries: day.entries.map((entry) =>
+        entry.type === "event" && entry.eventId === eventId
+          ? { ...entry, status }
+          : entry,
+      ),
+    })),
+  };
 }
 
 /**

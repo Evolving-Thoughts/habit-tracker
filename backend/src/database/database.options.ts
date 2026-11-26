@@ -21,6 +21,7 @@ import { MonthChallenges1796500000000 } from './migrations/1796500000000-MonthCh
 import { FocusBlocks1796600000000 } from './migrations/1796600000000-FocusBlocks';
 import { EventPlaces1796700000000 } from './migrations/1796700000000-EventPlaces';
 import { FocusBlockWhileRunning1796800000000 } from './migrations/1796800000000-FocusBlockWhileRunning';
+import { EventDone1796900000000 } from './migrations/1796900000000-EventDone';
 
 type PostgresOptions = Extract<DataSourceOptions, { type: 'postgres' }>;
 
@@ -64,6 +65,7 @@ export function databaseOptions(
       FocusBlocks1796600000000,
       EventPlaces1796700000000,
       FocusBlockWhileRunning1796800000000,
+      EventDone1796900000000,
     ],
   };
 }

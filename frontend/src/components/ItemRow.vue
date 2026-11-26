@@ -24,6 +24,11 @@ const props = withDefaults(
     checkable?: boolean;
     /** Without a ring, keeps its column, so titles line up in a mixed list. */
     keepRingColumn?: boolean;
+    /**
+     * A daily's run the schedule only forecasts on a later day: planned,
+     * not there yet. A dashed edge without fill, like a place held open.
+     */
+    forecast?: boolean;
     /** The ring's spoken name; "<title> erledigen" or "… wieder öffnen" by default. */
     checkLabel?: string;
     /** Passed to the ring as aria-pressed, where a list reads it so. */
@@ -55,6 +60,7 @@ const props = withDefaults(
     state: "open",
     checkable: true,
     keepRingColumn: false,
+    forecast: false,
     checkLabel: undefined,
     ringPressed: undefined,
     editable: true,
@@ -101,6 +107,7 @@ const timerState = computed(() =>
       'item-row--campaign': campaignMark,
       'item-row--leading': $slots.leading,
       'item-row--wrap-meta': wrapMeta,
+      'item-row--forecast': forecast,
       'card-target': editable,
       'card-drag': draggable,
     }"
@@ -146,6 +153,9 @@ const timerState = computed(() =>
           </button>
           <template v-else>{{ title }}</template>
         </component>
+        <p v-if="forecast" class="visually-hidden">
+          Eingeplant; der Lauf entsteht an seinem Tag.
+        </p>
         <p v-if="$slots.meta || timerState" class="item-row__meta">
           <span v-if="timerState" class="item-row__running">
             <i aria-hidden="true" />{{
@@ -185,6 +195,16 @@ const timerState = computed(() =>
   padding: var(--space-1) var(--space-1) var(--space-1) var(--space-1);
   border-radius: var(--radius-card);
   background: var(--color-surface);
+}
+
+/*
+ * Planned, not there yet: no fill, a dashed edge in strong line ink (inside
+ * the card, so nothing shifts). Shape says it, not a colour.
+ */
+.item-row--forecast {
+  background: transparent;
+  outline: 1.5px dashed var(--color-line-strong);
+  outline-offset: -1.5px;
 }
 
 /* The stripe names the campaign the item works towards. */

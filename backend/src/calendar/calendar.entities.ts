@@ -160,4 +160,11 @@ export class ExternalEventEntity {
    */
   @Column({ type: 'integer', nullable: true })
   dayPosition!: number | null;
+
+  /**
+   * When the user ticked it off in a day's list; null while open. Only the
+   * app knows it, never Google; a sync keeps it like `dayPosition`.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  doneAt!: Date | null;
 }

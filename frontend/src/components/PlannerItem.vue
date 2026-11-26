@@ -51,7 +51,9 @@ const props = withDefaults(defineProps<{
    * in words in the meta line, which then wraps on a phone too.
    */
   challenge?: string | null;
-}>(), { checkable: true, measurable: true });
+  /** A run the schedule only forecasts: planned, not there yet. */
+  forecast?: boolean;
+}>(), { checkable: true, measurable: true, forecast: false });
 
 const emit = defineEmits<{
   toggle: [item: DayPlannerItem];
@@ -132,6 +134,7 @@ const measure = computed(() =>
     :state="state"
     :checkable="checkable"
     :keep-ring-column="!checkable"
+    :forecast="forecast"
     :busy="isUpdating"
     :draggable="sortable"
     :campaign-mark="campaignMark"

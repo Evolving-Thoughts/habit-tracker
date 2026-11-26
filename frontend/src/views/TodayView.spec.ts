@@ -15,6 +15,7 @@ import {
   getToday,
   getTodos,
   reorderDay,
+  setEventDone,
   createTodo,
   createHabit,
   getHabit,
@@ -78,6 +79,7 @@ vi.mock("../api/day-planner.api", () => ({
   getHabits: vi.fn(),
   getPlan: vi.fn(),
   reorderDay: vi.fn(),
+  setEventDone: vi.fn(),
   createTodo: vi.fn(),
   createHabit: vi.fn(),
   updateOccurrenceStatus: vi.fn(),
@@ -147,6 +149,14 @@ function makePlanner(
     workedMinutes: 0,
     questHours: NO_QUEST_HOURS,
   };
+}
+
+/** "Auf morgen" in the head, the pill before ‹ ›, on every width. */
+async function openPostpone(wrapper: ReturnType<typeof mount>): Promise<void> {
+  await wrapper
+    .get('.today-view__header [aria-label="Offenes auf morgen verschieben"]')
+    .trigger("click");
+  await flushPromises();
 }
 
 describe("TodayView", () => {
@@ -460,6 +470,7 @@ describe("TodayView", () => {
           start: "2026-10-02T10:00:00.000Z",
           end: "2026-10-02T11:00:00.000Z",
           dayPosition: null,
+          done: false,
         },
       ],
     });
@@ -480,6 +491,47 @@ describe("TodayView", () => {
     );
     expect(wrapper.find(".timeline").exists()).toBe(false);
     expect(wrapper.text()).not.toContain("Termine");
+  });
+
+  it("ticks a Google event off into abgeschlossen and opens it again", async () => {
+    const event = {
+      id: 5,
+      title: "Mittagessen",
+      start: "2026-10-02T10:00:00.000Z",
+      end: "2026-10-02T11:00:00.000Z",
+      dayPosition: null,
+      done: false,
+    };
+    getTodayMock.mockResolvedValue({
+      ...makePlanner([makeTodo()]),
+      externalEvents: [event],
+    });
+    vi.mocked(setEventDone).mockResolvedValue(undefined);
+    const wrapper = mount(TodayView);
+    await flushPromises();
+    // The server answers with the tick from now on.
+    getTodayMock.mockResolvedValue({
+      ...makePlanner([makeTodo()]),
+      externalEvents: [{ ...event, done: true }],
+    });
+    await wrapper.get('[aria-label="Mittagessen abhaken"]').trigger("click");
+    await flushPromises();
+    expect(setEventDone).toHaveBeenCalledWith(5, true);
+    expect(wrapper.find(".today-view__event").exists()).toBe(false);
+    // Not a quest: the count stays "0 von 1", the section counts it.
+    const resolved = wrapper.get(".resolved__toggle");
+    expect(resolved.text()).toContain("1 abgeschlossen");
+    await resolved.trigger("click");
+    getTodayMock.mockResolvedValue({
+      ...makePlanner([makeTodo()]),
+      externalEvents: [event],
+    });
+    await wrapper
+      .get('[aria-label="Mittagessen wieder öffnen"]')
+      .trigger("click");
+    await flushPromises();
+    expect(setEventDone).toHaveBeenLastCalledWith(5, false);
+    expect(wrapper.find(".today-view__event").exists()).toBe(true);
   });
 
   it("keeps an item the server placed between two appointments there", async () => {
@@ -622,12 +674,19 @@ describe("TodayView", () => {
     await wrapper.vm.$nextTick();
   });
 
-  it("moves everything open to tomorrow after asking, appointments stay", async () => {
+  it("moves everything open to tomorrow after asking and names what stays", async () => {
     getTodayMock.mockResolvedValue(
       makePlanner([
         makeTodo({ todoId: 3, title: "Zahnarzt", timeOfDay: "14:00" }),
         makeTodo(),
         makeTodo({ todoId: 2, title: "Bewerbung" }),
+        // Carried over from earlier: it goes along.
+        makeTodo({
+          todoId: 4,
+          title: "Rechnung",
+          scheduledDate: "2026-09-30",
+          isOverdue: true,
+        }),
         // This daily cannot move: its window ends today.
         makeHabit({ title: "Lesen", moveUntil: "2026-10-02" }),
       ]),
@@ -635,23 +694,35 @@ describe("TodayView", () => {
     const wrapper = mount(TodayView, { attachTo: document.body });
     await flushPromises();
 
-    await wrapper.get(".today-view__postpone").trigger("click");
+    await openPostpone(wrapper);
     expect(rescheduleTodo).not.toHaveBeenCalled();
-    expect(document.body.textContent).toContain(
-      "2 offene Einträge wandern auf morgen",
+    const text = document.body.textContent;
+    expect(text).toContain(
+      "4 offene Einträge wandern auf morgen und reihen sich dort hinten ein. Termine behalten ihre Uhrzeit.",
     );
+    expect(text).toContain("„Lesen“ bleibt: Sein Zeitraum endet heute.");
     document
       .querySelector<HTMLButtonElement>("[data-postpone-confirm]")!
       .click();
     await flushPromises();
 
-    expect(vi.mocked(rescheduleTodo).mock.calls).toEqual([
-      [1, "2026-10-03", false],
-      [2, "2026-10-03", false],
-    ]);
+    // The appointment moves with its time: no question at the server.
+    expect(
+      vi.mocked(rescheduleTodo).mock.calls.map(([id, date, fixed]) => [id, date, fixed]),
+    ).toEqual(
+      expect.arrayContaining([
+        [1, "2026-10-03", true],
+        [2, "2026-10-03", true],
+        [3, "2026-10-03", true],
+        [4, "2026-10-03", true],
+      ]),
+    );
+    expect(rescheduleTodo).toHaveBeenCalledTimes(4);
+    // What was carried over comes last.
+    expect(vi.mocked(rescheduleTodo).mock.calls.at(-1)![0]).toBe(4);
   });
 
-  it("keeps Auf morgen in the header's menu on a phone, with the same question", async () => {
+  it("keeps Auf morgen in the head on a phone, with the same question", async () => {
     vi.stubGlobal(
       "matchMedia",
       (query: string) =>
@@ -668,18 +739,11 @@ describe("TodayView", () => {
       );
       const wrapper = mount(TodayView, { attachTo: document.body });
       await flushPromises();
-
-      const header = wrapper.get(".today-view__header");
-      expect(header.find(".today-view__postpone").exists()).toBe(false);
-      await header
-        .get('[aria-label="Weitere Aktionen für heute"]')
-        .trigger("click");
-      const entry = wrapper.get(
-        '[role=menuitem][aria-label="Offenes auf morgen verschieben"]',
+      const pill = wrapper.get(
+        '.today-view__header [aria-label="Offenes auf morgen verschieben"]',
       );
-      expect(entry.text()).toContain("Auf morgen");
-      await entry.trigger("click");
-      await flushPromises();
+      expect(pill.text()).toBe("Auf morgen");
+      await openPostpone(wrapper);
       expect(document.body.textContent).toContain(
         "2 offene Einträge wandern auf morgen",
       );
@@ -2259,8 +2323,7 @@ describe("TodayView kept alive behind other views", () => {
 
   it("closes an open dialog and releases the page's scroll lock when left", async () => {
     const wrapper = await mountHost();
-    await wrapper.get(".today-view__postpone").trigger("click");
-    await flushPromises();
+    await openPostpone(wrapper);
     expect(document.querySelector("dialog[open]")).not.toBeNull();
     expect(document.body.style.position).toBe("fixed");
 
@@ -2321,7 +2384,7 @@ describe("TodayView on other days", () => {
     route.query = {};
   });
 
-  it("leafs to yesterday and tomorrow with the arrows in its head", async () => {
+  it("leafs to yesterday and tomorrow with ‹ › last in its head", async () => {
     const wrapper = mount(TodayView);
     await flushPromises();
     await wrapper.get('button[aria-label="Voriger Tag"]').trigger("click");
@@ -2334,8 +2397,16 @@ describe("TodayView on other days", () => {
       name: "today",
       query: { tag: "2026-10-03" },
     });
-    // Today itself needs no way back.
-    expect(wrapper.find(".today-view__back").exists()).toBe(false);
+    // ‹ › close the row on every day, so they never move; before them on
+    // today "Auf morgen", also where a card is dropped to move it there.
+    const days = wrapper.findAll(".today-view__days button");
+    expect(days.map((button) => button.attributes("aria-label"))).toEqual([
+      "Offenes auf morgen verschieben",
+      "Voriger Tag",
+      "Nächster Tag",
+    ]);
+    expect(days[0]!.attributes("data-day-drop")).toBeDefined();
+    expect(days[0]!.attributes("data-date")).toBe("2026-10-03");
   });
 
   it("shows tomorrow on Heute's cards, ready to plan, without the focus card", async () => {

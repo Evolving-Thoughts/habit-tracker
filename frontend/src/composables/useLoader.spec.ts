@@ -64,6 +64,38 @@ describe("useLoader", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps a change heard while busy and loads once the view is free", async () => {
+    const busy = ref(false);
+    const load = vi.fn(() => Promise.resolve("x"));
+    harness(load, busy);
+    await flushPromises();
+    busy.value = true;
+    notifyDataChanged();
+    await flushPromises();
+    expect(load).toHaveBeenCalledTimes(1);
+    busy.value = false;
+    await flushPromises();
+    expect(load).toHaveBeenCalledTimes(2);
+    // Nothing missed: freeing the view again loads nothing.
+    busy.value = true;
+    busy.value = false;
+    await flushPromises();
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not load twice when the view's own reload already ran", async () => {
+    const busy = ref(false);
+    const load = vi.fn(() => Promise.resolve("x"));
+    const { api } = harness(load, busy);
+    await flushPromises();
+    busy.value = true;
+    notifyDataChanged();
+    await api().reload(false);
+    busy.value = false;
+    await flushPromises();
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
   it("loads again when a parameter changes and aborts the older request", async () => {
     const day = ref("a");
     const signals: AbortSignal[] = [];
