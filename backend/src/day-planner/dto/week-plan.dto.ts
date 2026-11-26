@@ -62,8 +62,8 @@ export type WeekPlanEventEntryDto = {
   type: 'event';
   /** `externalEvents[].id` of Heute: the row of this sync. */
   eventId: number;
-  /** Always open: an event is never ticked off. */
-  status: 'pending';
+  /** Ticked off in a day's list (only in the app, never in Google). */
+  status: 'pending' | 'completed';
   start: string;
   end: string;
 } & WeekPlanEntryContext;

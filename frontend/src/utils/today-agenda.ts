@@ -96,6 +96,11 @@ export type TodayAgenda = {
    */
   queue: DayPlannerItem[];
   resolved: DayPlannerItem[];
+  /**
+   * Google events ticked off: under "abgeschlossen" with the resolved
+   * items, never counted in the tally (they are no quests).
+   */
+  resolvedEvents: ExternalEvent[];
   /** The day counted by the rule all views share (`day-tally.ts`). */
   tally: DayTally;
 };
@@ -120,6 +125,11 @@ function clockOf(instant: string): { minutes: number; time: string } {
   const time = timeFormat.format(new Date(instant));
   const [hours, minutes] = time.split(":").map(Number);
   return { minutes: hours! * 60 + minutes!, time };
+}
+
+/** When a Google event starts today, on Berlin's clock ("09:00"). */
+export function eventTime(event: ExternalEvent): string {
+  return clockOf(event.start).time;
 }
 
 /** The clock time an appointment or timed daily is fixed to, if it has one. */
@@ -294,7 +304,12 @@ export function arrangeToday(
   const queue = pending.filter((item) => plannedClock(item) === null);
   const focus = currentItem(pending, queue, now);
 
-  const events: AppointmentEntry[] = planner.externalEvents.map((event) => {
+  // A ticked-off event leaves the open list for "abgeschlossen"; the day
+  // calendar on the side keeps it.
+  const doneEvents = planner.externalEvents.filter((event) => event.done);
+  const events: AppointmentEntry[] = planner.externalEvents
+    .filter((event) => !event.done)
+    .map((event) => {
     const clock = clockOf(event.start);
     return {
       kind: "event",
@@ -362,6 +377,7 @@ export function arrangeToday(
       appointments.find((entry) => entry.minutes >= now) ?? null,
     queue,
     resolved,
+    resolvedEvents: doneEvents,
     tally: tallyOfPlanner(planner.items),
   };
 }
@@ -396,6 +412,20 @@ export function moved<T>(list: readonly T[], from: number, to: number): T[] {
   const [entry] = result.splice(from, 1);
   result.splice(to, 0, entry!);
   return result;
+}
+
+/** The planner with the Google event `eventId` ticked off or open again. */
+export function withEventDone(
+  planner: DayPlannerResponse,
+  eventId: number,
+  done: boolean,
+): DayPlannerResponse {
+  return {
+    ...planner,
+    externalEvents: planner.externalEvents.map((event) =>
+      event.id === eventId ? { ...event, done } : event,
+    ),
+  };
 }
 
 /**

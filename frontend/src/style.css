@@ -884,6 +884,46 @@ textarea.input {
   transition: none !important;
 }
 
+/*
+ * A place outside the list that takes a card ("Morgen", "Heute" in Heute's
+ * head; useSortable › dropTarget). While a card is dragged it shows a
+ * dashed edge; under the card the edge turns solid and the pill grows, so
+ * shape says it, not only colour.
+ */
+.day-drop {
+  transition:
+    transform 160ms var(--ease-out),
+    background-color 160ms var(--ease-out),
+    outline-color 160ms var(--ease-out);
+}
+
+[data-card-dragging] .day-drop {
+  outline: 2px dashed var(--color-ink-muted);
+  outline-offset: 2px;
+}
+
+[data-card-dragging] .day-drop.drop-target--over {
+  outline: 2px solid var(--color-ink);
+  background: var(--color-action-tint-hover);
+  transform: scale(1.08);
+}
+
+/* A card the target does not take: the pill fades, the pointer says no. */
+[data-card-dragging] .day-drop.drop-target--refused {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/*
+ * Over a target the card steps back: smaller, lighter and lifted above the
+ * pointer, so the target under it reads in full.
+ */
+[data-card-drop-over] .sortable-fallback {
+  opacity: 0.6;
+  scale: 0.5;
+  translate: 0 -2.75rem;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

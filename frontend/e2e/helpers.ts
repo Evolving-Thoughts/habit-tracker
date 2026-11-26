@@ -268,6 +268,29 @@ export async function grabPoint(
  * Drags a card by its body onto another card's upper edge, in steps as a
  * hand would move: SortableJS decides on the way.
  */
+/**
+ * Drags `card` onto a place outside its list that takes it, such as
+ * "Morgen" in Heute's head, and lets go over its middle.
+ */
+export async function dropCardOn(
+  page: Page,
+  card: Locator,
+  onto: Locator,
+): Promise<void> {
+  const from = await grabPoint(card);
+  const target = (await onto.boundingBox())!;
+  const middle = {
+    x: target.x + target.width / 2,
+    y: target.y + target.height / 2,
+  };
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(middle.x, middle.y + 40, { steps: 12 });
+  await page.mouse.move(middle.x, middle.y, { steps: 6 });
+  await expect(onto).toHaveClass(/drop-target--over/);
+  await page.mouse.up();
+}
+
 export async function dragCard(
   page: Page,
   card: Locator,

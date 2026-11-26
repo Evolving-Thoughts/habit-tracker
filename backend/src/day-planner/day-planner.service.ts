@@ -1,5 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import {
+  Between,
+  DataSource,
+  In,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+} from 'typeorm';
+import { HabitEntity } from '../habits/entities/habit.entity';
+import { HabitForecastPlaceEntity } from '../habits/entities/habit-forecast-place.entity';
 import { eventsOfDays } from '../calendar/day-events';
 import { ExternalEventEntity } from '../calendar/calendar.entities';
 import { dayOf, weekRange } from '../common/date/local-day';
@@ -159,12 +167,13 @@ export class DayPlannerService {
       date: today,
       items,
       externalEvents: externalEvents.map(
-        ({ id, title, start, end, dayPosition }) => ({
+        ({ id, title, start, end, dayPosition, doneAt }) => ({
           id,
           title,
           start: start.toISOString(),
           end: end.toISOString(),
           dayPosition,
+          done: doneAt !== null,
         }),
       ),
       workedMinutes: workedMinutes(logs, today),
@@ -229,6 +238,15 @@ export class DayPlannerService {
       const positions = new Map(
         forecast.occurrences.map(({ id, dayPosition }) => [id, dayPosition]),
       );
+      // Places the person gave runs the schedule only forecasts.
+      const forecastPlaces = new Map(
+        (
+          await manager.getRepository(HabitForecastPlaceEntity).findBy({
+            userId,
+            date: Between(firstDay, lastDay),
+          })
+        ).map((place) => [`${place.habitId}|${place.date}`, place.dayPosition]),
+      );
       const streaks = await loadStreaks(
         manager,
         [
@@ -269,7 +287,9 @@ export class DayPlannerService {
         ...planned.map((item) =>
           plannedHabitCandidate(
             item,
-            item.id === null ? null : (positions.get(item.id) ?? null),
+            item.id === null
+              ? (forecastPlaces.get(`${item.habitId}|${item.date}`) ?? null)
+              : (positions.get(item.id) ?? null),
             today,
             ancestry.habitCampaign(item.habitId!),
             streakOf(item.habitId!),
@@ -321,16 +341,29 @@ export class DayPlannerService {
    */
   reorder(
     userId: string,
-    items: { type: 'todo' | 'habit' | 'event'; id: number }[],
+    items: {
+      type: 'todo' | 'habit' | 'event' | 'forecast';
+      id: number;
+      date?: string;
+    }[],
   ): Promise<void> {
-    const idsOf = (type: 'todo' | 'habit' | 'event'): number[] => [
+    const idsOf = (type: 'todo' | 'habit' | 'event' | 'forecast'): number[] => [
       ...new Set(
         items.filter((item) => item.type === type).map(({ id }) => id),
       ),
     ];
     const todoIds = idsOf('todo');
     const occurrenceIds = idsOf('habit');
+    const forecastHabitIds = idsOf('forecast');
     return this.unitOfWork.run(userId, async (manager) => {
+      if (
+        forecastHabitIds.length &&
+        (await manager
+          .getRepository(HabitEntity)
+          .countBy({ userId, id: In(forecastHabitIds) })) !==
+          forecastHabitIds.length
+      )
+        throw new NotFoundException('An item to sort was not found');
       const [todos, occurrences] = await Promise.all([
         todoIds.length
           ? manager
@@ -347,7 +380,14 @@ export class DayPlannerService {
       ]);
       if (todos !== todoIds.length || occurrences !== occurrenceIds.length)
         throw new NotFoundException('An item to sort was not found');
-      for (const [dayPosition, { type, id }] of items.entries()) {
+      for (const [dayPosition, { type, id, date }] of items.entries()) {
+        if (type === 'forecast') {
+          // The run is stored on its day; until then its place waits.
+          const places = manager.getRepository(HabitForecastPlaceEntity);
+          await places.delete({ habitId: id, date });
+          await places.insert({ userId, habitId: id, date, dayPosition });
+          continue;
+        }
         if (type === 'event') {
           await manager
             .getRepository(ExternalEventEntity)
@@ -359,6 +399,17 @@ export class DayPlannerService {
           .update({ id }, { dayPosition });
       }
     });
+  }
+
+  /**
+   * Ticks a Google event off or opens it again. Only the app's copy
+   * changes; the sync keeps the tick (see `replaceExternal`).
+   */
+  async setEventDone(userId: string, id: number, done: boolean): Promise<void> {
+    const result = await this.db
+      .getRepository(ExternalEventEntity)
+      .update({ id, userId }, { doneAt: done ? new Date() : null });
+    if (!result.affected) throw new NotFoundException('Event not found');
   }
 
   /** Titles of the direct parents: the goal a todo is a step towards. */

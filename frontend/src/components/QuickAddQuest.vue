@@ -17,12 +17,14 @@ import { notifyDataChanged } from "../composables/data-sync";
 import { useInsertPlace } from "../composables/useInsertPlace";
 import { useQuestParseContext } from "../composables/useQuestParseContext";
 import { contentWidth, firstThatFits } from "../utils/fit-text";
+import { getCurrentDateInTimeZone } from "../utils/date";
+import type { OrderRef } from "../utils/day-order";
 import { parseQuest, type QuestParseKind } from "../utils/quest-parse";
 import InsertPlaceToggle from "./InsertPlaceToggle.vue";
 import MicButton from "./MicButton.vue";
 import QuestParseChips from "./QuestParseChips.vue";
 
-type OrderedItem = { type: "todo" | "habit" | "event"; id: number };
+type OrderedItem = OrderRef;
 
 /**
  * One line to put a quest on a day, or into the Questlog: type a title,
@@ -155,8 +157,12 @@ async function add(): Promise<void> {
     return;
   }
   const result = parsed.value;
+  // A time without a day is an appointment today (or on the field's day).
   const date =
-    result.scheduledDate !== undefined ? result.scheduledDate : props.date;
+    result.scheduledDate !== undefined
+      ? result.scheduledDate
+      : (props.date ??
+        (result.timeOfDay ? getCurrentDateInTimeZone() : null));
   const dateMatch = result.matches.find((match) => match.kind === "date");
   busy.value = true;
   errorMessage.value = null;
@@ -189,7 +195,7 @@ async function add(): Promise<void> {
     const created = await createTodo({
       title: result.title.trim(),
       scheduledDate: date,
-      timeOfDay: null,
+      timeOfDay: result.timeOfDay ?? null,
       plannedDurationMinutes: result.plannedDurationMinutes ?? null,
       ...(campaignId === undefined ? {} : { parentId: campaignId }),
       ...(categoryId === undefined ? {} : { categoryId }),

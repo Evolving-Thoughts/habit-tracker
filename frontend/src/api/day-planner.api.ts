@@ -1,3 +1,4 @@
+import type { OrderRef } from "../utils/day-order";
 import type {
   DayPlannerResponse,
   HabitOccurrenceStatus,
@@ -33,12 +34,18 @@ export function getPlan(
 }
 
 /** Stores the order any day was sorted into; habits go by their occurrence. */
-export function reorderDay(
-  items: { type: "todo" | "habit" | "event"; id: number }[],
-): Promise<void> {
+export function reorderDay(items: OrderRef[]): Promise<void> {
   return request<void>("/day-planner/order", {
     method: "PUT",
     body: JSON.stringify({ items }),
+  });
+}
+
+/** Ticks a Google event off in the app or opens it again; Google stays as it is. */
+export function setEventDone(eventId: number, done: boolean): Promise<void> {
+  return request<void>(`/day-planner/events/${eventId}/done`, {
+    method: "PUT",
+    body: JSON.stringify({ done }),
   });
 }
 

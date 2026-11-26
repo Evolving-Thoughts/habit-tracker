@@ -12,7 +12,9 @@ import { onShownAgain } from "./useActive";
 /**
  * Loads view data with the rules every view needs: only the latest request
  * may write its result, a background refresh keeps the page visible, and
- * the view refreshes after data changes elsewhere unless it is busy. A newer
+ * the view refreshes after data changes elsewhere; one heard while it is busy
+ * (a dialog open, a write running) is kept and loads once it is free, so a
+ * save in a dialog shows as soon as the dialog closes. A newer
  * request or leaving the view aborts the running one. A kept-alive view
  * (Heute) refreshes quietly each time it is shown again, since it heard
  * nothing while hidden.
@@ -36,8 +38,11 @@ export function useLoader<T>(
   const errorMessage = ref<string | null>(null);
   let generation = 0;
   let abort: AbortController | undefined;
+  /** A change came while the view was busy: load once it is free. */
+  let missed = false;
 
   async function reload(showPageLoading = true): Promise<void> {
+    missed = false;
     const current = ++generation;
     abort?.abort();
     abort = new AbortController();
@@ -67,10 +72,20 @@ export function useLoader<T>(
   });
   if (options.params) watch(options.params, () => void reload());
   const refreshOnChange = options.refreshOnChange;
-  if (refreshOnChange)
+  if (refreshOnChange) {
     onDataChanged(() => {
       if (refreshOnChange()) void reload(false);
+      else missed = true;
     });
+    // The view's own write reloads anyway (and clears `missed`); a dialog's
+    // save elsewhere is heard here once the dialog has closed. Watched from
+    // mount on: the guard may read state the view declares after its loader.
+    onMounted(() =>
+      watch(refreshOnChange, (free) => {
+        if (free && missed) void reload(false);
+      }),
+    );
+  }
   onShownAgain(() => {
     if (!refreshOnChange || refreshOnChange()) void reload(false);
   });

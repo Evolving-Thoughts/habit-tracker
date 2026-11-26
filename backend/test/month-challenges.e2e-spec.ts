@@ -78,7 +78,7 @@ describe('Monats-Challenge (e2e)', () => {
     // Thursday, 12 November 2026: the challenge counts from today.
     setNow('2026-11-12');
     await db.query(
-      'TRUNCATE month_challenges, timers, habit_occurrences, habit_schedule_versions, habits CASCADE',
+      'TRUNCATE month_challenges, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits CASCADE',
     );
   });
   afterAll(async () => {

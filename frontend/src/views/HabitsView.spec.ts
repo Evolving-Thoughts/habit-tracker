@@ -124,7 +124,7 @@ describe("HabitsView", () => {
     await flushPromises();
     expect(wrapper.find(".skeleton").exists()).toBe(false);
   });
-  it("refreshes on target changes only when no Daily editor is open", async () => {
+  it("waits with a refresh while a Daily editor is open, then loads once", async () => {
     vi.mocked(getHabits).mockResolvedValue([habit()]);
     const wrapper = mount(HabitsView);
     await flushPromises();
@@ -139,11 +139,13 @@ describe("HabitsView", () => {
     await flushPromises();
     expect(getHabits).toHaveBeenCalledTimes(2);
     expect(wrapper.find("dialog").exists()).toBe(true);
+    // The change heard meanwhile loads as soon as the editor is closed.
     await wrapper.get(".modal-dialog__close").trigger("click");
     await flushPromises();
+    expect(getHabits).toHaveBeenCalledTimes(3);
     window.dispatchEvent(new Event("timer-data-changed"));
     await flushPromises();
-    expect(getHabits).toHaveBeenCalledTimes(3);
+    expect(getHabits).toHaveBeenCalledTimes(4);
   });
   it("shows an empty state with no persistent creation form", async () => {
     const wrapper = mount(HabitsView);

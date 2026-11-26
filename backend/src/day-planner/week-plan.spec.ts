@@ -119,7 +119,8 @@ describe('todoCandidate', () => {
 });
 
 describe('plannedHabitCandidate', () => {
-  it('keeps a forecast run without a stored occurrence or a position', () => {
+  it('keeps a forecast run without a stored occurrence, at the place it was sorted into', () => {
+    expect(planned({}, null).order.dayPosition).toBeNull();
     const { date, entry, order } = planned({}, 4);
     expect(date).toBe('2026-11-18');
     expect(entry).toMatchObject({
@@ -129,7 +130,8 @@ describe('plannedHabitCandidate', () => {
       campaign: { id: 9, title: 'Marathon', color: null, icon: null },
       plannedDurationMinutes: 20,
     });
-    expect(order.dayPosition).toBeNull();
+    // Its place waits until its day stores the run (habit_forecast_places).
+    expect(order.dayPosition).toBe(4);
   });
 
   it('marks an open run from an earlier day as overdue on today', () => {

@@ -333,7 +333,7 @@ test("Plan: a quest opens its editor; a forecast daily opens its daily", async (
     .locator(".plan-entry")
     .filter({ has: page.getByRole("heading", { name: "Laufen", exact: true }) });
   await expect(dailyRow).toContainText("Daily");
-  // Only forecast so far: nothing stored to drag, but its daily can be edited.
+  // Only forecast so far: it sorts within its day and its daily can be edited.
   await dailyRow
     .getByRole("button", { name: "Aktionen für Laufen", exact: true })
     .click();

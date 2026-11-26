@@ -14,6 +14,7 @@ import {
   CHALLENGE_EVENING_MINUTES,
   DEFAULT_APPOINTMENT_MINUTES,
   arrangeToday,
+  withEventDone,
   challengeEveningAt,
   currentItem,
   formatDayHeading,
@@ -60,11 +61,18 @@ const habit = (
 });
 const planner = (
   items: DayPlannerResponse["items"],
-  events: Omit<DayPlannerResponse["externalEvents"][number], "dayPosition">[] = [],
+  events: (Omit<
+    DayPlannerResponse["externalEvents"][number],
+    "dayPosition" | "done"
+  > & { done?: boolean })[] = [],
 ): DayPlannerResponse => ({
   date: "2026-10-02",
   items,
-  externalEvents: events.map((event) => ({ dayPosition: null, ...event })),
+  externalEvents: events.map((event) => ({
+    dayPosition: null,
+    done: false,
+    ...event,
+  })),
   workedMinutes: 0,
   questHours: NO_QUEST_HOURS,
 });
@@ -232,6 +240,33 @@ describe("arrangeToday", () => {
     );
     expect(agenda.focus).toBeNull();
     expect(agenda.queue).toEqual([]);
+  });
+});
+
+describe("arrangeToday: a Google event ticked off", () => {
+  const lunch = {
+    id: 5,
+    title: "Mittagessen",
+    start: "2026-10-02T10:00:00.000Z",
+    end: "2026-10-02T11:00:00.000Z",
+  };
+
+  it("leaves the list for the resolved, counts in no tally and is no longer next", () => {
+    const day = withEventDone(planner([todo()], [lunch]), 5, true);
+    const agenda = arrangeToday(day, 9 * 60);
+    expect(agenda.list.some((entry) => entry.kind === "event")).toBe(false);
+    expect(agenda.resolvedEvents.map(({ title }) => title)).toEqual([
+      "Mittagessen",
+    ]);
+    expect(agenda.nextAppointment).toBeNull();
+    expect(agenda.tally).toEqual(arrangeToday(planner([todo()]), 9 * 60).tally);
+  });
+
+  it("opened again, it is back at its place in the list", () => {
+    const ticked = withEventDone(planner([todo()], [lunch]), 5, true);
+    const agenda = arrangeToday(withEventDone(ticked, 5, false), 9 * 60);
+    expect(agenda.list.some((entry) => entry.kind === "event")).toBe(true);
+    expect(agenda.resolvedEvents).toEqual([]);
   });
 });
 

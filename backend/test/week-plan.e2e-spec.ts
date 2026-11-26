@@ -16,7 +16,13 @@ import { HabitScheduleVersionEntity } from '../src/habits/entities/habit-schedul
 import { HabitScheduleType } from '../src/habits/enums/habit-schedule-type.enum';
 import { MissedOccurrencePolicy } from '../src/habits/enums/missed-occurrence-policy.enum';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
-import { authenticatedRequest as request, seedAuth } from './auth-fixture';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  TEST_USER,
+} from './auth-fixture';
+import { HabitForecastPlaceEntity } from '../src/habits/entities/habit-forecast-place.entity';
+import { HabitOccurrenceEntity } from '../src/habit-occurrences/entities/habit-occurrence.entity';
 
 const OTHER_USER = '22222222-2222-4222-8222-222222222222';
 
@@ -204,6 +210,78 @@ describe('Plan board (e2e)', () => {
           isOverdue: false,
         },
       ]);
+  });
+
+  it('sorts a forecast run among a later day and hands its place to the run on its day', async () => {
+    const habitId = (
+      (
+        await request(server)
+          .post('/habits')
+          .send({ title: 'Laufen', schedule: { type: 'interval', intervalDays: 1 } })
+          .expect(201)
+      ).body as { id: number }
+    ).id;
+    const first = await todo('Erstes');
+    const second = await todo('Zweites');
+    // Unsorted, the forecast follows what is sorted.
+    expect(await titlesOn(nextMonday, nextMonday)).toEqual([
+      'Erstes',
+      'Zweites',
+      'Laufen',
+    ]);
+    await request(server)
+      .put('/day-planner/order')
+      .send({
+        items: [
+          { type: 'todo', id: first },
+          { type: 'forecast', id: habitId, date: nextMonday },
+          { type: 'todo', id: second },
+        ],
+      })
+      .expect(204);
+    expect(await titlesOn(nextMonday, nextMonday)).toEqual([
+      'Erstes',
+      'Laufen',
+      'Zweites',
+    ]);
+    // Still a forecast: nothing is stored before its day.
+    const [, run] = await entriesOn(nextMonday, nextMonday);
+    expect(run).toMatchObject({ type: 'habit', occurrenceId: null });
+
+    // A forecast needs its day; someone else's habit is not found.
+    await request(server)
+      .put('/day-planner/order')
+      .send({ items: [{ type: 'forecast', id: habitId }] })
+      .expect(400);
+    const foreign = await db.getRepository(HabitEntity).save({
+      userId: OTHER_USER,
+      title: 'Fremd',
+    });
+    await request(server)
+      .put('/day-planner/order')
+      .send({ items: [{ type: 'forecast', id: foreign.id, date: nextMonday }] })
+      .expect(404);
+
+    // On its day the stored run takes the place it waited in.
+    await db.query(
+      `DELETE FROM habit_occurrences WHERE "habitId" = $1 AND "scheduledDate" = $2`,
+      [habitId, today],
+    );
+    await db.getRepository(HabitForecastPlaceEntity).insert({
+      userId: TEST_USER,
+      habitId,
+      date: today,
+      dayPosition: 3,
+    });
+    await request(server).get('/day-planner/today').expect(200);
+    const stored = await db.getRepository(HabitOccurrenceEntity).findOneByOrFail({
+      habitId,
+      scheduledDate: today,
+    });
+    expect(stored.dayPosition).toBe(3);
+    expect(
+      await db.getRepository(HabitForecastPlaceEntity).countBy({ habitId, date: today }),
+    ).toBe(0);
   });
 
   it("stores today's runs first, so the board sorts, moves and measures them like Heute", async () => {

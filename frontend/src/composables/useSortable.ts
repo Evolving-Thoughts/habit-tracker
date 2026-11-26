@@ -46,7 +46,112 @@ type SortableOptions = {
   accepts?: () => boolean;
   /** False for a list whose items only leave it, never change places in it. */
   sort?: boolean;
+  /**
+   * Targets outside the list a card can be dropped on, such as "Morgen" in
+   * Heute's head (`[data-day-drop]`). Over one the card's place in the list
+   * does not change; on release `onDrop` runs instead of `onMove`.
+   */
+  dropTarget?: DropTarget;
 };
+
+/** A place outside the list that takes a card (see `dropTarget`). */
+export type DropTarget = {
+  /** Selector of the elements that take a card. */
+  selector: string;
+  /** Whether this card may land there; a target it may not stays quiet. */
+  accepts?: (item: HTMLElement, target: HTMLElement) => boolean;
+  onDrop: (item: HTMLElement, target: HTMLElement) => void;
+  /** Released over a target that does not take this card: say why. */
+  onRefuse?: (item: HTMLElement, target: HTMLElement) => void;
+};
+
+/**
+ * The day pills in Heute's head ("Morgen", "Heute"): a card dropped on one
+ * moves to its `data-date`.
+ */
+export const DAY_DROP = "[data-day-drop]";
+
+/** On a drop target while a card is over it, and on the page during a drag. */
+export const DROP_OVER_CLASS = "drop-target--over";
+/** On a drop target while a card it does not take is over it. */
+export const DROP_REFUSED_CLASS = "drop-target--refused";
+export const DRAGGING_ATTRIBUTE = "data-card-dragging";
+/** On the page while the dragged card is over a drop target: it steps back. */
+export const DROP_OVER_ATTRIBUTE = "data-card-drop-over";
+
+/** Where the pointer of a mouse, pen or finger is, from any move event. */
+function pointOf(event: Event): { x: number; y: number } | null {
+  if (typeof TouchEvent !== "undefined" && event instanceof TouchEvent) {
+    const touch = event.touches[0] ?? event.changedTouches[0];
+    return touch ? { x: touch.clientX, y: touch.clientY } : null;
+  }
+  const { clientX, clientY } = event as MouseEvent;
+  return typeof clientX === "number" ? { x: clientX, y: clientY } : null;
+}
+
+/**
+ * Follows the pointer during one drag and marks the drop target under it.
+ * The drag layer lets the pointer through (`pointer-events: none`), so the
+ * element under it is the page's own.
+ */
+function trackDropTarget(target: DropTarget, item: HTMLElement) {
+  let over: HTMLElement | null = null;
+  /** A target under the pointer that does not take this card. */
+  let refused: HTMLElement | null = null;
+  let point: { x: number; y: number } | null = null;
+  const root = document.documentElement;
+  const mark = (next: HTMLElement | null) => {
+    if (next === over) return;
+    over?.classList.remove(DROP_OVER_CLASS);
+    over = next;
+    over?.classList.add(DROP_OVER_CLASS);
+    // The card under the pointer shrinks towards it, so the target shows.
+    const card = document.querySelector<HTMLElement>(".sortable-fallback");
+    if (card && point && over) {
+      // The origin counts from the card's own place, before the drag layer
+      // shifted it under the pointer.
+      const box = card.getBoundingClientRect();
+      const shift = new DOMMatrixReadOnly(getComputedStyle(card).transform);
+      card.style.transformOrigin = `${point.x - box.left + shift.e}px ${point.y - box.top + shift.f}px`;
+    }
+    root.toggleAttribute(DROP_OVER_ATTRIBUTE, !!over);
+  };
+  const onMove = (event: Event) => {
+    point = pointOf(event);
+    if (!point) return;
+    const hit = document
+      .elementFromPoint(point.x, point.y)
+      ?.closest<HTMLElement>(target.selector);
+    const takes = !!hit && (target.accepts?.(item, hit) ?? true);
+    const next = hit && !takes ? hit : null;
+    if (next !== refused) {
+      refused?.classList.remove(DROP_REFUSED_CLASS);
+      next?.classList.add(DROP_REFUSED_CLASS);
+      refused = next;
+    }
+    mark(takes ? hit! : null);
+  };
+  const events = ["mousemove", "touchmove", "pointermove"] as const;
+  for (const name of events)
+    document.addEventListener(name, onMove, { passive: true, capture: true });
+  root.setAttribute(DRAGGING_ATTRIBUTE, "");
+  return {
+    /**
+     * Where the card was released: on a target that takes it, on one that
+     * does not, or neither. Ends the tracking.
+     */
+    stop(): { landed: HTMLElement | null; refused: HTMLElement | null } {
+      for (const name of events)
+        document.removeEventListener(name, onMove, { capture: true });
+      root.removeAttribute(DRAGGING_ATTRIBUTE);
+      const result = { landed: over, refused };
+      mark(null);
+      refused?.classList.remove(DROP_REFUSED_CLASS);
+      refused = null;
+      return result;
+    },
+  };
+}
 
 /** A finger has to rest this long before a card lifts, so a swipe still scrolls. */
 export const TOUCH_HOLD_MS = 300;
@@ -77,6 +182,7 @@ export function useSortable(
    * anchors, and Vue would then draw a new card beside the lost one.
    */
   let home: { parent: Node; next: Node | null } | null = null;
+  let tracking: ReturnType<typeof trackDropTarget> | null = null;
 
   watch(
     container,
@@ -127,6 +233,8 @@ export function useSortable(
           home = item.parentNode
             ? { parent: item.parentNode, next: item.nextSibling }
             : null;
+          if (options.dropTarget)
+            tracking = trackDropTarget(options.dropTarget, item);
         },
         onEnd({
           item,
@@ -141,6 +249,31 @@ export function useSortable(
           lifted = false;
           const origin = home;
           home = null;
+          const { landed, refused } = tracking?.stop() ?? {
+            landed: null,
+            refused: null,
+          };
+          tracking = null;
+          const putBack = () => {
+            // Back exactly where it stood; the data decides where it shows.
+            if (
+              origin &&
+              (!origin.next || origin.next.parentNode === origin.parent)
+            )
+              origin.parent.insertBefore(item, origin.next);
+            else if (oldIndex !== undefined)
+              from.insertBefore(item, from.children[oldIndex] ?? null);
+          };
+          if (landed && options.dropTarget) {
+            putBack();
+            options.dropTarget.onDrop(item, landed);
+            return;
+          }
+          if (refused && options.dropTarget) {
+            putBack();
+            options.dropTarget.onRefuse?.(item, refused);
+            return;
+          }
           if (
             oldIndex === undefined ||
             newIndex === undefined ||
@@ -149,10 +282,7 @@ export function useSortable(
             (from === to && oldIndex === newIndex)
           )
             return;
-          // Back exactly where it stood; the data decides where it shows.
-          if (origin && (!origin.next || origin.next.parentNode === origin.parent))
-            origin.parent.insertBefore(item, origin.next);
-          else from.insertBefore(item, from.children[oldIndex] ?? null);
+          putBack();
           options.onMove(oldDraggableIndex, newDraggableIndex, {
             item,
             list: to,
@@ -164,5 +294,8 @@ export function useSortable(
     { immediate: true, flush: "post" },
   );
 
-  onBeforeUnmount(() => sortable?.destroy());
+  onBeforeUnmount(() => {
+    tracking?.stop();
+    sortable?.destroy();
+  });
 }

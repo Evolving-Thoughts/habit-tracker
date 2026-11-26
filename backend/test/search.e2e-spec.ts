@@ -67,7 +67,7 @@ describe('Search (e2e)', () => {
   });
   beforeEach(() =>
     db.query(
-      'TRUNCATE week_reviews, reflections, day_bests, work_logs, timers, habit_occurrences, habit_schedule_versions, habits, todos CASCADE',
+      'TRUNCATE week_reviews, reflections, day_bests, work_logs, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos CASCADE',
     ),
   );
   afterAll(() => app.close());

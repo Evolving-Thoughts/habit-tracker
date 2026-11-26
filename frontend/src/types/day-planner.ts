@@ -86,6 +86,8 @@ export type DayPlannerResponse = {
     end: string;
     /** Its place in the order of the day; null while never sorted. */
     dayPosition: number | null;
+    /** Ticked off in the list (only in the app, never in Google). */
+    done: boolean;
   }[];
   workedMinutes: number;
   /** Quest minutes today and this week, against the overall goal. */

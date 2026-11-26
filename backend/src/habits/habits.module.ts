@@ -8,6 +8,7 @@ import { HabitScheduleVersionEntity } from './entities/habit-schedule-version.en
 import { HabitsController } from './habits.controller';
 import { HabitsService } from './habits.service';
 import { HabitSchedulingService } from './scheduling/habit-scheduling.service';
+import { HabitForecastPlaceEntity } from './entities/habit-forecast-place.entity';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { HabitSchedulingService } from './scheduling/habit-scheduling.service';
       HabitEntity,
       HabitScheduleVersionEntity,
       HabitOccurrenceEntity,
+      HabitForecastPlaceEntity,
     ]),
   ],
   controllers: [HabitsController, HabitOccurrencesController],

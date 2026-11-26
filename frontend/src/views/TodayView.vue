@@ -8,12 +8,12 @@ import {
 } from "../api/day-planner.api";
 import { whileActive } from "../composables/useActive";
 import { useListFocus } from "../composables/useListFocus";
-import { useSortable } from "../composables/useSortable";
+import { DAY_DROP, useSortable } from "../composables/useSortable";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import { useTicks, type TickTarget } from "../composables/useTicks";
 import { useLogRemoval } from "../composables/useLogRemoval";
-import { SHEET_QUERY, useMediaQuery } from "../composables/useMediaQuery";
+import { useMediaQuery } from "../composables/useMediaQuery";
 import { timerStateOf, toggleTimer, useTimer } from "../composables/useTimer";
 import {
   focusWhenReady,
@@ -60,12 +60,17 @@ import {
 import { dayLabel, fullStop } from "../utils/history";
 import {
   arrangeToday,
+  eventTime,
   formatDayHeading,
   formatDuration,
   formatWindow,
   itemKey,
   nextChangeAt,
+  withEventDone,
 } from "../utils/today-agenda";
+import { useEventTick } from "../composables/useEventTick";
+import { eventStaysLine, runWindowLine } from "../utils/day-drop";
+import { movingLine, postponePlan, stayingLines } from "../utils/postpone";
 import {
   dropInDay,
   orderRef,
@@ -267,17 +272,6 @@ function choosePane(next: Pane): void {
 }
 const showsList = computed(() => wide.value || pane.value === "list");
 const showsCalendar = computed(() => wide.value || pane.value === "logbook");
-/** On a phone "Auf morgen" waits in the header's "…"; the title keeps the line. */
-const phone = useMediaQuery(SHEET_QUERY);
-const headerMenu = computed<MenuEntry[]>(() => [
-  {
-    id: "postpone",
-    label: "Auf morgen",
-    ariaLabel: "Offenes auf morgen verschieben",
-    icon: "tomorrow",
-    run: () => (postponeOpen.value = true),
-  },
-]);
 const hasItems = computed(
   () =>
     (planner.value?.items.length ?? 0) > 0 ||
@@ -608,19 +602,100 @@ async function shiftInOrder(
 useSortable(order, {
   item: "[data-sort-key]",
   onMove: (from, to) => void moveInOrder(from, to),
+  // A card dropped on "Morgen" in the head moves there (DAY_DROP).
+  // A card dropped on "Auf morgen" in the head moves there, at once, an
+  // appointment with its time; what may not move says why (DAY_DROP).
+  dropTarget: {
+    selector: DAY_DROP,
+    accepts: (card, target) => !!droppable(card, target.dataset.date ?? ""),
+    onDrop: (card, target) => {
+      const item = droppable(card, target.dataset.date ?? "");
+      if (item) void dropOnDay(item, target.dataset.date!);
+    },
+    onRefuse: (card) => {
+      const key = card.dataset.sortKey ?? "";
+      const event = planner.value?.externalEvents.find(
+        (entry) => `event-${entry.id}` === key,
+      );
+      if (event) return notice(eventStaysLine(event.title));
+      const item = pendingItem(key);
+      if (item?.type === "habit" && planner.value)
+        notice(runWindowLine(item.title, item.moveUntil, planner.value.date));
+    },
+  },
 });
 
-/* What is still open today can go to tomorrow in one step. */
-const postponable = computed(() =>
-  (agenda.value?.queue ?? []).filter((item) =>
-    quickMovable(item, tomorrow.value),
-  ),
+/** The open quest or run on `card` when it may move to `date`. */
+function droppable(card: HTMLElement, date: string): DayPlannerItem | null {
+  const item = pendingItem(card.dataset.sortKey ?? null);
+  if (!item || !date || item.scheduledDate === date) return null;
+  if (item.type === "todo") return item;
+  return item.moveUntil !== null && date <= item.moveUntil ? item : null;
+}
+
+/** A drop needs no question: the day it lands on is the answer. */
+async function dropOnDay(item: DayPlannerItem, date: string): Promise<void> {
+  if (writes.busy.value) return;
+  const moved = await ticks.move(tickTarget(item), date, {
+    key: getItemKey(item),
+    fallbackError: "Der Eintrag konnte nicht verschoben werden.",
+    confirmFixed: true,
+  });
+  if (moved) notice(fullStop(`„${item.title}“ steht jetzt ${whereLabel(date)}`));
+}
+
+/** A short line above the list: what a drop did or why it did not. */
+function notice(line: string): void {
+  creationMessage.value = line;
+}
+// A line about one day does not follow to the next.
+watch(shownDate, () => (creationMessage.value = null));
+
+/* A Google event ticked off in the list: only the app keeps the tick. */
+const tickEvent = useEventTick(
+  planner,
+  writes,
+  withEventDone,
+  (line) => (orderMessage.value = line),
 );
+
+/* Resolved items and ticked-off events share "abgeschlossen". */
+const resolvedCount = computed(() =>
+  agenda.value
+    ? agenda.value.resolved.length + agenda.value.resolvedEvents.length
+    : 0,
+);
+
+/* What is still open today can go to tomorrow in one step. */
+/*
+ * "Auf morgen": everything open, today's in its order and then what is
+ * carried over; what cannot move is named with its reason (postpone.ts).
+ */
+const postponing = computed(() =>
+  agenda.value
+    ? postponePlan(
+        [...agenda.value.sequence, ...agenda.value.carriedOver],
+        tomorrow.value,
+        (item) =>
+          timerStateOf(
+            timer,
+            item.type === "todo" ? "todo" : "occurrence",
+            item.type === "todo" ? item.todoId : item.occurrenceId,
+          ) !== null,
+      )
+    : { moving: [], staying: [] },
+);
+const postponable = computed(() => postponing.value.moving);
 async function postponeAll(): Promise<void> {
   const items = postponable.value;
   postponeOpen.value = false;
   for (const item of items) {
-    if (!(await moveTo(item, tomorrow.value))) return;
+    const moved = await ticks.move(tickTarget(item), tomorrow.value, {
+      key: getItemKey(item),
+      fallbackError: "Der Eintrag konnte nicht verschoben werden.",
+      confirmFixed: true,
+    });
+    if (!moved) return;
   }
   creationMessage.value =
     items.length === 1
@@ -842,7 +917,7 @@ useShortcutHandlers(
       ),
   },
   {
-    // The same offer as the "Auf morgen" button in the head of the view.
+    // The same offer as "Alles Offene auf morgen" in the head's "…".
     commands: () =>
       postponable.value.length && !writes.busy.value && !editorBusy.value
         ? [
@@ -913,15 +988,35 @@ useShortcutHandlers(
           >
             <AppIcon name="plus" />Neue Quest
           </button>
-          <!-- Leaf through the days; "Heute" leads back from another one. -->
+          <!--
+            Leaf through the days: ‹ › stand last, in the same place on every
+            day, so a finger or the mouse stays put while leafing. Before
+            them one pill: on today "Auf morgen" (moves everything open
+            after asking), on another day "Heute" (leads back). A card
+            dragged onto the pill moves to that day (DAY_DROP).
+          -->
           <div class="today-view__days" role="group" aria-label="Tage">
             <button
               v-if="otherDay"
-              class="btn today-view__back"
+              class="btn today-view__back day-drop"
               type="button"
+              data-day-drop
+              :data-date="today"
               @click="showDay(today)"
             >
               Heute
+            </button>
+            <button
+              v-else-if="tomorrow && postponable.length"
+              class="btn today-view__back day-drop"
+              type="button"
+              data-day-drop
+              :data-date="tomorrow"
+              aria-label="Offenes auf morgen verschieben"
+              :disabled="isLoading || editorBusy || writes.busy.value"
+              @click="postponeOpen = true"
+            >
+              Auf morgen
             </button>
             <button
               class="btn btn--icon"
@@ -940,23 +1035,6 @@ useShortcutHandlers(
               <AppIcon name="chevron" />
             </button>
           </div>
-          <ActionMenu
-            v-if="postponable.length && phone && !otherDay"
-            title="Heute"
-            label="Weitere Aktionen für heute"
-            :entries="headerMenu"
-            :disabled="isLoading || editorBusy || writes.busy.value"
-          />
-          <button
-            v-else-if="postponable.length && !otherDay"
-            class="today-view__postpone"
-            type="button"
-            :disabled="isLoading || editorBusy || writes.busy.value"
-            @click="postponeOpen = true"
-          >
-            <AppIcon name="tomorrow" />
-            <span>Auf morgen</span>
-          </button>
         </div>
       </header>
 
@@ -1011,12 +1089,14 @@ useShortcutHandlers(
         @close="postponeOpen = false"
       >
         <p class="postpone__lead">
-          {{
-            postponable.length === 1
-              ? "1 offener Eintrag wandert auf morgen und reiht sich dort hinten ein."
-              : `${postponable.length} offene Einträge wandern auf morgen und reihen sich dort hinten ein.`
-          }}
-          Termine mit Uhrzeit bleiben, wo sie sind.
+          {{ movingLine(postponing.moving) }}
+        </p>
+        <p
+          v-for="line in stayingLines(postponing.staying)"
+          :key="line"
+          class="postpone__stay"
+        >
+          {{ line }}
         </p>
         <div class="postpone__actions">
           <button
@@ -1070,6 +1150,7 @@ useShortcutHandlers(
         :today="today"
         :held="editingTarget !== null || editorBusy || creationOpen"
         @edit="editOtherDay"
+        @notice="notice"
       />
 
       <div v-else-if="errorMessage" class="alert today-view__error">
@@ -1297,11 +1378,14 @@ useShortcutHandlers(
               <CalendarEventRow
                 v-else-if="entry.kind === 'event'"
                 draggable
+                checkable
                 class="today-view__event"
                 :data-sort-key="`event-${entry.event.id}`"
                 :time="entry.time"
                 :title="entry.event.title"
                 :past="entry.past"
+                :busy="writes.isWriting(`event-${entry.event.id}`)"
+                @toggle="tickEvent(entry.event, true)"
               />
               <PlannerItem
                 v-else
@@ -1412,7 +1496,7 @@ useShortcutHandlers(
             </div>
           </section>
 
-          <section v-if="agenda.resolved.length" class="resolved">
+          <section v-if="resolvedCount" class="resolved">
             <button
               class="resolved__toggle"
               type="button"
@@ -1420,7 +1504,7 @@ useShortcutHandlers(
               aria-controls="resolved-list"
               @click="resolvedOpen = !resolvedOpen"
             >
-              {{ agenda.resolved.length }} abgeschlossen
+              {{ resolvedCount }} abgeschlossen
               <AppIcon name="chevron" />
             </button>
             <div v-if="resolvedOpen" id="resolved-list" class="resolved__list">
@@ -1433,6 +1517,16 @@ useShortcutHandlers(
                 :challenge="challengeLine(item)"
                 @toggle="toggleItem"
                 @edit="openEditing"
+              />
+              <CalendarEventRow
+                v-for="event in agenda.resolvedEvents"
+                :key="`event-${event.id}`"
+                checkable
+                done
+                :time="eventTime(event)"
+                :title="event.title"
+                :busy="writes.isWriting(`event-${event.id}`)"
+                @toggle="tickEvent(event, false)"
               />
             </div>
           </section>
@@ -1506,9 +1600,18 @@ useShortcutHandlers(
   margin-bottom: var(--space-5);
 }
 
+/*
+ * The date keeps its longest word whole ("Donnerstag,"); where the day
+ * buttons leave too little room beside it, they move below it instead of
+ * running over it.
+ */
+.today-view__header {
+  flex-wrap: wrap;
+}
+
 .today-view__title {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: min-content;
 }
 
 /* Another day says how far from today it is, above its date: a label, not a tap. */
@@ -1520,7 +1623,7 @@ useShortcutHandlers(
   letter-spacing: 0.02em;
 }
 
-/* Day buttons, "Auf morgen" and, beside the calendar, "Neue Quest". */
+/* Day buttons, the "…" and, beside the calendar, "Neue Quest". */
 .today-view__controls {
   display: flex;
   flex: none;
@@ -1586,6 +1689,40 @@ useShortcutHandlers(
     margin-bottom: var(--space-1);
   }
 
+  /*
+   * The day buttons take the top row, beside the relation ("Morgen",
+   * "Gestern") on another day, and the date runs below at full width: so
+   * ‹ › stand in the same place on every day, whatever the weekday's
+   * length, and no date ever has to share its line with them.
+   */
+  .today-view__header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--space-3);
+    row-gap: 0;
+    align-items: center;
+  }
+
+  .today-view__title {
+    display: contents;
+  }
+
+  .today-view__controls {
+    grid-row: 1;
+    grid-column: 2;
+    margin-bottom: var(--space-2);
+  }
+
+  .today-view__relation {
+    grid-row: 1;
+    grid-column: 1;
+    margin: 0 0 var(--space-2);
+  }
+
+  .today-view__title > :not(.today-view__relation) {
+    grid-column: 1 / -1;
+  }
+
   .today-view__progress,
   .today-view__time {
     font-size: 0.875rem;
@@ -1620,35 +1757,9 @@ useShortcutHandlers(
   transition: width 240ms var(--ease-out);
 }
 
-.today-view__postpone {
-  display: inline-flex;
-  flex: none;
-  gap: var(--space-2);
-  align-items: center;
-  min-height: var(--tap);
-  padding: 0 var(--space-4) 0 var(--space-3);
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-surface);
-  color: var(--color-action-strong);
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 420ms var(--spring);
-}
 
-.today-view__postpone :deep(svg) {
-  width: 1.25rem;
-  height: 1.25rem;
-}
 
-.today-view__postpone:active:not(:disabled) {
-  transform: var(--press);
-}
 
-.today-view__postpone:disabled {
-  color: var(--color-ink-soft);
-  cursor: progress;
-}
 
 .today-view__notice,
 .today-view__error {
@@ -1874,6 +1985,11 @@ useShortcutHandlers(
   margin-bottom: var(--space-1);
 }
 
+
+.postpone__stay {
+  margin: 0 0 var(--space-3);
+  color: var(--color-ink-muted);
+}
 
 .postpone__lead {
   margin: 0 0 var(--space-4);

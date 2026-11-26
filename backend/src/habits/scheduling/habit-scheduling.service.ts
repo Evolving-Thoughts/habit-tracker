@@ -4,7 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Brackets, DataSource, EntityManager } from 'typeorm';
+import { Brackets, DataSource, EntityManager, LessThanOrEqual } from 'typeorm';
+import { HabitForecastPlaceEntity } from '../entities/habit-forecast-place.entity';
 import {
   assertDateOnly,
   changeScheduleInstant,
@@ -289,10 +290,27 @@ export class HabitSchedulingService {
         now,
       );
     }
+    // A run stored on its day takes the place it was sorted into while the
+    // schedule only forecast it; places of days that have come go.
+    const places = manager.getRepository(HabitForecastPlaceEntity);
+    const waiting = create.length
+      ? await places.findBy({ habitId: habit.id })
+      : [];
     for (const occurrence of create)
       await repository.save(
-        repository.create({ habitId: habit.id, ...occurrence }),
+        repository.create({
+          habitId: habit.id,
+          ...occurrence,
+          dayPosition:
+            waiting.find((place) => place.date === occurrence.scheduledDate)
+              ?.dayPosition ?? null,
+        }),
       );
+    if (waiting.length)
+      await places.delete({
+        habitId: habit.id,
+        date: LessThanOrEqual(dayOf(now)),
+      });
     return versions;
   }
 

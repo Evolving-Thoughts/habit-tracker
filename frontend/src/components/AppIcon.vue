@@ -28,6 +28,8 @@ defineProps<{
     | "child"
     | "chart"
     | "timer"
+    // A time of day: the clock face, without the stopwatch's button.
+    | "clock"
     | "refresh"
     | "logout"
     | "search"
@@ -217,6 +219,10 @@ defineProps<{
     <template v-else-if="name === 'timer'">
       <circle cx="12" cy="13" r="7.5" />
       <path d="M12 9v4l2.5 2M9.5 2.5h5" />
+    </template>
+    <template v-else-if="name === 'clock'">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
     </template>
     <template v-else-if="name === 'refresh'">
       <path d="M20 12a8 8 0 1 1-2.3-5.6L20 8.5" />
