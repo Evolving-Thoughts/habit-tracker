@@ -192,16 +192,18 @@ test("Heute: appointments sit in the list by their time and move along with the 
     .getByRole("button", { name: "Auf morgen verschieben", exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
-  const moved = (await (await request.get(`${API_URL}/todos`)).json()) as {
-    title: string;
-    scheduledDate: string;
-    timeOfDay: string | null;
-  }[];
-  expect(
+  // The entries move one after another: wait until all are through.
+  const stored = async () =>
     Object.fromEntries(
-      moved.map((todo) => [todo.title, [todo.scheduledDate, todo.timeOfDay]]),
-    ),
-  ).toEqual({
+      (
+        (await (await request.get(`${API_URL}/todos`)).json()) as {
+          title: string;
+          scheduledDate: string;
+          timeOfDay: string | null;
+        }[]
+      ).map((todo) => [todo.title, [todo.scheduledDate, todo.timeOfDay]]),
+    );
+  await expect.poll(stored).toEqual({
     Zahnarzt: [daysAfter(date, 1), "23:58"],
     Aufräumen: [daysAfter(date, 1), null],
     Einkaufen: [daysAfter(date, 1), null],
