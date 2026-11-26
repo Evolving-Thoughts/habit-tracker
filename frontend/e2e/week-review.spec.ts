@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { daysAfter, openView, today } from "./helpers";
+import { daysAfter, minutesIntoDay, openView, today } from "./helpers";
 import { API_URL } from "./environment";
 
 test("Wochenrückblick: the week in numbers, its campaigns, what was done, and three answers that stay", async ({
@@ -8,6 +8,12 @@ test("Wochenrückblick: the week in numbers, its campaigns, what was done, and t
   isMobile,
 }) => {
   const date = await today(request);
+  // Today's bar must hold all 45 minutes: right after midnight they would
+  // reach back into yesterday.
+  test.skip(
+    minutesIntoDay(date) < 47,
+    "Kurz nach Mitternacht liegt die Dreiviertelstunde zum Teil im Vortag.",
+  );
   const create = async (data: Record<string, unknown>) => {
     const response = await request.post(`${API_URL}/todos`, { data });
     expect(response.status()).toBe(201);

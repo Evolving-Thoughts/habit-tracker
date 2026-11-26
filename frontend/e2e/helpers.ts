@@ -221,6 +221,15 @@ export function berlinTime(date: string, time: string): Date {
   return new Date(guess.getTime() - offset * 60_000);
 }
 
+/**
+ * Minutes since midnight on Berlin's clock on `date`. A test that logs
+ * work "ending a minute ago" and reads it back for today holds only once
+ * that much of the day has passed.
+ */
+export function minutesIntoDay(date: string): number {
+  return (Date.now() - berlinTime(date, "00:00").getTime()) / 60_000;
+}
+
 /** Opens a card's menu "…" and runs the entry with that spoken name. */
 export async function cardMenu(
   page: Page,
