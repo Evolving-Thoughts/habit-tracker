@@ -9,8 +9,7 @@ import {
 import { whileActive } from "../composables/useActive";
 import { useListFocus } from "../composables/useListFocus";
 import { DAY_DROP, useSortable } from "../composables/useSortable";
-import { useLoader } from "../composables/useLoader";
-import { useWrites } from "../composables/useWrites";
+import { useViewSession } from "../composables/useViewSession";
 import { useTicks, type TickTarget } from "../composables/useTicks";
 import { useLogRemoval } from "../composables/useLogRemoval";
 import { useMediaQuery } from "../composables/useMediaQuery";
@@ -135,26 +134,27 @@ const creationMessage = ref<string | null>(null);
 const catchUpOpen = ref(false);
 const resolvedOpen = ref(false);
 
+// A dialog or the campaign question holds the refresh until it is answered.
+const session = useViewSession({
+  holding: () =>
+    editorBusy.value ||
+    !!editingTarget.value ||
+    !!movingItem.value ||
+    !!campaignMoving.value ||
+    !!deleting.value ||
+    postponeOpen.value ||
+    creationOpen.value ||
+    !!ticks.campaignQuestion.value,
+});
 const {
   data: planner,
   isLoading,
   errorMessage,
   reload: loadToday,
-} = useLoader<DayPlannerResponse | null>(getToday, {
+} = session.resource<DayPlannerResponse | null>(getToday, {
   initial: null,
   fallbackError: "Heute konnte nicht geladen werden.",
-  refreshOnChange: () =>
-    !editorBusy.value &&
-    !editingTarget.value &&
-    !movingItem.value &&
-    !campaignMoving.value &&
-    !deleting.value &&
-    !postponeOpen.value &&
-    !creationOpen.value &&
-    !ticks.campaignQuestion.value &&
-    !writes.busy.value,
 });
-const writes = useWrites(loadToday, errorMessage);
 
 /*
  * The clock moves the focus and the "now" line along through the day: it
@@ -205,7 +205,7 @@ function stepDay(by: -1 | 1): void {
   showDay(addDays(shownDate.value, by));
 }
 function editOtherDay(target: EditingTarget): void {
-  if (editorBusy.value || writes.busy.value) return;
+  if (editorBusy.value || session.busy.value) return;
   editingTarget.value = target;
 }
 
@@ -375,7 +375,7 @@ const focusMeta = computed(() => {
  * Ticks, skips and quick moves go through `useTicks`; its toast also holds
  * back a Logbuch delete (`useLogRemoval`).
  */
-const ticks = useTicks(writes.write, {
+const ticks = useTicks(session.write, {
   onOtherUndo: (held) => restoreLog(held.id),
 });
 const { undo, undoLast, flushUndo } = ticks;
@@ -386,13 +386,13 @@ whileActive(
 );
 const { hiddenLogs, removeLog, restoreLog } = useLogRemoval(
   ticks.offerUndo,
-  writes.write,
+  session.write,
 );
 
 const getItemKey = itemKey;
 
 function isUpdating(item: DayPlannerItem): boolean {
-  return editorBusy.value || writes.isWriting(getItemKey(item));
+  return editorBusy.value || session.isWriting(getItemKey(item));
 }
 
 function tickTarget(item: DayPlannerItem): TickTarget {
@@ -486,7 +486,7 @@ async function catchUpAll(): Promise<void> {
 }
 
 function openEditing(item: DayPlannerItem): void {
-  if (editorBusy.value || writes.busy.value) {
+  if (editorBusy.value || session.busy.value) {
     return;
   }
 
@@ -505,7 +505,7 @@ function openEditing(item: DayPlannerItem): void {
 }
 
 function openMenuDialog(item: DayPlannerItem, kind: "move" | "delete"): void {
-  if (editorBusy.value || writes.busy.value) return;
+  if (editorBusy.value || session.busy.value) return;
   listFocus.remember(getItemKey(item));
   if (kind === "move" && item.type === "todo")
     campaignMoving.value = { todoId: item.todoId, title: item.title };
@@ -521,7 +521,7 @@ function closeMenuDialog(): void {
   editorBusy.value = false;
 }
 async function onMenuDialogDone(): Promise<void> {
-  await writes.applied();
+  await session.applied();
   closeMenuDialog();
 }
 
@@ -531,12 +531,12 @@ function closeEditing(): void {
 }
 
 async function onEditorChanged(): Promise<void> {
-  await writes.applied();
+  await session.applied();
   closeEditing();
 }
 
 function openMoving(item: DayPlannerItem): void {
-  if (editorBusy.value || writes.busy.value) {
+  if (editorBusy.value || session.busy.value) {
     return;
   }
 
@@ -550,7 +550,7 @@ function closeMoving(): void {
 }
 
 async function onMoved(): Promise<void> {
-  await writes.applied();
+  await session.applied();
   closeMoving();
 }
 
@@ -563,12 +563,12 @@ const sortables = computed(() =>
 const orderRefs = computed(() => (agenda.value?.dayOrder ?? []).map(orderRef));
 
 async function moveInOrder(from: number, to: number): Promise<void> {
-  if (!planner.value || !agenda.value || writes.isWriting("order")) return;
+  if (!planner.value || !agenda.value || session.isWriting("order")) return;
   const move = dropInDay(planner.value, agenda.value, from, to);
   if (!move) return;
   // Shown at once; a failure takes it back to the stored order.
   const before = planner.value;
-  await writes.writeShown(
+  await session.writeShown(
     () => {
       planner.value = move.planner;
       orderMessage.value = move.message;
@@ -644,7 +644,7 @@ function droppable(card: HTMLElement, date: string): DayPlannerItem | null {
 
 /** A drop needs no question: the day it lands on is the answer. */
 async function dropOnDay(item: DayPlannerItem, date: string): Promise<void> {
-  if (writes.busy.value) return;
+  if (session.busy.value) return;
   const moved = await ticks.move(tickTarget(item), date, {
     key: getItemKey(item),
     fallbackError: "Der Eintrag konnte nicht verschoben werden.",
@@ -666,7 +666,7 @@ watch(shownDate, () => (creationMessage.value = null));
 /* A Google event ticked off in the list: only the app keeps the tick. */
 const tickEvent = useEventTick(
   planner,
-  writes,
+  session,
   withEventDone,
   (line) => (orderMessage.value = line),
 );
@@ -714,7 +714,7 @@ const creationBlocked = computed(
   () =>
     isLoading.value ||
     editorBusy.value ||
-    writes.busy.value ||
+    session.busy.value ||
     editingTarget.value !== null,
 );
 function openCreation(
@@ -748,7 +748,7 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
     kind === "todo"
       ? "Quest erstellt. Ohne Tag findest du sie im Questlog."
       : "Daily erstellt. Es erscheint ab seinem Startdatum an fälligen Tagen.";
-  await writes.applied();
+  await session.applied();
   creationOpen.value = false;
 }
 
@@ -846,7 +846,7 @@ useShortcutHandlers(
   {
     // The same offer as "Alles Offene auf morgen" in the head's "…".
     commands: () =>
-      postponable.value.length && !writes.busy.value && !editorBusy.value
+      postponable.value.length && !session.busy.value && !editorBusy.value
         ? [
             {
               id: "today.postpone",
@@ -940,7 +940,7 @@ useShortcutHandlers(
               data-day-drop
               :data-date="tomorrow"
               aria-label="Offenes auf morgen verschieben"
-              :disabled="isLoading || editorBusy || writes.busy.value"
+              :disabled="isLoading || editorBusy || session.busy.value"
               @click="postponeOpen = true"
             >
               Auf morgen
@@ -1085,7 +1085,7 @@ useShortcutHandlers(
         <button
           class="btn btn--ground"
           type="button"
-          :disabled="isLoading || writes.busy.value"
+          :disabled="isLoading || session.busy.value"
           @click="loadToday()"
         >
           <AppIcon name="refresh" />Erneut versuchen
@@ -1098,7 +1098,7 @@ useShortcutHandlers(
           ref="quickAdd"
           :date="planner.date"
           :order="orderRefs"
-          @created="writes.applied()"
+          @created="session.applied()"
         />
 
         <div
@@ -1313,7 +1313,7 @@ useShortcutHandlers(
                 :time="entry.time"
                 :title="entry.event.title"
                 :past="entry.past"
-                :busy="writes.isWriting(`event-${entry.event.id}`)"
+                :busy="session.isWriting(`event-${entry.event.id}`)"
                 @toggle="tickEvent(entry.event, true)"
               />
               <PlannerItem
@@ -1359,7 +1359,7 @@ useShortcutHandlers(
                 v-if="quickToday.length > 1"
                 class="catch-up__all"
                 type="button"
-                :disabled="writes.busy.value"
+                :disabled="session.busy.value"
                 @click="catchUpAll"
               >
                 Alle {{ quickToday.length }} heute einplanen
@@ -1454,7 +1454,7 @@ useShortcutHandlers(
                 done
                 :time="eventTime(event)"
                 :title="event.title"
-                :busy="writes.isWriting(`event-${event.id}`)"
+                :busy="session.isWriting(`event-${event.id}`)"
                 @toggle="tickEvent(event, false)"
               />
             </div>

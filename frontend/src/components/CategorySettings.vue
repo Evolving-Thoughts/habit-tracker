@@ -10,8 +10,7 @@ import {
 } from "../api/categories.api";
 import AppIcon from "../components/AppIcon.vue";
 import MarkPicker from "../components/MarkPicker.vue";
-import { useLoader } from "../composables/useLoader";
-import { useWrites } from "../composables/useWrites";
+import { useViewSession } from "../composables/useViewSession";
 import type { CampaignColor } from "../types/campaign";
 import type { CategoryResponse } from "../types/category";
 import { COLOR_NAMES, isCampaignColor, markToken } from "../utils/campaign-style";
@@ -40,17 +39,21 @@ const targetFeedback = ref<
 >(null);
 let feedbackTimer: ReturnType<typeof setTimeout> | undefined;
 
+// A rename in progress holds the refresh.
+const session = useViewSession({
+  holding: () => editingId.value !== null,
+  writeError: saveError,
+});
 const {
   data: categories,
   isLoading,
   errorMessage,
   reload,
-} = useLoader<CategoryResponse[]>(getCategories, {
+} = session.resource<CategoryResponse[]>(getCategories, {
   initial: [],
   fallbackError: "Die Kategorien konnten nicht geladen werden.",
-  refreshOnChange: () => !isSaving.value && editingId.value === null,
 });
-const { write, busy: isSaving } = useWrites(reload, saveError);
+const { write, busy: isSaving } = session;
 
 onUnmounted(() => clearTimeout(feedbackTimer));
 

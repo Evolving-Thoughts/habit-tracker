@@ -27,10 +27,9 @@ import MoveItemDialog, {
 } from "../components/MoveItemDialog.vue";
 import UndoToast from "../components/UndoToast.vue";
 import { useListFocus } from "../composables/useListFocus";
-import { useLoader } from "../composables/useLoader";
+import { useViewSession } from "../composables/useViewSession";
 import { useLogRemoval } from "../composables/useLogRemoval";
 import { tickLabel, useTicks, writeDone } from "../composables/useTicks";
-import { useWrites } from "../composables/useWrites";
 import type {
   HistoryFilter,
   HistoryPlannedItem,
@@ -89,12 +88,23 @@ const requestDate = computed(() =>
     : date.value,
 );
 
+/* Kept apart from the load error: a failed tick must not hide the calendar. */
+const writeError = ref<string | null>(null);
+const session = useViewSession({
+  holding: () =>
+    !!moving.value ||
+    !!editing.value ||
+    !!campaignMoving.value ||
+    !!deleting.value ||
+    editorBusy.value,
+  writeError,
+});
 const {
   data: result,
   isLoading: loading,
   errorMessage: error,
   reload,
-} = useLoader<HistoryResponse | null>(
+} = session.resource<HistoryResponse | null>(
   async (signal) => {
     if (!supportedHistoryDate(date.value, mode.value))
       throw new Error("Bitte wähle ein gültiges Datum.");
@@ -105,18 +115,8 @@ const {
     fallbackError: "Der Kalender konnte nicht geladen werden.",
     params: [requestDate, mode, filter],
     resetOnLoad: true,
-    refreshOnChange: () =>
-      !moving.value &&
-      !editing.value &&
-      !campaignMoving.value &&
-      !deleting.value &&
-      !editorBusy.value &&
-      !writes.busy.value,
   },
 );
-/* Kept apart from the load error: a failed tick must not hide the calendar. */
-const writeError = ref<string | null>(null);
-const writes = useWrites(reload, writeError);
 
 const title = computed(() => {
   if (!isValidIsoDate(date.value)) return "Kalender";
@@ -304,7 +304,7 @@ function startMoving(item: HistoryPlannedItem): void {
   moving.value = moveTarget(item);
 }
 async function onDialogDone(): Promise<void> {
-  await writes.applied();
+  await session.applied();
   closeDialogs();
 }
 function closeDialogs(): void {
@@ -323,13 +323,13 @@ function closeDialogs(): void {
  * Deleting a Logbuch stretch shares the toast; its DELETE waits until the
  * offer ends (`useLogRemoval`).
  */
-const ticks = useTicks(writes.write, {
+const ticks = useTicks(session.write, {
   onOtherUndo: (held) => restoreLog(held.id),
 });
 const { undo, undoLast, flushUndo } = ticks;
 const { hiddenLogs, removeLog, restoreLog } = useLogRemoval(
   ticks.offerUndo,
-  writes.write,
+  session.write,
 );
 /* Closing or reloading the page sends a held delete on its way. */
 onMounted(() => window.addEventListener("pagehide", flushUndo));
@@ -364,7 +364,7 @@ function completeRun(item: HistoryPlannedItem): void {
   if (habitId === null) return;
   void listFocus.around(item.key, async () => {
     let id = item.id;
-    const done = await writes.write(
+    const done = await session.write(
       async () => {
         id ??= await openRunToday(habitId, item.scheduledDate);
         if (id === null)
@@ -407,7 +407,7 @@ const plannedActions: PlannedActions = {
     item.type === "todo" ? item.id !== null : item.habitId !== null,
   edit: (item) => {
     const id = item.type === "todo" ? item.id : item.habitId;
-    if (id === null || writes.busy.value) return;
+    if (id === null || session.busy.value) return;
     listFocus.remember(item.key);
     editing.value = {
       kind: item.type,
@@ -419,7 +419,7 @@ const plannedActions: PlannedActions = {
   menu: (item) => {
     const today = result.value?.today;
     if (!today) return [];
-    const disabled = writes.busy.value;
+    const disabled = session.busy.value;
     const movable = !!moveTarget(item);
     return menuInOrder(
       item.title,
@@ -456,7 +456,7 @@ const plannedActions: PlannedActions = {
           ? {
               run: () => {
                 const id = item.type === "todo" ? item.id : item.habitId;
-                if (id === null || writes.busy.value) return;
+                if (id === null || session.busy.value) return;
                 listFocus.remember(item.key);
                 deleting.value = { kind: item.type, id, title: item.title };
               },
@@ -480,7 +480,7 @@ const plannedActions: PlannedActions = {
       ? { kind: "occurrence", targetId: item.id, eligible: true }
       : null;
   },
-  busy: (item) => writes.isWriting(busyKey(item)),
+  busy: (item) => session.isWriting(busyKey(item)),
 };
 </script>
 

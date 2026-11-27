@@ -224,9 +224,10 @@ redirected by the router to the first day of that week still ahead
   (`isMovable`, `isMovableRun`), `arrangeOpen` mirroring the server's
   sorting for the optimistic view, plus the column and address rules above.
 - `composables/usePlanMove.ts` sends a move for the Plan and Heute's other
-  days alike, through `useWrites` (one at a time, then `notifyDataChanged`
-  and a quiet reload). A failed write puts the old plan (and column) back
-  at once, shows the error and reloads quietly to show what the server kept.
+  days alike, through the view's writes (`useViewSession`: one at a
+  time, then `notifyDataChanged` and a quiet reload). A failed write puts
+  the old plan (and column) back at once, shows the error and reloads
+  quietly to show what the server kept.
 - `useSortable` takes an optional `group` (and `accepts`, and `sort: false`
   for a list whose items only leave it) so lists trade items; it reports
   the drop's target list and its index among all children.

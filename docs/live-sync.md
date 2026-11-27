@@ -17,7 +17,7 @@ Eine Änderung auf einem Gerät erscheint sofort in jeder anderen offenen App de
   - Ein „changed“ von einer anderen App ruft `notifyDataChanged()` auf, denselben Kanal wie nach einem eigenen Schreibzugriff. Stoppuhr und offene Ansichten laden neu, eine im Hintergrund gehaltene (Heute hinter einem Tab) beim nächsten Zeigen.
   - Mehrere Meldungen innerhalb von 250 ms ergeben ein einziges Neuladen.
   - Ist die App verborgen, schließt sie die Verbindung. Beim Zurückkehren und nach jedem Wiederverbinden lädt sie einmal nach, weil sie in der Zwischenzeit nichts gehört hat.
-- Ansichten laden nicht neu, solange ein Dialog offen ist oder ein eigener Schreibzugriff läuft (`refreshOnChange` in `useLoader`). Eine Änderung, die in dieser Zeit eintrifft, merkt sich die Ansicht und lädt einmal nach, sobald sie wieder frei ist; so steht etwa ein im Editor geänderter Titel nach "Speichern" sofort in jeder Liste, auch auf einem anderen Tag in Heute. Lädt die Ansicht ohnehin selbst neu (nach ihrem eigenen Schreiben), entfällt das Nachladen.
+- Ansichten laden nicht neu, solange ein Dialog offen ist oder ein eigener Schreibzugriff läuft (`useViewSession`, über `refreshOnChange` in `useLoader`). Eine Änderung, die in dieser Zeit eintrifft, merkt sich die Ansicht und lädt einmal nach, sobald sie wieder frei ist; so steht etwa ein im Editor geänderter Titel nach "Speichern" sofort in jeder Liste, auch auf einem anderen Tag in Heute. Lädt die Ansicht ohnehin selbst neu (nach ihrem eigenen Schreiben), entfällt das Nachladen.
 
 ## Betrieb
 

@@ -18,9 +18,8 @@ import DeleteItemDialog, {
 import CheckRing from "../components/CheckRing.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
 import UndoToast from "../components/UndoToast.vue";
-import { useLoader } from "../composables/useLoader";
+import { useViewSession } from "../composables/useViewSession";
 import { useTicks } from "../composables/useTicks";
-import { useWrites } from "../composables/useWrites";
 import CreateButton from "../components/CreateButton.vue";
 import CreateHabitForm from "../components/CreateHabitForm.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
@@ -107,25 +106,25 @@ async function loadAll(): Promise<HabitResponse[]> {
   return habits;
 }
 
+const session = useViewSession({
+  holding: () =>
+    editingId.value !== null ||
+    !!deleting.value ||
+    creationOpen.value ||
+    starterTitle.value !== null ||
+    challengeActive.value,
+});
 const {
   data: habits,
   isLoading,
   hasLoaded,
   errorMessage,
   reload: loadHabits,
-} = useLoader(loadAll, {
+} = session.resource(loadAll, {
   initial: [] as HabitResponse[],
   fallbackError: "Die Dailies konnten nicht geladen werden.",
-  refreshOnChange: () =>
-    editingId.value === null &&
-    !deleting.value &&
-    !creationOpen.value &&
-    starterTitle.value === null &&
-    !challengeActive.value &&
-    !writes.busy.value,
 });
-const writes = useWrites(loadHabits, errorMessage);
-const { applied } = writes;
+const { applied } = session;
 
 /**
  * Today's run of a Daily, where one is due or was done today: the open run
@@ -149,7 +148,7 @@ function runToday(habit: HabitResponse): { id: number; done: boolean } | null {
 const anyRun = computed(() =>
   habits.value.some((habit) => runToday(habit) !== null),
 );
-const ticks = useTicks(writes.write);
+const ticks = useTicks(session.write);
 const { undo, undoLast } = ticks;
 const runKey = (habit: HabitResponse) => `run-${habit.id}`;
 async function toggleRun(habit: HabitResponse): Promise<void> {
@@ -538,8 +537,8 @@ async function onStarterCreated(): Promise<void> {
                       ? `${habit.title} heute wieder öffnen`
                       : `${habit.title} heute erledigen`
                   "
-                  :disabled="isBusy || writes.isWriting(runKey(habit))"
-                  :busy="writes.isWriting(runKey(habit))"
+                  :disabled="isBusy || session.isWriting(runKey(habit))"
+                  :busy="session.isWriting(runKey(habit))"
                   @toggle="toggleRun(habit)"
                 />
                 <span v-else class="habit-card__ring" aria-hidden="true" />

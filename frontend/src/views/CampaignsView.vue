@@ -32,8 +32,7 @@ import UndoToast from "../components/UndoToast.vue";
 import QuestTrend from "../components/QuestTrend.vue";
 import CampaignBoard from "../components/CampaignBoard.vue";
 import { useListFocus } from "../composables/useListFocus";
-import { useLoader } from "../composables/useLoader";
-import { useWrites } from "../composables/useWrites";
+import { useViewSession } from "../composables/useViewSession";
 import { useTicks } from "../composables/useTicks";
 import { useTimer } from "../composables/useTimer";
 import { useShortcutHandlers } from "../composables/useShortcuts";
@@ -75,33 +74,32 @@ const ticks = useTicks((action, { fallbackError }) =>
   run(action, "", { fallbackError }),
 );
 const { undo, undoLast } = ticks;
-const quiet = () =>
-  !busy.value && action.value === null && ticks.campaignQuestion.value === null;
 // Refreshes after timer and other views' changes, unless a dialog is open.
+const session = useViewSession({
+  holding: () =>
+    formBusy.value ||
+    action.value !== null ||
+    ticks.campaignQuestion.value !== null,
+  writeError: error,
+});
 const {
   data: todos,
   isLoading: loading,
   errorMessage: loadError,
   reload: load,
-} = useLoader(getTodoHierarchy, {
+} = session.resource(getTodoHierarchy, {
   initial: [] as HierarchyTodo[],
   fallbackError: "Quests konnten nicht geladen werden.",
-  refreshOnChange: quiet,
 });
 // The tiles' numbers; without them the tiles still open their campaign.
-const { data: questHours, reload: loadQuestHours } =
-  useLoader<QuestHoursResponse | null>(
-    (signal) => getQuestHours(weekStart(getCurrentDateInTimeZone()), signal),
-    {
-      initial: null,
-      fallbackError: "Kampagnen-Stunden konnten nicht geladen werden.",
-      refreshOnChange: quiet,
-    },
-  );
-const writes = useWrites(async (showPageLoading) => {
-  await Promise.all([load(showPageLoading), loadQuestHours(false)]);
-}, error);
-const { write, applied, busy: writing } = writes;
+const { data: questHours } = session.resource<QuestHoursResponse | null>(
+  (signal) => getQuestHours(weekStart(getCurrentDateInTimeZone()), signal),
+  {
+    initial: null,
+    fallbackError: "Kampagnen-Stunden konnten nicht geladen werden.",
+  },
+);
+const { write, applied, busy: writing } = session;
 const shownError = computed(() => error.value || loadError.value || "");
 const tiles = computed(() => campaignTiles(todos.value, questHours.value));
 const doneCount = computed(
@@ -657,7 +655,7 @@ useShortcutHandlers({
         :todos="todos"
         :campaign="openTile.todo"
         :busy="busy"
-        :writes="writes"
+        :writes="session"
         :ticks="ticks"
         @edit="(todo) => open('edit', todo)"
         @reparent="(todo) => open('move', todo)"

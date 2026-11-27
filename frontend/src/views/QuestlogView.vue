@@ -8,8 +8,7 @@ import AppIcon from "../components/AppIcon.vue";
 import CampaignChip from "../components/CampaignChip.vue";
 import ItemRow from "../components/ItemRow.vue";
 import { useCategoryLabels } from "../composables/useCategoryLabels";
-import { useLoader } from "../composables/useLoader";
-import { useWrites } from "../composables/useWrites";
+import { useViewSession } from "../composables/useViewSession";
 import { useTicks } from "../composables/useTicks";
 import { useShortcutHandlers } from "../composables/useShortcuts";
 import { useTimer } from "../composables/useTimer";
@@ -67,18 +66,19 @@ async function loadDump(): Promise<TodoResponse[]> {
   return backlog;
 }
 
+const session = useViewSession({
+  holding: () => !!dialog.value || dialogBusy.value || creationOpen.value,
+});
 const {
   data: todos,
   isLoading,
   errorMessage,
   reload: loadTodos,
-} = useLoader(loadDump, {
+} = session.resource(loadDump, {
   initial: [] as TodoResponse[],
   fallbackError: "Die Quests konnten nicht geladen werden.",
-  refreshOnChange: () =>
-    !(isSaving.value || dialog.value || dialogBusy.value || creationOpen.value),
 });
-const { write, applied, busy: isSaving } = useWrites(loadTodos, errorMessage);
+const { write, applied, busy: isSaving } = session;
 
 const isBusy = computed(() => {
   return isLoading.value || isSaving.value;

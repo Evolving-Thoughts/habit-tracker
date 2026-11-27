@@ -9,7 +9,7 @@ import AppIcon from "./AppIcon.vue";
 import CalendarEventRow from "./CalendarEventRow.vue";
 import UndoToast from "./UndoToast.vue";
 import { getPlan } from "../api/day-planner.api";
-import { useLoader } from "../composables/useLoader";
+import { useViewSession } from "../composables/useViewSession";
 import { DAY_DROP, useSortable } from "../composables/useSortable";
 import { useEventTick } from "../composables/useEventTick";
 import {
@@ -17,7 +17,6 @@ import {
   forecastStaysLine,
   runWindowLine,
 } from "../utils/day-drop";
-import { useWrites } from "../composables/useWrites";
 import { usePlanMove } from "../composables/usePlanMove";
 import { useTicks } from "../composables/useTicks";
 import type {
@@ -67,24 +66,23 @@ const emit = defineEmits<{
   ];
 }>();
 
+const session = useViewSession({ holding: () => props.held });
 const {
   data: plan,
   isLoading,
   errorMessage,
   reload,
-} = useLoader<WeekPlanResponse | null>(
+} = session.resource<WeekPlanResponse | null>(
   (signal) => getPlan(props.date, 1, signal),
   {
     initial: null,
     fallbackError: "Der Tag konnte nicht geladen werden.",
     params: [() => props.date],
     resetOnLoad: true,
-    refreshOnChange: () => !props.held && !writes.busy.value,
   },
 );
-const writes = useWrites(reload, errorMessage);
 /* Ticks and moves off this day: the paths today's cards take. */
-const ticks = useTicks(writes.write);
+const ticks = useTicks(session.write);
 /* Leaving the view: the campaign question says no, a held undo goes through. */
 onDeactivated(() => {
   ticks.answerCampaign(false);
@@ -112,13 +110,13 @@ const name = computed(() => {
     : relation.toLowerCase();
 });
 
-const busy = computed(() => props.held || writes.busy.value);
+const busy = computed(() => props.held || session.busy.value);
 
 const list = ref<HTMLElement | null>(null);
 /* Status line for a move: read out, since the card itself moved. */
 const status = ref("");
 /* Sorting within the day, by every kind of card: the Plan's move. */
-const moves = usePlanMove({ plan }, writes, {
+const moves = usePlanMove({ plan }, session, {
   key: "day",
   words: "day",
   said: (line) => (status.value = line),
@@ -198,7 +196,7 @@ function movedTo(card: HTMLElement, date: string) {
 /* A Google event ticked off here: the rule Heute has. */
 const tickEvent = useEventTick(
   plan,
-  writes,
+  session,
   withEventDone,
   (line) => (status.value = line),
 );
@@ -263,7 +261,7 @@ function menu(entry: WeekPlanEntry): MenuEntry[] {
       v-if="ahead"
       :date="date"
       :label="`Quest für ${name} hinzufügen`"
-      @created="writes.applied()"
+      @created="session.applied()"
     />
 
     <div v-if="errorMessage" class="alert other-day__error">
@@ -321,7 +319,7 @@ function menu(entry: WeekPlanEntry): MenuEntry[] {
             :time="entry.timeOfDay ?? ''"
             :title="entry.title"
             :past="!ahead"
-            :busy="writes.isWriting(`event-${entry.eventId}`)"
+            :busy="session.isWriting(`event-${entry.eventId}`)"
             @toggle="tickEvent({ id: entry.eventId, title: entry.title }, true)"
           />
           <PlannerItem
@@ -354,7 +352,7 @@ function menu(entry: WeekPlanEntry): MenuEntry[] {
             done
             :time="entry.timeOfDay ?? ''"
             :title="entry.title"
-            :busy="writes.isWriting(`event-${entry.eventId}`)"
+            :busy="session.isWriting(`event-${entry.eventId}`)"
             @toggle="tickEvent({ id: entry.eventId, title: entry.title }, false)"
           />
           <PlannerItem

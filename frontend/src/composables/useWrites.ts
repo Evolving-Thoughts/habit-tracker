@@ -7,6 +7,8 @@ type WriteOptions = {
   key?: string;
   /** Who hears about the change; null if the action announces it itself. */
   notify?: (() => void) | null;
+  /** Read again beside the reload, such as the stopwatch. */
+  alongside?: () => Promise<unknown> | undefined;
 };
 
 type ShownOptions = WriteOptions & {
@@ -19,10 +21,11 @@ type ShownOptions = WriteOptions & {
 };
 
 /**
- * The one order every view writes in: guard against a double start, clear the
+ * The one order every write takes: guard against a double start, clear the
  * error, write, tell the others, reload quietly, then report the outcome.
- * `reload` belongs to the view; the view's own refresh guard should check
- * `busy`, so the announcement does not fetch a second time.
+ * A view writes through `useViewSession`, which also keeps its refresh on
+ * the announcement off while `busy`; a child that writes for its parent
+ * takes the parent's `reload`.
  */
 export function useWrites(
   reload: (showPageLoading?: boolean) => Promise<void>,
@@ -34,22 +37,31 @@ export function useWrites(
   const isWriting = (key: string): boolean => writing.value.includes(key);
 
   /** After a child dialog wrote on its own. */
-  async function applied(notify: () => void = notifyDataChanged): Promise<void> {
+  async function applied(
+    notify: () => void = notifyDataChanged,
+    alongside?: WriteOptions["alongside"],
+  ): Promise<void> {
     notify();
-    await reload(false);
+    if (alongside) await Promise.all([reload(false), alongside()]);
+    else await reload(false);
   }
 
   /** Resolves to whether the write went through. */
   async function write(
     action: () => Promise<unknown>,
-    { fallbackError, key = "", notify = notifyDataChanged }: WriteOptions,
+    {
+      fallbackError,
+      key = "",
+      notify = notifyDataChanged,
+      alongside,
+    }: WriteOptions,
   ): Promise<boolean> {
     if (isWriting(key)) return false;
     writing.value.push(key);
     errorMessage.value = null;
     try {
       await action();
-      await applied(notify ?? (() => undefined));
+      await applied(notify ?? (() => undefined), alongside);
       return true;
     } catch (error: unknown) {
       errorMessage.value =

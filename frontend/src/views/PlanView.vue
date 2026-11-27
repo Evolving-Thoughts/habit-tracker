@@ -28,7 +28,7 @@ import UndoToast from "../components/UndoToast.vue";
 import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
 import { useListFocus } from "../composables/useListFocus";
 import { useSnapColumns } from "../composables/useSnapColumns";
-import { useLoader } from "../composables/useLoader";
+import { useViewSession } from "../composables/useViewSession";
 import { SHEET_QUERY, useMediaQuery } from "../composables/useMediaQuery";
 import {
   focusWhenReady,
@@ -36,7 +36,6 @@ import {
 } from "../composables/useShortcuts";
 import { useTimer } from "../composables/useTimer";
 import { useTicks } from "../composables/useTicks";
-import { useWrites } from "../composables/useWrites";
 import { usePlanMove } from "../composables/usePlanMove";
 import type {
   WeekPlanEntry,
@@ -229,30 +228,29 @@ const loadedDays = computed(() =>
   Math.min(MAX_PLAN_DAYS, Math.max(LOADED_DAYS, daysThatFit(false))),
 );
 
+/* Kept apart from the load error: the quiet reload after a write must not hide it. */
+const writeError = ref<string | null>(null);
+const session = useViewSession({ holding: dialogOpen, writeError });
 const {
   data: plan,
   isLoading,
   errorMessage: loadError,
   reload,
-} = useLoader<WeekPlanResponse | null>(
+} = session.resource<WeekPlanResponse | null>(
   (signal) => getPlan(first.value, loadedDays.value, signal),
   {
     initial: null,
     fallbackError: "Der Plan konnte nicht geladen werden.",
     params: [first, loadedDays],
     resetOnLoad: true,
-    refreshOnChange: () => !dialogOpen() && !writes.busy.value,
   },
 );
 /* The Questlog column: open quests without a day, in the Questlog's order. */
-const {
-  data: backlog,
-  errorMessage: backlogError,
-  reload: reloadBacklog,
-} = useLoader<QuestlogQuest[]>(() => getBacklogTodos(), {
+const { data: backlog, errorMessage: backlogError } = session.resource<
+  QuestlogQuest[]
+>(() => getBacklogTodos(), {
   initial: [],
   fallbackError: "Der Questlog konnte nicht geladen werden.",
-  refreshOnChange: () => !dialogOpen() && !writes.busy.value,
 });
 
 const hasOverdue = computed(() => !!plan.value?.overdue.length);
@@ -299,12 +297,6 @@ const plannableDays = computed(() =>
   })),
 );
 
-/* Kept apart from the load error: the quiet reload after a write must not hide it. */
-const writeError = ref<string | null>(null);
-const writes = useWrites(async (showPageLoading) => {
-  await Promise.all([reload(showPageLoading), reloadBacklog(false)]);
-}, writeError);
-
 const nothingPlanned = computed(
   () =>
     !!plan.value &&
@@ -320,7 +312,7 @@ const notice = ref("");
  * Every move on the board (a drag, a menu step, an arrow key), whatever it
  * moves: shown at once, written, taken back on failure (`usePlanMove`).
  */
-const moves = usePlanMove({ plan, backlog }, writes, {
+const moves = usePlanMove({ plan, backlog }, session, {
   key: "plan",
   words: "plan",
   said: (line) => {
@@ -340,7 +332,7 @@ async function stepEntry(
   direction: "up" | "down" | "left" | "right",
   focusOn: "menu" | "card" = "menu",
 ): Promise<void> {
-  if (!shownPlan.value || writes.busy.value || dialogBusy.value) return;
+  if (!shownPlan.value || session.busy.value || dialogBusy.value) return;
   if (!(await moves.step(entry, direction, shownPlan.value))) return;
   await nextTick();
   focusCard(entryKey(entry, ""), focusOn);
@@ -356,7 +348,7 @@ function focusCard(key: string, on: "menu" | "card"): void {
  * column the card stands in, for the focus to come back to.
  */
 function openEditing(entry: WeekPlanEntry | { todoId: number }, date = ""): void {
-  if (dialogBusy.value || writes.busy.value) return;
+  if (dialogBusy.value || session.busy.value) return;
   // A Google event has no editor here: it is changed in Google.
   if ("type" in entry && entry.type === "event") return;
   if ("type" in entry && entry.type === "habit") {
@@ -406,7 +398,7 @@ function planFromQuestlog(todo: QuestlogQuest, date: string): void {
  * column a run stands in; null for one left behind.
  */
 function openMoving(entry: WeekPlanTodoEntry | OpenRun, date: string | null): void {
-  if (dialogBusy.value || writes.busy.value) return;
+  if (dialogBusy.value || session.busy.value) return;
   listFocus.remember(entryKey(entry, ""));
   moving.value =
     entry.type === "todo"
@@ -434,7 +426,7 @@ function openMenuDialog(
   kind: "move" | "delete",
   todo: { todoId: number; title: string },
 ): void {
-  if (dialogBusy.value || writes.busy.value) return;
+  if (dialogBusy.value || session.busy.value) return;
   listFocus.remember(`todo-${todo.todoId}`);
   menuDialog.value =
     kind === "move"
@@ -444,7 +436,7 @@ function openMenuDialog(
 
 /** "Löschen" of a daily, from any of its runs: the whole daily goes. */
 function openDeleteDaily(entry: WeekPlanEntry, date: string): void {
-  if (entry.type !== "habit" || dialogBusy.value || writes.busy.value) return;
+  if (entry.type !== "habit" || dialogBusy.value || session.busy.value) return;
   listFocus.remember(entryKey(entry, date));
   menuDialog.value = {
     kind: "delete",
@@ -460,7 +452,7 @@ function closeDialogs(): void {
 }
 
 async function onDialogDone(): Promise<void> {
-  await writes.applied();
+  await session.applied();
   closeDialogs();
 }
 
@@ -507,7 +499,7 @@ watch(board, openOnToday, { flush: "post" });
 watch(phone, () => openOnToday(board.value), { flush: "post" });
 
 /* Ticking with X, its undo toast and the campaign question: `useTicks`. */
-const ticks = useTicks(writes.write);
+const ticks = useTicks(session.write);
 const { undo, undoLast } = ticks;
 async function complete(
   entry: { todoId: number; title: string },
@@ -529,7 +521,7 @@ async function completeRun(run: OpenRun): Promise<void> {
 
 /** "Überspringen": this run is left out, the daily goes on. */
 async function skipRun(run: OpenRun): Promise<void> {
-  if (writes.busy.value || dialogBusy.value) return;
+  if (session.busy.value || dialogBusy.value) return;
   const key = entryKey(run, "");
   await listFocus.around(key, async () => {
     if (await ticks.skip(entryTarget(run), "plan"))
@@ -544,7 +536,7 @@ async function skipRun(run: OpenRun): Promise<void> {
  * window) is row-actions' rule.
  */
 function moveEntry(entry: WeekPlanTodoEntry | OpenRun, date: string): boolean {
-  if (writes.busy.value || dialogBusy.value) return false;
+  if (session.busy.value || dialogBusy.value) return false;
   const day = shownDays.value.find((item) => item.date === date);
   void listFocus.around(entryKey(entry, ""), async () => {
     if (day) {
@@ -570,14 +562,14 @@ function questlogQuest(key: string | null): QuestlogQuest | null {
  * the board, or, beyond the board, with the Questlog's own save.
  */
 function planQueued(todo: QuestlogQuest, date: string): boolean {
-  if (writes.busy.value || dialogBusy.value) return false;
+  if (session.busy.value || dialogBusy.value) return false;
   if (shownDays.value.some((day) => day.date === date)) {
     planFromQuestlog(todo, date);
     return true;
   }
   void listFocus.around(`todo-${todo.id}`, async () => {
     if (
-      await writes.write(() => planQuest(todo, date), {
+      await session.write(() => planQuest(todo, date), {
         key: "plan",
         fallbackError: "Die Quest konnte nicht eingeplant werden.",
       })
@@ -640,7 +632,7 @@ function entryActions(
   const base = {
     row: planRow(entry, date),
     today: current.today,
-    busy: writes.busy.value || dialogBusy.value,
+    busy: session.busy.value || dialogBusy.value,
   };
   const step: RowActions["step"] = (direction) =>
     stepDrop(current, entry, direction)
@@ -698,7 +690,7 @@ function queuedActions(
   return {
     row: questRow(todo),
     today: current?.today ?? today(),
-    busy: writes.busy.value || dialogBusy.value,
+    busy: session.busy.value || dialogBusy.value,
     move: current ? (date) => planQueued(todo, date) : undefined,
     complete: () =>
       void listFocus.around(`todo-${todo.id}`, () =>
@@ -876,7 +868,7 @@ useShortcutHandlers({
         <PlanQuestlog
           :todos="backlog"
           :open="questlogOpen"
-          :busy="writes.busy.value || dialogBusy"
+          :busy="session.busy.value || dialogBusy"
           :days="plannableDays"
           @toggle="toggleQuestlog"
           @move="onMove"
@@ -891,14 +883,14 @@ useShortcutHandlers({
             (todo) =>
               openMenuDialog('delete', { todoId: todo.id, title: todo.title })
           "
-          @created="writes.applied()"
+          @created="session.applied()"
         />
         <PlanOverdue
           v-if="hasOverdue"
           :entries="plan.overdue"
           :open="overdueShown"
           @toggle="toggleOverdue"
-          :busy="writes.busy.value || dialogBusy"
+          :busy="session.busy.value || dialogBusy"
           :menu="(entry) => entryMenu(entry, null)"
           @edit="(entry) => openEditing(entry, 'overdue')"
           @move="onMove"
@@ -908,12 +900,12 @@ useShortcutHandlers({
           :key="day.date"
           :day="day"
           :today="plan.today"
-          :busy="writes.busy.value || dialogBusy"
+          :busy="session.busy.value || dialogBusy"
           :menu="(entry) => entryMenu(entry, day.date)"
           @edit="(entry) => openEditing(entry, day.date)"
           @arrow="(entry, key) => void stepEntry(entry, key, 'card')"
           @move="onMove"
-          @created="writes.applied()"
+          @created="session.applied()"
         />
       </div>
     </div>
