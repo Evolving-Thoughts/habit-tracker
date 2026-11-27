@@ -19,9 +19,7 @@ const props = defineProps<{
   labelled?: boolean;
 }>();
 const controller = useTimer();
-const own = computed(() =>
-  timerStateOf(controller, props.kind, props.targetId),
-);
+const own = computed(() => timerStateOf(controller, props));
 const label = computed(() =>
   own.value === "running"
     ? `Stoppuhr für ${props.title} läuft, pausieren`

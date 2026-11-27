@@ -51,9 +51,10 @@ import { againstTargetParts, campaignTiles } from "../utils/quest-hours";
 import { readyToComplete } from "../utils/campaign-next";
 import type { QuestHoursResponse } from "../types/quest-hours";
 import {
-  rowMenu as cardMenu,
-  timerStep,
+  questRow,
+  rowMenu as menuOf,
   type MenuEntry,
+  type RowActions,
 } from "../utils/row-actions";
 const page = ref<HTMLElement | null>(null),
   listFocus = useListFocus(page);
@@ -260,21 +261,21 @@ function details(todo: HierarchyTodo): string[] {
     );
   return parts;
 }
+/** What a quest of the tree can do; Löschen takes the quests below along. */
+function actionsOf(todo: HierarchyTodo): RowActions {
+  return {
+    row: questRow(todo, { tree: true }),
+    today: getCurrentDateInTimeZone(),
+    busy: busy.value,
+    edit: () => open("edit", todo),
+    addChild: () => open("create", todo),
+    reparent: () => open("move", todo),
+    remove: () => open("delete", todo),
+  };
+}
 /** "Aktionen für …" of a row; its ▶ measures, so the menu needs no stopwatch. */
 function rowMenu(todo: HierarchyTodo): MenuEntry[] {
-  return cardMenu(
-    todo.title,
-    {
-      edit: () => open("edit", todo),
-      child: () => open("create", todo),
-      reparent: () => open("move", todo),
-      remove: {
-        run: () => open("delete", todo),
-        ariaLabel: `${todo.title} mit allen Unter-Quests löschen`,
-      },
-    },
-    busy.value,
-  );
+  return menuOf(actionsOf(todo));
 }
 
 /*
@@ -295,24 +296,7 @@ function campaignMenu(todo: HierarchyTodo): MenuEntry[] {
       disabled: busy.value,
       run: () => void toggleCompletion(todo),
     },
-    ...cardMenu(
-      todo.title,
-      {
-        edit: () => open("edit", todo),
-        timer: timerStep(
-          timer,
-          { kind: "todo", targetId: todo.id, title: todo.title },
-          todo.timerEligible,
-        ),
-        child: () => open("create", todo),
-        reparent: () => open("move", todo),
-        remove: {
-          run: () => open("delete", todo),
-          ariaLabel: `${todo.title} mit allen Unter-Quests löschen`,
-        },
-      },
-      busy.value,
-    ),
+    ...menuOf({ ...actionsOf(todo), menuTimer: timer }),
   ];
 }
 

@@ -27,11 +27,7 @@ import type { WeekPlanEntry, WeekPlanResponse } from "../types/week-plan";
 import { dayRelation, tallyLine } from "../utils/day-tally";
 import { dayLabel } from "../utils/history";
 import { asPlannerItem, relationLabel, tallyOfEntries } from "../utils/other-day";
-import {
-  quickMoveEntries,
-  quickMoves,
-  type MenuEntry,
-} from "../utils/row-actions";
+import { planRow, rowMenu, type MenuEntry } from "../utils/row-actions";
 import {
   boardDrop,
   doneEntries,
@@ -271,44 +267,29 @@ function toggle(entry: WeekPlanEntry): void {
   });
 }
 
-/** "Heute", "Morgen", "Nächste Woche": the quick moves Heute's cards have. */
+/**
+ * "Heute", "Morgen", "Nächste Woche": the quick moves Heute's cards have.
+ * Only these: a tap on the card edits it; the rest of Heute's menu is not
+ * offered on another day.
+ */
 function menu(entry: WeekPlanEntry): MenuEntry[] {
-  if (isMovable(entry)) {
-    const moves = quickMoves(props.today, {
-      date: props.date,
-      timeOfDay: entry.timeOfDay,
-    });
-    return quickMoveEntries(
-      entry.title,
-      moves,
-      (move) =>
-        void writes.write(() => rescheduleTodo(entry.todoId, move.date, false), {
+  return rowMenu({
+    row: planRow(entry, props.date),
+    today: props.today,
+    busy: busy.value,
+    move: (date) => {
+      if (isMovable(entry))
+        void writes.write(() => rescheduleTodo(entry.todoId, date, false), {
           key: `todo-${entry.todoId}`,
           fallbackError: "Die Quest konnte nicht verschoben werden.",
-        }),
-      { disabled: busy.value },
-    );
-  }
-  if (isMovableRun(entry)) {
-    const moves = quickMoves(props.today, {
-      date: props.date,
-      moveUntil: entry.moveUntil,
-    });
-    return quickMoveEntries(
-      entry.title,
-      moves,
-      (move) =>
-        void writes.write(
-          () => rescheduleOccurrence(entry.occurrenceId, move.date),
-          {
-            key: `run-${entry.occurrenceId}`,
-            fallbackError: "Das Daily konnte nicht verschoben werden.",
-          },
-        ),
-      { disabled: busy.value },
-    );
-  }
-  return [];
+        });
+      else if (isMovableRun(entry))
+        void writes.write(() => rescheduleOccurrence(entry.occurrenceId, date), {
+          key: `run-${entry.occurrenceId}`,
+          fallbackError: "Das Daily konnte nicht verschoben werden.",
+        });
+    },
+  });
 }
 
 </script>

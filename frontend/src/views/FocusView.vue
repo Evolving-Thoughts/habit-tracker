@@ -20,12 +20,18 @@ import QuestNotes from "../components/QuestNotes.vue";
 import { notifyDataChanged } from "../composables/data-sync";
 import { useDayClock } from "../composables/useDayClock";
 import { useLoader } from "../composables/useLoader";
-import { toggleTimer, useTimer } from "../composables/useTimer";
+import {
+  timerFreeFor,
+  timerStateOf,
+  toggleTimer,
+  useTimer,
+} from "../composables/useTimer";
 import { useShortcutHandlers } from "../composables/useShortcuts";
 import { hrefOf } from "../routes";
 import type { DayPlannerItem, DayPlannerResponse } from "../types/day-planner";
 import CampaignChip from "../components/CampaignChip.vue";
 import ChallengeMark from "../components/ChallengeMark.vue";
+import { plannerRow, timerTargetOf } from "../utils/row-actions";
 import { formatStopwatch } from "../utils/stopwatch";
 import { streakLine } from "../utils/streak";
 import {
@@ -75,11 +81,7 @@ const agenda = computed(() =>
 );
 
 function isTimed(item: DayPlannerItem): boolean {
-  const running = timer?.timer.value;
-  if (!running) return false;
-  return item.type === "todo"
-    ? running.kind === "todo" && running.targetId === item.todoId
-    : running.kind === "occurrence" && running.targetId === item.occurrenceId;
+  return timerStateOf(timer, timerTargetOf(plannerRow(item))) !== null;
 }
 
 /**
@@ -267,33 +269,16 @@ function toggleStopwatch(): boolean {
   // Starting or resuming here lets the chosen sound start with it. When no
   // other stopwatch has to end first (that asks), the sound follows the
   // press at once instead of waiting for the server's answer.
-  const other = timer?.timer.value;
-  const ownOrNone =
-    !other ||
-    (item.type === "todo"
-      ? other.kind === "todo" && other.targetId === item.todoId
-      : other.kind === "occurrence" && other.targetId === item.occurrenceId);
-  if (!ownOrNone) sound.gesture();
+  const target = timerTargetOf(plannerRow(item));
+  if (!timerFreeFor(timer, target)) sound.gesture();
   else if (running.value) sound.gesture("pause");
-  else if (other || item.timerEligible) sound.gesture("start");
+  else if (timer?.timer.value || item.timerEligible) sound.gesture("start");
   // Without the Fokus-Sperre (no provider) the stopwatch starts as anywhere.
   const focus =
     !focusBlock || activeBlock.value ? undefined : { mode: blockMode.value };
   return toggleTimer(
     timer,
-    item.type === "todo"
-      ? {
-          kind: "todo",
-          targetId: item.todoId,
-          title: item.title,
-          focusBlock: focus,
-        }
-      : {
-          kind: "occurrence",
-          targetId: item.occurrenceId,
-          title: item.title,
-          focusBlock: focus,
-        },
+    { ...target, focusBlock: focus },
     item.timerEligible,
   );
 }

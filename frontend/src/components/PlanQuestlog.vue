@@ -5,7 +5,8 @@ import PlanEntry from "./PlanEntry.vue";
 import QuickAddQuest from "./QuickAddQuest.vue";
 import { useSortable } from "../composables/useSortable";
 import { useTimer } from "../composables/useTimer";
-import { rowMenu, timerStep, type MenuEntry } from "../utils/row-actions";
+import { getCurrentDateInTimeZone } from "../utils/date";
+import { questRow, rowMenu, type MenuEntry } from "../utils/row-actions";
 import {
   boardDrop,
   questlogEntry,
@@ -62,39 +63,29 @@ const entries = computed(() =>
 );
 
 const timer = useTimer();
-/** "Nach oben" / "Nach unten": the keyboard's way to sort the column. */
-function step(todo: QuestlogQuest, direction: -1 | 1): (() => void) | undefined {
-  const index = props.todos.indexOf(todo) + direction;
-  if (index < 0 || index >= props.todos.length) return undefined;
-  return () => emit("step", { todoId: todo.id, index });
-}
 
-/* The board's days are this card's quick moves; no ▶ fits the column. */
+/*
+ * The board's days are this card's quick moves; no ▶ fits the column, so
+ * the menu carries the stopwatch. "Nach oben" / "Nach unten" sort the
+ * column by key.
+ */
 function menu(todo: QuestlogQuest): MenuEntry[] {
-  return rowMenu(
-    todo.title,
-    {
-      quickMoves: props.days.map((day) => ({
-        id: `plan-${day.date}`,
-        label: day.label,
-        icon: "calendar",
-        ariaLabel: `${todo.title} einplanen am ${day.label}`,
-        disabled: props.busy,
-        run: () => emit("plan", todo, day.date),
-      })),
-      edit: () => emit("edit", todo),
-      timer: timerStep(
-        timer,
-        { kind: "todo", targetId: todo.id, title: todo.title },
-        todo.timerEligible,
-      ),
-      reparent: () => emit("reparent", todo),
-      up: step(todo, -1),
-      down: step(todo, 1),
-      remove: { run: () => emit("remove", todo) },
+  return rowMenu({
+    row: questRow(todo),
+    today: getCurrentDateInTimeZone(),
+    busy: props.busy,
+    planDays: props.days,
+    move: (date) => emit("plan", todo, date),
+    edit: () => emit("edit", todo),
+    menuTimer: timer,
+    reparent: () => emit("reparent", todo),
+    step: (direction) => {
+      const index = props.todos.indexOf(todo) + (direction === "up" ? -1 : 1);
+      if (index < 0 || index >= props.todos.length) return undefined;
+      return () => emit("step", { todoId: todo.id, index });
     },
-    props.busy,
-  );
+    remove: () => emit("remove", todo),
+  });
 }
 </script>
 

@@ -26,11 +26,7 @@ import { SHEET_QUERY, useMediaQuery } from "../composables/useMediaQuery";
 import { useShortcutHandlers } from "../composables/useShortcuts";
 import { useSnapColumns } from "../composables/useSnapColumns";
 import { writeDone, type useTicks } from "../composables/useTicks";
-import {
-  timerStateOf,
-  toggleTimer,
-  useTimer,
-} from "../composables/useTimer";
+import { timerStateOf, useTimer } from "../composables/useTimer";
 import type { useWrites } from "../composables/useWrites";
 import type { TodoResponse } from "../types/todo";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
@@ -47,12 +43,15 @@ import {
   type BoardCard,
   type BoardColumn,
 } from "../utils/campaign-board";
-import { addDays, getCurrentDateInTimeZone, weekStart } from "../utils/date";
+import { getCurrentDateInTimeZone } from "../utils/date";
 import {
-  quickMoveEntries,
-  quickMoves,
+  questRow,
+  rowControl,
   rowMenu,
+  rowShortcuts,
+  timerTargetOf,
   type MenuEntry,
+  type RowActions,
 } from "../utils/row-actions";
 
 /**
@@ -115,7 +114,7 @@ const shown = computed(() =>
     const working =
       !todo.completed &&
       !todo.inProgress &&
-      timerStateOf(timer, "todo", todo.id) !== null;
+      timerStateOf(timer, timerTargetOf(questRow(todo))) !== null;
     return changes || working
       ? { ...todo, ...(working ? { inProgress: true } : {}), ...changes }
       : todo;
@@ -134,8 +133,9 @@ const { data: questlog } = useLoader<TodoResponse[]>(
 );
 const active = computed(
   () =>
-    cards.value.find((card) => timerStateOf(timer, "todo", card.todo.id))?.todo
-      .id ?? null,
+    cards.value.find((card) =>
+      timerStateOf(timer, timerTargetOf(questRow(card.todo))),
+    )?.todo.id ?? null,
 );
 /* A stopwatch that ends leaves its time in the Logbuch: the server says
    whether its quest stays in "In Arbeit". */
@@ -556,9 +556,7 @@ function focusTarget(id: number, from: Place): HTMLElement | null {
   const element = root.value;
   if (!element) return null;
   if (!phone.value) {
-    const trigger = element.querySelector<HTMLElement>(
-      `[data-focus-key="todo-${id}"] [aria-haspopup="menu"]`,
-    );
+    const trigger = rowControl(element, `todo-${id}`);
     if (trigger) return trigger;
   }
   const titles = element.querySelectorAll<HTMLElement>(
@@ -603,11 +601,7 @@ async function dropSelection(): Promise<void> {
   const [first] = selected.value;
   clearSelection();
   await nextTick();
-  root.value
-    ?.querySelector<HTMLElement>(
-      `[data-focus-key="todo-${first}"] [data-edit-button]`,
-    )
-    ?.focus();
+  rowControl(root.value, `todo-${first}`, "card")?.focus();
 }
 /* Escape lets go of the marks, unless it closes a dialog or a menu first. */
 function onKeydown(event: KeyboardEvent): void {
@@ -637,82 +631,41 @@ function onDrop(todoId: number, to: BoardColumn): void {
   else if (moveCard(card, to)) clearSelection();
 }
 
-/** "Aktionen für …" of a card, in the one order of every view (`rowMenu`). */
-function menuOf(card: BoardCard): MenuEntry[] {
+/*
+ * What a card can do: its "…" and its keys (row-actions). Every step runs
+ * the same move as a drop; Geplant asks the day unless the step names it.
+ */
+function actionsOf(card: BoardCard): RowActions {
   const { todo } = card;
-  const column = columnOf(todo);
-  const open = column !== "done";
-  return rowMenu(
-    todo.title,
-    {
-      quickMoves: open
-        ? quickMoveEntries(
-            todo.title,
-            quickMoves(today(), {
-              date: todo.scheduledDate,
-              timeOfDay: todo.timeOfDay,
-            }),
-            (move) => void planCard(card, move.date),
-            { disabled: props.busy, plan: !todo.scheduledDate },
-          )
-        : [],
-      otherDay: {
-        run: () => void planCard(card),
-        appointment: todo.timeOfDay !== null,
-        plan: !todo.scheduledDate,
-      },
-      unplan:
-        todo.scheduledDate || !open
-          ? () => void moveCard(card, "todo", { fromMenu: true })
-          : undefined,
-      complete: open ? () => void complete(card, { fromMenu: true }) : undefined,
-      startWork:
-        column !== "working"
-          ? () => void moveCard(card, "working", { fromMenu: true })
-          : undefined,
-      setAside: column === "working" ? () => setAsideCard(card) : undefined,
-      // In Arbeit asks it with "Zurückstellen …"; lifting a blocker works anywhere.
-      block:
-        open && (todo.blocked || column !== "working")
-          ? { blocked: todo.blocked, run: () => void toggleBlocked(card) }
-          : undefined,
-      edit: () => emit("edit", todo),
-      reparent: () => emit("reparent", todo),
-      remove: { run: () => emit("remove", todo) },
-    },
-    props.busy,
-  );
+  return {
+    row: questRow(todo, {
+      board: { column: columnOf(todo), blocked: todo.blocked },
+    }),
+    today: today(),
+    busy: props.busy,
+    move: (date) => planCard(card, date),
+    pickDay: () => void planCard(card),
+    unplan: () => void moveCard(card, "todo", { fromMenu: true }),
+    complete: () => void complete(card, { fromMenu: true }),
+    startWork: () => void moveCard(card, "working", { fromMenu: true }),
+    setAside: () => setAsideCard(card),
+    toggleBlocked: () => void toggleBlocked(card),
+    edit: () => emit("edit", todo),
+    reparent: () => emit("reparent", todo),
+    remove: () => emit("remove", todo),
+  };
+}
+function menuOf(card: BoardCard): MenuEntry[] {
+  return rowMenu(actionsOf(card));
 }
 
-/* The keys of the cards' menus work on the card under the pointer or focus. */
-function cardOf(key: string | null): BoardCard | null {
-  return cards.value.find((card) => `todo-${card.todo.id}` === key) ?? null;
-}
-function planByKey(key: string | null, date: (today: string) => string) {
-  const card = cardOf(key);
-  if (!card || card.todo.completed || card.todo.timeOfDay) return false;
-  return planCard(card, date(today()));
-}
-useShortcutHandlers({
-  "row.today": ({ key }) => planByKey(key, (day) => day),
-  "row.tomorrow": ({ key }) => planByKey(key, (day) => addDays(day, 1)),
-  "row.nextWeek": ({ key }) =>
-    planByKey(key, (day) => addDays(weekStart(day), 7)),
-  "row.done": ({ key }) => {
-    const card = cardOf(key);
-    if (!card || card.todo.completed || props.busy) return false;
-    void complete(card, { fromMenu: true });
-  },
-  "row.timer": ({ key }) => {
-    const card = cardOf(key);
-    if (!card || card.todo.completed) return false;
-    return toggleTimer(
-      timer,
-      { kind: "todo", targetId: card.todo.id, title: card.todo.title },
-      card.todo.timerEligible,
-    );
-  },
-});
+/* The keys work on the card under the pointer or focus. */
+useShortcutHandlers(
+  rowShortcuts((key) => {
+    const card = cards.value.find((item) => `todo-${item.todo.id}` === key);
+    return card ? actionsOf(card) : null;
+  }, timer),
+);
 
 /** The quest a question is asked about. */
 const asked = computed(() => {
@@ -732,7 +685,9 @@ const asked = computed(() => {
     first: todos[0]!,
     /** An appointment among them still asks to be moved on purpose. */
     timeOfDay: todos.find((todo) => todo.timeOfDay)?.timeOfDay ?? null,
-    timing: todos.some((todo) => timerStateOf(timer, "todo", todo.id)),
+    timing: todos.some((todo) =>
+      timerStateOf(timer, timerTargetOf(questRow(todo))),
+    ),
   };
 });
 </script>

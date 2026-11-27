@@ -32,7 +32,7 @@ import type { HistoryResponse } from "../types/history";
 import type { MonthChallenges } from "../types/month-challenge";
 import { shownWhy } from "../utils/why";
 import { onCardClick } from "../utils/card-click";
-import { rowMenu, type MenuEntry } from "../utils/row-actions";
+import { dailyRow, rowMenu, type MenuEntry } from "../utils/row-actions";
 import {
   formatDateForGermanDisplay,
   getCurrentDateInTimeZone,
@@ -246,14 +246,13 @@ function openFromCard(event: MouseEvent, habit: HabitResponse): void {
   if (canEdit()) onCardClick(event, () => openEditing(habit));
 }
 const cardMenu = (habit: HabitResponse): MenuEntry[] =>
-  rowMenu(
-    habit.title,
-    {
-      edit: () => openEditing(habit),
-      remove: { run: () => openDeleting(habit) },
-    },
-    !canEdit(),
-  );
+  rowMenu({
+    row: dailyRow(habit),
+    today: today.value,
+    busy: !canEdit(),
+    edit: () => openEditing(habit),
+    remove: () => openDeleting(habit),
+  });
 function openDeleting(habit: HabitResponse): void {
   if (!canEdit()) return;
   successMessage.value = null;

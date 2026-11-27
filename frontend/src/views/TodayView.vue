@@ -17,7 +17,6 @@ import { useMediaQuery } from "../composables/useMediaQuery";
 import {
   timedItemKey,
   timerStateOf,
-  toggleTimer,
   useTimer,
 } from "../composables/useTimer";
 import {
@@ -60,9 +59,8 @@ import {
   addDays,
   formatDateForGermanDisplay,
   getCurrentDateInTimeZone,
-  weekStart,
 } from "../utils/date";
-import { dayLabel, fullStop } from "../utils/history";
+import { fullStop } from "../utils/history";
 import {
   arrangeToday,
   eventTime,
@@ -92,10 +90,14 @@ import { useRoute, useRouter } from "vue-router";
 import { DAY_QUERY, hrefOf } from "../routes";
 import { onCardClick } from "../utils/card-click";
 import {
-  quickMoveEntries,
-  quickMoves,
-  rowMenu as cardMenu,
+  plannerRow,
+  rowControl,
+  rowMenu,
+  rowShortcuts,
+  timerTargetOf,
+  whereLabel,
   type MenuEntry,
+  type RowActions,
 } from "../utils/row-actions";
 
 /*
@@ -602,11 +604,7 @@ async function shiftInOrder(
   if (to === null) return;
   await moveInOrder(sortables.value.indexOf(item), to);
   await nextTick();
-  page.value
-    ?.querySelector<HTMLElement>(
-      `[data-focus-key="${getItemKey(item)}"] [aria-haspopup="menu"]`,
-    )
-    ?.focus();
+  rowControl(page.value, getItemKey(item))?.focus();
 }
 
 /* The whole card drags: the focus card and every row of the order. */
@@ -652,7 +650,10 @@ async function dropOnDay(item: DayPlannerItem, date: string): Promise<void> {
     fallbackError: "Der Eintrag konnte nicht verschoben werden.",
     confirmFixed: true,
   });
-  if (moved) notice(fullStop(`„${item.title}“ steht jetzt ${whereLabel(date)}`));
+  if (moved)
+    notice(
+      fullStop(`„${item.title}“ steht jetzt ${whereLabel(date, today.value)}`),
+    );
 }
 
 /** A short line above the list: what a drop did or why it did not. */
@@ -687,12 +688,7 @@ const postponing = computed(() =>
     ? postponePlan(
         [...agenda.value.sequence, ...agenda.value.carriedOver],
         tomorrow.value,
-        (item) =>
-          timerStateOf(
-            timer,
-            item.type === "todo" ? "todo" : "occurrence",
-            item.type === "todo" ? item.todoId : item.occurrenceId,
-          ) !== null,
+        (item) => timerStateOf(timer, timerTargetOf(plannerRow(item))) !== null,
       )
     : { moving: [], staying: [] },
 );
@@ -757,106 +753,55 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
 }
 
 /*
- * Keyboard shortcuts on a row run what its buttons run. Done rows and items
- * whose buttons would not offer the step ignore the key; an appointment opens
- * "Verschieben", where its move is confirmed.
+ * What a row of the day can do: its menu and its keys (row-actions). The
+ * quick moves run the same step as T, D and W; "Anderer Tag …" opens the
+ * dialog the row had, where an appointment's move is confirmed. Done rows
+ * and busy ones ignore the keys.
  */
 function pendingItem(key: string | null): DayPlannerItem | null {
   const item = planner.value?.items.find((entry) => getItemKey(entry) === key);
   return item && item.status === "pending" && !isUpdating(item) ? item : null;
 }
-function whereLabel(date: string): string {
-  if (date === planner.value?.date) return "bei heute";
-  if (date === tomorrow.value) return "bei morgen";
-  return `am ${dayLabel(date)}`;
-}
-function moveByKey(key: string | null, date: string): boolean {
-  const item = pendingItem(key);
-  if (!item || !date || item.scheduledDate === date) return false;
-  if (item.type === "todo" && item.timeOfDay !== null) {
-    openMoving(item);
-    return true;
-  }
-  if (!quickMovable(item, date)) return false;
-  void listFocus.around(getItemKey(item), async () => {
-    if (await moveTo(item, date))
-      orderMessage.value = fullStop(
-        `„${item.title}“ steht jetzt ${whereLabel(date)}`,
-      );
-  });
-  return true;
-}
-/*
- * "Aktionen für …" of a row and of the focus card. The quick moves run the
- * same step as T, D and W; "Verschieben" opens the dialog the row had.
- */
-function canMoveByDialog(item: DayPlannerItem): boolean {
-  if (item.status !== "pending") return false;
-  if (item.type === "todo") return true;
-  return (item.moveUntil ?? "") > item.scheduledDate;
-}
 const router = useRouter();
-/** `past`: an appointment that is over but open leads with "Anderer Tag …". */
-function rowMenu(item: DayPlannerItem, past = false): MenuEntry[] {
-  const today = planner.value?.date;
-  if (!today || item.status !== "pending") return [];
-  const busy = isUpdating(item);
-  const moves = quickMoves(today, {
-    date: item.scheduledDate,
-    timeOfDay: item.type === "todo" ? item.timeOfDay : null,
-    moveUntil: item.type === "habit" ? item.moveUntil : undefined,
-  });
+function actionsOf(item: DayPlannerItem, today: string): RowActions {
+  const key = getItemKey(item);
   const isFocus = item === agenda.value?.focus;
-  return cardMenu(
-    item.title,
-    {
-      quickMoves: quickMoveEntries(
-        item.title,
-        moves,
-        (move) => void moveByKey(getItemKey(item), move.date),
-        { disabled: busy },
-      ),
-      otherDay: canMoveByDialog(item)
-        ? {
-            run: () => openMoving(item),
-            appointment: item.type === "todo" && !!item.timeOfDay,
-            lead: past,
-          }
+  return {
+    row: plannerRow(item),
+    today,
+    busy: isUpdating(item),
+    move: (date) =>
+      void listFocus.around(key, async () => {
+        if (await moveTo(item, date))
+          orderMessage.value = fullStop(
+            `„${item.title}“ steht jetzt ${whereLabel(date, today)}`,
+          );
+      }),
+    pickDay: () => openMoving(item),
+    complete: () => void listFocus.around(key, () => toggleItem(item)),
+    skip: item.type === "habit" ? () => void skipHabit(item) : undefined,
+    edit: () => openEditing(item),
+    // The Fokus-Modus has no Später or Überspringen for an appointment.
+    focusMode:
+      isFocus && !focusSlot.value
+        ? () => void router.push({ name: "focus" })
         : undefined,
-      skip: item.type === "habit" ? () => void skipHabit(item) : undefined,
-      edit: () => openEditing(item),
-      // The Fokus-Modus has no Später or Überspringen for an appointment.
-      focusMode:
-        isFocus && !focusSlot.value
-          ? () => void router.push({ name: "focus" })
-          : undefined,
-      reparent:
-        item.type === "todo"
-          ? () => openMenuDialog(item, "move")
-          : undefined,
-      // The challenge's own place is in the Dailies.
-      challenge:
-        item.type === "habit" && item.monthChallenge
-          ? () => void router.push(CHALLENGE_HREF.slice(1))
-          : undefined,
-      up:
-        stepFrom(item, -1) !== null
-          ? () => void shiftInOrder(item, -1)
-          : undefined,
-      down:
-        stepFrom(item, 1) !== null
-          ? () => void shiftInOrder(item, 1)
-          : undefined,
-      remove: {
-        run: () => openMenuDialog(item, "delete"),
-        ariaLabel:
-          item.type === "habit"
-            ? `Daily ${item.title} ganz löschen`
-            : undefined,
-      },
+    reparent: () => openMenuDialog(item, "move"),
+    // The challenge's own place is in the Dailies.
+    openChallenge: () => void router.push(CHALLENGE_HREF.slice(1)),
+    step: (direction) => {
+      const by = direction === "up" ? -1 : 1;
+      return stepFrom(item, by) !== null
+        ? () => void shiftInOrder(item, by)
+        : undefined;
     },
-    busy,
-  );
+    remove: () => openMenuDialog(item, "delete"),
+  };
+}
+/** `past`: an appointment that is over but open leads with "Anderer Tag …". */
+function menuOf(item: DayPlannerItem, past = false): MenuEntry[] {
+  const today = planner.value?.date;
+  return today ? rowMenu(actionsOf(item, today), { past }) : [];
 }
 /** A tap anywhere on the focus card but its controls opens the editor. */
 function openFocusFromCard(event: MouseEvent, item: DayPlannerItem): void {
@@ -865,12 +810,7 @@ function openFocusFromCard(event: MouseEvent, item: DayPlannerItem): void {
 /** The focus card says in words when its stopwatch runs. */
 const focusTimer = computed(() => {
   const focus = agenda.value?.focus;
-  if (!focus) return null;
-  return timerStateOf(
-    timer,
-    focus.type === "todo" ? "todo" : "occurrence",
-    focus.type === "todo" ? focus.todoId : focus.occurrenceId,
-  );
+  return focus ? timerStateOf(timer, timerTargetOf(plannerRow(focus))) : null;
 });
 
 /*
@@ -898,33 +838,10 @@ useShortcutHandlers(
         page.value?.querySelector<HTMLElement>('input[name="quickTitle"]'),
       );
     },
-    "row.timer": ({ key }) => {
+    ...rowShortcuts((key) => {
       const item = pendingItem(key);
-      if (!item) return false;
-      return toggleTimer(
-        timer,
-        item.type === "todo"
-          ? { kind: "todo", targetId: item.todoId, title: item.title }
-          : {
-              kind: "occurrence",
-              targetId: item.occurrenceId,
-              title: item.title,
-            },
-        item.timerEligible,
-      );
-    },
-    "row.done": ({ key }) => {
-      const item = pendingItem(key);
-      if (!item) return false;
-      void listFocus.around(getItemKey(item), () => toggleItem(item));
-    },
-    "row.today": ({ key }) => moveByKey(key, planner.value?.date ?? ""),
-    "row.tomorrow": ({ key }) => moveByKey(key, tomorrow.value),
-    "row.nextWeek": ({ key }) =>
-      moveByKey(
-        key,
-        planner.value ? addDays(weekStart(planner.value.date), 7) : "",
-      ),
+      return item && planner.value ? actionsOf(item, planner.value.date) : null;
+    }, timer),
   },
   {
     // The same offer as "Alles Offene auf morgen" in the head's "…".
@@ -1327,9 +1244,9 @@ useShortcutHandlers(
                   <AppIcon name="focus" />
                 </a>
                 <ActionMenu
-                  v-if="rowMenu(agenda.focus).length"
+                  v-if="menuOf(agenda.focus).length"
                   :title="agenda.focus.title"
-                  :entries="rowMenu(agenda.focus)"
+                  :entries="menuOf(agenda.focus)"
                   :disabled="isUpdating(agenda.focus)"
                 />
               </div>
@@ -1380,7 +1297,7 @@ useShortcutHandlers(
                 :item="entry.item"
                 :time="entry.time"
                 :is-updating="isUpdating(entry.item)"
-                :menu="rowMenu(entry.item, entry.past)"
+                :menu="menuOf(entry.item, entry.past)"
                 :past="entry.past"
                 :challenge="challengeLine(entry.item)"
                 why-wide-only
@@ -1405,7 +1322,7 @@ useShortcutHandlers(
                 :data-sort-key="getItemKey(entry.item)"
                 :item="entry.item"
                 :is-updating="isUpdating(entry.item)"
-                :menu="rowMenu(entry.item)"
+                :menu="menuOf(entry.item)"
                 :challenge="challengeLine(entry.item)"
                 :why-wide-only="index >= 2"
                 sortable

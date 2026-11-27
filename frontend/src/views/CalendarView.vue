@@ -46,7 +46,11 @@ import {
   supportedHistoryDate,
   weekLabel,
 } from "../utils/history";
-import { quickMoveEntries, quickMoves, rowMenu } from "../utils/row-actions";
+import {
+  menuInOrder,
+  quickMoveEntries,
+  quickMoves,
+} from "../utils/row-actions";
 
 type Mode = "month" | "week" | "day";
 
@@ -417,7 +421,7 @@ const plannedActions: PlannedActions = {
     if (!today) return [];
     const disabled = writes.busy.value;
     const movable = !!moveTarget(item);
-    return rowMenu(
+    return menuInOrder(
       item.title,
       {
         quickMoves: movable

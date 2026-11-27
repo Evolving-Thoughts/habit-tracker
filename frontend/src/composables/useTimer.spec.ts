@@ -1,6 +1,11 @@
 import { flushPromises } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTimerController, toggleTimer } from "./useTimer";
+import {
+  createTimerController,
+  timerFreeFor,
+  timerStateOf,
+  toggleTimer,
+} from "./useTimer";
 import {
   getCurrentTimer,
   startTimer,
@@ -394,5 +399,26 @@ describe("toggleTimer", () => {
     const controller = createTimerController();
     controller.busy.value = true;
     expect(toggleTimer(controller, target, true)).toBe(false);
+  });
+});
+
+describe("timerStateOf and timerFreeFor", () => {
+  it("names the state of the target's own stopwatch, none for another", () => {
+    const controller = createTimerController();
+    expect(timerStateOf(controller, target)).toBeNull();
+    expect(timerFreeFor(controller, target)).toBe(true);
+    controller.timer.value = response("paused").timer;
+    expect(timerStateOf(controller, target)).toBe("paused");
+    expect(timerFreeFor(controller, target)).toBe(true);
+    const other = { ...target, targetId: 2 };
+    expect(timerStateOf(controller, other)).toBeNull();
+    expect(timerFreeFor(controller, other)).toBe(false);
+    expect(timerStateOf(controller, { kind: "occurrence", targetId: 1 })).toBeNull();
+    expect(timerStateOf(controller, null)).toBeNull();
+    expect(timerStateOf(controller, { kind: "todo", targetId: null })).toBeNull();
+  });
+  it("is free for anything without a controller", () => {
+    expect(timerStateOf(null, target)).toBeNull();
+    expect(timerFreeFor(null, target)).toBe(true);
   });
 });

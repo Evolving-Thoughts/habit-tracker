@@ -562,7 +562,7 @@ Eine Taste: mindestens 1.75rem breit und hoch, Ecke `--radius-key` (0.375rem, ka
 In der Übersicht ("?") und in Einstellungen › Tastatur dieselbe Liste: Gruppentitel (800, 1rem), darunter Zeilen mit der Aktion links und den Tastenkappen rechts, getrennt durch Haarlinien.
 
 ### Karten (der Kartenvertrag)
-Jede Quest- und Daily-Karte in jeder Ansicht folgt einem Vertrag, gebaut aus `ItemRow` (Karte), `CheckRing` (Haken), `ActionMenu` (Menü), `CampaignChip` (Kampagne) und `rowMenu()` in `utils/row-actions.ts` (Reihenfolge des Menüs); Plan (`PlanEntry`), Kampagnen-Baum und Dailies halten denselben Vertrag mit eigener Form:
+Jede Quest- und Daily-Karte in jeder Ansicht folgt einem Vertrag, gebaut aus `ItemRow` (Karte), `CheckRing` (Haken), `ActionMenu` (Menü), `CampaignChip` (Kampagne) und `utils/row-actions.ts` (welche Einträge eine Zeile im Menü hat und in welcher Reihenfolge, `rowMenu()`, und was ihre Tasten tun, `rowShortcuts()`; die Ansicht gibt nur die Zeile und ihre Schreibwege); Plan (`PlanEntry`), Kampagnen-Baum und Dailies halten denselben Vertrag mit eigener Form:
 - **Ring**, wo man den Eintrag erledigen kann, überall mit Rückgängig im Toast (Heute, Questlog, Plan, Kalender, Kampagnen, Dailies). Eine Kampagne mit offenen Quests fragt vorher (siehe Kampagne abschließen).
 - **Die ganze Karte öffnet den Editor**, ein Tipp irgendwo außer auf ihren eigenen Bedienelementen (Ring, ▶, "…", Links, Felder; `utils/card-click.ts`). Der Titel bleibt der eigentliche Button ("… bearbeiten") für Tastatur und Screenreader, die Überschrift behält den reinen Titel; die Karte selbst ist kein Button, so steckt nie ein Bedienelement im anderen. Zeiger auf der Karte: Cursor als Hand und eine leise 1.5px-Haarlinie in Apricot-Linie (nur wo es Hover gibt). Ein Klick, der eine Textauswahl beendet oder einen Zug abschließt, öffnet nichts.
 - **Die ganze Karte zieht**, wo eine Ansicht sortiert oder verschiebt (Heute: Fokuskarte und Reihenfolge; Plan: Tagesspalten, "Liegen geblieben" und Questlog-Spalte, in beide Richtungen; Questlog: seine Reihenfolge; Kampagnen-Baum: Umhängen per nativem Ziehen). Es gibt keinen Griff mehr. Eine Maus zieht nach 6px Weg, ein kurzer Klick bleibt ein Klick; ein Finger hebt die Karte erst nach 300ms Halten (`delayOnTouchOnly`), bewegt er sich vorher, scrollt die Seite. Die eigenen Bedienelemente starten nie einen Zug. Ziehbare Karten lassen keinen Text markieren und kein Systemmenü aufgehen, damit das lange Drücken der Karte gehört.
@@ -774,7 +774,7 @@ Skelett aus 55 %-weißen Kartenflächen (Basis 4.25rem; Fokus 13rem, Einträge 4
 - **Do** antippbare Elemente mit `--press` drücken und über `--spring` (420ms) zurückfedern lassen.
 - **Do** Tap-Ziele von mindestens 2.75rem halten, auch auf dem Desktop; bei grobem Zeiger auch Segmentwahl, ↑/↓ im Schnell-Anlegen, die Werkzeuge der Notizen (die Zeile bricht um) und Logbuch-Blöcke (unsichtbare Trefferfläche, das Bild bleibt).
 - **Do** Kategorien mit `categoryMark(name, color)` als kleine Marke zeigen, nie als eingefärbte Fläche, und Kampagnen mit Streifen und `CampaignChip`; nie Farbe allein.
-- **Do** neue Kartenmenüs mit `rowMenu()` bauen, damit die Reihenfolge überall gleich bleibt.
+- **Do** neue Kartenmenüs und Zeilentasten mit `rowMenu()` und `rowShortcuts()` bauen, damit Einträge, Regeln und Reihenfolge überall gleich bleiben.
 - **Do** Icons aus der Strichfamilie in AppIcon ergänzen (24px, Strich 2, runde Enden).
 - **Do** Uhrzeiten und Zählungen mit tabellarischen Ziffern setzen.
 

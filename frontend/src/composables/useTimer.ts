@@ -316,16 +316,30 @@ export function toggleTimer(
   return true;
 }
 
+/** What a stopwatch is on: a quest or a run (row-actions' `timerTargetOf`). */
+type TimerSubject = { kind: TimerTarget["kind"]; targetId: number | null };
+
 /** Whether the stopwatch of this target runs or waits paused; null when it has none. */
 export function timerStateOf(
   controller: TimerController | null,
-  kind: TimerTarget["kind"],
-  targetId: number | null,
+  target: TimerSubject | null,
 ): "running" | "paused" | null {
   const current = controller?.timer.value;
-  if (!current || targetId === null) return null;
-  if (current.kind !== kind || current.targetId !== targetId) return null;
+  if (!current || !target || target.targetId === null) return null;
+  if (current.kind !== target.kind || current.targetId !== target.targetId)
+    return null;
   return current.state === "running" ? "running" : "paused";
+}
+
+/**
+ * No stopwatch, or this target's own: a press acts at once. Otherwise
+ * starting one for this target first asks to end the other.
+ */
+export function timerFreeFor(
+  controller: TimerController | null,
+  target: TimerSubject | null,
+): boolean {
+  return !controller?.timer.value || timerStateOf(controller, target) !== null;
 }
 
 /** The `itemKey` (today-agenda) of what the stopwatch is on; null without one. */

@@ -12,8 +12,8 @@ import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
 import { useTicks } from "../composables/useTicks";
 import { useShortcutHandlers } from "../composables/useShortcuts";
-import { toggleTimer, useTimer } from "../composables/useTimer";
-import { addDays, getCurrentDateInTimeZone, weekStart } from "../utils/date";
+import { useTimer } from "../composables/useTimer";
+import { getCurrentDateInTimeZone } from "../utils/date";
 import CreateButton from "../components/CreateButton.vue";
 import QuickAddQuest from "../components/QuickAddQuest.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
@@ -24,13 +24,16 @@ import UndoToast from "../components/UndoToast.vue";
 import type { TodoResponse } from "../types/todo";
 import { shownWhy } from "../utils/why";
 import { campaignMark } from "../utils/category-mark";
-import { dayLabel, fullStop } from "../utils/history";
+import { fullStop } from "../utils/history";
 import { moved } from "../utils/today-agenda";
 import {
-  quickMoveEntries,
-  quickMoves,
-  rowMenu as cardMenu,
-  type MenuEntry,
+  measureOf,
+  questRow,
+  rowControl,
+  rowMenu,
+  rowShortcuts,
+  whereLabel,
+  type RowActions,
 } from "../utils/row-actions";
 
 const page = ref<HTMLElement | null>(null);
@@ -213,101 +216,64 @@ async function shiftInList(todo: TodoResponse, direction: -1 | 1): Promise<void>
   if (from === -1) return;
   await moveInList(from, from + direction);
   await nextTick();
-  page.value
-    ?.querySelector<HTMLElement>(
-      `[data-focus-key="todo-${todo.id}"] [aria-haspopup="menu"]`,
-    )
-    ?.focus();
+  rowControl(page.value, `todo-${todo.id}`)?.focus();
 }
 
 /*
- * Keyboard shortcuts on a row: the same writes as its buttons and as saving
- * a day in the editor. Finished rows ignore them.
+ * What a quest of the list can do: its menu and its keys (row-actions).
+ * Einplanen for today, tomorrow or next week is the same step as T, D and
+ * W; "Anderer Tag …" opens the editor at its day field. Finished rows and
+ * keys while a dialog is open are ignored.
  */
 const timer = useTimer();
 function openTodo(key: string | null): TodoResponse | null {
   if (isBusy.value || selectedTodo.value) return null;
   return todos.value.find((todo) => `todo-${todo.id}` === key) ?? null;
 }
-function whereLabel(date: string): string {
-  const today = getCurrentDateInTimeZone();
-  if (date === today) return "bei heute";
-  if (date === addDays(today, 1)) return "bei morgen";
-  return `am ${dayLabel(date)}`;
-}
-function plan(key: string | null, date: string): boolean {
-  const todo = openTodo(key);
-  if (!todo) return false;
-  void listFocus.around(key!, async () => {
-    successMessage.value = null;
-    if (
-      await write(() => planQuest(todo, date), {
-        fallbackError: "Die Quest konnte nicht eingeplant werden.",
-      })
-    )
-      successMessage.value = fullStop(
-        `„${todo.title}“ steht jetzt ${whereLabel(date)}`,
-      );
-  });
-  return true;
-}
-
-/*
- * "Aktionen für …": Einplanen for today, tomorrow or next week runs the same
- * step as T, D and W; "Anderer Tag …" opens the editor at its day field.
- */
-function rowMenu(todo: TodoResponse): MenuEntry[] {
+function actionsOf(todo: TodoResponse): RowActions {
   const key = `todo-${todo.id}`;
+  const today = getCurrentDateInTimeZone();
   const place = todos.value.indexOf(todo);
-  return cardMenu(
-    todo.title,
-    {
-      quickMoves: quickMoveEntries(
-        todo.title,
-        quickMoves(getCurrentDateInTimeZone(), { date: null }),
-        (move) => void plan(key, move.date),
-        { disabled: isBusy.value, plan: true },
-      ),
-      otherDay: {
-        run: () => openEditing(todo, { atDay: true }),
-        plan: true,
-      },
-      edit: () => openEditing(todo),
-      reparent: () => openDialog("move", todo),
-      up: place > 0 ? () => void shiftInList(todo, -1) : undefined,
-      down:
-        place !== -1 && place < todos.value.length - 1
+  return {
+    row: questRow(todo),
+    today,
+    busy: isBusy.value,
+    move: (date) =>
+      void listFocus.around(key, async () => {
+        successMessage.value = null;
+        if (
+          await write(() => planQuest(todo, date), {
+            fallbackError: "Die Quest konnte nicht eingeplant werden.",
+          })
+        )
+          successMessage.value = fullStop(
+            `„${todo.title}“ steht jetzt ${whereLabel(date, today)}`,
+          );
+      }),
+    pickDay: () => openEditing(todo, { atDay: true }),
+    complete: () => void listFocus.around(key, () => toggleTodo(todo)),
+    edit: () => openEditing(todo),
+    reparent: () => openDialog("move", todo),
+    step: (direction) =>
+      direction === "up"
+        ? place > 0
+          ? () => void shiftInList(todo, -1)
+          : undefined
+        : place !== -1 && place < todos.value.length - 1
           ? () => void shiftInList(todo, 1)
           : undefined,
-      remove: { run: () => openDialog("delete", todo) },
-    },
-    isBusy.value,
-  );
+    remove: () => openDialog("delete", todo),
+  };
 }
 useShortcutHandlers({
   "quest.new": () => {
     if (isBusy.value || selectedTodo.value) return;
     openCreation();
   },
-  "row.timer": ({ key }) => {
+  ...rowShortcuts((key) => {
     const todo = openTodo(key);
-    if (!todo) return false;
-    return toggleTimer(
-      timer,
-      { kind: "todo", targetId: todo.id, title: todo.title },
-      todo.timerEligible,
-    );
-  },
-  "row.done": ({ key }) => {
-    const todo = openTodo(key);
-    if (!todo) return false;
-    void listFocus.around(key!, () => toggleTodo(todo));
-  },
-  "row.today": ({ key }) => plan(key, getCurrentDateInTimeZone()),
-  "row.tomorrow": ({ key }) =>
-    plan(key, addDays(getCurrentDateInTimeZone(), 1)),
-  "row.nextWeek": ({ key }) =>
-    plan(key, addDays(weekStart(getCurrentDateInTimeZone()), 7)),
+    return todo ? actionsOf(todo) : null;
+  }, timer),
 });
 </script>
 
@@ -443,16 +409,8 @@ useShortcutHandlers({
               :busy="isBusy"
               :draggable="!todo.completed"
               :campaign-mark="campaignMark(todo.campaign)"
-              :measure="
-                todo.completed
-                  ? null
-                  : {
-                      kind: 'todo',
-                      targetId: todo.id,
-                      eligible: todo.timerEligible,
-                    }
-              "
-              :menu="todo.completed ? [] : rowMenu(todo)"
+              :measure="todo.completed ? null : measureOf(questRow(todo))"
+              :menu="rowMenu(actionsOf(todo))"
               @toggle="toggleTodo(todo)"
               @edit="openEditing(todo)"
             >
