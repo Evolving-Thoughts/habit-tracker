@@ -8,7 +8,9 @@ import {
   columnLabel,
   columnOf,
   dropAction,
+  movedGroupLine,
   movedLine,
+  travelLabel,
   type BoardCard,
 } from "./campaign-board";
 
@@ -213,5 +215,21 @@ describe("cardDay", () => {
   it("adds an appointment's time, and says nothing without a day", () => {
     expect(cardDay(today, "13:00", today)).toBe("Heute, 13:00 Uhr");
     expect(cardDay(null, null, today)).toBeNull();
+  });
+});
+
+describe("group words", () => {
+  it("says how many moved together, and how many made it", () => {
+    expect(movedGroupLine(3, 3, "planned")).toBe(
+      "3 Quests stehen jetzt in Geplant.",
+    );
+    expect(movedGroupLine(2, 3, "working")).toBe(
+      "2 von 3 Quests stehen jetzt in In Arbeit.",
+    );
+    expect(movedGroupLine(0, 3, "todo")).toBe("");
+  });
+
+  it("names how many cards travel with the carried one", () => {
+    expect(travelLabel(3)).toBe("3 Karten");
   });
 });

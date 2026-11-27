@@ -82,3 +82,20 @@ it for the whole hierarchy with two queries (open stopwatches, and the latest
   screen edge brings exactly the next column, and again only after it left
   the edge or stayed 700ms. SortableJS's own gliding is switched off for
   snap boards (`scrollFn` in `useSortable`).
+- Several cards move together. `CampaignBoard` keeps the marked todo ids (a
+  `Set`, pruned when a card leaves the board; done cards stay markable).
+  `CampaignBoardColumn` marks in a capture-phase click handler: Ctrl/Meta
+  plus click, or, while something is marked, a plain click from a touch
+  press (`pointerType` of the `pointerdown`, not the viewport); the card's
+  own controls keep their click, the title counts as the card. A long touch
+  press released without moving comes from `useSortable`'s `onHold` (held
+  in `onChoose`, let go in `onUnchoose` without `onStart`; the click that
+  follows is swallowed via `noteDragEnd`). A drop of a marked card builds
+  one step per marked card from its own `dropAction` (cards already in the
+  target are skipped), asks "Als geblockt markieren?" once if any step sets
+  aside and the day once if any step plans, then writes the steps one after
+  another through the single-card paths (`apply`, `startWork`, `complete`).
+  Every card shows in its new column at once; the status line then says how
+  many landed (`movedGroupLine`). No answer, no write. The marks clear after
+  the move, with "Auswahl aufheben" and with Escape. Keyboard users have no
+  multi-select yet.

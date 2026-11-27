@@ -52,6 +52,12 @@ type SortableOptions = {
    * does not change; on release `onDrop` runs instead of `onMove`.
    */
   dropTarget?: DropTarget;
+  /**
+   * A finger held a card long enough to lift it and let go without moving
+   * it: no drag, a gesture of its own (the campaign board marks the card).
+   * The click that may follow the release opens nothing (`noteDragEnd`).
+   */
+  onHold?: (item: HTMLElement) => void;
 };
 
 /** A place outside the list that takes a card (see `dropTarget`). */
@@ -175,6 +181,8 @@ export function useSortable(
   let sortable: Sortable | undefined;
   /** Sortable can end a press that never lifted the card; that stays a click. */
   let lifted = false;
+  /** A card a finger holds long enough to lift, until it moves or lets go. */
+  let held: HTMLElement | null = null;
   /**
    * Where the card stood before it lifted: its parent and the very node
    * after it. Vue keeps a list's entries between text anchors it cannot do
@@ -228,12 +236,21 @@ export function useSortable(
           if (!isTouch(press)) return;
           event.item.classList.add(HELD_CLASS);
           navigator.vibrate?.(LIFT_VIBRATION_MS);
+          held = event.item;
         },
+        // Let go: a card held by a finger that never started to move was
+        // a long press of its own (`onHold`), not a drag.
         onUnchoose({ item }) {
           item.classList.remove(HELD_CLASS);
+          const wasHeld = held === item;
+          held = null;
+          if (!wasHeld || !options.onHold) return;
+          noteDragEnd();
+          options.onHold(item);
         },
         onStart({ item }) {
           lifted = true;
+          held = null;
           home = item.parentNode
             ? { parent: item.parentNode, next: item.nextSibling }
             : null;

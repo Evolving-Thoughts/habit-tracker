@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import {
   getBacklogTodos,
   rescheduleTodo,
@@ -35,6 +42,7 @@ import {
   columnOf,
   DONE_SHOWN,
   dropAction,
+  movedGroupLine,
   movedLine,
   type BoardCard,
   type BoardColumn,
@@ -52,10 +60,11 @@ import {
  * quests in To-Do, Geplant, In Arbeit and Erledigt. A card drags onto
  * another column, and its "…" offers the same steps for keys and taps:
  * Geplant asks the day, Erledigt completes with the undo toast, To-Do takes
- * the day away; In Arbeit takes nothing, it fills through the stopwatch.
+ * the day away; In Arbeit takes the quest into work by hand.
  * What leaves In Arbeit for To-Do or Geplant first answers "Als geblockt
- * markieren?". Every move shows at once and the reload confirms it, or
- * takes it back. The view keeps the editor, the move and delete dialogs,
+ * markieren?". Marked cards (Ctrl-click, a long press, then taps) travel
+ * together, with each question asked once. Every move shows at once and
+ * the reload confirms it, or takes it back. The view keeps the editor, the move and delete dialogs,
  * the campaign question and the undo toast; the board asks for them.
  */
 type Writes = Pick<ReturnType<typeof useWrites>, "writeShown">;
@@ -180,25 +189,67 @@ function placeOf(card: BoardCard): Place {
 }
 
 /**
- * One move, as the drop rules ask for it (`dropAction`): open again first,
- * set aside with the answer to "Als geblockt markieren?", then the day.
- * `day`: a date for Geplant, null for To-Do, undefined while still to ask.
+ * One card's part of a move, as the drop rules ask for it (`dropAction`):
+ * `move` opens again first, sets aside with the answer to "Als geblockt
+ * markieren?", then gives or takes the day; `start` takes it into In
+ * Arbeit; `complete` completes it. `day`: a date for Geplant, null for
+ * To-Do, undefined while still to ask.
  */
 type Step = {
   card: BoardCard;
   to: BoardColumn;
+  kind: "move" | "start" | "complete";
   reopen: boolean;
   setAside: boolean;
   /** The day stays as it is ("Zurückstellen …"). */
   keepDay: boolean;
   day?: string | null;
   blocked?: boolean;
-  fromMenu: boolean;
   from: Place;
 };
-const question = ref<{ kind: "blocked" | "day"; step: Step } | null>(null);
-/** The step a question was last asked for; kept once its dialog closes. */
-let asking: Step | null = null;
+/**
+ * What one drop or menu step moves: a single card, or every marked card
+ * when a marked one is dragged (`group`). Its questions are asked once for
+ * all its steps; without an answer nothing moves.
+ */
+type Move = {
+  steps: Step[];
+  to: BoardColumn;
+  fromMenu: boolean;
+  group: boolean;
+};
+const question = ref<{ kind: "blocked" | "day"; move: Move } | null>(null);
+/** The move a question was last asked for; kept once its dialog closes. */
+let asking: Move | null = null;
+/** Steps still waiting for an answer, one kind of question each. */
+const needsBlocked = (step: Step) =>
+  step.setAside && step.blocked === undefined;
+const needsDay = (step: Step) =>
+  step.kind === "move" && !step.keepDay && step.day === undefined;
+
+/** A card's step onto column `to`; null where the drop does nothing. */
+function stepFor(card: BoardCard, to: BoardColumn, date?: string): Step | null {
+  const action = dropAction(columnOf(card.todo), to);
+  if (!action) return null;
+  const base = {
+    card,
+    to,
+    reopen: false,
+    setAside: false,
+    keepDay: false,
+    from: placeOf(card),
+  };
+  if (action.kind === "complete") return { ...base, kind: "complete" };
+  if (action.kind === "start")
+    return { ...base, kind: "start", reopen: action.reopen };
+  return {
+    ...base,
+    kind: "move",
+    reopen: action.reopen,
+    setAside: action.setAside,
+    day: action.kind === "unplan" ? null : date,
+  };
+}
 
 /** Moves a card onto another column, by drop or by its menu. */
 function moveCard(
@@ -207,27 +258,22 @@ function moveCard(
   options: { date?: string; fromMenu?: boolean } = {},
 ): boolean {
   if (props.busy || question.value) return false;
-  const action = dropAction(columnOf(card.todo), to);
-  if (!action) return false;
-  if (action.kind === "complete") {
-    void complete(card, options.fromMenu);
-    return true;
-  }
-  if (action.kind === "start") {
-    void startWork(card, action.reopen, options.fromMenu);
-    return true;
-  }
-  proceed({
-    card,
-    to,
-    reopen: action.reopen,
-    setAside: action.setAside,
-    keepDay: false,
-    day: action.kind === "unplan" ? null : options.date,
-    fromMenu: options.fromMenu ?? false,
-    from: placeOf(card),
-  });
+  const step = stepFor(card, to, options.date);
+  if (!step) return false;
+  proceed({ steps: [step], to, fromMenu: options.fromMenu ?? false, group: false });
   return true;
+}
+
+/**
+ * Every marked card onto column `to`, each by its own drop rule; cards
+ * already there stay. The carried card comes first.
+ */
+function moveGroup(group: BoardCard[], to: BoardColumn): void {
+  if (props.busy || question.value) return;
+  const steps = group
+    .map((card) => stepFor(card, to))
+    .filter((step): step is Step => step !== null);
+  if (steps.length) proceed({ steps, to, fromMenu: false, group: true });
 }
 
 /** A day for a card, from its menu or a key: Geplant moves within itself. */
@@ -237,14 +283,21 @@ function planCard(card: BoardCard, date?: string): boolean {
     return moveCard(card, "planned", { date, fromMenu: true });
   if (date === card.todo.scheduledDate) return false;
   proceed({
-    card,
+    steps: [
+      {
+        card,
+        to: "planned",
+        kind: "move",
+        reopen: false,
+        setAside: false,
+        keepDay: false,
+        day: date,
+        from: placeOf(card),
+      },
+    ],
     to: "planned",
-    reopen: false,
-    setAside: false,
-    keepDay: false,
-    day: date,
     fromMenu: true,
-    from: placeOf(card),
+    group: false,
   });
   return true;
 }
@@ -252,59 +305,114 @@ function planCard(card: BoardCard, date?: string): boolean {
 /** "Zurückstellen …": out of In Arbeit, the day stays. */
 function setAsideCard(card: BoardCard): void {
   if (props.busy || question.value) return;
+  const to = card.todo.scheduledDate ? "planned" : "todo";
   proceed({
-    card,
-    to: card.todo.scheduledDate ? "planned" : "todo",
-    reopen: false,
-    setAside: true,
-    keepDay: true,
+    steps: [
+      {
+        card,
+        to,
+        kind: "move",
+        reopen: false,
+        setAside: true,
+        keepDay: true,
+        from: placeOf(card),
+      },
+    ],
+    to,
     fromMenu: true,
-    from: placeOf(card),
+    group: false,
   });
 }
 
 /** Asks what is still open, the blocked question first; then writes. */
-function proceed(step: Step): void {
-  asking = step;
-  if (step.setAside && step.blocked === undefined)
-    question.value = { kind: "blocked", step };
-  else if (!step.keepDay && step.day === undefined)
-    question.value = { kind: "day", step };
-  else void apply(step);
+function proceed(move: Move): void {
+  asking = move;
+  if (move.steps.some(needsBlocked)) question.value = { kind: "blocked", move };
+  else if (move.steps.some(needsDay)) question.value = { kind: "day", move };
+  else void execute(move);
 }
+/** One answer for every step that waits for it. */
 function answerBlocked(blocked: boolean): void {
   const asked = question.value;
   if (!asked) return;
   question.value = null;
-  proceed({ ...asked.step, blocked });
+  proceed({
+    ...asked.move,
+    steps: asked.move.steps.map((step) =>
+      needsBlocked(step) ? { ...step, blocked } : step,
+    ),
+  });
 }
 function answerDay(date: string): void {
   const asked = question.value;
   if (!asked) return;
   question.value = null;
-  proceed({ ...asked.step, day: date });
+  proceed({
+    ...asked.move,
+    steps: asked.move.steps.map((step) =>
+      needsDay(step) ? { ...step, day: date } : step,
+    ),
+  });
 }
-/** Closed without an answer: the card stays where it was. */
+/** Closed without an answer: no card moves, the marks stay. */
 function dismissQuestion(): void {
   question.value = null;
 }
 
-async function apply(step: Step): Promise<void> {
-  const { todo } = step.card;
-  const changes: Partial<HierarchyTodo> = { inProgress: false };
-  if (step.reopen) Object.assign(changes, { completed: false, completedAt: null });
+/**
+ * Writes a move, one card after the other: each through its own path,
+ * shown at once and confirmed by the reload. A group shows every card in
+ * its new column right away, then says how many made it.
+ */
+async function execute(move: Move): Promise<void> {
+  const { group } = move;
+  if (group) {
+    for (const step of move.steps) showChange(step.card.todo.id, changesFor(step));
+    status.value = movedGroupLine(move.steps.length, move.steps.length, move.to);
+    clearSelection();
+  }
+  for (const step of move.steps) {
+    const options = { fromMenu: move.fromMenu, quiet: group };
+    if (step.kind === "complete") await complete(step.card, options);
+    else if (step.kind === "start") await startWork(step, options);
+    else await apply(step, options);
+  }
+  if (!group) return;
+  const landed = move.steps.filter((step) => {
+    const card = cards.value.find((item) => item.todo.id === step.card.todo.id);
+    return card && columnOf(card.todo) === step.to;
+  }).length;
+  status.value = movedGroupLine(landed, move.steps.length, move.to);
+}
+
+/** What a step changes on screen before the server answers. */
+function changesFor(step: Step): Partial<HierarchyTodo> {
+  if (step.kind === "complete")
+    return { completed: true, completedAt: new Date().toISOString() };
+  const reopened = step.reopen ? { completed: false, completedAt: null } : {};
+  if (step.kind === "start")
+    return { inProgress: true, blocked: false, ...reopened };
+  const changes: Partial<HierarchyTodo> = { inProgress: false, ...reopened };
   if (step.blocked !== undefined) changes.blocked = step.blocked;
   if (!step.keepDay) {
     changes.scheduledDate = step.day ?? null;
     if (!step.day) changes.timeOfDay = null;
   }
+  return changes;
+}
+
+/** How a single write behaves: focus after a menu step; a group speaks once. */
+type WriteOptions = { fromMenu?: boolean; quiet?: boolean };
+
+async function apply(step: Step, options: WriteOptions = {}): Promise<void> {
+  const { todo } = step.card;
   const done = await props.writes.writeShown(
     () => {
-      const takeBack = showChange(todo.id, changes);
-      status.value = movedLine(todo.title, step.to);
+      const takeBack = showChange(todo.id, changesFor(step));
+      if (!options.quiet) status.value = movedLine(todo.title, step.to);
       return () => {
         takeBack();
-        status.value = "";
+        if (!options.quiet) status.value = "";
       };
     },
     async () => {
@@ -324,31 +432,24 @@ async function apply(step: Step): Promise<void> {
       fallbackError: "Die Quest konnte nicht verschoben werden.",
     },
   );
-  if (done) settle(todo.id);
-  if (step.fromMenu) await focusAfter(todo.id, step.from);
+  if (done) settle(todo.id, options.quiet);
+  if (options.fromMenu) await focusAfter(todo.id, step.from);
 }
 
 /** Into In Arbeit by hand: no stopwatch, so several quests can be in work. */
-async function startWork(
-  card: BoardCard,
-  reopen: boolean,
-  fromMenu = false,
-): Promise<void> {
-  const { todo } = card;
-  const from = placeOf(card);
-  const changes: Partial<HierarchyTodo> = { inProgress: true, blocked: false };
-  if (reopen) Object.assign(changes, { completed: false, completedAt: null });
+async function startWork(step: Step, options: WriteOptions = {}): Promise<void> {
+  const { todo } = step.card;
   const done = await props.writes.writeShown(
     () => {
-      const takeBack = showChange(todo.id, changes);
-      status.value = movedLine(todo.title, "working");
+      const takeBack = showChange(todo.id, changesFor(step));
+      if (!options.quiet) status.value = movedLine(todo.title, "working");
       return () => {
         takeBack();
-        status.value = "";
+        if (!options.quiet) status.value = "";
       };
     },
     async () => {
-      if (reopen)
+      if (step.reopen)
         await writeDone({ kind: "todo", id: todo.id, title: todo.title }, false);
       await startWorkOnTodo(todo.id);
     },
@@ -357,19 +458,23 @@ async function startWork(
       fallbackError: "Die Quest konnte nicht in Arbeit genommen werden.",
     },
   );
-  if (done) settle(todo.id);
-  if (fromMenu) await focusAfter(todo.id, from);
+  if (done) settle(todo.id, options.quiet);
+  if (options.fromMenu) await focusAfter(todo.id, step.from);
 }
 
 /** The reload is in: the server's column counts, and the line says so. */
-function settle(id: number): void {
+function settle(id: number, quiet = false): void {
   forgetChange(id);
+  if (quiet) return;
   const card = cards.value.find((item) => item.todo.id === id);
   if (card) status.value = movedLine(card.todo.title, columnOf(card.todo));
 }
 
 /** Erledigt: through the ring's path, with the undo toast. */
-async function complete(card: BoardCard, fromMenu = false): Promise<void> {
+async function complete(
+  card: BoardCard,
+  options: WriteOptions = {},
+): Promise<void> {
   const { todo } = card;
   const from = placeOf(card);
   let confirmed = false;
@@ -384,15 +489,15 @@ async function complete(card: BoardCard, fromMenu = false): Promise<void> {
             completed: true,
             completedAt: new Date().toISOString(),
           });
-          status.value = movedLine(todo.title, "done");
+          if (!options.quiet) status.value = movedLine(todo.title, "done");
         },
       },
     );
   } finally {
     forgetChange(todo.id);
   }
-  if (!confirmed) status.value = "";
-  if (fromMenu) await focusAfter(todo.id, from);
+  if (!confirmed && !options.quiet) status.value = "";
+  if (options.fromMenu) await focusAfter(todo.id, from);
 }
 
 /** The ring: done, or open again. */
@@ -470,13 +575,66 @@ async function focusAfter(id: number, from: Place): Promise<void> {
 }
 /** A question closes: the focus goes where the card now is (or still is). */
 function questionFocus(): HTMLElement | null {
-  return asking ? focusTarget(asking.card.todo.id, asking.from) : null;
+  const first = asking?.steps[0];
+  return first ? focusTarget(first.card.todo.id, first.from) : null;
 }
 
-/** A card was dropped onto another column. */
+/*
+ * Marked cards (Ctrl-click, a long press, then taps on a touch screen):
+ * carried together when one of them is dragged. Done cards stay markable,
+ * they can be dragged back. Marks of cards that left the board go.
+ */
+const selected = ref(new Set<number>());
+function toggleSelected(todoId: number): void {
+  const next = new Set(selected.value);
+  if (!next.delete(todoId)) next.add(todoId);
+  selected.value = next;
+}
+function clearSelection(): void {
+  if (selected.value.size) selected.value = new Set();
+}
+watch(cards, (now) => {
+  const ids = new Set(now.map((card) => card.todo.id));
+  if ([...selected.value].some((id) => !ids.has(id)))
+    selected.value = new Set([...selected.value].filter((id) => ids.has(id)));
+});
+/** "Auswahl aufheben": the focus goes to the first card that was marked. */
+async function dropSelection(): Promise<void> {
+  const [first] = selected.value;
+  clearSelection();
+  await nextTick();
+  root.value
+    ?.querySelector<HTMLElement>(
+      `[data-focus-key="todo-${first}"] [data-edit-button]`,
+    )
+    ?.focus();
+}
+/* Escape lets go of the marks, unless it closes a dialog or a menu first. */
+function onKeydown(event: KeyboardEvent): void {
+  if (event.key !== "Escape" || !selected.value.size || question.value) return;
+  if (event.defaultPrevented) return;
+  if (document.querySelector("dialog[open], [role='menu']")) return;
+  clearSelection();
+}
+onMounted(() => document.addEventListener("keydown", onKeydown));
+onBeforeUnmount(() => document.removeEventListener("keydown", onKeydown));
+
+/**
+ * A card was dropped onto another column: a marked one brings every marked
+ * card along, an unmarked one moves alone and leaves the marks be.
+ */
 function onDrop(todoId: number, to: BoardColumn): void {
   const card = cards.value.find((item) => item.todo.id === todoId);
-  if (card) moveCard(card, to);
+  if (!card) return;
+  if (!selected.value.has(todoId)) {
+    moveCard(card, to);
+    return;
+  }
+  const others = cards.value.filter(
+    (item) => item !== card && selected.value.has(item.todo.id),
+  );
+  if (others.length) moveGroup([card, ...others], to);
+  else if (moveCard(card, to)) clearSelection();
 }
 
 /** "Aktionen für …" of a card, in the one order of every view (`rowMenu`). */
@@ -507,7 +665,7 @@ function menuOf(card: BoardCard): MenuEntry[] {
         todo.scheduledDate || !open
           ? () => void moveCard(card, "todo", { fromMenu: true })
           : undefined,
-      complete: open ? () => void complete(card, true) : undefined,
+      complete: open ? () => void complete(card, { fromMenu: true }) : undefined,
       startWork:
         column !== "working"
           ? () => void moveCard(card, "working", { fromMenu: true })
@@ -543,7 +701,7 @@ useShortcutHandlers({
   "row.done": ({ key }) => {
     const card = cardOf(key);
     if (!card || card.todo.completed || props.busy) return false;
-    void complete(card, true);
+    void complete(card, { fromMenu: true });
   },
   "row.timer": ({ key }) => {
     const card = cardOf(key);
@@ -557,7 +715,26 @@ useShortcutHandlers({
 });
 
 /** The quest a question is asked about. */
-const asked = computed(() => question.value?.step.card.todo ?? null);
+const asked = computed(() => {
+  const open = question.value;
+  if (!open) return null;
+  const todos = open.move.steps
+    .filter(open.kind === "blocked" ? needsBlocked : needsDay)
+    .map((step) => step.card.todo);
+  const group = open.move.group && todos.length > 1;
+  return {
+    todos,
+    group,
+    /** One quest by its title, a group by all of theirs. */
+    title: group
+      ? todos.map((todo) => `„${todo.title}“`).join(", ")
+      : (todos[0]?.title ?? ""),
+    first: todos[0]!,
+    /** An appointment among them still asks to be moved on purpose. */
+    timeOfDay: todos.find((todo) => todo.timeOfDay)?.timeOfDay ?? null,
+    timing: todos.some((todo) => timerStateOf(timer, "todo", todo.id)),
+  };
+});
 </script>
 
 <template>
@@ -569,6 +746,30 @@ const asked = computed(() => question.value?.step.card.todo ?? null);
     >
       {{ status }}
     </p>
+    <!-- The marks: how many, and the way out; its own live region. -->
+    <div
+      class="campaign-board__selection"
+      :class="{ 'campaign-board__selection--empty': !selected.size }"
+    >
+      <p class="campaign-board__selection-count" role="status">
+        <template v-if="selected.size"
+          ><strong>{{ selected.size }} ausgewählt</strong>
+          {{
+            selected.size > 1
+              ? "Ziehen nimmt alle mit."
+              : "Weitere Karten antippen oder mit Strg anklicken."
+          }}</template
+        >
+      </p>
+      <button
+        v-if="selected.size"
+        type="button"
+        class="btn btn--quiet"
+        @click="dropSelection"
+      >
+        Auswahl aufheben
+      </button>
+    </div>
     <ColumnChips
       v-if="phone"
       :chips="chips"
@@ -593,7 +794,9 @@ const asked = computed(() => question.value?.step.card.todo ?? null);
         :today="today()"
         :busy="busy"
         :menu="menuOf"
+        :selected="selected"
         @move="onDrop"
+        @select="toggleSelected"
         @toggle="toggle"
         @edit="(card) => emit('edit', card.todo)"
       >
@@ -629,9 +832,10 @@ const asked = computed(() => question.value?.step.card.todo ?? null);
     <MoveItemDialog
       v-if="question?.kind === 'day' && asked"
       choose
+      :heading="asked.group ? `${asked.todos.length} Quests einplanen` : undefined"
       :item="{
         type: 'todo',
-        todoId: asked.id,
+        todoId: asked.first.id,
         title: asked.title,
         timeOfDay: asked.timeOfDay,
       }"
@@ -648,10 +852,19 @@ const asked = computed(() => question.value?.step.card.todo ?? null);
       :return-focus="questionFocus"
       @close="dismissQuestion"
     >
-      <p class="campaign-board__lead">
+      <p v-if="asked.group" class="campaign-board__lead">
+        {{ asked.todos.length }} Quests kommen aus In Arbeit zurück:
+        {{ asked.title }}. Warten sie auf etwas, das gerade nicht weitergeht?
+        Die Antwort gilt für alle.
+        <template v-if="asked.timing"
+          >Die laufende Stoppuhr endet dabei, die Zeit bleibt im
+          Logbuch.</template
+        >
+      </p>
+      <p v-else class="campaign-board__lead">
         „{{ asked.title }}“ kommt aus In Arbeit zurück. Wartet sie auf etwas,
         das gerade nicht weitergeht?
-        <template v-if="timerStateOf(timer, 'todo', asked.id)"
+        <template v-if="asked.timing"
           >Ihre Stoppuhr endet dabei, die Zeit bleibt im Logbuch.</template
         >
       </p>
@@ -679,6 +892,56 @@ const asked = computed(() => question.value?.step.card.todo ?? null);
 .campaign-board__status--empty {
   position: absolute;
   margin: 0;
+}
+
+/* "3 ausgewählt · Auswahl aufheben": a quiet line over the board. */
+.campaign-board__selection {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  align-items: center;
+  margin: 0 0 var(--space-2);
+}
+
+.campaign-board__selection--empty {
+  position: absolute;
+  margin: 0;
+}
+
+.campaign-board__selection-count {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.campaign-board__selection-count strong {
+  color: var(--color-ink);
+  font-weight: 800;
+}
+
+/*
+ * A marked card carried: the other marked cards step back, and the
+ * floating copy says how many travel ("3 Karten").
+ */
+.campaign-board__columns:has(.sortable-fallback[data-selected])
+  :deep(li[data-selected]:not(.sortable-fallback):not(.sortable-ghost)) {
+  opacity: 0.4;
+}
+
+.campaign-board__columns :deep(.sortable-fallback[data-travel]::after) {
+  position: absolute;
+  top: -0.625rem;
+  right: var(--space-3);
+  padding: 0.125rem var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-ink);
+  color: var(--color-surface);
+  font-size: 0.8125rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  content: attr(data-travel);
 }
 
 /*

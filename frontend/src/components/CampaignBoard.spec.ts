@@ -28,6 +28,20 @@ vi.mock("../api/day-planner.api", () => ({
   updateOccurrenceStatus: vi.fn(),
   rescheduleOccurrence: vi.fn(),
 }));
+/* SortableJS stands in: its handlers per list, to play a long press. */
+type SortableHandlers = {
+  onChoose: (event: { item: HTMLElement; originalEvent?: Event }) => void;
+  onUnchoose: (event: { item: HTMLElement }) => void;
+};
+const sortables = vi.hoisted(() => new Map<HTMLElement, unknown>());
+vi.mock("sortablejs", () => ({
+  default: {
+    create: (element: HTMLElement, options: unknown) => {
+      sortables.set(element, options);
+      return { destroy: () => undefined };
+    },
+  },
+}));
 vi.mock("../api/questlog.api", () => ({
   planQuest: vi.fn(),
   unplanQuest: vi.fn(),
@@ -76,12 +90,20 @@ const QuickAddStub = {
   template: '<form class="quick-add-stub" :aria-label="label" />',
 };
 
-function mountBoard(todos: HierarchyTodo[] = TODOS, busy = false) {
-  const writes = useWrites(async () => {}, ref<string | null>(null));
-  return mount(CampaignBoard, {
+function mountBoard(
+  todos: HierarchyTodo[] = TODOS,
+  busy = false,
+  /** What the reload after a write brings, like the view's loader. */
+  reloaded?: () => HierarchyTodo[],
+) {
+  const writes = useWrites(async () => {
+    if (reloaded) await wrapper.setProps({ todos: reloaded() });
+  }, ref<string | null>(null));
+  const wrapper = mount(CampaignBoard, {
     props: { todos, campaign, busy, writes, ticks },
     global: { stubs: { ModalDialog: ModalStub, QuickAddQuest: QuickAddStub } },
   });
+  return wrapper;
 }
 type Board = ReturnType<typeof mountBoard>;
 
@@ -524,6 +546,214 @@ describe("CampaignBoard", () => {
       await drop(w, "planned", 4, "todo");
       expect(titles(w, "planned")).toEqual(["Quest 4"]);
       expect(w.get(".campaign-board__status").text()).toBe("");
+    });
+  });
+
+  describe("marking several cards", () => {
+    // A press ends the pause after a long press (`noteDragEnd`), as in use.
+    afterEach(() => document.dispatchEvent(new PointerEvent("pointerdown")));
+    const card = (w: Board, id: number) => w.get(`[data-todo-id="${id}"]`);
+    const marked = (w: Board) =>
+      w
+        .findAll("[data-todo-id][data-selected]")
+        .map((item) => Number(item.attributes("data-todo-id")));
+    async function ctrlClick(w: Board, id: number) {
+      await card(w, id).get(".item-row__content").trigger("click", {
+        ctrlKey: true,
+      });
+    }
+    async function tap(w: Board, id: number) {
+      const body = card(w, id).get(".item-row__content");
+      body.element.dispatchEvent(
+        new PointerEvent("pointerdown", { pointerType: "touch", bubbles: true }),
+      );
+      // What reaches the page in use; the board is not attached here.
+      document.dispatchEvent(new PointerEvent("pointerdown"));
+      await body.trigger("click");
+    }
+    /** A finger held the card long enough to lift it and let go in place. */
+    async function hold(w: Board, column: string, id: number) {
+      const list = w.get(`[data-column="${column}"]`).element as HTMLElement;
+      const handlers = sortables.get(list) as SortableHandlers;
+      const item = card(w, id).element as HTMLElement;
+      handlers.onChoose({
+        item,
+        originalEvent: new PointerEvent("pointerdown", { pointerType: "touch" }),
+      });
+      handlers.onUnchoose({ item });
+      await flushPromises();
+    }
+
+    it("marks and unmarks a card with Ctrl-click, without opening its editor", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await ctrlClick(w, 3);
+      expect(w.emitted("edit")).toBeUndefined();
+      expect(marked(w)).toEqual([3]);
+      // Said in words and with a sign, never by the frame alone.
+      const state = card(w, 3).get(".board-column__selected");
+      expect(state.text()).toBe("Ausgewählt");
+      expect(state.find("svg").exists()).toBe(true);
+      const line = w.get(".campaign-board__selection-count");
+      expect(line.attributes("role")).toBe("status");
+      expect(line.text()).toContain("1 ausgewählt");
+      await card(w, 4)
+        .get(".item-row__content")
+        .trigger("click", { metaKey: true });
+      expect(marked(w)).toEqual([3, 4]);
+      expect(card(w, 3).attributes("data-travel")).toBe("2 Karten");
+      await ctrlClick(w, 3);
+      expect(marked(w)).toEqual([4]);
+    });
+
+    it("leaves a plain click as it was: it opens the editor", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await card(w, 3).get(".item-row__content").trigger("click");
+      expect(w.emitted("edit")![0]![0]).toMatchObject({ id: 3 });
+      expect(marked(w)).toEqual([]);
+    });
+
+    it("marks by a long press, then by taps, on a touch screen", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      // Without marks a tap edits as always.
+      await tap(w, 4);
+      expect(w.emitted("edit")).toHaveLength(1);
+      await hold(w, "todo", 3);
+      expect(marked(w)).toEqual([3]);
+      await tap(w, 4);
+      expect(marked(w)).toEqual([3, 4]);
+      expect(w.emitted("edit")).toHaveLength(1);
+      // The card's own controls keep their tap.
+      await openMenu(w, "Quest 4");
+      expect(entries(w)).toContain("Bearbeiten");
+    });
+
+    it("moves every marked card by its own rule, asking each question once", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await ctrlClick(w, 3); // To-Do: needs a day
+      await ctrlClick(w, 4); // already in Geplant: stays
+      await ctrlClick(w, 5); // In Arbeit: blocked, then a day
+      await drop(w, "todo", 3, "planned");
+
+      expect(w.findAll("[role=dialog]")).toHaveLength(1);
+      expect(w.get("[role=dialog]").attributes("aria-label")).toBe(
+        "Als geblockt markieren?",
+      );
+      await buttonByText(w, "Ja, geblockt").trigger("click");
+      await flushPromises();
+      expect(w.get("[role=dialog]").attributes("aria-label")).toBe(
+        "2 Quests einplanen",
+      );
+      expect(planQuest).not.toHaveBeenCalled();
+      expect(setAsideTodo).not.toHaveBeenCalled();
+      await buttonByText(w, "Morgen").trigger("click");
+      await flushPromises();
+
+      expect(w.find("[role=dialog]").exists()).toBe(false);
+      expect(
+        vi.mocked(planQuest).mock.calls.map(([todo, day]) => [todo.id, day]),
+      ).toEqual([
+        [3, "2026-11-28"],
+        [5, "2026-11-28"],
+      ]);
+      expect(setAsideTodo).toHaveBeenCalledTimes(1);
+      expect(setAsideTodo).toHaveBeenCalledWith(5, true);
+      expect(rescheduleTodo).not.toHaveBeenCalled();
+      expect(marked(w)).toEqual([]);
+    });
+
+    it("moves nothing when a question of the group goes unanswered", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await ctrlClick(w, 3);
+      await ctrlClick(w, 5);
+      await drop(w, "working", 5, "planned");
+      w.findComponent(ModalStub).vm.$emit("close");
+      await flushPromises();
+      expect(setAsideTodo).not.toHaveBeenCalled();
+      expect(planQuest).not.toHaveBeenCalled();
+      expect(marked(w)).toEqual([3, 5]);
+    });
+
+    it("asks once whether several quests out of In Arbeit are blocked", async () => {
+      const w = mountBoard([
+        campaign,
+        quest(5, { inProgress: true }),
+        quest(7, { inProgress: true }),
+      ]);
+      await flushPromises();
+      await ctrlClick(w, 5);
+      await ctrlClick(w, 7);
+      await drop(w, "working", 7, "todo");
+      expect(w.findAll("[role=dialog]")).toHaveLength(1);
+      expect(w.get("[role=dialog]").text()).toContain(
+        "2 Quests kommen aus In Arbeit zurück",
+      );
+      await buttonByText(w, "Nein, nur zurückstellen").trigger("click");
+      await flushPromises();
+      expect(vi.mocked(setAsideTodo).mock.calls).toEqual([
+        [7, false],
+        [5, false],
+      ]);
+    });
+
+    it("completes each marked card through the path of the ring", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await ctrlClick(w, 3);
+      await ctrlClick(w, 4);
+      await drop(w, "planned", 4, "done");
+      expect(ticks.complete.mock.calls.map(([target]) => target.id)).toEqual([
+        4, 3,
+      ]);
+    });
+
+    it("says how many quests now stand in the column", async () => {
+      const after = [
+        campaign,
+        series,
+        quest(3, { parentId: 2, title: "Entwurf", inProgress: true }),
+        quest(4, { scheduledDate: "2026-11-28", inProgress: true }),
+        quest(5, { inProgress: true }),
+        quest(6, { completed: true, completedAt: "2026-11-26T10:00:00.000Z" }),
+      ];
+      const w = mountBoard(TODOS, false, () => after);
+      await flushPromises();
+      await ctrlClick(w, 3);
+      await ctrlClick(w, 4);
+      await drop(w, "todo", 3, "working");
+      expect(vi.mocked(startWorkOnTodo).mock.calls).toEqual([[3], [4]]);
+      expect(w.get(".campaign-board__status").text()).toBe(
+        "2 Quests stehen jetzt in In Arbeit.",
+      );
+    });
+
+    it("moves an unmarked card alone and leaves the marks be", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await ctrlClick(w, 3);
+      await drop(w, "planned", 4, "todo");
+      expect(unplanQuest).toHaveBeenCalledTimes(1);
+      expect(unplanQuest).toHaveBeenCalledWith(4);
+      expect(planQuest).not.toHaveBeenCalled();
+      expect(marked(w)).toEqual([3]);
+    });
+
+    it("lets go of the marks with Auswahl aufheben and with Escape", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await ctrlClick(w, 3);
+      await ctrlClick(w, 4);
+      await buttonByText(w, "Auswahl aufheben").trigger("click");
+      expect(marked(w)).toEqual([]);
+      expect(w.find(".campaign-board__selection button").exists()).toBe(false);
+      await ctrlClick(w, 3);
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      await flushPromises();
+      expect(marked(w)).toEqual([]);
     });
   });
 });

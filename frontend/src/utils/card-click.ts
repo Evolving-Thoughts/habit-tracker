@@ -28,6 +28,11 @@ export function noteDragEnd(): void {
   });
 }
 
+/** Whether a click now is the one that ends a drag or a hold: no tap. */
+export function justDragged(): boolean {
+  return Date.now() - lastDragEnd < 400;
+}
+
 /**
  * Runs `open` for a plain click on the card itself. A click on a control,
  * the click that ends a drag, and a click that ends selecting text are not
@@ -35,7 +40,7 @@ export function noteDragEnd(): void {
  */
 export function onCardClick(event: MouseEvent, open: () => void): void {
   if (event.defaultPrevented || event.button !== 0) return;
-  if (Date.now() - lastDragEnd < 400) return;
+  if (justDragged()) return;
   const card = event.currentTarget;
   const target = event.target;
   if (!(card instanceof Element) || !(target instanceof Element)) return;

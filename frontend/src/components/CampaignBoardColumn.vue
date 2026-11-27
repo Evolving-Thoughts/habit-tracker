@@ -6,11 +6,13 @@ import { useSortable } from "../composables/useSortable";
 import {
   cardDay,
   columnLabel,
+  travelLabel,
   type BoardCard,
   type BoardColumn,
 } from "../utils/campaign-board";
 import type { MenuEntry } from "../utils/row-actions";
 import { formatDuration } from "../utils/today-agenda";
+import { CARD_CONTROLS, justDragged } from "../utils/card-click";
 
 /**
  * One column of a campaign's board (`CampaignBoard`): its name and count,
@@ -30,6 +32,8 @@ const props = defineProps<{
   today: string;
   busy: boolean;
   menu: (card: BoardCard) => MenuEntry[];
+  /** The marked cards of the board (ids), shown and carried together. */
+  selected: ReadonlySet<number>;
 }>();
 
 const emit = defineEmits<{
@@ -37,6 +41,8 @@ const emit = defineEmits<{
   move: [todoId: number, to: BoardColumn];
   toggle: [card: BoardCard];
   edit: [card: BoardCard];
+  /** Mark or unmark a card (Ctrl-click, a tap while marking, a long press). */
+  select: [todoId: number];
 }>();
 
 const headingId = computed(() => `campaign-board-${props.column}`);
@@ -47,6 +53,10 @@ useSortable(list, {
   group: "campaign-board",
   sort: false,
   accepts: () => !props.busy,
+  onHold: (item) => {
+    const todoId = Number(item.dataset.todoId);
+    if (todoId && !props.busy) emit("select", todoId);
+  },
   onMove: (_from, _to, { item, list: target }) => {
     const to = target.dataset.column as BoardColumn | undefined;
     const todoId = Number(item.dataset.todoId);
@@ -54,6 +64,34 @@ useSortable(list, {
       emit("move", todoId, to);
   },
 });
+
+/*
+ * Marking cards: Ctrl-click (Cmd on a Mac), and on a touch screen, once a
+ * card is marked, a plain tap. The card's own controls (ring, ▶, "…")
+ * keep their tap; the title counts as the card. Caught before the card
+ * sees the click, so it opens no editor.
+ */
+let pointerType = "";
+function notePress(event: PointerEvent): void {
+  pointerType = event.pointerType;
+}
+function pick(event: MouseEvent, card: BoardCard): void {
+  if (event.button !== 0 || props.busy || justDragged()) return;
+  const marking =
+    event.ctrlKey ||
+    event.metaKey ||
+    (pointerType === "touch" && props.selected.size > 0);
+  if (!marking) return;
+  const target = event.target;
+  const row = event.currentTarget;
+  if (!(target instanceof Element) || !(row instanceof Element)) return;
+  const control = target.closest(CARD_CONTROLS);
+  if (control && row.contains(control) && !control.matches("[data-edit-button]"))
+    return;
+  event.preventDefault();
+  event.stopPropagation();
+  emit("select", card.todo.id);
+}
 
 function meta(card: BoardCard): string[] {
   const { todo } = card;
@@ -89,6 +127,14 @@ function meta(card: BoardCard): string[] {
         :key="card.todo.id"
         :data-todo-id="card.todo.id"
         :data-focus-key="`todo-${card.todo.id}`"
+        :data-selected="selected.has(card.todo.id) || undefined"
+        :data-travel="
+          selected.has(card.todo.id) && selected.size > 1
+            ? travelLabel(selected.size)
+            : undefined
+        "
+        @pointerdown.capture="notePress"
+        @click.capture="pick($event, card)"
       >
         <ItemRow
           :title="card.todo.title"
@@ -112,10 +158,20 @@ function meta(card: BoardCard): string[] {
           @edit="emit('edit', card)"
         >
           <template
-            v-if="(card.todo.blocked && !card.todo.completed) || meta(card).length"
+            v-if="
+              selected.has(card.todo.id) ||
+              (card.todo.blocked && !card.todo.completed) ||
+              meta(card).length
+            "
             #meta
           >
-            <!-- A state in words and shape, never in colour alone. -->
+            <!-- States in words and shape, never in colour alone. -->
+            <span
+              v-if="selected.has(card.todo.id)"
+              class="board-column__selected"
+            >
+              <AppIcon name="check" />Ausgewählt
+            </span>
             <span
               v-if="card.todo.blocked && !card.todo.completed"
               class="board-column__blocked"
@@ -200,6 +256,26 @@ function meta(card: BoardCard): string[] {
   align-items: center;
   color: var(--color-ink);
   font-weight: 800;
+}
+
+/* Marked: a check and the word, with an ink frame around the card as extra. */
+.board-column__selected {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  color: var(--color-ink);
+  font-weight: 800;
+}
+
+.board-column__selected :deep(svg) {
+  width: 1rem;
+  height: 1rem;
+  stroke-width: 3;
+}
+
+[data-selected] > :deep(.item-row) {
+  outline: 2px solid var(--color-ink);
+  outline-offset: -2px;
 }
 
 .board-column__blocked :deep(svg) {

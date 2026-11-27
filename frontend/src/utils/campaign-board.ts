@@ -180,6 +180,27 @@ export function movedLine(title: string, column: BoardColumn): string {
   return `„${title}“ steht jetzt in ${columnName(column)}.`;
 }
 
+/**
+ * The live region's line after several cards moved together: "3 Quests
+ * stehen jetzt in Geplant.", or how many of them made it.
+ */
+export function movedGroupLine(
+  landed: number,
+  total: number,
+  column: BoardColumn,
+): string {
+  if (!landed) return "";
+  const name = columnName(column);
+  if (landed === total)
+    return `${total} Quests stehen jetzt in ${name}.`;
+  return `${landed} von ${total} Quests stehen jetzt in ${name}.`;
+}
+
+/** What a carried group says on the floating card: "3 Karten". */
+export function travelLabel(count: number): string {
+  return `${count} Karten`;
+}
+
 /** A column's spoken name with its count: "Geplant, 3 Quests". */
 export function columnLabel(column: BoardColumn, count: number): string {
   return `${columnName(column)}, ${count} ${count === 1 ? "Quest" : "Quests"}`;

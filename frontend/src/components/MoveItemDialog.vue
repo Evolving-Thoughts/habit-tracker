@@ -22,6 +22,8 @@ const props = defineProps<{
    * campaign board plans this way, after its own questions.
    */
   choose?: boolean;
+  /** The dialog's title when it asks for more than one item ("3 Quests einplanen"). */
+  heading?: string;
   /** Items from earlier days may come back to today in one tap. */
   offerToday?: boolean;
   returnFocus: () => HTMLElement | null;
@@ -93,7 +95,7 @@ function close(): void {
 
 <template>
   <ModalDialog
-    :title="choose ? 'Einplanen' : 'Verschieben'"
+    :title="heading ?? (choose ? 'Einplanen' : 'Verschieben')"
     :busy="busy"
     :return-focus="returnFocus"
     focus-selector='[data-test="move-date"]'
