@@ -387,6 +387,26 @@ describe('TodosService', () => {
     });
   });
 
+  describe('startWork', () => {
+    it('stamps the moment, lifts the marker and starts no stopwatch', async () => {
+      rows = [{ ...todo(1), blocked: true }];
+      expect(await service.startWork(USER, 1)).toMatchObject({
+        startedAt: NOW,
+        blocked: false,
+      });
+      expect(releaseTimers).not.toHaveBeenCalled();
+    });
+    it('returns 404 for a missing todo and 409 for a completed one', async () => {
+      await expect(service.startWork(USER, 99)).rejects.toThrow(
+        NotFoundException,
+      );
+      rows = [todo(1, null, true)];
+      await expect(service.startWork(USER, 1)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+  });
+
   describe('setAside', () => {
     it('stamps the moment, sets the marker and ends the stopwatch', async () => {
       expect(await service.setAside(USER, 1, true)).toMatchObject({

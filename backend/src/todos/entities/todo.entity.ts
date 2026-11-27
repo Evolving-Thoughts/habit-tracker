@@ -153,6 +153,13 @@ export class TodoEntity {
   @Column({ type: 'timestamptz', nullable: true })
   setAsideAt!: Date | null;
 
+  /**
+   * When the user last took the quest into "In Arbeit" by hand; it counts
+   * like work, until the quest is set aside again.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  startedAt!: Date | null;
+
   /** The user's "Geblockt" marker; starting a stopwatch or completing clears it. */
   @Column({ type: 'boolean', default: false })
   blocked!: boolean;

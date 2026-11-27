@@ -6,7 +6,6 @@ import { useSortable } from "../composables/useSortable";
 import {
   cardDay,
   columnLabel,
-  takesDrops,
   type BoardCard,
   type BoardColumn,
 } from "../utils/campaign-board";
@@ -18,8 +17,7 @@ import { formatDuration } from "../utils/today-agenda";
  * an optional quick add on top (the slot), then its cards on the shared
  * row (`ItemRow`: ring, title that opens the editor, ▶, "…"). A card drags
  * as a whole onto another column; the board decides what that does. The
- * column itself never sorts. In Arbeit takes nothing: it fills through
- * work with the stopwatch.
+ * column itself never sorts.
  */
 const props = defineProps<{
   column: BoardColumn;
@@ -41,7 +39,6 @@ const emit = defineEmits<{
   edit: [card: BoardCard];
 }>();
 
-const takes = computed(() => takesDrops(props.column));
 const headingId = computed(() => `campaign-board-${props.column}`);
 
 const list = ref<HTMLElement | null>(null);
@@ -49,7 +46,7 @@ useSortable(list, {
   item: "[data-todo-id]",
   group: "campaign-board",
   sort: false,
-  accepts: () => !props.busy && takes.value,
+  accepts: () => !props.busy,
   onMove: (_from, _to, { item, list: target }) => {
     const to = target.dataset.column as BoardColumn | undefined;
     const todoId = Number(item.dataset.todoId);
@@ -72,7 +69,6 @@ function meta(card: BoardCard): string[] {
 <template>
   <section
     class="board-column"
-    :class="{ 'board-column--closed': !takes }"
     :aria-label="columnLabel(column, count)"
     :data-board-column="column"
   >
@@ -82,10 +78,6 @@ function meta(card: BoardCard): string[] {
       </h3>
       <span class="board-column__count" aria-hidden="true">{{ count }}</span>
     </header>
-    <!-- Said while a card is carried: this column takes none. -->
-    <p v-if="!takes" class="board-column__closed-note">
-      Nimmt keine Karten an.
-    </p>
     <slot name="add" />
     <ol
       ref="list"
@@ -181,16 +173,6 @@ function meta(card: BoardCard): string[] {
   font-size: 0.875rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-}
-
-/* Only while a card is carried (see the board): In Arbeit takes none. */
-.board-column__closed-note {
-  display: none;
-  margin: 0;
-  padding: 0 0.625rem;
-  color: var(--color-ink-muted);
-  font-size: 0.8125rem;
-  font-weight: 700;
 }
 
 /* The list is where drops land, so it never collapses. */

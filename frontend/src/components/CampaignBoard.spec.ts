@@ -6,6 +6,7 @@ import {
   rescheduleTodo,
   setAsideTodo,
   setTodoBlocked,
+  startWorkOnTodo,
   updateTodoCompletion,
 } from "../api/day-planner.api";
 import { planQuest, unplanQuest } from "../api/questlog.api";
@@ -21,6 +22,7 @@ vi.mock("../api/day-planner.api", () => ({
   getBacklogTodos: vi.fn(),
   rescheduleTodo: vi.fn(),
   setAsideTodo: vi.fn(),
+  startWorkOnTodo: vi.fn(),
   setTodoBlocked: vi.fn(),
   updateTodoCompletion: vi.fn(),
   updateOccurrenceStatus: vi.fn(),
@@ -125,6 +127,7 @@ describe("CampaignBoard", () => {
     vi.mocked(unplanQuest).mockResolvedValue({} as never);
     vi.mocked(rescheduleTodo).mockResolvedValue({} as never);
     vi.mocked(setAsideTodo).mockResolvedValue({} as never);
+    vi.mocked(startWorkOnTodo).mockResolvedValue({} as never);
     vi.mocked(setTodoBlocked).mockResolvedValue({} as never);
     vi.mocked(updateTodoCompletion).mockResolvedValue();
     ticks.complete.mockResolvedValue(true);
@@ -222,7 +225,9 @@ describe("CampaignBoard", () => {
     const w = mountBoard([campaign]);
     await flushPromises();
     expect(column(w, "todo").text()).toContain("Keine offenen Quests ohne Tag.");
-    expect(column(w, "working").text()).toContain("Füllt sich durch die Stoppuhr");
+    expect(column(w, "working").text()).toContain(
+      "Zieh hierher, woran du arbeitest.",
+    );
   });
 
   it("puts the quick add on To-Do and Geplant, below the campaign", async () => {
@@ -266,6 +271,7 @@ describe("CampaignBoard", () => {
         "Nächste Woche",
         "Anderer Tag …",
         "Erledigen",
+        "In Arbeit nehmen",
         "Als geblockt markieren",
         "Bearbeiten",
         "In Kampagne verschieben …",
@@ -356,6 +362,7 @@ describe("CampaignBoard", () => {
       expect(entries(w)).toEqual([
         "Anderer Tag …",
         "Zurück ins To-Do",
+        "In Arbeit nehmen",
         "Bearbeiten",
         "In Kampagne verschieben …",
         "Löschen",
@@ -421,14 +428,33 @@ describe("CampaignBoard", () => {
       expect(unplanQuest).toHaveBeenCalledWith(4);
     });
 
-    it("takes nothing in In Arbeit", async () => {
+    it("takes quests into In Arbeit by hand, several at once, without a stopwatch", async () => {
       const w = mountBoard();
       await flushPromises();
       await drop(w, "todo", 3, "working");
+      await drop(w, "planned", 4, "working");
       expect(w.find("[role=dialog]").exists()).toBe(false);
+      expect(vi.mocked(startWorkOnTodo).mock.calls).toEqual([[3], [4]]);
       expect(planQuest).not.toHaveBeenCalled();
-      expect(ticks.complete).not.toHaveBeenCalled();
-      expect(column(w, "working").classes()).toContain("board-column--closed");
+      expect(updateTodoCompletion).not.toHaveBeenCalled();
+    });
+
+    it("opens a done quest again before it goes into In Arbeit", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await drop(w, "done", 6, "working");
+      expect(updateTodoCompletion).toHaveBeenCalledWith(6, false);
+      expect(startWorkOnTodo).toHaveBeenCalledWith(6);
+    });
+
+    it("offers In Arbeit nehmen in the menu of a card outside In Arbeit", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await openMenu(w, "Quest 5");
+      expect(entries(w)).not.toContain("In Arbeit nehmen");
+      await openMenu(w, "Entwurf");
+      await choose(w, "In Arbeit nehmen");
+      expect(startWorkOnTodo).toHaveBeenCalledWith(3);
     });
 
     it("opens a done quest again on its way back", async () => {

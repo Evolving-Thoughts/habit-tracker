@@ -32,6 +32,7 @@ export type MenuIcon =
   | "challenge"
   | "questlog"
   | "pause"
+  | "play"
   | "blocked";
 
 /** One entry of an action menu. */
@@ -168,6 +169,8 @@ export type RowMenuSteps = {
   unplan?: () => void;
   /** "Erledigen", for a card whose ring is not the only way (the campaign board). */
   complete?: () => void;
+  /** "In Arbeit nehmen": into In Arbeit by hand, without a stopwatch. */
+  startWork?: () => void;
   /** "Zurückstellen …": work stops for now; asks whether it is blocked. */
   setAside?: () => void;
   /** "Als geblockt markieren" (`blocked` false) or "Blocker aufheben". */
@@ -239,6 +242,14 @@ export function rowMenu(
       ariaLabel: `${title} erledigen`,
       shortcut: "row.done",
       run: steps.complete,
+    });
+  if (steps.startWork)
+    add({
+      id: "start-work",
+      label: "In Arbeit nehmen",
+      icon: "play",
+      ariaLabel: `${title} in Arbeit nehmen`,
+      run: steps.startWork,
     });
   if (steps.setAside)
     add({

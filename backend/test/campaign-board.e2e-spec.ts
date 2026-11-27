@@ -97,6 +97,32 @@ describe('Kampagnen-Board: In Arbeit, set-aside and Geblockt (e2e)', () => {
     await app?.close();
   });
 
+  it('takes several quests into In Arbeit by hand, until each is set aside', async () => {
+    const first = await quest();
+    const second = await quest();
+    await block(second.id, true);
+    for (const { id } of [first, second])
+      await client().post(`/todos/${id}/start-work`).send({}).expect(200);
+    expect(await node(first.id)).toMatchObject({ inProgress: true });
+    expect(await node(second.id)).toMatchObject({
+      inProgress: true,
+      blocked: false,
+    });
+
+    later(MINUTE);
+    await setAside(first.id, false);
+    expect(await node(first.id)).toMatchObject({ inProgress: false });
+    expect(await node(second.id)).toMatchObject({ inProgress: true });
+
+    later(MINUTE);
+    await client().post(`/todos/${first.id}/start-work`).send({}).expect(200);
+    expect(await node(first.id)).toMatchObject({ inProgress: true });
+
+    await client().patch(`/todos/${first.id}`).send({ completed: true });
+    await client().post(`/todos/${first.id}/start-work`).send({}).expect(409);
+    await client().post('/todos/424242/start-work').send({}).expect(404);
+  });
+
   it('is in progress after logged work, not after a set-aside, and again after new work', async () => {
     const { id, blocked, setAsideAt } = await quest();
     expect({ blocked, setAsideAt }).toEqual({

@@ -1,10 +1,10 @@
 import { isInProgress } from './campaign-board';
 
 const at = (time: string) => new Date(`2026-11-27T${time}:00Z`);
-const open = (setAsideAt: Date | null = null) => ({
-  completed: false,
-  setAsideAt,
-});
+const open = (
+  setAsideAt: Date | null = null,
+  startedAt: Date | null = null,
+) => ({ completed: false, setAsideAt, startedAt });
 const idle = { openTimer: false, lastWorkEndedAt: null };
 
 describe('isInProgress (Kampagnen-Board)', () => {
@@ -48,10 +48,16 @@ describe('isInProgress (Kampagnen-Board)', () => {
     ).toBe(false);
   });
 
+  it('is in progress once taken up by hand, until it is set aside again', () => {
+    expect(isInProgress(open(null, at('09:00')), idle)).toBe(true);
+    expect(isInProgress(open(at('08:00'), at('09:00')), idle)).toBe(true);
+    expect(isInProgress(open(at('10:00'), at('09:00')), idle)).toBe(false);
+  });
+
   it('is never in progress once completed', () => {
     expect(
       isInProgress(
-        { completed: true, setAsideAt: null },
+        { completed: true, setAsideAt: null, startedAt: at('09:00') },
         { openTimer: true, lastWorkEndedAt: at('10:00') },
       ),
     ).toBe(false);

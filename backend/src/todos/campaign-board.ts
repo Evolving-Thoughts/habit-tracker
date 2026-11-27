@@ -15,26 +15,32 @@ export type QuestWork = {
   lastWorkEndedAt: Date | null;
 };
 
+/** What of a quest decides "In Arbeit". */
+export type BoardQuest = {
+  completed: boolean;
+  setAsideAt: Date | null;
+  startedAt: Date | null;
+};
+
 /**
  * An open quest is in progress while a stopwatch on it runs or is paused,
- * or once work on it was logged after it was last set aside. A log ending
- * exactly then is the stopwatch the set-aside stopped, so it does not count.
+ * or once, after it was last set aside, work on it was logged or the user
+ * took it into "In Arbeit" by hand. A log ending exactly at the set-aside is
+ * the stopwatch the set-aside stopped, so it does not count.
  */
-export function isInProgress(
-  todo: { completed: boolean; setAsideAt: Date | null },
-  work: QuestWork,
-): boolean {
+export function isInProgress(todo: BoardQuest, work: QuestWork): boolean {
   if (todo.completed) return false;
   if (work.openTimer) return true;
-  if (!work.lastWorkEndedAt) return false;
-  return !todo.setAsideAt || work.lastWorkEndedAt > todo.setAsideAt;
+  const since = (moment: Date | null): boolean =>
+    moment !== null && (!todo.setAsideAt || moment > todo.setAsideAt);
+  return since(todo.startedAt) || since(work.lastWorkEndedAt);
 }
 
 /** Which of the user's given todos are in progress, in two queries. */
 export async function inProgressTodoIds(
   manager: EntityManager,
   userId: string,
-  todos: { id: number; completed: boolean; setAsideAt: Date | null }[],
+  todos: ({ id: number } & BoardQuest)[],
 ): Promise<Set<number>> {
   const open = todos.filter((todo) => !todo.completed);
   if (!open.length) return new Set();

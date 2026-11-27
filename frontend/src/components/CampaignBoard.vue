@@ -4,6 +4,7 @@ import {
   getBacklogTodos,
   rescheduleTodo,
   setAsideTodo,
+  startWorkOnTodo,
   setTodoBlocked,
 } from "../api/day-planner.api";
 import { planQuest, unplanQuest } from "../api/questlog.api";
@@ -212,6 +213,10 @@ function moveCard(
     void complete(card, options.fromMenu);
     return true;
   }
+  if (action.kind === "start") {
+    void startWork(card, action.reopen, options.fromMenu);
+    return true;
+  }
   proceed({
     card,
     to,
@@ -321,6 +326,39 @@ async function apply(step: Step): Promise<void> {
   );
   if (done) settle(todo.id);
   if (step.fromMenu) await focusAfter(todo.id, step.from);
+}
+
+/** Into In Arbeit by hand: no stopwatch, so several quests can be in work. */
+async function startWork(
+  card: BoardCard,
+  reopen: boolean,
+  fromMenu = false,
+): Promise<void> {
+  const { todo } = card;
+  const from = placeOf(card);
+  const changes: Partial<HierarchyTodo> = { inProgress: true, blocked: false };
+  if (reopen) Object.assign(changes, { completed: false, completedAt: null });
+  const done = await props.writes.writeShown(
+    () => {
+      const takeBack = showChange(todo.id, changes);
+      status.value = movedLine(todo.title, "working");
+      return () => {
+        takeBack();
+        status.value = "";
+      };
+    },
+    async () => {
+      if (reopen)
+        await writeDone({ kind: "todo", id: todo.id, title: todo.title }, false);
+      await startWorkOnTodo(todo.id);
+    },
+    {
+      key: `board-${todo.id}`,
+      fallbackError: "Die Quest konnte nicht in Arbeit genommen werden.",
+    },
+  );
+  if (done) settle(todo.id);
+  if (fromMenu) await focusAfter(todo.id, from);
 }
 
 /** The reload is in: the server's column counts, and the line says so. */
@@ -470,6 +508,10 @@ function menuOf(card: BoardCard): MenuEntry[] {
           ? () => void moveCard(card, "todo", { fromMenu: true })
           : undefined,
       complete: open ? () => void complete(card, true) : undefined,
+      startWork:
+        column !== "working"
+          ? () => void moveCard(card, "working", { fromMenu: true })
+          : undefined,
       setAside: column === "working" ? () => setAsideCard(card) : undefined,
       // In Arbeit asks it with "Zurückstellen …"; lifting a blocker works anywhere.
       block:
@@ -652,13 +694,16 @@ const asked = computed(() => question.value?.step.card.todo ?? null);
   display: grid;
   grid-template-columns: repeat(4, minmax(17rem, 1fr));
   gap: var(--space-2);
-  align-items: start;
+  /* Every column as tall as the tallest: a card dropped anywhere in a
+     column's lane lands in it, below its last card too. */
+  align-items: stretch;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   padding-bottom: var(--space-2);
 }
 
 .campaign-board__columns:not(.snap-board) > :deep(.board-column) {
+  min-height: 14rem;
   max-height: min(48rem, calc(100dvh - 7rem));
 }
 
@@ -687,24 +732,13 @@ const asked = computed(() => question.value?.step.card.todo ?? null);
 }
 
 /*
- * While a card is carried: every column that takes it shows the drop edge
- * (2px dashed, muted ink), the one it came from does not. In Arbeit takes
- * none: no edge, it steps back and says so in words.
+ * While a card is carried: every other column shows the drop edge (2px
+ * dashed, muted ink), the one it came from does not.
  */
 .campaign-board__columns:has(.sortable-fallback)
-  > :deep(.board-column:not(.board-column--closed):not(:has(.sortable-fallback))) {
+  > :deep(.board-column:not(:has(.sortable-fallback))) {
   outline: 2px dashed var(--color-ink-muted);
   outline-offset: -2px;
-}
-
-.campaign-board__columns:has(.sortable-fallback)
-  > :deep(.board-column--closed) {
-  opacity: 0.6;
-}
-
-.campaign-board__columns:has(.sortable-fallback)
-  :deep(.board-column__closed-note) {
-  display: block;
 }
 
 .campaign-board__older {

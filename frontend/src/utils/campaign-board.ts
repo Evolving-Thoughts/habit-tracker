@@ -23,7 +23,7 @@ export const BOARD_COLUMNS: readonly {
   {
     key: "working",
     name: "In Arbeit",
-    empty: "Füllt sich durch die Stoppuhr: Wer an einer Quest arbeitet, findet sie hier.",
+    empty: "Zieh hierher, woran du arbeitest. Eine laufende Stoppuhr bringt ihre Quest von selbst.",
   },
   { key: "done", name: "Erledigt", empty: "Noch nichts erledigt." },
 ];
@@ -149,33 +149,30 @@ function compare(a: string, b: string): number {
  * - `complete`: done, with the undo toast (Erledigt).
  * `reopen`: it was done and opens again first. `setAside`: it was in work,
  * so the person answers "Als geblockt markieren?" before anything is
- * written.
+ * written. `start`: the person takes it into In Arbeit by hand, without a
+ * stopwatch, so several quests can be in work at once.
  */
 export type BoardAction =
   | { kind: "plan" | "unplan"; reopen: boolean; setAside: boolean }
+  | { kind: "start"; reopen: boolean }
   | { kind: "complete" };
 
 /**
  * The drop rules. Null where nothing happens: within a column (no manual
- * order on the board), into In Arbeit (it fills only through work with
- * the stopwatch), and from Erledigt onto Erledigt.
+ * order on the board).
  */
 export function dropAction(
   from: BoardColumn,
   to: BoardColumn,
 ): BoardAction | null {
-  if (from === to || to === "working") return null;
+  if (from === to) return null;
   if (to === "done") return { kind: "complete" };
+  if (to === "working") return { kind: "start", reopen: from === "done" };
   return {
     kind: to === "planned" ? "plan" : "unplan",
     reopen: from === "done",
     setAside: from === "working",
   };
-}
-
-/** Whether a column takes cards dropped on it. */
-export function takesDrops(column: BoardColumn): boolean {
-  return column !== "working";
 }
 
 /** The live region's line after a move: "„Titel“ steht jetzt in Geplant." */

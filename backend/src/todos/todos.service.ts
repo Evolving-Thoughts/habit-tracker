@@ -341,6 +341,27 @@ export class TodosService {
     });
   }
 
+  /**
+   * Takes an open quest into "In Arbeit" by hand, without a stopwatch, so
+   * several can be in progress at once. It lifts "Geblockt" like starting
+   * a stopwatch does.
+   */
+  async startWork(userId: string, id: number): Promise<TodoEntity> {
+    return this.unitOfWork.run(userId, async (manager) => {
+      const repository = manager.getRepository(TodoEntity);
+      const todo = await repository.findOneBy({ id, userId });
+      if (!todo)
+        throw new NotFoundException(`Todo with ID ${id} was not found`);
+      if (todo.completed)
+        throw new ConflictException(
+          'Erledigte Quests können nicht in Arbeit genommen werden.',
+        );
+      todo.startedAt = this.clock.now();
+      todo.blocked = false;
+      return repository.save(todo);
+    });
+  }
+
   async deletionPreview(
     userId: string,
     id: number,

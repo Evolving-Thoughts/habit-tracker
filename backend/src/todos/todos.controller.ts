@@ -165,6 +165,17 @@ export class TodosController {
     return (await this.respond(user.id, [todo]))[0];
   }
 
+  @Post(':id/start-work')
+  @HttpCode(HttpStatus.OK)
+  async startWork(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<TodoResponseDto> {
+    const todo = await this.todosService.startWork(user.id, id);
+
+    return (await this.respond(user.id, [todo]))[0];
+  }
+
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(

@@ -109,6 +109,14 @@ export function setAsideTodo(
   });
 }
 
+/** Takes an open quest into "In Arbeit" by hand; no stopwatch starts. */
+export function startWorkOnTodo(todoId: number): Promise<TodoResponse> {
+  return request<TodoResponse>(`/todos/${todoId}/start-work`, {
+    method: "POST",
+    body: "{}",
+  });
+}
+
 /** "Als geblockt markieren" and "Blocker aufheben" on the campaign board. */
 export function setTodoBlocked(
   todoId: number,

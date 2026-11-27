@@ -10,17 +10,20 @@ Kanban board of its quests. The columns are derived, never stored:
 - **In Arbeit**: open and in progress (below).
 - **Erledigt**: completed.
 
-Two fields on `todos` hold what cannot be derived:
+Three fields on `todos` hold what cannot be derived:
 
 - `setAsideAt` (timestamptz, null): when the quest was last put back out of
   In Arbeit. Only work after it counts. Reopening a completed quest sets it
   too (`saveQuest`), so the quest is not in progress until it is worked on
   again.
+- `startedAt` (timestamptz, null): when the user last took the quest into
+  In Arbeit by hand (`POST /todos/:id/start-work`). It counts like work, so
+  several quests can be in progress at once without a stopwatch.
 - `blocked` (boolean, default false): the user's "Geblockt" marker. Starting
   or resuming a stopwatch on the quest clears it, and so does completing it,
   each in the same transaction. A completed quest cannot be blocked (409).
 
-Migration `1797100000000-KanbanSetAside` adds both.
+Migration `1797100000000-KanbanSetAside` adds all three.
 
 ## In Arbeit
 
@@ -28,7 +31,9 @@ An open quest is in progress when
 
 - a running or paused stopwatch is attached to it, or
 - it has a work log whose `endedAt` is after `setAsideAt`, or any work log at
-  all while `setAsideAt` is null.
+  all while `setAsideAt` is null, or
+- it was taken into In Arbeit by hand (`startedAt`) after `setAsideAt`, or at
+  any time while `setAsideAt` is null.
 
 A log that ends exactly at `setAsideAt` does not count: it is the stopwatch
 the set-aside itself stopped. A log entered later by hand counts only if it
@@ -50,6 +55,9 @@ it for the whole hierarchy with two queries (open stopwatches, and the latest
   response. A completed quest is a 409, someone else's todo a 404 and a body
   without a boolean `blocked` (or with other fields) a 400. It runs in the
   per-user unit of work like every todo write.
+- `POST /todos/:id/start-work` (empty body) sets `startedAt` to now and
+  clears `blocked`; no stopwatch starts. A completed quest is a 409, someone
+  else's todo a 404.
 - `PATCH /todos/:id` accepts `blocked: boolean` to mark or unmark a quest.
 
 ## Frontend
@@ -61,8 +69,8 @@ it for the whole hierarchy with two queries (open stopwatches, and the latest
 - `CampaignBoard.vue` (in the campaign detail of `CampaignsView.vue`, behind
   the choice "Liste · Board", remembered per device as `campaign:view`) and
   `CampaignBoardColumn.vue` draw it. A drop on Geplant asks for the day, on
-  Erledigt completes with the undo toast, on To-Do removes the day; In Arbeit
-  takes no drops. Out of In Arbeit a dialog asks "Als geblockt markieren?";
+  Erledigt completes with the undo toast, on To-Do removes the day, on In
+  Arbeit takes the quest into work by hand (`start-work`). Out of In Arbeit a dialog asks "Als geblockt markieren?";
   either answer calls `POST /todos/:id/set-aside`, closing it leaves the card.
   The same steps are in each card's menu. A quest whose stopwatch runs shows
   in In Arbeit at once; when the stopwatch ends the board reloads, and the

@@ -9,7 +9,6 @@ import {
   columnOf,
   dropAction,
   movedLine,
-  takesDrops,
   type BoardCard,
 } from "./campaign-board";
 
@@ -133,12 +132,10 @@ describe("dropAction", () => {
       expect(dropAction(column, column)).toBeNull();
   });
 
-  it("takes no drops into In Arbeit", () => {
-    expect(dropAction("todo", "working")).toBeNull();
-    expect(dropAction("planned", "working")).toBeNull();
-    expect(dropAction("done", "working")).toBeNull();
-    expect(takesDrops("working")).toBe(false);
-    expect(takesDrops("planned")).toBe(true);
+  it("takes a quest into In Arbeit by hand, opening a done one first", () => {
+    expect(dropAction("todo", "working")).toEqual({ kind: "start", reopen: false });
+    expect(dropAction("planned", "working")).toEqual({ kind: "start", reopen: false });
+    expect(dropAction("done", "working")).toEqual({ kind: "start", reopen: true });
   });
 
   it("asks the day for Geplant and takes it away for To-Do", () => {
