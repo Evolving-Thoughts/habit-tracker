@@ -256,7 +256,8 @@ export function useFocusSound(options: FocusSoundOptions) {
         if (pending && pending.running === running) pending = null;
         if (running) takeCarried();
         if (!running) armedFor = null;
-        else if (now() - gestureAt <= GESTURE_MS) {
+        // A start shown ahead of the server's answer has no id yet.
+        else if (id && now() - gestureAt <= GESTURE_MS) {
           // The start pressed here: this stopwatch may sound.
           armedFor = id;
           gestureAt = Number.NEGATIVE_INFINITY;

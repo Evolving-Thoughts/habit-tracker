@@ -124,6 +124,74 @@ describe("synced Timer controller", () => {
     expect(c.switching.value).toBeNull();
     c.dispose();
   });
+  it("shows a start, pause and resume at once, before the server answers", async () => {
+    const c = createTimerController();
+    let answer!: (r: TimerResponse) => void;
+    vi.mocked(startTimer).mockReturnValue(new Promise((r) => (answer = r)));
+    const starting = c.start(target);
+    expect(c.timer.value).toMatchObject({ targetId: 1, state: "running" });
+    // The Fokus-Sperre follows the server, not the press.
+    expect(c.confirmed.value).toBe("");
+    answer(response("running", 30_000));
+    await starting;
+    expect(c.confirmed.value).toBe("timer-1:running");
+    expect(c.elapsed.value).toBe(30_000);
+
+    vi.mocked(performance.now).mockReturnValue(5000);
+    vi.mocked(timerAction).mockReturnValue(new Promise((r) => (answer = r)));
+    const pausing = c.action("pause");
+    expect(c.timer.value?.state).toBe("paused");
+    // The time worked up to the press stays while it waits.
+    expect(c.elapsed.value).toBe(34_000);
+    vi.mocked(performance.now).mockReturnValue(9000);
+    c.pulse();
+    expect(c.elapsed.value).toBe(34_000);
+    expect(c.confirmed.value).toBe("timer-1:running");
+    answer(response("paused", 33_900));
+    await pausing;
+    expect(c.elapsed.value).toBe(33_900);
+
+    vi.mocked(timerAction).mockReturnValue(new Promise((r) => (answer = r)));
+    const resuming = c.action("resume");
+    expect(c.timer.value?.state).toBe("running");
+    vi.mocked(performance.now).mockReturnValue(10_000);
+    c.pulse();
+    expect(c.elapsed.value).toBe(34_900);
+    answer(response("running", 33_900));
+    await resuming;
+    c.dispose();
+  });
+  it("takes a press back when the server refuses it", async () => {
+    const c = createTimerController();
+    await c.refresh();
+    vi.mocked(performance.now).mockReturnValue(3000);
+    vi.mocked(timerAction).mockRejectedValue(new Error("Nicht gespeichert."));
+    expect(await c.action("pause")).toBe(false);
+    expect(c.timer.value?.state).toBe("running");
+    expect(c.error.value).toBe("Nicht gespeichert.");
+    // It counted on meanwhile, as on the server.
+    c.pulse();
+    expect(c.elapsed.value).toBe(32_000);
+
+    vi.mocked(startTimer).mockRejectedValue(new Error("Nicht gestartet."));
+    const empty = createTimerController();
+    await empty.start(target);
+    expect(empty.timer.value).toBeNull();
+    c.dispose();
+    empty.dispose();
+  });
+  it("does not show a start ahead while another stopwatch is in the way", async () => {
+    const c = createTimerController();
+    await c.refresh();
+    let answer!: (r: TimerResponse) => void;
+    vi.mocked(startTimer).mockReturnValue(new Promise((r) => (answer = r)));
+    const other = { kind: "todo" as const, targetId: 2, title: "Lesen" };
+    const starting = c.start(other);
+    expect(c.timer.value?.targetId).toBe(1);
+    answer(response());
+    await starting;
+    c.dispose();
+  });
   it("never applies an old confirmation to a newer timer", async () => {
     const c = createTimerController();
     await c.refresh();

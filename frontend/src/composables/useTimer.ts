@@ -24,6 +24,12 @@ export function createTimerController() {
     null,
   );
   const tick = ref(performance.now());
+  /**
+   * What the server last said, as `${id}:${state}` ("" without a
+   * stopwatch). The state shown runs ahead of it while a press is on its
+   * way; whatever follows the server (the Fokus-Sperre) watches this.
+   */
+  const confirmed = ref("");
   let alive = true;
   let revision = 0;
   let reading = false;
@@ -36,13 +42,14 @@ export function createTimerController() {
     remote = false,
   ): void {
     const previous = timer.value;
+    const answer = response.timer
+      ? `${response.timer.id}:${response.timer.state}`
+      : "";
     // Running now: read the quest hours ahead for the milestone sound at
     // its pause, stop or completion (`action-sounds.ts`).
-    if (
-      response.timer?.state === "running" &&
-      (previous?.id !== response.timer.id || previous.state !== "running")
-    )
+    if (response.timer?.state === "running" && answer !== confirmed.value)
       primeMilestones(["quest-hours"], RUNNING_STOPWATCH_MS);
+    confirmed.value = answer;
     const receivedAt = performance.now();
     sampledAt = receivedAt;
     // The server answered about halfway through the request.
@@ -91,14 +98,28 @@ export function createTimerController() {
       reading = false;
     }
   }
+  /**
+   * `assumed` is what the press leads to: it shows at once, so a slow
+   * connection never makes a press look ignored. The answer replaces it; a
+   * failure takes it back.
+   */
   async function mutate(
     operation: () => Promise<TimerResponse>,
     changed = false,
+    assumed?: Timer,
   ): Promise<boolean> {
     if (!alive || busy.value) return false;
     busy.value = true;
     ++revision;
     const started = performance.now();
+    const before = { timer: timer.value, sampledAt, sampledElapsed };
+    if (assumed) {
+      // The same stopwatch keeps its time; a new one starts counting here.
+      tick.value = started;
+      sampledElapsed = assumed.id === timer.value?.id ? elapsed.value : 0;
+      sampledAt = started;
+      timer.value = assumed;
+    }
     try {
       const response = await operation();
       if (!alive) return false;
@@ -106,11 +127,16 @@ export function createTimerController() {
       if (changed) notifyDataChanged();
       return true;
     } catch (cause) {
-      if (alive)
+      if (alive) {
+        if (assumed) {
+          ({ sampledAt, sampledElapsed } = before);
+          timer.value = before.timer;
+        }
         error.value =
           cause instanceof Error
             ? cause.message
             : "Die Stoppuhr konnte nicht geändert werden.";
+      }
       throw cause;
     } finally {
       busy.value = false;
@@ -120,10 +146,27 @@ export function createTimerController() {
     target: TimerTarget,
     replaceTimerId?: string,
   ): Promise<void> {
+    const current = timer.value;
+    // Nothing else in the way: it runs at once. Its time worked before and
+    // its Soll come with the answer. Otherwise the server asks first.
+    const assumed: Timer | undefined =
+      !current || current.id === replaceTimerId
+        ? {
+            id: "",
+            kind: target.kind,
+            targetId: target.targetId,
+            title: target.title,
+            state: "running",
+            elapsedMilliseconds: 0,
+            targetMinutes: null,
+            targetReachedAt: null,
+          }
+        : undefined;
     try {
       if (
         await withActionSound(
-          () => mutate(() => startTimer(target, replaceTimerId), true),
+          () =>
+            mutate(() => startTimer(target, replaceTimerId), true, assumed),
           // Replacing ends the other stopwatch: its time may reach the goal.
           {
             sound: null,
@@ -153,10 +196,15 @@ export function createTimerController() {
       return false;
     }
     const run = () =>
-      mutate(() =>
-        kind === "resume" && focusBlock
-          ? timerAction(current.id, kind, focusBlock)
-          : timerAction(current.id, kind),
+      mutate(
+        () =>
+          kind === "resume" && focusBlock
+            ? timerAction(current.id, kind, focusBlock)
+            : timerAction(current.id, kind),
+        false,
+        kind === "stop"
+          ? undefined
+          : { ...current, state: kind === "pause" ? "paused" : "running" },
       );
     try {
       // Pausing or stopping logs the time: it may reach the weekly goal.
@@ -192,6 +240,7 @@ export function createTimerController() {
     error,
     busy,
     switching,
+    confirmed,
     elapsed,
     reached,
     refresh,

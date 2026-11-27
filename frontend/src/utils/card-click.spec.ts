@@ -35,6 +35,17 @@ describe("onCardClick", () => {
     expect(open).not.toHaveBeenCalled();
   });
 
+  it("leaves a control its tap when its handler swapped the icon that was hit", () => {
+    const open = vi.fn();
+    const { root, button } = card();
+    // The button's own handler runs first: play becomes pause.
+    button.parentElement!.addEventListener("click", () => button.remove(), {
+      once: true,
+    });
+    click(root, button, open);
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it("ignores the click that ends a drag", () => {
     vi.useFakeTimers();
     const open = vi.fn();

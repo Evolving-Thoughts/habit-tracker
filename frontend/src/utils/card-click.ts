@@ -34,6 +34,21 @@ export function justDragged(): boolean {
 }
 
 /**
+ * The control inside `card` that a click went to, or null for a click on
+ * the card itself. Read from the path the click took, not from the page as
+ * it is now: a control's own handler runs first and may already have
+ * swapped the icon that was hit (play for pause), which then hangs in no
+ * button any more.
+ */
+export function controlHit(event: Event, card: Element): Element | null {
+  for (const node of event.composedPath()) {
+    if (node === card) return null;
+    if (node instanceof Element && node.matches(CARD_CONTROLS)) return node;
+  }
+  return null;
+}
+
+/**
  * Runs `open` for a plain click on the card itself. A click on a control,
  * the click that ends a drag, and a click that ends selecting text are not
  * taps on the card.
@@ -42,10 +57,8 @@ export function onCardClick(event: MouseEvent, open: () => void): void {
   if (event.defaultPrevented || event.button !== 0) return;
   if (justDragged()) return;
   const card = event.currentTarget;
-  const target = event.target;
-  if (!(card instanceof Element) || !(target instanceof Element)) return;
-  const control = target.closest(CARD_CONTROLS);
-  if (control && control !== card && card.contains(control)) return;
+  if (!(card instanceof Element) || !(event.target instanceof Element)) return;
+  if (controlHit(event, card)) return;
   if (window.getSelection?.()?.toString()) return;
   open();
 }

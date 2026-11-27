@@ -4,7 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Brackets, DataSource, EntityManager, LessThanOrEqual } from 'typeorm';
+import {
+  Brackets,
+  DataSource,
+  EntityManager,
+  In,
+  LessThanOrEqual,
+} from 'typeorm';
 import { HabitForecastPlaceEntity } from '../entities/habit-forecast-place.entity';
 import {
   assertDateOnly,
@@ -266,13 +272,21 @@ export class HabitSchedulingService {
     manager: EntityManager,
     habit: HabitEntity,
     now: Date,
+    /** The habit's runs and versions when the caller read them for many habits at once. */
+    loaded?: {
+      occurrences: HabitOccurrenceEntity[];
+      versions: HabitScheduleVersionEntity[];
+    },
   ): Promise<HabitScheduleVersionEntity[]> {
     const repository = manager.getRepository(HabitOccurrenceEntity);
-    const occurrences = await repository.find({
-      where: { habitId: habit.id },
-      order: { scheduledDate: 'ASC', id: 'ASC' },
-    });
-    const versions = await this.getVersions(manager, habit.id);
+    const occurrences =
+      loaded?.occurrences ??
+      (await repository.find({
+        where: { habitId: habit.id },
+        order: { scheduledDate: 'ASC', id: 'ASC' },
+      }));
+    const versions =
+      loaded?.versions ?? (await this.getVersions(manager, habit.id));
     const { resolve, create } = lifecycleChanges(
       habit,
       versions,
@@ -603,8 +617,37 @@ export class HabitSchedulingService {
       lock: { mode: 'pessimistic_write' },
     });
 
+    if (!habits.length) return;
+    // Two reads for all habits, in the order `reconcile` reads one habit's
+    // in: Heute and the Plan come through here on every load.
+    const habitId = In(habits.map((habit) => habit.id));
+    const [occurrences, versions] = await Promise.all([
+      manager.getRepository(HabitOccurrenceEntity).find({
+        where: { habitId },
+        order: { scheduledDate: 'ASC', id: 'ASC' },
+      }),
+      manager.getRepository(HabitScheduleVersionEntity).find({
+        where: { habitId },
+        order: { effectiveAt: 'ASC', id: 'ASC' },
+      }),
+    ]);
+    const ofHabit = <Row extends { habitId: number }>(rows: Row[]) => {
+      const groups = new Map<number, Row[]>();
+      for (const row of rows) {
+        const group = groups.get(row.habitId);
+        if (group) group.push(row);
+        else groups.set(row.habitId, [row]);
+      }
+      return groups;
+    };
+    const runs = ofHabit(occurrences);
+    const plans = ofHabit(versions);
+
     for (const habit of habits) {
-      await this.reconcile(manager, habit, now);
+      await this.reconcile(manager, habit, now, {
+        occurrences: runs.get(habit.id) ?? [],
+        versions: plans.get(habit.id) ?? [],
+      });
     }
   }
 
