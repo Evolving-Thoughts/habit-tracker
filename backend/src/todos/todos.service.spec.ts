@@ -17,7 +17,6 @@ jest.mock('../timers/timer-target', () => ({
   ...jest.requireActual<typeof timerTarget>('../timers/timer-target'),
   timersOfTodos: jest.fn().mockResolvedValue([]),
   discardTimersOfTodos: jest.fn(),
-  releaseTimers: jest.fn(),
 }));
 jest.mock('./campaign-board', () => ({
   ...jest.requireActual<typeof campaignBoard>('./campaign-board'),
@@ -93,7 +92,6 @@ describe('TodosService', () => {
   const chain = jest.mocked(queries.ancestorChain);
   const subtree = jest.mocked(queries.subtree);
   const inProgress = jest.mocked(campaignBoard.inProgressTodoIds);
-  const releaseTimers = jest.mocked(timerTarget.releaseTimers);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -388,14 +386,16 @@ describe('TodosService', () => {
     });
   });
 
+  // The board's rules are tested in campaign-board.spec.ts, the stopwatch
+  // they end in quest-commands.spec.ts.
   describe('startWork', () => {
-    it('stamps the moment, lifts the marker and starts no stopwatch', async () => {
-      rows = [{ ...todo(1), blocked: true }];
+    it('stamps the moment and lifts the marker', async () => {
+      rows = [Object.assign(todo(1), { blocked: true })];
       expect(await service.startWork(USER, 1)).toMatchObject({
         startedAt: NOW,
         blocked: false,
       });
-      expect(releaseTimers).not.toHaveBeenCalled();
+      expect(repository.save).toHaveBeenCalledWith(rows[0]);
     });
     it('returns 404 for a missing todo and 409 for a completed one', async () => {
       await expect(service.startWork(USER, 99)).rejects.toThrow(
@@ -409,17 +409,12 @@ describe('TodosService', () => {
   });
 
   describe('setAside', () => {
-    it('stamps the moment, sets the marker and ends the stopwatch', async () => {
+    it('stamps the moment and sets the marker', async () => {
       expect(await service.setAside(USER, 1, true)).toMatchObject({
         setAsideAt: NOW,
         blocked: true,
       });
-      expect(releaseTimers).toHaveBeenCalledWith(
-        manager,
-        USER,
-        { todoIds: [1] },
-        NOW,
-      );
+      expect(repository.save).toHaveBeenCalledWith(rows[0]);
       expect(await service.setAside(USER, 1, false)).toMatchObject({
         blocked: false,
       });
@@ -432,7 +427,7 @@ describe('TodosService', () => {
       await expect(service.setAside(USER, 1, false)).rejects.toThrow(
         ConflictException,
       );
-      expect(releaseTimers).not.toHaveBeenCalled();
+      expect(repository.save).not.toHaveBeenCalled();
     });
   });
 

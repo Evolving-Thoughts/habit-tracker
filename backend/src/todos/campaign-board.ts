@@ -3,8 +3,9 @@ import { TimerEntity } from '../timers/timer.entity';
 import { WorkLogEntity } from '../work-logs/work-log.entity';
 
 /**
- * Kampagnen-Board (docs/campaign-board.md): which quests are "In Arbeit".
- * The other columns follow from fields every todo response carries.
+ * Kampagnen-Board (docs/campaign-board.md): which quests are "In Arbeit",
+ * and the transitions that move a quest between the columns. The other
+ * columns follow from fields every todo response carries.
  */
 
 /** What has happened on a quest, as far as "In Arbeit" is concerned. */
@@ -34,6 +35,91 @@ export function isInProgress(todo: BoardQuest, work: QuestWork): boolean {
   const since = (moment: Date | null): boolean =>
     moment !== null && (!todo.setAsideAt || moment > todo.setAsideAt);
   return since(todo.startedAt) || since(work.lastWorkEndedAt);
+}
+
+/**
+ * The moves between the columns, as pure transitions: each takes the
+ * quest's board fields and returns the fields it changes, or a refusal.
+ * `quest-commands.ts` applies and stores them.
+ */
+
+/** The board fields of a quest that its transitions read and write. */
+export type BoardFields = BoardQuest & { blocked: boolean };
+
+/** What a transition writes: only the fields it changes. */
+export type BoardChange = Partial<
+  Pick<BoardFields, 'setAsideAt' | 'startedAt' | 'blocked'>
+>;
+
+/** A completed quest stays in Erledigt: it is not moved or blocked. */
+export type BoardRefusal = { refused: 'completed' };
+
+/**
+ * "Geblockt" ends once the quest moves on: worked on again (a stopwatch
+ * started or resumed, or taken into work by hand) or completed.
+ */
+function liftBlocked(quest: Pick<BoardFields, 'blocked'>): BoardChange {
+  return quest.blocked ? { blocked: false } : {};
+}
+
+/**
+ * Setting an open quest aside: from now on only new work counts, and
+ * `blocked` says whether it waits on something. The caller ends its
+ * stopwatch.
+ */
+export function setAside(
+  quest: Pick<BoardFields, 'completed'>,
+  blocked: boolean,
+  now: Date,
+): BoardChange | BoardRefusal {
+  if (quest.completed) return { refused: 'completed' };
+  return { setAsideAt: now, blocked };
+}
+
+/**
+ * Taking an open quest into "In Arbeit" by hand counts like work from now
+ * on, without a stopwatch, and lifts "Geblockt".
+ */
+export function takeIntoWork(
+  quest: Pick<BoardFields, 'completed' | 'blocked'>,
+  now: Date,
+): BoardChange | BoardRefusal {
+  if (quest.completed) return { refused: 'completed' };
+  return { startedAt: now, ...liftBlocked(quest) };
+}
+
+/** A stopwatch started or resumed on the quest lifts "Geblockt". */
+export function resumeWork(quest: Pick<BoardFields, 'blocked'>): BoardChange {
+  return liftBlocked(quest);
+}
+
+/** Completing a quest lifts "Geblockt"; a repeated completion too. */
+export function complete(quest: Pick<BoardFields, 'blocked'>): BoardChange {
+  return liftBlocked(quest);
+}
+
+/**
+ * A reopened quest is not "In Arbeit" until it is worked on again, as if it
+ * had been set aside now. An open quest stays as it is.
+ */
+export function reopen(
+  quest: Pick<BoardFields, 'completed'>,
+  now: Date,
+): BoardChange {
+  return quest.completed ? { setAsideAt: now } : {};
+}
+
+/**
+ * Marking or unmarking "Geblockt" by hand. `quest.completed` is the
+ * completion the quest will have, so a quest completed in the same change
+ * cannot be blocked either.
+ */
+export function markBlocked(
+  quest: Pick<BoardFields, 'completed'>,
+  blocked: boolean,
+): BoardChange | BoardRefusal {
+  if (blocked && quest.completed) return { refused: 'completed' };
+  return { blocked };
 }
 
 /** Which of the user's given todos are in progress, in two queries. */

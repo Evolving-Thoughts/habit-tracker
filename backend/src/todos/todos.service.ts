@@ -15,7 +15,6 @@ import { UserUnitOfWork } from '../common/user-unit-of-work';
 import {
   discardTimersOfTodos,
   hasOpenTimer,
-  releaseTimers,
   timersOfTodos,
 } from '../timers/timer-target';
 import { TimerEntity } from '../timers/timer.entity';
@@ -45,6 +44,8 @@ import {
   firstBacklogPosition,
   nextBacklogPosition,
   saveQuest,
+  setQuestAside,
+  takeQuestIntoWork,
 } from './quest-commands';
 
 type DeletionSnapshot = {
@@ -109,10 +110,8 @@ export class TodosService {
     });
   }
 
-  async findOne(userId: string, id: number): Promise<TodoEntity> {
-    const todo = await this.todoRepository.findOneBy({ id, userId });
-    if (!todo) throw new NotFoundException(`Todo with ID ${id} was not found`);
-    return todo;
+  findOne(userId: string, id: number): Promise<TodoEntity> {
+    return this.ownedTodo(this.todoRepository.manager, userId, id);
   }
 
   /** The notes of one owned todo; they are loaded only here. */
@@ -140,12 +139,9 @@ export class TodosService {
       throw error;
     }
     return this.unitOfWork.run(userId, async (manager) => {
-      const repository = manager.getRepository(TodoEntity);
-      const todo = await repository.findOneBy({ id, userId });
-      if (!todo)
-        throw new NotFoundException(`Todo with ID ${id} was not found`);
+      const todo = await this.ownedTodo(manager, userId, id);
       todo.notes = notes;
-      await repository.save(todo);
+      await manager.getRepository(TodoEntity).save(todo);
       return notes;
     });
   }
@@ -220,10 +216,7 @@ export class TodosService {
     if (!Object.values(dto).some((value) => value !== undefined))
       throw new BadRequestException('At least one property must be provided');
     return this.unitOfWork.run(userId, async (manager) => {
-      const repository = manager.getRepository(TodoEntity);
-      const todo = await repository.findOneBy({ id, userId });
-      if (!todo)
-        throw new NotFoundException(`Todo with ID ${id} was not found`);
+      const todo = await this.ownedTodo(manager, userId, id);
       if (dto.parentId !== undefined && dto.parentId !== todo.parentId) {
         await this.assertCanPlace(manager, userId, id, dto.parentId);
         todo.parentId = dto.parentId;
@@ -255,13 +248,6 @@ export class TodosService {
       if (dto.plannedDurationMinutes !== undefined)
         todo.plannedDurationMinutes = dto.plannedDurationMinutes;
       if (dto.focusBlock !== undefined) todo.focusBlock = dto.focusBlock;
-      if (dto.blocked !== undefined) {
-        if (dto.blocked && (dto.completed ?? todo.completed))
-          throw new ConflictException(
-            'Erledigte Quests können nicht geblockt werden.',
-          );
-        todo.blocked = dto.blocked;
-      }
       return saveQuest(
         manager,
         todo,
@@ -269,6 +255,7 @@ export class TodosService {
           scheduledDate: dto.scheduledDate,
           timeOfDay: dto.timeOfDay,
           completed: dto.completed,
+          blocked: dto.blocked,
         },
         this.clock.now(),
       );
@@ -283,10 +270,7 @@ export class TodosService {
   ): Promise<TodoEntity> {
     assertDateOnly(dto.date);
     return this.unitOfWork.run(userId, async (manager) => {
-      const repository = manager.getRepository(TodoEntity);
-      const todo = await repository.findOneBy({ id, userId });
-      if (!todo)
-        throw new NotFoundException(`Todo with ID ${id} was not found`);
+      const todo = await this.ownedTodo(manager, userId, id);
       if (todo.completed)
         throw new ConflictException(
           'Erledigte Quests können nicht verschoben werden.',
@@ -314,52 +298,27 @@ export class TodosService {
     });
   }
 
-  /**
-   * Puts an open quest back out of "In Arbeit" (campaign-board.md): from
-   * now on only new work counts, its stopwatch ends with its work logged,
-   * and `blocked` says whether it waits on something.
-   */
-  async setAside(
-    userId: string,
-    id: number,
-    blocked: boolean,
-  ): Promise<TodoEntity> {
-    return this.unitOfWork.run(userId, async (manager) => {
-      const repository = manager.getRepository(TodoEntity);
-      const todo = await repository.findOneBy({ id, userId });
-      if (!todo)
-        throw new NotFoundException(`Todo with ID ${id} was not found`);
-      if (todo.completed)
-        throw new ConflictException(
-          'Erledigte Quests können nicht zurückgelegt werden.',
-        );
-      const now = this.clock.now();
-      await releaseTimers(manager, userId, { todoIds: [id] }, now);
-      todo.setAsideAt = now;
-      todo.blocked = blocked;
-      return repository.save(todo);
-    });
+  /** Puts an open quest back out of "In Arbeit" (`setQuestAside`). */
+  setAside(userId: string, id: number, blocked: boolean): Promise<TodoEntity> {
+    return this.unitOfWork.run(userId, async (manager) =>
+      setQuestAside(
+        manager,
+        await this.ownedTodo(manager, userId, id),
+        blocked,
+        this.clock.now(),
+      ),
+    );
   }
 
-  /**
-   * Takes an open quest into "In Arbeit" by hand, without a stopwatch, so
-   * several can be in progress at once. It lifts "Geblockt" like starting
-   * a stopwatch does.
-   */
-  async startWork(userId: string, id: number): Promise<TodoEntity> {
-    return this.unitOfWork.run(userId, async (manager) => {
-      const repository = manager.getRepository(TodoEntity);
-      const todo = await repository.findOneBy({ id, userId });
-      if (!todo)
-        throw new NotFoundException(`Todo with ID ${id} was not found`);
-      if (todo.completed)
-        throw new ConflictException(
-          'Erledigte Quests können nicht in Arbeit genommen werden.',
-        );
-      todo.startedAt = this.clock.now();
-      todo.blocked = false;
-      return repository.save(todo);
-    });
+  /** Takes an open quest into "In Arbeit" by hand (`takeQuestIntoWork`). */
+  startWork(userId: string, id: number): Promise<TodoEntity> {
+    return this.unitOfWork.run(userId, async (manager) =>
+      takeQuestIntoWork(
+        manager,
+        await this.ownedTodo(manager, userId, id),
+        this.clock.now(),
+      ),
+    );
   }
 
   /** What deleting would remove, from one lock-free snapshot. */
@@ -440,6 +399,19 @@ export class TodosService {
       )
       .digest('hex');
     return { todos, timers, confirmationToken };
+  }
+
+  /** One of the user's todos, or a 404. */
+  private async ownedTodo(
+    manager: EntityManager,
+    userId: string,
+    id: number,
+  ): Promise<TodoEntity> {
+    const todo = await manager
+      .getRepository(TodoEntity)
+      .findOneBy({ id, userId });
+    if (!todo) throw new NotFoundException(`Todo with ID ${id} was not found`);
+    return todo;
   }
 
   /** A new child starts in its parent's category; there is no live inheritance. */

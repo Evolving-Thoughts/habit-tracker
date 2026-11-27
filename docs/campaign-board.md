@@ -14,7 +14,7 @@ Three fields on `todos` hold what cannot be derived:
 
 - `setAsideAt` (timestamptz, null): when the quest was last put back out of
   In Arbeit. Only work after it counts. Reopening a completed quest sets it
-  too (`saveQuest`), so the quest is not in progress until it is worked on
+  too (`reopen`), so the quest is not in progress until it is worked on
   again.
 - `startedAt` (timestamptz, null): when the user last took the quest into
   In Arbeit by hand (`POST /todos/:id/start-work`). It counts like work, so
@@ -43,6 +43,31 @@ The rule is one pure function, `isInProgress` in
 `backend/src/todos/campaign-board.ts`. `inProgressTodoIds` beside it answers
 it for the whole hierarchy with two queries (open stopwatches, and the latest
 `endedAt` per todo), not one per todo.
+
+## Moving a quest
+
+Every write that moves a quest between the columns is a pure transition
+beside `isInProgress` in `campaign-board.ts`: it takes the quest's board
+fields (and `now`) and returns the fields it changes, or the refusal
+`{ refused: 'completed' }`.
+
+- `setAside(quest, blocked, now)`: `setAsideAt` now, `blocked` as given.
+- `takeIntoWork(quest, now)`: `startedAt` now, lifts "Geblockt".
+- `resumeWork(quest)`: a stopwatch started or resumed lifts "Geblockt".
+- `complete(quest)`: lifts "Geblockt".
+- `reopen(quest, now)`: `setAsideAt` now, for a quest that was completed.
+- `markBlocked(quest, blocked)`: the marker by hand; `quest.completed` is
+  the completion the quest will have after the same change.
+
+`setAside`, `takeIntoWork` and `markBlocked` refuse a completed quest; the
+others cannot be refused. "Geblockt" ends in one place (`liftBlocked`).
+
+`backend/src/todos/quest-commands.ts` applies and stores them, a refusal
+as a 409: `saveQuest` (completion, reopening and the marker of
+`PATCH /todos/:id`, also for the Google sync), `setQuestAside` (also ends
+the stopwatch through `releaseTimers`), `takeQuestIntoWork` and
+`resumeQuestWork` (called by `TimersService` on start and resume; it writes
+only `blocked`). Callers hold the per-user unit of work.
 
 ## API
 

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { TodoEntity } from '../todos/entities/todo.entity';
+import { resumeQuestWork } from '../todos/quest-commands';
 import {
   effectiveDuration,
   HabitOccurrenceEntity,
@@ -253,18 +254,12 @@ export class TimersService {
       now,
     );
   }
-  /** Working on a quest again lifts its "Geblockt" marker (campaign-board.md). */
-  private async unblock(
+  /** A quest worked on again leaves the board's "Geblockt" (`resumeQuestWork`). */
+  private async workResumed(
     manager: EntityManager,
     target: TodoEntity | HabitOccurrenceEntity,
   ): Promise<void> {
-    if (!(target instanceof TodoEntity) || !target.blocked) return;
-    target.blocked = false;
-    await manager.update(
-      TodoEntity,
-      { id: target.id, userId: target.userId },
-      { blocked: false },
-    );
+    if (target instanceof TodoEntity) await resumeQuestWork(manager, target);
   }
   /**
    * The stopwatch as of now. Polled every few seconds, so it reads without
@@ -324,7 +319,7 @@ export class TimersService {
         dto.targetId,
         now,
       );
-      await this.unblock(manager, target);
+      await this.workResumed(manager, target);
       if (active && active.state !== 'stopped') {
         const same =
           (dto.kind === 'todo' ? active.todoId : active.occurrenceId) ===
@@ -415,7 +410,7 @@ export class TimersService {
       const saved = await manager.save(timer);
       if (action === 'resume') {
         const target = await this.targetOf(manager, userId, saved, now);
-        await this.unblock(manager, target);
+        await this.workResumed(manager, target);
         await this.startFocus(manager, saved, target, focusBlock, now);
       }
       return this.response(saved, now);
