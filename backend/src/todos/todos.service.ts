@@ -15,6 +15,7 @@ import { UserUnitOfWork } from '../common/user-unit-of-work';
 import {
   discardTimersOfTodos,
   hasOpenTimer,
+  releaseTimers,
   timersOfTodos,
 } from '../timers/timer-target';
 import { TimerEntity } from '../timers/timer.entity';
@@ -30,6 +31,7 @@ import { TodoMapper } from './mappers/todo.mapper';
 import { assertGoalAvailable, assertGoalShape, habitGoals } from './habit-goal';
 import { assertCampaignFields, NO_CAMPAIGN_FIELDS } from './campaign-style';
 import { backlogTodos } from './todo-agenda';
+import { inProgressTodoIds } from './campaign-board';
 import { cleanNotes, InvalidNotesError, NotesDocument } from './todo-notes';
 import {
   CorruptHierarchyError,
@@ -152,14 +154,17 @@ export class TodosService {
   async hierarchy(userId: string): Promise<HierarchyTodoResponse[]> {
     const todos = await this.findAll(userId);
     const progress = this.tree(todos).progress();
-    const [goals, ancestry] = await Promise.all([
-      habitGoals(this.todoRepository.manager, todos),
+    const manager = this.todoRepository.manager;
+    const [goals, ancestry, inProgress] = await Promise.all([
+      habitGoals(manager, todos),
       this.ancestry(userId),
+      inProgressTodoIds(manager, userId, todos),
     ]);
     return todos.map((todo) => ({
       ...TodoMapper.toResponseDto(todo, ancestry),
       progress: progress.get(todo.id)!,
       habitGoal: goals.get(todo.id) ?? null,
+      inProgress: inProgress.has(todo.id),
     }));
   }
 
@@ -250,6 +255,13 @@ export class TodosService {
       if (dto.plannedDurationMinutes !== undefined)
         todo.plannedDurationMinutes = dto.plannedDurationMinutes;
       if (dto.focusBlock !== undefined) todo.focusBlock = dto.focusBlock;
+      if (dto.blocked !== undefined) {
+        if (dto.blocked && (dto.completed ?? todo.completed))
+          throw new ConflictException(
+            'Erledigte Quests können nicht geblockt werden.',
+          );
+        todo.blocked = dto.blocked;
+      }
       return saveQuest(
         manager,
         todo,
@@ -299,6 +311,33 @@ export class TodosService {
         { scheduledDate: dto.date },
         this.clock.now(),
       );
+    });
+  }
+
+  /**
+   * Puts an open quest back out of "In Arbeit" (campaign-board.md): from
+   * now on only new work counts, its stopwatch ends with its work logged,
+   * and `blocked` says whether it waits on something.
+   */
+  async setAside(
+    userId: string,
+    id: number,
+    blocked: boolean,
+  ): Promise<TodoEntity> {
+    return this.unitOfWork.run(userId, async (manager) => {
+      const repository = manager.getRepository(TodoEntity);
+      const todo = await repository.findOneBy({ id, userId });
+      if (!todo)
+        throw new NotFoundException(`Todo with ID ${id} was not found`);
+      if (todo.completed)
+        throw new ConflictException(
+          'Erledigte Quests können nicht zurückgelegt werden.',
+        );
+      const now = this.clock.now();
+      await releaseTimers(manager, userId, { todoIds: [id] }, now);
+      todo.setAsideAt = now;
+      todo.blocked = blocked;
+      return repository.save(todo);
     });
   }
 

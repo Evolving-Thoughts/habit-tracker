@@ -7,6 +7,7 @@ import {
 import { Repository } from 'typeorm';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import * as timerTarget from '../timers/timer-target';
+import * as campaignBoard from './campaign-board';
 import { TodoEntity } from './entities/todo.entity';
 import * as queries from './todo-hierarchy.queries';
 import { TodosService } from './todos.service';
@@ -16,6 +17,11 @@ jest.mock('../timers/timer-target', () => ({
   ...jest.requireActual<typeof timerTarget>('../timers/timer-target'),
   timersOfTodos: jest.fn().mockResolvedValue([]),
   discardTimersOfTodos: jest.fn(),
+  releaseTimers: jest.fn(),
+}));
+jest.mock('./campaign-board', () => ({
+  ...jest.requireActual<typeof campaignBoard>('./campaign-board'),
+  inProgressTodoIds: jest.fn(),
 }));
 
 const USER = '11111111-1111-4111-8111-111111111111';
@@ -86,11 +92,14 @@ describe('TodosService', () => {
   Object.assign(repository, { manager });
   const chain = jest.mocked(queries.ancestorChain);
   const subtree = jest.mocked(queries.subtree);
+  const inProgress = jest.mocked(campaignBoard.inProgressTodoIds);
+  const releaseTimers = jest.mocked(timerTarget.releaseTimers);
 
   beforeEach(() => {
     jest.clearAllMocks();
     rows = [todo()];
     lastBacklog = null;
+    inProgress.mockResolvedValue(new Set());
     chain.mockImplementation((_m, _u, id) =>
       Promise.resolve(
         // Ancestor chain of `id` within `rows`.
@@ -243,6 +252,24 @@ describe('TodosService', () => {
         service.update(USER, 1, { scheduledDate: null, timeOfDay: '10:00' }),
       ).rejects.toThrow(BadRequestException);
     });
+    it('marks and unmarks an open todo as blocked', async () => {
+      expect(await service.update(USER, 1, { blocked: true })).toMatchObject({
+        blocked: true,
+      });
+      expect(await service.update(USER, 1, { blocked: false })).toMatchObject({
+        blocked: false,
+      });
+    });
+    it('refuses to block a completed todo with 409', async () => {
+      rows = [todo(1, null, true)];
+      await expect(service.update(USER, 1, { blocked: true })).rejects.toThrow(
+        ConflictException,
+      );
+      rows = [todo(2)];
+      await expect(
+        service.update(USER, 2, { blocked: true, completed: true }),
+      ).rejects.toThrow(ConflictException);
+    });
     it('keeps parent and child completion independent', async () => {
       rows = [todo(1, null, true), todo(2, 1, true)];
       await service.update(USER, 2, { completed: false });
@@ -342,11 +369,49 @@ describe('TodosService', () => {
         ['Eigenes', 1],
       ]);
     });
+    it('marks the todos in progress', async () => {
+      rows = [todo(1), todo(2, 1)];
+      inProgress.mockResolvedValue(new Set([2]));
+      const result = await service.hierarchy(USER);
+      expect(result.map((r) => [r.id, r.inProgress])).toEqual([
+        [1, false],
+        [2, true],
+      ]);
+      expect(inProgress).toHaveBeenCalledWith(manager, USER, rows);
+    });
     it('reports a stored cycle as a server error', async () => {
       rows = [todo(1, 2), todo(2, 1)];
       await expect(service.hierarchy(USER)).rejects.toThrow(
         InternalServerErrorException,
       );
+    });
+  });
+
+  describe('setAside', () => {
+    it('stamps the moment, sets the marker and ends the stopwatch', async () => {
+      expect(await service.setAside(USER, 1, true)).toMatchObject({
+        setAsideAt: NOW,
+        blocked: true,
+      });
+      expect(releaseTimers).toHaveBeenCalledWith(
+        manager,
+        USER,
+        { todoIds: [1] },
+        NOW,
+      );
+      expect(await service.setAside(USER, 1, false)).toMatchObject({
+        blocked: false,
+      });
+    });
+    it('returns 404 for a missing todo and 409 for a completed one', async () => {
+      await expect(service.setAside(USER, 99, false)).rejects.toThrow(
+        NotFoundException,
+      );
+      rows = [todo(1, null, true)];
+      await expect(service.setAside(USER, 1, false)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(releaseTimers).not.toHaveBeenCalled();
     });
   });
 

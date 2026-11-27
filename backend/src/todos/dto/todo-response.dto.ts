@@ -27,6 +27,8 @@ export type TodoResponseDtoProperties = {
   focusBlock?: FocusBlockOverride;
   /** Whether a timer may be started for this todo (see timer-target). */
   timerEligible: boolean;
+  blocked: boolean;
+  setAsideAt: string | null;
 };
 
 export class TodoResponseDto {
@@ -58,6 +60,10 @@ export class TodoResponseDto {
   /** Fokus-Sperre: the default rule, always or never. */
   readonly focusBlock: FocusBlockOverride;
   readonly timerEligible: boolean;
+  /** Kampagnen-Board (campaign-board.md): the "Geblockt" marker. */
+  readonly blocked: boolean;
+  /** When it was last put back out of "In Arbeit". */
+  readonly setAsideAt: string | null;
 
   constructor(properties: TodoResponseDtoProperties) {
     this.id = properties.id;
@@ -81,5 +87,7 @@ export class TodoResponseDto {
     this.plannedDurationMinutes = properties.plannedDurationMinutes;
     this.focusBlock = properties.focusBlock ?? 'default';
     this.timerEligible = properties.timerEligible;
+    this.blocked = properties.blocked;
+    this.setAsideAt = properties.setAsideAt;
   }
 }

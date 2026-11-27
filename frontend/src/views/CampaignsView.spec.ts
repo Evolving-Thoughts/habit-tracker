@@ -1,4 +1,4 @@
-import { TODO_FIELDS } from "../types/fixtures";
+import { HIERARCHY_FIELDS, TODO_FIELDS } from "../types/fixtures";
 import { mount, flushPromises, enableAutoUnmount } from "@vue/test-utils";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createMemoryHistory, createRouter, type Router } from "vue-router";
@@ -14,6 +14,7 @@ import {
   updateTodo,
   updateTodoCompletion,
   deleteTodo,
+  getBacklogTodos,
 } from "../api/day-planner.api";
 import { choose } from "../test/combobox";
 import { getCategories } from "../api/categories.api";
@@ -33,6 +34,7 @@ vi.mock("../api/day-planner.api", () => ({
   updateTodo: vi.fn(),
   updateTodoCompletion: vi.fn(),
   deleteTodo: vi.fn(),
+  getBacklogTodos: vi.fn(),
 }));
 enableAutoUnmount(afterEach);
 /** A quest without quests below: the server sends no progress for it. */
@@ -61,6 +63,7 @@ const node = (
   progress: TodoProgress = LEAF,
 ): HierarchyTodo => ({
   ...TODO_FIELDS,
+  ...HIERARCHY_FIELDS,
   id,
   parentId,
   title: `Quest ${id}`,
@@ -139,6 +142,7 @@ describe("CampaignsView", () => {
     vi.mocked(updateTodo).mockResolvedValue(node(1, null));
     vi.mocked(updateTodoCompletion).mockResolvedValue();
     vi.mocked(deleteTodo).mockResolvedValue();
+    vi.mocked(getBacklogTodos).mockResolvedValue([]);
     vi.mocked(getDeletionPreview).mockResolvedValue({
       confirmationToken: "a".repeat(64),
       todos: [node(1, 9), node(2, 1)],
@@ -397,6 +401,60 @@ describe("CampaignsView", () => {
       expect(form.props("parent")).toMatchObject({ id: 9 });
       expect(form.props("campaign")).toBe(false);
       expect(w.get("[role=dialog]").text()).toContain("Unter „Kampagne 9“");
+    });
+
+    describe("Liste · Board", () => {
+      beforeEach(() => localStorage.removeItem("campaign:view"));
+      afterEach(() => localStorage.removeItem("campaign:view"));
+      const views = (w: ReturnType<typeof view>) =>
+        w.get('[role=radiogroup][aria-label="Quests zeigen als"]');
+
+      it("starts with the list and keeps the board once chosen, on this device", async () => {
+        const w = view();
+        await flushPromises();
+        const radios = views(w).findAll<HTMLInputElement>("input[type=radio]");
+        expect(views(w).text()).toContain("Liste");
+        expect(views(w).text()).toContain("Board");
+        expect(radios[0]!.element.checked).toBe(true);
+        expect(w.find(".tree").exists()).toBe(true);
+        expect(w.findComponent({ name: "CampaignBoard" }).exists()).toBe(false);
+
+        await radios[1]!.setValue(true);
+        await flushPromises();
+        expect(localStorage.getItem("campaign:view")).toBe("board");
+        expect(w.find(".tree").exists()).toBe(false);
+        const board = w.findComponent({ name: "CampaignBoard" });
+        expect(board.exists()).toBe(true);
+        // The same loaded quests; only the single quest is a card.
+        expect(board.props("campaign")).toMatchObject({ id: 9 });
+        expect(
+          board.findAll("[data-board-column] [data-todo-id]").map((card) =>
+            card.attributes("data-todo-id"),
+          ),
+        ).toEqual(["2"]);
+      });
+
+      it("opens on the board where it was chosen before", async () => {
+        localStorage.setItem("campaign:view", "board");
+        const w = view();
+        await flushPromises();
+        expect(
+          views(w).findAll<HTMLInputElement>("input[type=radio]")[1]!.element
+            .checked,
+        ).toBe(true);
+        expect(w.findAll("[data-board-column]")).toHaveLength(4);
+      });
+
+      it("opens a card's editor through the view's dialog", async () => {
+        localStorage.setItem("campaign:view", "board");
+        const w = view();
+        await flushPromises();
+        await w.get('[data-board-column] [aria-label="Quest 2 bearbeiten"]').trigger("click");
+        await flushPromises();
+        expect(w.findComponent({ name: "PlannerItemEditor" }).exists()).toBe(
+          true,
+        );
+      });
     });
   });
 

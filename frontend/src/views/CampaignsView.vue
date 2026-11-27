@@ -30,6 +30,7 @@ import CampaignStats from "../components/CampaignStats.vue";
 import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
 import UndoToast from "../components/UndoToast.vue";
 import QuestTrend from "../components/QuestTrend.vue";
+import CampaignBoard from "../components/CampaignBoard.vue";
 import { useListFocus } from "../composables/useListFocus";
 import { useLoader } from "../composables/useLoader";
 import { useWrites } from "../composables/useWrites";
@@ -96,12 +97,10 @@ const { data: questHours, reload: loadQuestHours } =
       refreshOnChange: quiet,
     },
   );
-const { write, applied, busy: writing } = useWrites(
-  async (showPageLoading) => {
-    await Promise.all([load(showPageLoading), loadQuestHours(false)]);
-  },
-  error,
-);
+const writes = useWrites(async (showPageLoading) => {
+  await Promise.all([load(showPageLoading), loadQuestHours(false)]);
+}, error);
+const { write, applied, busy: writing } = writes;
 const shownError = computed(() => error.value || loadError.value || "");
 const tiles = computed(() => campaignTiles(todos.value, questHours.value));
 const doneCount = computed(
@@ -194,6 +193,35 @@ const rowsWhere = (completed: boolean, folded = collapsed.value) =>
         keepTop: (todo) => settled(todo) === completed,
       })
     : [];
+/*
+ * "Liste · Board": the quests of an opened campaign as the tree or as the
+ * board's four columns, remembered on this device; the list comes first.
+ */
+type QuestView = "list" | "board";
+const VIEW_KEY = "campaign:view";
+const VIEWS: { value: QuestView; label: string }[] = [
+  { value: "list", label: "Liste" },
+  { value: "board", label: "Board" },
+];
+function storedView(): QuestView {
+  try {
+    return localStorage.getItem(VIEW_KEY) === "board" ? "board" : "list";
+  } catch {
+    return "list";
+  }
+}
+const questView = ref<QuestView>(storedView());
+function chooseView(next: QuestView): void {
+  questView.value = next;
+  try {
+    localStorage.setItem(VIEW_KEY, next);
+  } catch {
+    // Without storage the choice lasts until the page is left.
+  }
+}
+const boardShown = computed(
+  () => questView.value === "board" && openTile.value !== null,
+);
 const doneOpen = ref(false);
 watch(
   () => openTile.value?.todo.id,
@@ -442,7 +470,11 @@ useShortcutHandlers({
 });
 </script>
 <template>
-  <main ref="page" class="page hierarchy">
+  <main
+    ref="page"
+    class="page hierarchy"
+    :class="{ 'hierarchy--board': boardShown }"
+  >
     <header v-if="!campaignOpen" class="page-header">
       <h1 class="page-title">Kampagnen</h1>
       <p class="page-lead">Deine längerfristigen Ziele und wie weit sie sind.</p>
@@ -610,10 +642,45 @@ useShortcutHandlers({
             </button>
           </div>
         </section>
-        <h2 class="section-title">Quests der Kampagne</h2>
+        <div class="quests-head">
+          <h2 class="section-title">Quests der Kampagne</h2>
+          <div
+            class="segmented quests-head__views"
+            role="radiogroup"
+            aria-label="Quests zeigen als"
+          >
+            <label v-for="option in VIEWS" :key="option.value">
+              <input
+                type="radio"
+                name="campaignView"
+                :value="option.value"
+                :checked="questView === option.value"
+                @change="chooseView(option.value)"
+              />
+              {{ option.label }}
+            </label>
+          </div>
+        </div>
         <p v-if="!lists[0]!.rows.length && !doneQuests" class="status-line">
-          Noch keine Quests. Der Plus-Button legt die erste an.
+          {{
+            boardShown
+              ? "Noch keine Quests. Schreib die erste ins To-Do oder nimm den Plus-Button."
+              : "Noch keine Quests. Der Plus-Button legt die erste an."
+          }}
         </p>
+      <CampaignBoard
+        v-if="boardShown"
+        :todos="todos"
+        :campaign="openTile.todo"
+        :busy="busy"
+        :writes="writes"
+        :ticks="ticks"
+        @edit="(todo) => open('edit', todo)"
+        @reparent="(todo) => open('move', todo)"
+        @remove="(todo) => open('delete', todo)"
+        @created="applied()"
+      />
+      <template v-else>
       <template v-for="list in lists" :key="list.key">
       <!-- An h2 like the rows' titles, so no level is skipped. -->
       <h2 v-if="list.key === 'done' && doneQuests" class="done-heading">
@@ -762,6 +829,7 @@ useShortcutHandlers({
             : "Hier ablegen, um die Quest aus der Kampagne zu lösen. Sie steht dann im Questlog oder an ihrem Tag."
         }}
       </div>
+      </template>
     </template>
     <!-- The overview: the figures, then a tile per campaign; quests live inside a campaign. -->
     <template v-else-if="!loadError">
@@ -1234,6 +1302,41 @@ useShortcutHandlers({
 
 .campaigns-stats {
   margin-bottom: var(--space-4);
+}
+
+/* "Quests der Kampagne" with "Liste · Board" beside it, wrapping below when narrow. */
+.quests-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  margin: var(--space-6) 0 var(--space-3);
+}
+
+.quests-head .section-title {
+  margin: 0;
+}
+
+/*
+ * The board takes the window's width for its four columns, like the Plan;
+ * the detail card above keeps the reading width of the page.
+ */
+.hierarchy--board {
+  width: min(100% - 2rem, 90rem);
+}
+
+.hierarchy--board > .campaign-detail {
+  max-width: 46rem;
+}
+
+/* On a phone in two even halves, like Heute's "Liste · Logbuch". */
+@media (max-width: 39.99rem) {
+  .quests-head__views {
+    display: grid;
+    flex: 1 1 100%;
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .dialog-lead {

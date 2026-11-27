@@ -1075,3 +1075,19 @@ textarea.input {
   cursor: default;
   opacity: 0.55;
 }
+
+/*
+ * A board of columns on a phone (the Plan, a campaign's board): every
+ * column as wide as the board, snapping into place, with `ColumnChips`
+ * above and `useSnapColumns` keeping the column in view. A card carried
+ * to the edge of the screen brings the next column (`useSnapColumns`).
+ */
+.snap-board {
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.snap-board > * {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}

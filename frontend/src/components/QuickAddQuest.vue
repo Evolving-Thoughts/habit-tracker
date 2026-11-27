@@ -61,8 +61,25 @@ const props = withDefaults(
     label?: string;
     /** Shows ↑ / ↓ beside the field; false where the view shows them once. */
     placeToggle?: boolean;
+    /**
+     * The quest goes below this campaign (the campaign board), taking its
+     * Warum and, as the editor suggests, its category. A campaign named in
+     * the text still wins.
+     */
+    parent?: { id: number; categoryId: number | null } | null;
+    /**
+     * In a board column (the Plan, a campaign's board): a translucent field
+     * without a frame over the column's width, no margin below.
+     */
+    column?: boolean;
   }>(),
-  { order: () => [], label: "Quest für heute hinzufügen", placeToggle: true },
+  {
+    order: () => [],
+    label: "Quest für heute hinzufügen",
+    placeToggle: true,
+    parent: null,
+    column: false,
+  },
 );
 const emit = defineEmits<{ created: [] }>();
 
@@ -182,14 +199,18 @@ async function add(): Promise<void> {
     return;
   }
   learn(places);
-  const campaignId = places.campaign?.id ?? result.campaignId;
-  // A new campaign has the category named, or none.
+  const named = places.campaign?.id ?? result.campaignId;
+  const campaignId = named ?? props.parent?.id;
+  // A new campaign has the category named, or none; the field's own
+  // campaign lends its category like a named one.
   const categoryId =
     places.category?.id ??
     result.categoryId ??
-    (result.campaignId === undefined
-      ? undefined
-      : names.campaignCategory(result.campaignId));
+    (result.campaignId !== undefined
+      ? names.campaignCategory(result.campaignId)
+      : named === undefined
+        ? (props.parent?.categoryId ?? undefined)
+        : undefined);
   try {
     // Into the Questlog the server places it at the head or the end itself.
     const created = await createTodo({
@@ -227,7 +248,11 @@ async function add(): Promise<void> {
 </script>
 
 <template>
-  <form class="quick-add" @submit.prevent="add">
+  <form
+    class="quick-add"
+    :class="{ 'quick-add--column': column }"
+    @submit.prevent="add"
+  >
     <div class="quick-add__row">
       <div class="mic-field quick-add__field">
         <input
@@ -296,5 +321,32 @@ async function add(): Promise<void> {
 /* Kept in the page while empty, so the next notice is announced. */
 .quick-add__notice--empty {
   position: absolute;
+}
+
+/*
+ * In a board column (Plan, campaign board): a translucent field without a
+ * frame over the column's width; it takes the card's white on focus.
+ */
+.quick-add--column {
+  margin: 0;
+}
+
+.quick-add--column .quick-add__title {
+  min-height: var(--tap);
+  border-color: transparent;
+  background: var(--color-surface-quiet);
+  font-size: 0.9375rem;
+}
+
+.quick-add--column .quick-add__title:focus {
+  border-color: var(--color-line);
+  background: var(--color-surface);
+}
+
+/* A finger's field: 16px, so a phone does not zoom in on focus. */
+@media (max-width: 39.99rem), (pointer: coarse) {
+  .quick-add--column .quick-add__title {
+    font-size: 1rem;
+  }
 }
 </style>

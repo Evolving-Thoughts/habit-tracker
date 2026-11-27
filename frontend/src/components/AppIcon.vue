@@ -45,6 +45,8 @@ defineProps<{
     | "stop"
     | "play"
     | "pause"
+    // Geblockt (campaign board): a round sign struck through, like "no entry".
+    | "blocked"
     | "arrow-up"
     | "arrow-down"
     // Fokus-Klänge: playing, chosen but silent, off. Told apart by shape.
@@ -192,6 +194,10 @@ defineProps<{
     </template>
     <template v-else-if="name === 'play'">
       <path d="M8 5.5v13l10.5-6.5Z" />
+    </template>
+    <template v-else-if="name === 'blocked'">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="m6 6 12 12" />
     </template>
     <template v-else-if="name === 'pause'">
       <path d="M9 5.5v13M15 5.5v13" />

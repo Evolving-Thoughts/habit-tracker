@@ -17,11 +17,21 @@ export type MoveTarget =
 const props = defineProps<{
   item: MoveTarget;
   today: string;
+  /**
+   * Only asks the day and hands it back (`chosen`); the caller writes. The
+   * campaign board plans this way, after its own questions.
+   */
+  choose?: boolean;
   /** Items from earlier days may come back to today in one tap. */
   offerToday?: boolean;
   returnFocus: () => HTMLElement | null;
 }>();
-const emit = defineEmits<{ close: []; moved: []; busy: [value: boolean] }>();
+const emit = defineEmits<{
+  close: [];
+  moved: [];
+  chosen: [date: string];
+  busy: [value: boolean];
+}>();
 
 const busy = ref(false);
 const errorMessage = ref<string | null>(null);
@@ -53,6 +63,10 @@ const shortcuts = computed(() =>
 
 async function move(date: string): Promise<void> {
   if (busy.value || blockedByFixed.value || !allowed(date)) return;
+  if (props.choose) {
+    emit("chosen", date);
+    return;
+  }
   busy.value = true;
   errorMessage.value = null;
   try {
@@ -79,7 +93,7 @@ function close(): void {
 
 <template>
   <ModalDialog
-    title="Verschieben"
+    :title="choose ? 'Einplanen' : 'Verschieben'"
     :busy="busy"
     :return-focus="returnFocus"
     focus-selector='[data-test="move-date"]'
@@ -129,7 +143,7 @@ function close(): void {
           type="submit"
           :disabled="busy || blockedByFixed || !allowed(chosenDate)"
         >
-          Verschieben
+          {{ choose ? "Einplanen" : "Verschieben" }}
         </button>
       </div>
     </form>

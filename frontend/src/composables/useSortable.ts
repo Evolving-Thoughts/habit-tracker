@@ -214,6 +214,10 @@ export function useSortable(
         // The own drag layer behaves the same with mouse, touch and pen.
         forceFallback: true,
         fallbackTolerance: DRAG_DISTANCE_PX,
+        // A board of snap columns steps to its next column by itself
+        // (`useSnapColumns`); everything else glides under the card.
+        scrollFn: (_x, _y, _event, _touch, scroller) =>
+          scroller.classList.contains("snap-board") ? undefined : "continue",
         // The finger has held long enough: from now on it moves the card.
         // The card says so at once (it rises, the device buzzes), before
         // the finger moves. A mouse needs no such sign: it drags as soon as

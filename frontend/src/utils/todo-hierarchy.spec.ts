@@ -1,4 +1,4 @@
-import { TODO_FIELDS } from "../types/fixtures";
+import { HIERARCHY_FIELDS, TODO_FIELDS } from "../types/fixtures";
 import { describe, it, expect } from "vitest";
 import {
   hasProgress,
@@ -11,6 +11,7 @@ import {
 import type { HierarchyTodo, TodoProgress } from "../types/todo-hierarchy";
 const node = (id: number, parentId: number | null): HierarchyTodo => ({
     ...TODO_FIELDS,
+    ...HIERARCHY_FIELDS,
   id,
   parentId,
   title: `Quest ${id}`,

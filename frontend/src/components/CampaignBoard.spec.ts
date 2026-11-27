@@ -1,0 +1,503 @@
+import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ref } from "vue";
+import {
+  getBacklogTodos,
+  rescheduleTodo,
+  setAsideTodo,
+  setTodoBlocked,
+  updateTodoCompletion,
+} from "../api/day-planner.api";
+import { planQuest, unplanQuest } from "../api/questlog.api";
+import { createTimerController, timerKey } from "../composables/useTimer";
+import { useWrites } from "../composables/useWrites";
+import { hierarchyTodo } from "../test/hierarchy";
+import { TODO_FIELDS } from "../types/fixtures";
+import type { HierarchyTodo } from "../types/todo-hierarchy";
+import CampaignBoard from "./CampaignBoard.vue";
+import CampaignBoardColumn from "./CampaignBoardColumn.vue";
+
+vi.mock("../api/day-planner.api", () => ({
+  getBacklogTodos: vi.fn(),
+  rescheduleTodo: vi.fn(),
+  setAsideTodo: vi.fn(),
+  setTodoBlocked: vi.fn(),
+  updateTodoCompletion: vi.fn(),
+  updateOccurrenceStatus: vi.fn(),
+  rescheduleOccurrence: vi.fn(),
+}));
+vi.mock("../api/questlog.api", () => ({
+  planQuest: vi.fn(),
+  unplanQuest: vi.fn(),
+}));
+
+enableAutoUnmount(afterEach);
+
+const TODAY = "2026-11-27";
+const campaign = hierarchyTodo({
+  id: 1,
+  title: "Buch",
+  color: "pine",
+  categoryId: 11,
+});
+const series = hierarchyTodo({ id: 2, title: "Kapitel 1", parentId: 1 });
+const quest = (
+  id: number,
+  changes: Partial<HierarchyTodo> = {},
+): HierarchyTodo =>
+  hierarchyTodo({ id, title: `Quest ${id}`, parentId: 1, ...changes });
+
+/** To-Do, Geplant, In Arbeit and Erledigt, one card each, and a Questreihe. */
+const TODOS = [
+  campaign,
+  series,
+  quest(3, { parentId: 2, title: "Entwurf" }),
+  quest(4, { scheduledDate: "2026-11-28", plannedDurationMinutes: 30 }),
+  quest(5, { inProgress: true }),
+  quest(6, { completed: true, completedAt: "2026-11-26T10:00:00.000Z" }),
+];
+
+const ticks = {
+  complete: vi.fn(),
+  reopen: vi.fn(),
+};
+const ModalStub = {
+  name: "ModalDialog",
+  props: ["title"],
+  emits: ["close"],
+  template: '<section role="dialog" :aria-label="title"><slot /></section>',
+};
+const QuickAddStub = {
+  name: "QuickAddQuest",
+  props: ["date", "parent", "label", "column", "placeToggle"],
+  emits: ["created"],
+  template: '<form class="quick-add-stub" :aria-label="label" />',
+};
+
+function mountBoard(todos: HierarchyTodo[] = TODOS, busy = false) {
+  const writes = useWrites(async () => {}, ref<string | null>(null));
+  return mount(CampaignBoard, {
+    props: { todos, campaign, busy, writes, ticks },
+    global: { stubs: { ModalDialog: ModalStub, QuickAddQuest: QuickAddStub } },
+  });
+}
+type Board = ReturnType<typeof mountBoard>;
+
+const column = (w: Board, key: string) =>
+  w.get(`[data-board-column="${key}"]`);
+const titles = (w: Board, key: string) =>
+  column(w, key)
+    .findAll("[data-todo-id] h4")
+    .map((heading) => heading.attributes("aria-label"));
+async function openMenu(w: Board, title: string) {
+  await w
+    .get(`[aria-label="Aktionen für ${title}"][aria-haspopup]`)
+    .trigger("click");
+}
+const entries = (w: Board) =>
+  w.findAll("[role=menuitem]").map((entry) => entry.text());
+async function choose(w: Board, label: string) {
+  await w
+    .findAll("[role=menuitem]")
+    .find((entry) => entry.text() === label)!
+    .trigger("click");
+  await flushPromises();
+}
+const buttonByText = (w: Board, text: string) =>
+  w.findAll("button").find((button) => button.text() === text)!;
+/** A drop as SortableJS reports it: a card of column `from` landed on `to`. */
+async function drop(w: Board, from: string, todoId: number, to: string) {
+  const source = w
+    .findAllComponents(CampaignBoardColumn)
+    .find((item) => item.props("column") === from)!;
+  source.vm.$emit("move", todoId, to);
+  await flushPromises();
+}
+
+describe("CampaignBoard", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    localStorage.clear();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(`${TODAY}T10:00:00Z`));
+    vi.mocked(getBacklogTodos).mockResolvedValue([]);
+    vi.mocked(planQuest).mockResolvedValue({} as never);
+    vi.mocked(unplanQuest).mockResolvedValue({} as never);
+    vi.mocked(rescheduleTodo).mockResolvedValue({} as never);
+    vi.mocked(setAsideTodo).mockResolvedValue({} as never);
+    vi.mocked(setTodoBlocked).mockResolvedValue({} as never);
+    vi.mocked(updateTodoCompletion).mockResolvedValue();
+    ticks.complete.mockResolvedValue(true);
+    ticks.reopen.mockResolvedValue(true);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("shows a quest in In Arbeit as soon as its stopwatch runs, and asks the server when it ends", async () => {
+    const controller = createTimerController();
+    const writes = useWrites(async () => {}, ref<string | null>(null));
+    const w = mount(CampaignBoard, {
+      props: { todos: TODOS, campaign, busy: false, writes, ticks },
+      global: {
+        stubs: { ModalDialog: ModalStub, QuickAddQuest: QuickAddStub },
+        provide: { [timerKey as symbol]: controller },
+      },
+    });
+    expect(titles(w, "planned")).toEqual(["Quest 4"]);
+    controller.timer.value = {
+      kind: "todo",
+      targetId: 4,
+      state: "running",
+    } as never;
+    await flushPromises();
+    expect(titles(w, "planned")).toEqual([]);
+    expect(titles(w, "working")).toContain("Quest 4");
+    expect(w.emitted("created")).toBeUndefined();
+
+    controller.timer.value = null;
+    await flushPromises();
+    expect(w.emitted("created")).toHaveLength(1);
+    controller.dispose();
+  });
+
+  it("shows four named columns, each with its count in its name", async () => {
+    const w = mountBoard();
+    await flushPromises();
+    const columns = w.findAll("[data-board-column]");
+    expect(columns.map((item) => item.get("h3").text())).toEqual([
+      "To-Do",
+      "Geplant",
+      "In Arbeit",
+      "Erledigt",
+    ]);
+    expect(columns.map((item) => item.attributes("aria-label"))).toEqual([
+      "To-Do, 1 Quest",
+      "Geplant, 1 Quest",
+      "In Arbeit, 1 Quest",
+      "Erledigt, 1 Quest",
+    ]);
+    expect(titles(w, "todo")).toEqual(["Entwurf"]);
+    expect(titles(w, "planned")).toEqual(["Quest 4"]);
+    expect(titles(w, "working")).toEqual(["Quest 5"]);
+    expect(titles(w, "done")).toEqual(["Quest 6"]);
+  });
+
+  it("never makes the campaign or a Questreihe a card, and names the Questreihe", async () => {
+    const w = mountBoard();
+    await flushPromises();
+    expect(w.text()).not.toContain("Kapitel 1 bearbeiten");
+    const card = w.get('[data-todo-id="3"]');
+    expect(card.text()).toContain("Kapitel 1");
+    expect(card.get(".board-column__series").text()).toBe("Questreihe Kapitel 1");
+    expect(w.get('[data-todo-id="4"]').find(".board-column__series").exists()).toBe(
+      false,
+    );
+  });
+
+  it("says a card's day and planned time in words", async () => {
+    const w = mountBoard();
+    await flushPromises();
+    expect(w.get('[data-todo-id="4"]').text()).toContain("Morgen");
+    expect(w.get('[data-todo-id="4"]').text()).toContain("30 Min.");
+  });
+
+  it("marks a blocked card with a sign and the word, never colour alone", async () => {
+    const w = mountBoard([campaign, quest(3, { blocked: true })]);
+    await flushPromises();
+    const marker = w.get('[data-todo-id="3"] .board-column__blocked');
+    expect(marker.text()).toBe("Geblockt");
+    expect(marker.find("svg").exists()).toBe(true);
+  });
+
+  it("sorts To-Do in the Questlog's order", async () => {
+    vi.mocked(getBacklogTodos).mockResolvedValue([
+      { ...TODO_FIELDS, id: 8 },
+      { ...TODO_FIELDS, id: 7 },
+    ] as never);
+    const w = mountBoard([campaign, quest(7), quest(8)]);
+    await flushPromises();
+    expect(titles(w, "todo")).toEqual(["Quest 8", "Quest 7"]);
+  });
+
+  it("says in each empty column why it is empty, In Arbeit how it fills", async () => {
+    const w = mountBoard([campaign]);
+    await flushPromises();
+    expect(column(w, "todo").text()).toContain("Keine offenen Quests ohne Tag.");
+    expect(column(w, "working").text()).toContain("Füllt sich durch die Stoppuhr");
+  });
+
+  it("puts the quick add on To-Do and Geplant, below the campaign", async () => {
+    const w = mountBoard();
+    await flushPromises();
+    const fields = w.findAllComponents(QuickAddStub);
+    expect(fields).toHaveLength(2);
+    expect(fields.map((field) => field.props("date"))).toEqual([null, TODAY]);
+    for (const field of fields)
+      expect(field.props("parent")).toEqual({ id: 1, categoryId: 11 });
+    fields[0]!.vm.$emit("created");
+    expect(w.emitted("created")).toHaveLength(1);
+  });
+
+  it("shows the newest 20 done quests and the rest behind a quiet button", async () => {
+    const done = Array.from({ length: 23 }, (_, index) =>
+      quest(10 + index, {
+        completed: true,
+        completedAt: `2026-11-${String(index + 1).padStart(2, "0")}T10:00:00.000Z`,
+      }),
+    );
+    const w = mountBoard([campaign, ...done]);
+    await flushPromises();
+    expect(titles(w, "done")).toHaveLength(20);
+    expect(titles(w, "done")[0]).toBe("Quest 32");
+    expect(column(w, "done").attributes("aria-label")).toBe(
+      "Erledigt, 23 Quests",
+    );
+    await buttonByText(w, "Ältere zeigen (3)").trigger("click");
+    expect(titles(w, "done")).toHaveLength(23);
+  });
+
+  describe("the menu of a card", () => {
+    it("offers the day steps, Erledigen and Geblockt for a quest in To-Do", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await openMenu(w, "Entwurf");
+      expect(entries(w)).toEqual([
+        "Heute",
+        "Morgen",
+        "Nächste Woche",
+        "Anderer Tag …",
+        "Erledigen",
+        "Als geblockt markieren",
+        "Bearbeiten",
+        "In Kampagne verschieben …",
+        "Löschen",
+      ]);
+    });
+
+    it("plans a quest of To-Do for today without asking", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await openMenu(w, "Entwurf");
+      await choose(w, "Heute");
+      expect(w.find("[role=dialog]").exists()).toBe(false);
+      expect(planQuest).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 3 }),
+        TODAY,
+      );
+      expect(setAsideTodo).not.toHaveBeenCalled();
+    });
+
+    it("moves a planned quest to another day and back into To-Do", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await openMenu(w, "Quest 4");
+      expect(entries(w)).toContain("Zurück ins To-Do");
+      await choose(w, "Heute");
+      expect(rescheduleTodo).toHaveBeenCalledWith(4, TODAY, true);
+      await openMenu(w, "Quest 4");
+      await choose(w, "Zurück ins To-Do");
+      expect(unplanQuest).toHaveBeenCalledWith(4);
+    });
+
+    it("completes through the ring's path, with its undo toast", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await openMenu(w, "Entwurf");
+      await choose(w, "Erledigen");
+      expect(ticks.complete).toHaveBeenCalledWith(
+        { kind: "todo", id: 3, title: "Entwurf" },
+        expect.objectContaining({ key: "board-3" }),
+      );
+    });
+
+    it("marks a quest as blocked and lifts the blocker", async () => {
+      const w = mountBoard([campaign, quest(3), quest(4, { blocked: true })]);
+      await flushPromises();
+      await openMenu(w, "Quest 3");
+      await choose(w, "Als geblockt markieren");
+      expect(setTodoBlocked).toHaveBeenCalledWith(3, true);
+      await openMenu(w, "Quest 4");
+      await choose(w, "Blocker aufheben");
+      expect(setTodoBlocked).toHaveBeenCalledWith(4, false);
+    });
+
+    it("sets a quest in work aside after asking whether it is blocked", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await openMenu(w, "Quest 5");
+      expect(entries(w)).toContain("Zurückstellen …");
+      // There the blocked question comes with "Zurückstellen …".
+      expect(entries(w)).not.toContain("Als geblockt markieren");
+      await choose(w, "Zurückstellen …");
+      expect(w.get('[role=dialog]').attributes("aria-label")).toBe(
+        "Als geblockt markieren?",
+      );
+      await buttonByText(w, "Ja, geblockt").trigger("click");
+      await flushPromises();
+      expect(setAsideTodo).toHaveBeenCalledWith(5, true);
+      expect(unplanQuest).not.toHaveBeenCalled();
+      expect(planQuest).not.toHaveBeenCalled();
+    });
+
+    it("lifts the blocker of a quest in work from its menu", async () => {
+      const w = mountBoard([
+        campaign,
+        quest(5, { inProgress: true, blocked: true }),
+      ]);
+      await flushPromises();
+      await openMenu(w, "Quest 5");
+      await choose(w, "Blocker aufheben");
+      expect(setTodoBlocked).toHaveBeenCalledWith(5, false);
+    });
+
+    it("leaves a done quest only the ways back, editing and deleting", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await openMenu(w, "Quest 6");
+      expect(entries(w)).toEqual([
+        "Anderer Tag …",
+        "Zurück ins To-Do",
+        "Bearbeiten",
+        "In Kampagne verschieben …",
+        "Löschen",
+      ]);
+    });
+
+    it("hands editing, moving and deleting to the view", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await openMenu(w, "Entwurf");
+      await choose(w, "Bearbeiten");
+      await openMenu(w, "Entwurf");
+      await choose(w, "In Kampagne verschieben …");
+      await openMenu(w, "Entwurf");
+      await choose(w, "Löschen");
+      expect(w.emitted("edit")![0]![0]).toMatchObject({ id: 3 });
+      expect(w.emitted("reparent")![0]![0]).toMatchObject({ id: 3 });
+      expect(w.emitted("remove")![0]![0]).toMatchObject({ id: 3 });
+    });
+  });
+
+  describe("a drop on another column", () => {
+    it("asks the day for Geplant and plans only once one is chosen", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await drop(w, "todo", 3, "planned");
+      expect(w.get('[role=dialog]').attributes("aria-label")).toBe("Einplanen");
+      expect(planQuest).not.toHaveBeenCalled();
+      await buttonByText(w, "Morgen").trigger("click");
+      await flushPromises();
+      expect(planQuest).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 3 }),
+        "2026-11-28",
+      );
+    });
+
+    it("leaves the card where it was when the day question is cancelled", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await drop(w, "todo", 3, "planned");
+      await buttonByText(w, "Abbrechen").trigger("click");
+      await flushPromises();
+      expect(w.find("[role=dialog]").exists()).toBe(false);
+      expect(planQuest).not.toHaveBeenCalled();
+      expect(titles(w, "todo")).toEqual(["Entwurf"]);
+    });
+
+    it("completes what lands in Erledigt", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await drop(w, "working", 5, "done");
+      expect(ticks.complete).toHaveBeenCalledWith(
+        { kind: "todo", id: 5, title: "Quest 5" },
+        expect.anything(),
+      );
+      expect(setAsideTodo).not.toHaveBeenCalled();
+    });
+
+    it("takes the day away in To-Do", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await drop(w, "planned", 4, "todo");
+      expect(unplanQuest).toHaveBeenCalledWith(4);
+    });
+
+    it("takes nothing in In Arbeit", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await drop(w, "todo", 3, "working");
+      expect(w.find("[role=dialog]").exists()).toBe(false);
+      expect(planQuest).not.toHaveBeenCalled();
+      expect(ticks.complete).not.toHaveBeenCalled();
+      expect(column(w, "working").classes()).toContain("board-column--closed");
+    });
+
+    it("opens a done quest again on its way back", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await drop(w, "done", 6, "todo");
+      expect(updateTodoCompletion).toHaveBeenCalledWith(6, false);
+      expect(unplanQuest).not.toHaveBeenCalled();
+    });
+
+    it("asks whether a quest out of In Arbeit is blocked; no answer, no move", async () => {
+      const w = mountBoard([campaign, quest(5, { inProgress: true, scheduledDate: TODAY })]);
+      await flushPromises();
+      await drop(w, "working", 5, "todo");
+      expect(w.get('[role=dialog]').attributes("aria-label")).toBe(
+        "Als geblockt markieren?",
+      );
+      w.findComponent(ModalStub).vm.$emit("close");
+      await flushPromises();
+      expect(setAsideTodo).not.toHaveBeenCalled();
+      expect(titles(w, "working")).toEqual(["Quest 5"]);
+
+      await drop(w, "working", 5, "todo");
+      await buttonByText(w, "Nein, nur zurückstellen").trigger("click");
+      await flushPromises();
+      expect(setAsideTodo).toHaveBeenCalledWith(5, false);
+      expect(unplanQuest).toHaveBeenCalledWith(5);
+    });
+
+    it("asks blocked first, then the day, out of In Arbeit into Geplant", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await drop(w, "working", 5, "planned");
+      await buttonByText(w, "Ja, geblockt").trigger("click");
+      await flushPromises();
+      expect(setAsideTodo).not.toHaveBeenCalled();
+      expect(w.get('[role=dialog]').attributes("aria-label")).toBe("Einplanen");
+      await buttonByText(w, "Heute").trigger("click");
+      await flushPromises();
+      expect(setAsideTodo).toHaveBeenCalledWith(5, true);
+      expect(planQuest).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 5 }),
+        TODAY,
+      );
+    });
+
+    it("shows the move at once, before the server answers", async () => {
+      let answer!: () => void;
+      vi.mocked(unplanQuest).mockReturnValue(
+        new Promise((resolve) => (answer = () => resolve({} as never))),
+      );
+      const w = mountBoard();
+      await flushPromises();
+      await drop(w, "planned", 4, "todo");
+      expect(titles(w, "todo")).toEqual(["Entwurf", "Quest 4"]);
+      expect(w.get(".campaign-board__status").text()).toBe(
+        "„Quest 4“ steht jetzt in To-Do.",
+      );
+      answer();
+      await flushPromises();
+    });
+
+    it("takes the move back when the server refuses it", async () => {
+      vi.mocked(unplanQuest).mockRejectedValue(new Error("Offline"));
+      const w = mountBoard();
+      await flushPromises();
+      await drop(w, "planned", 4, "todo");
+      expect(titles(w, "planned")).toEqual(["Quest 4"]);
+      expect(w.get(".campaign-board__status").text()).toBe("");
+    });
+  });
+});

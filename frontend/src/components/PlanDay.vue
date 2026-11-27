@@ -88,7 +88,7 @@ useSortable(list, {
     </header>
 
     <QuickAddQuest
-      class="plan-day__add"
+      column
       :date="day.date"
       :order="dayOrder(open, day.date)"
       :label="`Quest für ${dayLabel(day.date)} hinzufügen`"
@@ -230,28 +230,5 @@ useSortable(list, {
   padding: var(--space-2) 0.625rem;
   color: var(--color-ink-muted);
   font-size: 0.875rem;
-}
-
-.plan-day__add {
-  margin: 0;
-}
-
-.plan-day__add :deep(.input) {
-  min-height: var(--tap);
-  border-color: transparent;
-  background: var(--color-surface-quiet);
-  font-size: 0.9375rem;
-}
-
-/* A finger's field: 16px, so a phone does not zoom in on focus. */
-@media (max-width: 39.99rem), (pointer: coarse) {
-  .plan-day__add :deep(.input) {
-    font-size: 1rem;
-  }
-}
-
-.plan-day__add :deep(.input:focus) {
-  border-color: var(--color-line);
-  background: var(--color-surface);
 }
 </style>

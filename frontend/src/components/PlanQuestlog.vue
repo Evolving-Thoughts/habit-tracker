@@ -124,7 +124,7 @@ function menu(todo: QuestlogQuest): MenuEntry[] {
     </header>
     <div v-show="open" id="plan-questlog-list" class="plan-questlog__body">
       <QuickAddQuest
-        class="plan-questlog__add"
+        column
         :date="null"
         label="Quest ins Questlog hinzufügen"
         :place-toggle="false"
@@ -226,23 +226,6 @@ function menu(todo: QuestlogQuest): MenuEntry[] {
   gap: var(--space-2);
 }
 
-/* Like the quick add of a day: a translucent field without a frame. */
-.plan-questlog__add {
-  margin: 0;
-}
-
-.plan-questlog__add :deep(.input) {
-  min-height: var(--tap);
-  border-color: transparent;
-  background: var(--color-surface-quiet);
-  font-size: 0.9375rem;
-}
-
-.plan-questlog__add :deep(.input:focus) {
-  border-color: var(--color-line);
-  background: var(--color-surface);
-}
-
 /* The list is also where drops land, so it never collapses. */
 .plan-questlog__list {
   display: grid;
@@ -301,13 +284,6 @@ function menu(todo: QuestlogQuest): MenuEntry[] {
 
   .plan-questlog__toggle {
     display: none;
-  }
-}
-
-/* A finger's field: 16px, so a phone does not zoom in on focus. */
-@media (max-width: 39.99rem), (pointer: coarse) {
-  .plan-questlog__add :deep(.input) {
-    font-size: 1rem;
   }
 }
 </style>

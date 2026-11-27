@@ -1,4 +1,4 @@
-import { TODO_FIELDS } from "../types/fixtures";
+import { HIERARCHY_FIELDS, TODO_FIELDS } from "../types/fixtures";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
 
 /**
@@ -11,6 +11,7 @@ export function hierarchyTodo(
 ): HierarchyTodo {
   return {
     ...TODO_FIELDS,
+    ...HIERARCHY_FIELDS,
     parentId: null,
     completed: false,
     completedAt: null,

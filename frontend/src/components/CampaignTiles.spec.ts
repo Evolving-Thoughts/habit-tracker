@@ -1,6 +1,6 @@
 import { enableAutoUnmount, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
-import { TODO_FIELDS } from "../types/fixtures";
+import { HIERARCHY_FIELDS, TODO_FIELDS } from "../types/fixtures";
 import type { CampaignTile } from "../utils/quest-hours";
 import CampaignTiles from "./CampaignTiles.vue";
 
@@ -14,6 +14,7 @@ const tile = (
 ): CampaignTile => ({
   todo: {
     ...TODO_FIELDS,
+    ...HIERARCHY_FIELDS,
     id,
     parentId: null,
     title: `Kampagne ${id}`,
