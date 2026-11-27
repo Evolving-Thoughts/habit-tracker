@@ -42,7 +42,9 @@ public class BackButtonPlugin extends Plugin {
     /** `{ id, handled }`: the page's answer to the press `id`. */
     @PluginMethod
     public void answer(PluginCall call) {
-        long id = call.getLong("id", BackPress.ANDROID_DEFAULT);
+        // Not getLong: a small number arrives as an Integer, which getLong
+        // turns into its default, and every answer would be dropped.
+        long id = call.getData().optLong("id", BackPress.ANDROID_DEFAULT);
         boolean handled = Boolean.TRUE.equals(call.getBoolean("handled", false));
         call.resolve();
         main.post(() -> {

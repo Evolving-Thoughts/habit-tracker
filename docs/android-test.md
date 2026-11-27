@@ -60,6 +60,8 @@ Capacitor hat ohne das npm-Plugin `@capacitor/app` keine eigene Zurück-Taste, j
 3. Sonst, außerhalb von Heute: nach Heute (ersetzt die Adresse).
 4. Sonst (Heute, nichts offen): Android macht sein eigenes Zurück, die App geht in den Hintergrund.
 
+Das Plugin liest die `id` der Antwort mit `optLong`, nicht mit Capacitors `getLong`: Eine kleine Zahl kommt als Integer an, `getLong` gäbe dafür seinen Standardwert zurück, die Antwort ginge verloren und die App schlösse nach 0,8 s trotzdem.
+
 Antwortet die Seite nicht binnen 0,8 s (hängt oder lädt neu), macht Android sein eigenes Zurück; die Logik dafür (`BackPress`) hat JVM-Tests. Eine offene Tastatur schließt Android selbst mit dem ersten Zurück. Als installierte Web-App schließt die Zurück-Geste Dialoge von selbst (`<dialog>`) und Menüs und „Mehr“ über `CloseWatcher`, wo der Browser es kann (Chrome); Ansichten gehen dort über die Browser-Historie zurück.
 
 Am Handy prüfen:

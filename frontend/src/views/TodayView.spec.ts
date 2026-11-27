@@ -1609,7 +1609,7 @@ describe("TodayView rows and focus card", () => {
     expect(wrapper.find('[data-test="move-confirm"]').exists()).toBe(true);
   });
 
-  it("says in words which row's stopwatch runs", async () => {
+  it("puts the card whose stopwatch runs on top as the focus card", async () => {
     getTodayMock.mockResolvedValue(
       makePlanner([
         makeTodo({ todoId: 1, title: "Erstens" }),
@@ -1631,14 +1631,16 @@ describe("TodayView rows and focus card", () => {
       global: { provide: { [timerKey as symbol]: controller } },
     });
     await flushPromises();
-    const row = wrapper.get('[data-focus-key="todo-2"]');
-    expect(row.get(".item-row__running").text()).toBe("läuft");
+    // "Zweitens" is stored second, but the stopwatch brings it up.
+    const card = wrapper.get(".focus");
+    expect(card.attributes("data-focus-key")).toBe("todo-2");
+    expect(card.get(".focus__running").text()).toBe("läuft");
     expect(
-      row
+      card
         .find('[aria-label="Stoppuhr für Zweitens läuft, pausieren"]')
         .exists(),
     ).toBe(true);
-    expect(wrapper.find(".focus__running").exists()).toBe(false);
+    expect(wrapper.find(".item-row__running").exists()).toBe(false);
 
     controller.timer.value = {
       ...controller.timer.value,

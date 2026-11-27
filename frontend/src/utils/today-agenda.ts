@@ -54,7 +54,10 @@ export type AppointmentEntry =
 export type DayEntry = { kind: "row"; item: DayPlannerItem } | AppointmentEntry;
 
 export type TodayAgenda = {
-  /** The one thing that is up now (`currentItem`), shown large with its why. */
+  /**
+   * The one thing that is up now, shown large with its why: the open item
+   * the stopwatch is on (`timedKey`), else `currentItem`.
+   */
   focus: DayPlannerItem | null;
   /** Start and end of the focus when it is an appointment whose turn it is. */
   focusWindow: AppointmentWindow | null;
@@ -283,13 +286,22 @@ function eventEnd(event: ExternalEvent): number {
  * Arranges today around what is up now. `now` is minutes since midnight in
  * Berlin. The focus card always heads the day; in the evening today's open
  * run of the Monats-Challenge follows it right away (`eveningChallenge`).
+ * With `timedKey` (the `itemKey` of what the stopwatch is on, running or
+ * paused) that item is the focus while it is open, wherever it is stored,
+ * one carried over from an earlier day too.
  */
 export function arrangeToday(
   planner: DayPlannerResponse,
   now: number,
+  timedKey: string | null = null,
 ): TodayAgenda {
+  const onStopwatch = timedKey
+    ? (planner.items.find(
+        (item) => item.status === "pending" && itemKey(item) === timedKey,
+      ) ?? null)
+    : null;
   let carriedOver = planner.items.filter(
-    (item) => item.isOverdue && item.status === "pending",
+    (item) => item.isOverdue && item.status === "pending" && item !== onStopwatch,
   );
   const today = planner.items.filter((item) => !item.isOverdue);
   const pending = today.filter((item) => item.status === "pending");
@@ -302,7 +314,7 @@ export function arrangeToday(
     })
     .sort((first, second) => first.clock.minutes - second.clock.minutes);
   const queue = pending.filter((item) => plannedClock(item) === null);
-  const focus = currentItem(pending, queue, now);
+  const focus = onStopwatch ?? currentItem(pending, queue, now);
 
   // A ticked-off event leaves the open list for "abgeschlossen"; the day
   // calendar on the side keeps it.

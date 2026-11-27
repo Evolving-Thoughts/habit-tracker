@@ -10,6 +10,8 @@ export type DeleteTarget = {
   kind: "todo" | "habit";
   id: number;
   title: string;
+  /** A campaign: the dialog names it so, not "Quest". */
+  campaign?: boolean;
 };
 
 /**
@@ -77,7 +79,13 @@ function close(): void {
 
 <template>
   <ModalDialog
-    :title="target.kind === 'todo' ? 'Quest löschen' : 'Daily löschen'"
+    :title="
+      target.kind === 'habit'
+        ? 'Daily löschen'
+        : target.campaign
+          ? 'Kampagne löschen'
+          : 'Quest löschen'
+    "
     :busy="busy"
     :return-focus="returnFocus"
     focus-selector="[data-cancel-delete]"
@@ -85,7 +93,11 @@ function close(): void {
   >
     <div class="delete-dialog">
       <p v-if="loading" role="status">Löschvorschau wird geladen …</p>
-      <TodoDeletionSummary v-if="preview" :preview="preview" />
+      <TodoDeletionSummary
+        v-if="preview"
+        :preview="preview"
+        :campaign="target.campaign"
+      />
       <p v-if="!loading">„{{ target.title }}“ wirklich löschen?</p>
       <p v-if="target.kind === 'habit'" class="delete-dialog__hint">
         Das ganze Daily verschwindet aus Heute und allen Tagen. Das Logbuch

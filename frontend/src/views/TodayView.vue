@@ -14,7 +14,12 @@ import { useWrites } from "../composables/useWrites";
 import { useTicks, type TickTarget } from "../composables/useTicks";
 import { useLogRemoval } from "../composables/useLogRemoval";
 import { useMediaQuery } from "../composables/useMediaQuery";
-import { timerStateOf, toggleTimer, useTimer } from "../composables/useTimer";
+import {
+  timedItemKey,
+  timerStateOf,
+  toggleTimer,
+  useTimer,
+} from "../composables/useTimer";
 import {
   focusWhenReady,
   useShortcutHandlers,
@@ -79,7 +84,7 @@ import {
 } from "../utils/today-order";
 import { tallyLine } from "../utils/day-tally";
 import { useDayClock } from "../composables/useDayClock";
-import { categoryMark } from "../utils/category-mark";
+import { campaignMark, categoryMark } from "../utils/category-mark";
 import { workLine } from "../utils/quest-hours";
 import { CHALLENGE_HREF, runLine } from "../utils/month-challenge";
 import { streakLine } from "../utils/streak";
@@ -158,8 +163,12 @@ const now = useDayClock((minutes) =>
   planner.value ? nextChangeAt(planner.value, minutes) : null,
 );
 
+const timer = useTimer();
+// The card the stopwatch is on heads the day as the focus card.
 const agenda = computed(() =>
-  planner.value ? arrangeToday(planner.value, now.value) : null,
+  planner.value
+    ? arrangeToday(planner.value, now.value, timedItemKey(timer))
+    : null,
 );
 
 /*
@@ -326,6 +335,8 @@ const focusGoal = computed(() => {
     ? count
     : `${goal.title}: ${count}`;
 });
+/* The campaign's colour frames the focus card, as the stripe marks a row. */
+const focusMark = computed(() => campaignMark(agenda.value?.focus?.campaign ?? null));
 /* An appointment on the focus card names its time range above everything else. */
 const focusSlot = computed(() =>
   agenda.value?.focusWindow ? formatWindow(agenda.value.focusWindow) : null,
@@ -750,7 +761,6 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
  * whose buttons would not offer the step ignore the key; an appointment opens
  * "Verschieben", where its move is confirmed.
  */
-const timer = useTimer();
 function pendingItem(key: string | null): DayPlannerItem | null {
   const item = planner.value?.items.find((entry) => getItemKey(entry) === key);
   return item && item.status === "pending" && !isUpdating(item) ? item : null;
@@ -1203,6 +1213,8 @@ useShortcutHandlers(
             <section
               v-if="agenda.focus"
               class="focus card-target card-drag"
+              :class="{ 'focus--campaign': focusMark }"
+              :style="focusMark ? { '--campaign-mark': focusMark } : undefined"
               :data-focus-key="getItemKey(agenda.focus)"
               :data-sort-key="getItemKey(agenda.focus)"
               aria-labelledby="focus-title"
@@ -1778,6 +1790,16 @@ useShortcutHandlers(
   border-radius: var(--radius-card);
   background: var(--color-surface-raised);
   box-shadow: var(--shadow-card);
+}
+
+/*
+ * The campaign's colour all around, where a row has its stripe on the left.
+ * Drawn inside the card, so nothing moves when it comes or goes.
+ */
+.focus--campaign {
+  box-shadow:
+    inset 0 0 0 0.1875rem var(--campaign-mark),
+    var(--shadow-card);
 }
 
 .focus__category {

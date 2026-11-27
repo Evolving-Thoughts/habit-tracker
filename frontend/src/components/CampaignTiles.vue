@@ -36,6 +36,8 @@ const emit = defineEmits<{
   complete: [tile: CampaignTile];
   /** "Bearbeiten" in a tile's "…". */
   edit: [tile: CampaignTile];
+  /** "Löschen" in a tile's "…"; the view asks before anything goes. */
+  remove: [tile: CampaignTile];
   /** The dashed tile after the active ones. */
   create: [];
 }>();
@@ -89,6 +91,15 @@ function menu(tile: CampaignTile): MenuEntry[] {
       disabled: props.busy,
       run: () => emit("complete", tile),
     });
+  entries.push({
+    id: "delete",
+    label: "Löschen",
+    icon: "trash",
+    ariaLabel: `Kampagne ${tile.todo.title} mit allen Quests löschen`,
+    last: true,
+    disabled: props.busy,
+    run: () => emit("remove", tile),
+  });
   return entries;
 }
 </script>
