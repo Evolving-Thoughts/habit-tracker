@@ -849,6 +849,7 @@ useShortcutHandlers({
         @open="openCampaign"
         @complete="(tile) => toggleCompletion(tile.todo)"
         @edit="(tile) => open('edit', tile.todo)"
+        @remove="(tile) => open('delete', tile.todo)"
         @create="create()"
       />
     </template>
@@ -902,7 +903,12 @@ useShortcutHandlers({
     />
     <DeleteItemDialog
       v-if="action === 'delete' && selected"
-      :target="{ kind: 'todo', id: selected.id, title: selected.title }"
+      :target="{
+        kind: 'todo',
+        id: selected.id,
+        title: selected.title,
+        campaign: campaignIds.has(selected.id),
+      }"
       :return-focus="listFocus.returnFocus"
       @busy="formBusy = $event"
       @deleted="done('Gelöscht. Das Logbuch bleibt erhalten.')"

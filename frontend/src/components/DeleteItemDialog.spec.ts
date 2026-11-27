@@ -45,6 +45,20 @@ describe("DeleteItemDialog", () => {
     expect(wrapper.emitted("deleted")).toEqual([[]]);
   });
 
+  it("names a campaign as one, apart from the quests that go with it", async () => {
+    const wrapper = mount(DeleteItemDialog, {
+      props: {
+        target: { kind: "todo", id: 1, title: "Buch", campaign: true },
+        returnFocus: () => null,
+      },
+    });
+    await flushPromises();
+    expect(wrapper.get("h2").text()).toBe("Kampagne löschen");
+    expect(wrapper.text()).toContain(
+      "Die Kampagne und 1 Quest werden gelöscht.",
+    );
+  });
+
   it("deletes a whole daily after saying so", async () => {
     const wrapper = mount(DeleteItemDialog, {
       props: {

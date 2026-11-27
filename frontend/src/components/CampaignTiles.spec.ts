@@ -237,10 +237,18 @@ describe("CampaignTiles", () => {
     expect(entries.map((entry) => entry.textContent?.trim())).toEqual([
       "Bearbeiten",
       "Kampagne abschließen",
+      "Löschen",
     ]);
     (entries[1] as HTMLElement).click();
     await wrapper.vm.$nextTick();
     expect(wrapper.emitted("complete")![0]![0]).toMatchObject({ todo: { id: 1 } });
+
+    // "Löschen" only asks the view; nothing goes from here.
+    await open!.get('[aria-label="Aktionen für Kampagne 1"]').trigger("click");
+    const again = [...document.querySelectorAll("[role=menuitem]")];
+    (again[2] as HTMLElement).click();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.emitted("remove")![0]![0]).toMatchObject({ todo: { id: 1 } });
   });
 
   it("treats a running daily goal as open: no Abschließen on the tile", async () => {

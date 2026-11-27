@@ -233,6 +233,36 @@ describe("arrangeToday", () => {
     });
   });
 
+  it("puts the item the stopwatch is on into focus, wherever it is stored", () => {
+    const first = todo({ todoId: 1, dayPosition: 0 });
+    const second = todo({ todoId: 2, dayPosition: 1 });
+    const run = habit({ occurrenceId: 2, dayPosition: 2 });
+    const day = planner([first, second, run]);
+    const onTodo = arrangeToday(day, at(8), "todo-2");
+    expect(onTodo.focus).toBe(second);
+    expect(onTodo.list.map((entry) => "item" in entry && entry.item)).toEqual([
+      first,
+      run,
+    ]);
+    // A daily's run and a quest with the same number stay apart.
+    expect(arrangeToday(day, at(8), "habit-2").focus).toBe(run);
+    // The stored order is untouched: without the stopwatch the head is back.
+    expect(arrangeToday(day, at(8)).focus).toBe(first);
+  });
+
+  it("brings a timed item up out of Nachholen, but never a resolved one", () => {
+    const head = todo({ todoId: 1 });
+    const overdue = todo({ todoId: 3, isOverdue: true });
+    const done = todo({ todoId: 4, status: "completed" });
+    const day = planner([overdue, head, done]);
+    const agenda = arrangeToday(day, at(8), "todo-3");
+    expect(agenda.focus).toBe(overdue);
+    expect(agenda.carriedOver).toEqual([]);
+    expect(agenda.list).toEqual([{ kind: "row", item: head }]);
+    expect(arrangeToday(day, at(8), "todo-4").focus).toBe(head);
+    expect(arrangeToday(day, at(8), "todo-99").focus).toBe(head);
+  });
+
   it("has no focus when everything is resolved", () => {
     const agenda = arrangeToday(
       planner([habit({ status: "skipped" })]),
