@@ -121,8 +121,9 @@ Short sounds all over the app, independent of the Fokus-Klänge:
   The comparison is pure (`utils/milestones.ts`): below before, at or above
   after, same period. An action never waits for a reading: the "before"
   comes from readings taken ahead — when the app starts and whenever the
-  tab shows again (`primeMissingMilestones` in `TimerProvider`), and from
-  the read after each action. A reading serves for ten minutes; the quest
+  tab shows again (`startMilestonePriming`, started by `TimerProvider`), and
+  from the read after each action. A kind already being read ahead is not
+  read a second time; the read after an action always starts anew. A reading serves for ten minutes; the quest
   hours read when the own stopwatch starts running serve until it stops,
   since only its stop changes them. Without a reading from before (none
   yet, failed or slower than 1.5 s) only "Erledigt" sounds, and the

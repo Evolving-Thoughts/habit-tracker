@@ -155,7 +155,10 @@ stopwatch is marked reached right away (`targetReachedAt` and `pushHandledAt`
 set to the start), so nothing announces it.
 
 Foreground devices poll every **3 seconds**, and refresh on focus/visibility
-return. This is eventual synchronization, not a real-time guarantee.
+return and after a target changed (`startSync` in `useTimer.ts`, started by
+`TimerProvider.vue`); a hidden page reads nothing, and a read on its way
+takes no second one beside it. This is eventual synchronization, not a
+real-time guarantee.
 
 ## Backend
 

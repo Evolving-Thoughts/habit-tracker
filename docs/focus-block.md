@@ -158,10 +158,14 @@ fixedDomains }`.
 ## Web
 
 `TimerProvider.vue` holds the state for every view beside the stopwatch
-(`createFocusBlockController`): it reads it on load, whenever the stopwatch
-changes, after target changes, on focus and every 30 seconds; in the
-Android app each read also reads the phone's two permissions
-(`getStatus`). Einstellungen (`#/einstellungen?abschnitt=fokus-sperre`)
+(`createFocusBlockController`). The controller decides itself when it reads
+(`startSync` in `useFocusBlock.ts`): on load, whenever the stopwatch's
+confirmed state changes (not at its first answer, which the read on load
+covers), after target changes, on focus and every 30 seconds, none of these
+but the stopwatch while the page is hidden. A read on its way answers every
+further trigger; when the stopwatch or a target changed during it, one more
+read follows. In the Android app each read also reads the phone's two
+permissions (`getStatus`). Einstellungen (`#/einstellungen?abschnitt=fokus-sperre`)
 edit it; the editors of quests and dailies carry "Fokus-Sperre: Standard |
 Immer | Nie" behind a disclosure that opens by itself when not Standard. The
 Fokus-Modus shows "Sperre aktiv · Hardcore · noch 12 Min.", "Sperre aktiv ·

@@ -126,22 +126,61 @@ async function readKind(kind: MilestoneKind): Promise<MilestoneReading> {
   }
 }
 
+type Reading = { promise: Promise<MilestoneReading | undefined>; ttl: number };
+/** The read of each kind on its way. */
+const reading = new Map<MilestoneKind, Reading>();
+
+/**
+ * Reads one kind into the cache; undefined when it failed or was slow. A
+ * read ahead joins one of the same kind already on its way instead of
+ * sending a second, and its reading is kept for the longer of the two
+ * times. A `fresh` read never joins, since the read after an action must
+ * start after it; it takes the place of an older read on its way, whose
+ * answer then reaches only its own callers, not the cache.
+ */
+function readKindOnce(
+  kind: MilestoneKind,
+  ttl: number,
+  fresh: boolean,
+): Promise<MilestoneReading | undefined> {
+  const running = reading.get(kind);
+  if (running && !fresh) {
+    running.ttl = Math.max(running.ttl, ttl);
+    return running.promise;
+  }
+  const entry: Reading = { promise: Promise.resolve(undefined), ttl };
+  const current = () => reading.get(kind) === entry;
+  entry.promise = withTimeout(Promise.resolve().then(() => readKind(kind)))
+    .then(
+      (next): MilestoneReading | undefined => {
+        if (current())
+          cache.set(kind, { reading: next, at: Date.now(), ttl: entry.ttl });
+        return next;
+      },
+      () => {
+        if (current()) cache.delete(kind);
+        return undefined;
+      },
+    )
+    .finally(() => {
+      if (current()) reading.delete(kind);
+    });
+  reading.set(kind, entry);
+  return entry.promise;
+}
+
 /** Reads the kinds side by side; a failed or slow read is left out (unknown). */
 async function readSnapshot(
   kinds: readonly MilestoneKind[],
   ttl = FRESH_MS,
+  fresh = false,
 ): Promise<MilestoneSnapshot> {
   const snapshot: MilestoneSnapshot = {};
   await Promise.all(
-    kinds.map((kind) =>
-      withTimeout(Promise.resolve().then(() => readKind(kind))).then(
-        (reading) => {
-          snapshot[kind] = reading;
-          cache.set(kind, { reading, at: Date.now(), ttl });
-        },
-        () => cache.delete(kind),
-      ),
-    ),
+    kinds.map(async (kind) => {
+      const value = await readKindOnce(kind, ttl, fresh);
+      if (value !== undefined) snapshot[kind] = value;
+    }),
   );
   return snapshot;
 }
@@ -184,9 +223,23 @@ export function primeMissingMilestones(): void {
   if (wanted.length) void readSnapshot(wanted);
 }
 
+/**
+ * Reads ahead what is missing now and whenever the page shows again, never
+ * while it is hidden. Returns the way to stop.
+ */
+export function startMilestonePriming(): () => void {
+  const prime = (): void => {
+    if (document.visibilityState !== "hidden") primeMissingMilestones();
+  };
+  prime();
+  document.addEventListener("visibilitychange", prime);
+  return () => document.removeEventListener("visibilitychange", prime);
+}
+
 /** Forgets every reading, e.g. between tests. */
 export function resetActionSounds(): void {
   cache.clear();
+  reading.clear();
 }
 
 export type ActionSoundOptions<T> = {
@@ -206,7 +259,7 @@ async function settle(
   const open = openKinds(before, loadSeen());
   let reached: MilestoneKind[] = [];
   if (open.length) {
-    const after = await readSnapshot(open);
+    const after = await readSnapshot(open, FRESH_MS, true);
     reached = newlyReached(before, after, loadSeen());
     remember(reached.map((kind) => milestoneKey(kind, after[kind]!.period)));
   }

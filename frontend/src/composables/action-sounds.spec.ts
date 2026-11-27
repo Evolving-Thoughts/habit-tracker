@@ -11,6 +11,7 @@ import {
   primeMilestones,
   primeMissingMilestones,
   resetActionSounds,
+  startMilestonePriming,
   withActionSound,
   withWorkLogSound,
   type ActionSoundOptions,
@@ -256,5 +257,77 @@ describe("withActionSound", () => {
     await tick(() => (server.questMinutes = 700));
     expect(getQuestHours).toHaveBeenCalledTimes(1);
     expect(sounds()).toEqual(["chime-done"]);
+  });
+});
+
+describe("reading ahead", () => {
+  const reads = () => [
+    vi.mocked(getQuestHours).mock.calls.length,
+    vi.mocked(getWeekReview).mock.calls.length,
+    vi.mocked(getMonthChallenges).mock.calls.length,
+  ];
+
+  it("joins a read of the same kind on its way and keeps the longer time", async () => {
+    // App start with a running stopwatch: every kind, then its quest hours.
+    primeMissingMilestones();
+    primeMilestones(["quest-hours"], 12 * 60 * 60_000);
+    await flushPromises();
+    expect(reads()).toEqual([1, 1, 1]);
+    // Past the ten minutes the quest hours still serve the running stopwatch.
+    vi.setSystemTime(new Date("2026-11-24T10:11:00Z"));
+    await prime();
+    expect(reads()).toEqual([1, 2, 2]);
+  });
+
+  it("never lets the read after an action join one started before it", async () => {
+    server.questMinutes = 580;
+    await prime();
+    let release!: () => void;
+    vi.mocked(getQuestHours).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () =>
+            resolve({
+              startDate: WEEK,
+              weeklyTargetMinutes: 600,
+              questMinutes: 580,
+            } as QuestHoursResponse);
+        }),
+    );
+    primeMilestones(["quest-hours"]);
+    await flushPromises();
+    await tick(() => (server.questMinutes = 600), {
+      sound: null,
+      kinds: ["quest-hours"],
+    });
+    expect(getQuestHours).toHaveBeenCalledTimes(3);
+    expect(sounds()).toEqual(["chime-milestone"]);
+    release();
+    await flushPromises();
+  });
+
+  it("primes on start and whenever the page shows again, never while hidden", async () => {
+    let visibility: DocumentVisibilityState = "hidden";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibility,
+    });
+    const stop = startMilestonePriming();
+    await flushPromises();
+    expect(reads()).toEqual([0, 0, 0]);
+    visibility = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flushPromises();
+    expect(reads()).toEqual([1, 1, 1]);
+    // Fresh readings: showing again reads nothing more.
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flushPromises();
+    expect(reads()).toEqual([1, 1, 1]);
+    stop();
+    resetActionSounds();
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flushPromises();
+    expect(reads()).toEqual([1, 1, 1]);
+    Reflect.deleteProperty(document, "visibilityState");
   });
 });

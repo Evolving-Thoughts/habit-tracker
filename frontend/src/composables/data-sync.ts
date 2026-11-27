@@ -39,10 +39,8 @@ export function listenDataChanged(handler: () => void): () => void {
   return () => window.removeEventListener(DATA_CHANGED, handler);
 }
 
-/** Subscribes for the component's lifetime: only target changes (timer provider). */
-export function onTargetsChanged(handler: () => void): void {
-  whileActive(
-    () => window.addEventListener(TARGETS_CHANGED, handler),
-    () => window.removeEventListener(TARGETS_CHANGED, handler),
-  );
+/** Only target changes, for the stopwatch and the Fokus-Sperre; returns the unsubscribe. */
+export function listenTargetsChanged(handler: () => void): () => void {
+  window.addEventListener(TARGETS_CHANGED, handler);
+  return () => window.removeEventListener(TARGETS_CHANGED, handler);
 }

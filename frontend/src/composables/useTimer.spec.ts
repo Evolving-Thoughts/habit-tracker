@@ -1,3 +1,4 @@
+import { flushPromises } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTimerController, toggleTimer } from "./useTimer";
 import {
@@ -131,7 +132,7 @@ describe("synced Timer controller", () => {
     const starting = c.start(target);
     expect(c.timer.value).toMatchObject({ targetId: 1, state: "running" });
     // The Fokus-Sperre follows the server, not the press.
-    expect(c.confirmed.value).toBe("");
+    expect(c.confirmed.value).toBeNull();
     answer(response("running", 30_000));
     await starting;
     expect(c.confirmed.value).toBe("timer-1:running");
@@ -248,6 +249,84 @@ describe("synced Timer controller", () => {
     expect(event).toHaveBeenCalledTimes(2);
     c.dispose();
     window.removeEventListener("timer-data-changed", event);
+  });
+});
+
+describe("startSync", () => {
+  let visibility: DocumentVisibilityState = "visible";
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    visibility = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibility,
+    });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    Reflect.deleteProperty(document, "visibilityState");
+  });
+
+  it("reads once now and once per trigger: poll, focus, page shown, target change", async () => {
+    const c = createTimerController();
+    const stop = c.startSync();
+    await flushPromises();
+    expect(c.timer.value).not.toBeNull();
+    expect(getCurrentTimer).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(3000);
+    await flushPromises();
+    expect(getCurrentTimer).toHaveBeenCalledTimes(2);
+    window.dispatchEvent(new Event("focus"));
+    await flushPromises();
+    expect(getCurrentTimer).toHaveBeenCalledTimes(3);
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flushPromises();
+    expect(getCurrentTimer).toHaveBeenCalledTimes(4);
+    window.dispatchEvent(new Event("timer-target-changed"));
+    await flushPromises();
+    expect(getCurrentTimer).toHaveBeenCalledTimes(5);
+    // Not on a change that touched no target.
+    window.dispatchEvent(new Event("timer-data-changed"));
+    stop();
+    vi.advanceTimersByTime(9000);
+    window.dispatchEvent(new Event("focus"));
+    expect(getCurrentTimer).toHaveBeenCalledTimes(5);
+    c.dispose();
+  });
+
+  it("sends no second read while one is on its way", async () => {
+    let answer!: (r: TimerResponse) => void;
+    vi.mocked(getCurrentTimer).mockReturnValue(new Promise((r) => (answer = r)));
+    const c = createTimerController();
+    const stop = c.startSync();
+    // Back in the tab: focus and visibility arrive together, then the poll.
+    window.dispatchEvent(new Event("focus"));
+    document.dispatchEvent(new Event("visibilitychange"));
+    vi.advanceTimersByTime(3000);
+    expect(getCurrentTimer).toHaveBeenCalledTimes(1);
+    answer(response());
+    await flushPromises();
+    expect(c.timer.value).not.toBeNull();
+    stop();
+    c.dispose();
+  });
+
+  it("rests while the page is hidden", async () => {
+    const c = createTimerController();
+    const stop = c.startSync();
+    await flushPromises();
+    expect(c.timer.value).not.toBeNull();
+    visibility = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    vi.advanceTimersByTime(30_000);
+    window.dispatchEvent(new Event("focus"));
+    window.dispatchEvent(new Event("timer-target-changed"));
+    expect(getCurrentTimer).toHaveBeenCalledTimes(1);
+    visibility = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(getCurrentTimer).toHaveBeenCalledTimes(2);
+    stop();
+    c.dispose();
   });
 });
 

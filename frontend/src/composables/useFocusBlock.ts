@@ -1,4 +1,11 @@
-import { computed, inject, ref, type InjectionKey } from "vue";
+import {
+  computed,
+  inject,
+  ref,
+  watch,
+  type InjectionKey,
+  type WatchSource,
+} from "vue";
 import {
   addFocusEntry,
   endFocusBlock,
@@ -19,6 +26,7 @@ import type {
   FocusSettings,
 } from "../types/focus-block";
 import { focusSetupIssues, remainingMinutes } from "../utils/focus-block";
+import { listenTargetsChanged } from "./data-sync";
 
 /**
  * The Fokus-Sperre of the signed-in user for everything below
@@ -28,6 +36,7 @@ import { focusSetupIssues, remainingMinutes } from "../utils/focus-block";
  * Android every answer also goes to the plugin, which stores it and
  * enforces the block on its own, also once this page is gone, and the
  * phone's two permissions are read with each refresh (`setupIssues`).
+ * When it reads is its own business (`startSync`).
  */
 export function createFocusBlockController(
   native: FocusBlockNative | null = focusBlockNative(),
@@ -62,8 +71,7 @@ export function createFocusBlockController(
     }
   }
 
-  async function refresh(): Promise<void> {
-    if (!alive || busy.value) return;
+  async function read(): Promise<void> {
     void readDevice();
     const version = revision;
     try {
@@ -76,6 +84,32 @@ export function createFocusBlockController(
             ? cause.message
             : "Die Fokus-Sperre konnte nicht geladen werden.";
     }
+  }
+
+  let reading: Promise<void> | null = null;
+  let stale = false;
+  /**
+   * Reads the block; a read already on its way answers instead of a second
+   * one. `changed` says the server changed since then (the stopwatch, a
+   * target): its answer may predate that, so one more read follows it.
+   */
+  function refresh(changed = false): Promise<void> {
+    if (!alive || busy.value) return Promise.resolve();
+    if (reading) {
+      stale ||= changed;
+      return reading;
+    }
+    reading = (async () => {
+      try {
+        do {
+          stale = false;
+          await read();
+        } while (stale && alive && !busy.value);
+      } finally {
+        reading = null;
+      }
+    })();
+    return reading;
   }
 
   /** A change on the server; its answer is the new state. False on failure. */
@@ -112,6 +146,48 @@ export function createFocusBlockController(
     return endsAt ? remainingMinutes(endsAt, now.value - skew) : null;
   });
 
+  /** Moves the countdown on; a block past its moment is read again. */
+  function tick(): void {
+    now.value = Date.now();
+    if (minutesLeft.value === 0) void refresh();
+  }
+
+  /**
+   * Keeps the block in step with the server while the app is open: reads it
+   * now, every 30 seconds (a block started on another device, a list changed
+   * elsewhere), when the window gets focus or the page shows again and
+   * after a target changed (`notifyDataChanged`), none of these while the
+   * page is hidden; and whenever `stopwatch` changes (the timer's
+   * `confirmed`), since the server starts and ends blocks with it. The
+   * stopwatch's first answer (from null) is no change: the read here covers
+   * it, and a start pressed before it notifies a target change anyway. A
+   * Hardcore countdown moves on every 10 seconds. Returns the way to stop.
+   */
+  function startSync(stopwatch: WatchSource<string | null>): () => void {
+    const whenShown = (changed: boolean) => () => {
+      if (document.visibilityState !== "hidden") void refresh(changed);
+    };
+    const check = whenShown(false);
+    const changed = whenShown(true);
+    void refresh();
+    const poller = setInterval(check, 30_000);
+    const ticker = setInterval(tick, 10_000);
+    window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", check);
+    const unlisten = listenTargetsChanged(changed);
+    const unwatch = watch(stopwatch, (_next, previous) => {
+      if (previous !== null) void refresh(true);
+    });
+    return () => {
+      clearInterval(poller);
+      clearInterval(ticker);
+      window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", check);
+      unlisten();
+      unwatch();
+    };
+  }
+
   return {
     state,
     block,
@@ -138,6 +214,7 @@ export function createFocusBlockController(
     /** The server's "now" as the device sees it, for countdowns. */
     serverNow: () => now.value - skew,
     refresh,
+    startSync,
     saveSettings: (change_: Partial<FocusSettings>) =>
       change(() => saveFocusSettings(change_)),
     addEntry: (entry: AddFocusEntryInput) =>
@@ -145,11 +222,7 @@ export function createFocusBlockController(
     removeEntry: (id: number) => change(() => removeFocusEntry(id)),
     start: (mode: FocusBlockMode) => change(() => startFocusBlock({ mode })),
     end: () => change(endFocusBlock),
-    /** Moves the countdown on; a block past its moment is read again. */
-    tick: () => {
-      now.value = Date.now();
-      if (minutesLeft.value === 0) void refresh();
-    },
+    tick,
     dispose: () => {
       alive = false;
       ++revision;

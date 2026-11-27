@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useDevicePushRestore } from "../push/restore";
-import { notifyDataChanged, onTargetsChanged } from "../composables/data-sync";
+import { notifyDataChanged } from "../composables/data-sync";
 import {
   isValidTimerDuration,
   TIMER_DURATION_MESSAGE,
@@ -16,7 +16,7 @@ import {
 import { hrefOf } from "../routes";
 import { useTargetNotice } from "../composables/useTargetNotice";
 import { writeDone } from "../composables/useTicks";
-import { primeMissingMilestones } from "../composables/action-sounds";
+import { startMilestonePriming } from "../composables/action-sounds";
 import { formatStopwatch } from "../utils/stopwatch";
 import { controlHit } from "../utils/card-click";
 import type { MenuEntry } from "../utils/row-actions";
@@ -51,14 +51,12 @@ const { timer, elapsed, reached, error, busy, switching } = controller;
 /*
  * The Fokus-Sperre lives beside the stopwatch: the server starts and ends
  * it with every start, resume, pause and stop, wherever they happen, so it
- * is read again whenever the stopwatch changes, and on Android handed to
- * the plugin after every read. While a block holds, the bar says when the
- * phone lacks a permission to enforce it.
+ * is read again whenever the stopwatch changes (`startSync`), and on
+ * Android handed to the plugin after every read. While a block holds, the
+ * bar says when the phone lacks a permission to enforce it.
  */
 const focusBlock = createFocusBlockController();
 provide(focusBlockKey, focusBlock);
-// What the server confirmed, not what a press shows ahead of its answer.
-watch(controller.confirmed, () => void focusBlock.refresh());
 function openFocus(): void {
   window.location.hash = hrefOf("focus");
 }
@@ -177,55 +175,27 @@ const moreActions = computed<MenuEntry[]>(() => {
     },
   ];
 });
-let ticker: ReturnType<typeof setInterval>;
-let poller: ReturnType<typeof setInterval>;
-let focusPoller: ReturnType<typeof setInterval>;
-let focusTicker: ReturnType<typeof setInterval>;
-function refresh(): void {
-  if (document.visibilityState !== "hidden") void controller.refresh();
-}
-function refreshFocus(): void {
-  if (document.visibilityState !== "hidden") void focusBlock.refresh();
-}
-onTargetsChanged(refreshFocus);
-onTargetsChanged(refresh);
-// Milestone readings ahead of the next tick, so it never waits for them.
-function primeSounds() {
-  if (document.visibilityState !== "hidden") primeMissingMilestones();
-}
-let stopLive: (() => void) | undefined;
+/*
+ * Each server resource reads on its own terms while signed in: changes from
+ * the person's other apps as they happen, the stopwatch, the milestone
+ * readings ahead of the next tick, and the Fokus-Sperre, which follows
+ * what the server confirmed, not what a press shows ahead of its answer.
+ */
+let stops: (() => void)[] = [];
 onMounted(() => {
-  // Changes from the person's other apps, as they happen.
-  stopLive = startLiveSync();
-  void controller.refresh();
-  primeSounds();
-  document.addEventListener("visibilitychange", primeSounds);
-  ticker = setInterval(controller.pulse, 250);
-  poller = setInterval(refresh, 3000);
-  window.addEventListener("focus", refresh);
-  document.addEventListener("visibilitychange", refresh);
-  void focusBlock.refresh();
-  // A block started on another device, a list changed elsewhere.
-  focusPoller = setInterval(refreshFocus, 30_000);
-  focusTicker = setInterval(focusBlock.tick, 10_000);
-  window.addEventListener("focus", refreshFocus);
-  document.addEventListener("visibilitychange", refreshFocus);
+  stops = [
+    startLiveSync(),
+    controller.startSync(),
+    startMilestonePriming(),
+    focusBlock.startSync(controller.confirmed),
+  ];
 });
 onUnmounted(() => {
-  stopLive?.();
+  for (const stop of stops) stop();
   document.documentElement.style.removeProperty(HEIGHT_PROPERTY);
-  document.removeEventListener("visibilitychange", primeSounds);
   controller.dispose();
   focusBlock.dispose();
   stopOpenFocus?.();
-  clearInterval(ticker);
-  clearInterval(poller);
-  clearInterval(focusPoller);
-  clearInterval(focusTicker);
-  window.removeEventListener("focus", refresh);
-  document.removeEventListener("visibilitychange", refresh);
-  window.removeEventListener("focus", refreshFocus);
-  document.removeEventListener("visibilitychange", refreshFocus);
 });
 </script>
 <template>
