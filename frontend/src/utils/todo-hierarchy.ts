@@ -112,5 +112,6 @@ export function asHierarchyTodo(todo: TodoResponse): HierarchyTodo {
       todoCount: 0,
       doneCount: 0,
     },
+    inProgress: false,
   };
 }

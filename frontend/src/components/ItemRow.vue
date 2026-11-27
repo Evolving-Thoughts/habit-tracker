@@ -18,7 +18,7 @@ import type { MenuEntry } from "../utils/row-actions";
 const props = withDefaults(
   defineProps<{
     title: string;
-    headingLevel?: 2 | 3;
+    headingLevel?: 2 | 3 | 4;
     state?: "open" | "completed" | "skipped";
     /** Shows the ring; read-only rows leave it out. */
     checkable?: boolean;

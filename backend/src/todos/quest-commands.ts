@@ -15,8 +15,9 @@ import { TodoEntity } from './entities/todo.entity';
  *   Questlog's order (`backlogPosition`), one that gets a day leaves it;
  * - a new or cleared time resets its place, so it anchors anew;
  * - an appointment needs a day;
- * - completing stamps `completedAt` once and ends its stopwatch and its
- *   Fokus-Sperre in the same transaction; reopening clears the stamp.
+ * - completing stamps `completedAt` once, clears its "Geblockt" marker and
+ *   ends its stopwatch and its Fokus-Sperre in the same transaction;
+ *   reopening clears the stamp.
  *
  * Callers hold the per-user unit of work (`UserUnitOfWork`), so the timer
  * writes of `releaseTimers` keep the lock order user row → todo/timer rows.
@@ -59,10 +60,14 @@ export async function saveQuest(
     todo.dayPosition = null;
   }
   if (completed !== undefined) {
+    // A reopened quest is not "In Arbeit" until it is worked on again.
+    if (todo.completed && !completed) todo.setAsideAt = now;
     todo.completed = completed;
     // A repeated completion keeps the original timestamp.
-    if (completed) todo.completedAt ??= now;
-    else todo.completedAt = null;
+    if (completed) {
+      todo.completedAt ??= now;
+      todo.blocked = false;
+    } else todo.completedAt = null;
   }
   assertQuestPlan(todo.scheduledDate, todo.timeOfDay);
   const saved = await manager.getRepository(TodoEntity).save(todo);

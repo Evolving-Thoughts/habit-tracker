@@ -138,8 +138,9 @@ Wochenziel hat").
 
 `GET /todos/hierarchy` reads the owner's live todos in one query and computes
 progress from that list bottom-up in O(n) time and space. Campaign, inherited
-why and habit goals come from separate queries afterwards (`TodoAncestry`,
-`habitGoals`), without a shared transaction, so a concurrent change can show
+why, habit goals and `inProgress` come from separate queries afterwards
+(`TodoAncestry`, `habitGoals`, `inProgressTodoIds` in `campaign-board.ts`,
+see `campaign-board.md`), without a shared transaction, so a concurrent change can show
 up in one part and not yet in another. A Todo whose parent is missing counts as a root,
 so one bad row cannot hide the whole tree; a stored cycle is reported as a 500.
 Create, move and delete do not load the whole tree: they read only the parent's
@@ -250,7 +251,8 @@ The schema comes only from versioned migrations in
 
 - Optional `parentId: positive integer | null` on existing POST/PATCH Todo requests.
 - `parentId` added to ordinary Todo responses (null for roots).
-- `GET /todos/hierarchy`: flat owner-scoped Todo list with per-node `progress`.
+- `GET /todos/hierarchy`: flat owner-scoped Todo list with per-node `progress`
+  and `inProgress` (the Kampagnen-Board's In Arbeit, see `campaign-board.md`).
 - `GET /todos/:id/deletion-preview`: complete affected Todo/timer list and token.
 - `DELETE /todos/:id`: requires `{ "confirmationToken": "..." }` from the preview.
 

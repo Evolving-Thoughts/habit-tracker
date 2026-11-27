@@ -7,6 +7,8 @@ import type { TodoResponseDto } from './todo-response.dto';
 export type HierarchyTodoResponse = TodoResponseDto & {
   progress: TodoProgress;
   habitGoal: HabitGoalProgress | null;
+  /** In the Kampagnen-Board's "In Arbeit" column (campaign-board.ts). */
+  inProgress: boolean;
 };
 
 /** GET /todos/:id/deletion-preview: what a confirmed delete would remove. */

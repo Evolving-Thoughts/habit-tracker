@@ -51,6 +51,8 @@ describe('TodosController', () => {
     backlogPosition: null,
     plannedDurationMinutes: null,
     focusBlock: 'default',
+    setAsideAt: null,
+    blocked: false,
     createdAt: new Date('2026-09-18T10:00:00.000Z'),
     updatedAt: new Date('2026-09-18T10:00:00.000Z'),
     deletedAt: null,
@@ -116,6 +118,8 @@ describe('TodosController', () => {
           plannedDurationMinutes: null,
           focusBlock: 'default',
           timerEligible: true,
+          blocked: false,
+          setAsideAt: null,
         },
       ]);
 
@@ -157,6 +161,8 @@ describe('TodosController', () => {
         plannedDurationMinutes: null,
         focusBlock: 'default',
         timerEligible: true,
+        blocked: false,
+        setAsideAt: null,
       });
 
       expect(serviceMock.findOne).toHaveBeenCalledWith(
@@ -204,6 +210,8 @@ describe('TodosController', () => {
         plannedDurationMinutes: null,
         focusBlock: 'default',
         timerEligible: true,
+        blocked: false,
+        setAsideAt: null,
       });
 
       expect(serviceMock.create).toHaveBeenCalledWith(
@@ -271,6 +279,8 @@ describe('TodosController', () => {
         plannedDurationMinutes: 30,
         focusBlock: 'default',
         timerEligible: true,
+        blocked: false,
+        setAsideAt: null,
       });
 
       expect(serviceMock.create).toHaveBeenCalledWith(
@@ -327,6 +337,8 @@ describe('TodosController', () => {
         plannedDurationMinutes: null,
         focusBlock: 'default',
         timerEligible: false,
+        blocked: false,
+        setAsideAt: null,
       });
 
       expect(serviceMock.update).toHaveBeenCalledWith(
@@ -380,6 +392,8 @@ describe('TodosController', () => {
         plannedDurationMinutes: null,
         focusBlock: 'default',
         timerEligible: true,
+        blocked: false,
+        setAsideAt: null,
       });
 
       expect(serviceMock.update).toHaveBeenCalledWith(
@@ -436,6 +450,8 @@ describe('TodosController', () => {
         plannedDurationMinutes: 30,
         focusBlock: 'default',
         timerEligible: true,
+        blocked: false,
+        setAsideAt: null,
       });
 
       expect(serviceMock.update).toHaveBeenCalledWith(

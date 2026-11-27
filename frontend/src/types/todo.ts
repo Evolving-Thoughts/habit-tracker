@@ -30,7 +30,10 @@ export type TodoGoalInput = {
 };
 
 export type UpdateTodoInput = Partial<Omit<CreateTodoInput, "backlogPlace">> &
-  TodoGoalInput;
+  TodoGoalInput & {
+    /** Held up by something outside the quest (set on the campaign board). */
+    blocked?: boolean;
+  };
 
 /** A reason taken over from the entry above, and which one that is. */
 export type InheritedWhy = { text: string; fromId: number; fromTitle: string };
@@ -65,4 +68,8 @@ export type TodoResponse = Required<TodoGoalInput> & {
   focusBlock?: "default" | "always" | "never";
   /** Server-side timer-target rule: may a timer run for this todo? */
   timerEligible: boolean;
+  /** Held up by something outside it; the campaign board says "Geblockt". */
+  blocked: boolean;
+  /** When work on it was last set aside (`POST /todos/:id/set-aside`). */
+  setAsideAt: string | null;
 };

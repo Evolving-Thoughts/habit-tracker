@@ -95,6 +95,36 @@ export function updateTodoCompletion(
   });
 }
 
+/**
+ * Work on a quest stops for now (the campaign board's "Zurückstellen"):
+ * it leaves "In Arbeit", blocked or not.
+ */
+export function setAsideTodo(
+  todoId: number,
+  blocked: boolean,
+): Promise<TodoResponse> {
+  return request<TodoResponse>(`/todos/${todoId}/set-aside`, {
+    method: "POST",
+    body: JSON.stringify({ blocked }),
+  });
+}
+
+/** Takes an open quest into "In Arbeit" by hand; no stopwatch starts. */
+export function startWorkOnTodo(todoId: number): Promise<TodoResponse> {
+  return request<TodoResponse>(`/todos/${todoId}/start-work`, {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+/** "Als geblockt markieren" and "Blocker aufheben" on the campaign board. */
+export function setTodoBlocked(
+  todoId: number,
+  blocked: boolean,
+): Promise<TodoResponse> {
+  return updateTodo(todoId, { blocked });
+}
+
 export function rescheduleTodo(
   todoId: number,
   date: string,

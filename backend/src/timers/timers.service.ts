@@ -230,6 +230,19 @@ export class TimersService {
       now,
     );
   }
+  /** Working on a quest again lifts its "Geblockt" marker (campaign-board.md). */
+  private async unblock(
+    manager: EntityManager,
+    target: TodoEntity | HabitOccurrenceEntity,
+  ): Promise<void> {
+    if (!(target instanceof TodoEntity) || !target.blocked) return;
+    target.blocked = false;
+    await manager.update(
+      TodoEntity,
+      { id: target.id, userId: target.userId },
+      { blocked: false },
+    );
+  }
   async current(userId: string): Promise<TimerResponse> {
     return this.transaction(userId, async (manager) => {
       const timer = await this.findCurrent(manager, userId);
@@ -271,6 +284,7 @@ export class TimersService {
         dto.targetId,
         now,
       );
+      await this.unblock(manager, target);
       if (active && active.state !== 'stopped') {
         const same =
           (dto.kind === 'todo' ? active.todoId : active.occurrenceId) ===
@@ -359,14 +373,11 @@ export class TimersService {
           : targetReachesAt(timer);
       }
       const saved = await manager.save(timer);
-      if (action === 'resume')
-        await this.startFocus(
-          manager,
-          saved,
-          await this.targetOf(manager, userId, saved, now),
-          focusBlock,
-          now,
-        );
+      if (action === 'resume') {
+        const target = await this.targetOf(manager, userId, saved, now);
+        await this.unblock(manager, target);
+        await this.startFocus(manager, saved, target, focusBlock, now);
+      }
       return this.response(saved, now);
     });
   }

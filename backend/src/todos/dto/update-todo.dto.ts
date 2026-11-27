@@ -102,4 +102,9 @@ export class UpdateTodoDto {
   @ValidateIf((_object, value: unknown) => value !== undefined)
   @IsIn(FOCUS_BLOCK_OVERRIDES)
   readonly focusBlock?: FocusBlockOverride;
+
+  /** Marks or unmarks it as "Geblockt"; only an open todo can be blocked. */
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsBoolean()
+  readonly blocked?: boolean;
 }

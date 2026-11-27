@@ -20,6 +20,11 @@ export type HabitGoalProgress = {
 export type HierarchyTodo = TodoResponse & {
   progress: TodoProgress;
   habitGoal?: HabitGoalProgress | null;
+  /**
+   * Open and worked on since it was last set aside; the server decides
+   * (the campaign board's column "In Arbeit").
+   */
+  inProgress: boolean;
 };
 export type BurnupPoint = {
   date: string;
