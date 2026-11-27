@@ -31,6 +31,7 @@ import {
 } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
+import { runRefusal } from '../habits/scheduling/run-actionability';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { saveQuest } from '../todos/quest-commands';
 import { loadTodoAncestry } from '../todos/todo-ancestry';
@@ -586,17 +587,24 @@ export class CalendarSyncService {
         status: HabitOccurrenceStatus.PENDING,
         habit: { userId, isActive: true },
       },
-      relations: { habit: true },
+      relations: { habit: true, scheduleVersion: true },
     });
     const taken = new Set(linked.map((link) => link.occurrenceId));
     const lastDay = addDays(today, HORIZON_DAYS);
+    const now = this.clock.now();
     for (const run of open) {
       const due = occurrenceDueDate(run);
+      // Runs are not brought up to now here: any version still counts, as
+      // before, and so does a run moved to a later day within the horizon.
       if (
         !taken.has(run.id) &&
         run.habit.timeOfDay &&
         due >= today &&
-        due <= lastDay
+        due <= lastDay &&
+        runRefusal(
+          { run, version: run.scheduleVersion, habit: run.habit, now },
+          { movedAhead: true, anyVersion: true },
+        ) === null
       )
         operations.push({
           type: 'insert',

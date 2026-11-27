@@ -6,7 +6,9 @@ import {
   weeklyTargets,
 } from './history-planning';
 import type { HistoryPlannedItem } from './history.dto';
-import { addDays as addHistoryDays } from '../common/date/local-day';
+import { addDays as addHistoryDays, dayOf } from '../common/date/local-day';
+import { lifecycleChanges } from '../habits/scheduling/occurrence-lifecycle';
+import { runRefusal } from '../habits/scheduling/run-actionability';
 import { historyRange } from './history-range';
 import {
   buildVersion,
@@ -384,4 +386,64 @@ describe('Open weekly target runs and the order of a day', () => {
       'Lauf',
     ]);
   });
+});
+
+describe('Forecast and stored runs agree on today', () => {
+  const fixed = (
+    schedule:
+      | { type: Type.INTERVAL; intervalDays: number }
+      | { type: Type.FIXED_WEEKDAYS; weekdays: Weekday[] },
+    missedOccurrencePolicy: Policy,
+  ) =>
+    Object.assign(
+      buildVersion(
+        1,
+        normalizeSchedule({ ...schedule, missedOccurrencePolicy }),
+        new Date('2026-10-04T22:00:00Z'),
+      ),
+      { id: 1 },
+    );
+  const rhythms = [Policy.SKIP, Policy.CARRY_OVER].flatMap((policy) => [
+    fixed({ type: Type.INTERVAL, intervalDays: 1 }, policy),
+    fixed({ type: Type.INTERVAL, intervalDays: 3 }, policy),
+    fixed(
+      {
+        type: Type.FIXED_WEEKDAYS,
+        weekdays: [Weekday.MONDAY, Weekday.FRIDAY],
+      },
+      policy,
+    ),
+  ]);
+  // Every day of two weeks, across the end of summer time (Oct 25).
+  const instants = Array.from(
+    { length: 21 },
+    (_, day) => new Date(Date.parse('2026-10-05T10:00:00Z') + day * 86_400_000),
+  );
+
+  it.each(rhythms.map((rhythm) => [rhythm.type, rhythm]))(
+    'stores as due today what the forecast shows today (%s)',
+    (_type, rhythm) => {
+      let dueDays = 0;
+      for (const at of instants) {
+        const day = dayOf(at);
+        const stored = lifecycleChanges(habit, [rhythm], [], at)
+          .create.filter(
+            (run) =>
+              runRefusal({
+                run,
+                version: rhythm,
+                habit,
+                now: at,
+              }) === null,
+          )
+          .map((run) => run.scheduledDate);
+        const forecast = forecastSlots([rhythm], [day], day, at).map(
+          (slot) => slot.scheduledDate,
+        );
+        expect({ day, due: stored }).toEqual({ day, due: forecast });
+        if (forecast.length) dueDays += 1;
+      }
+      expect(dueDays).toBeGreaterThan(0);
+    },
+  );
 });

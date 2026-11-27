@@ -14,11 +14,9 @@ import { dayOf, weekRange } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { ownedOccurrences } from '../habit-occurrences/owned-occurrences';
-import {
-  isOccurrenceTimerEligible,
-  isTodoTimerEligible,
-} from '../timers/timer-target';
+import { isTodoTimerEligible } from '../timers/timer-target';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
+import { runRefusal } from '../habits/scheduling/run-actionability';
 import {
   effectiveDuration,
   HabitOccurrenceEntity,
@@ -97,10 +95,11 @@ export class DayPlannerService {
     ]);
     const { ancestry } = context;
     // Runs are reconciled now: the challenge counts today's as stored.
+    const now = this.clock.now();
     const monthChallenge = await runningChallengeResponse(
       this.db.manager,
       userId,
-      this.clock.now(),
+      now,
     );
 
     // The week's stretches: today's work and the week's quest hours.
@@ -118,7 +117,7 @@ export class DayPlannerService {
         loadStreaks(
           this.db.manager,
           occurrences.map((occurrence) => occurrence.habitId),
-          this.clock.now(),
+          now,
         ),
       ]);
     const workedOn = (key: 'todoId' | 'occurrenceId', id: number): number =>
@@ -143,7 +142,7 @@ export class DayPlannerService {
       }),
       ...occurrences.map((occurrence) => {
         const item: DayPlannerItemDto = {
-          ...this.mapOccurrence(occurrence, today),
+          ...this.mapOccurrence(occurrence, today, now),
           ...context.habit(occurrence.habit),
           goal: habitGoalsByHabit.get(occurrence.habitId) ?? null,
           workedMinutes: workedOn('occurrenceId', occurrence.id),
@@ -507,6 +506,7 @@ export class DayPlannerService {
   private mapOccurrence(
     occurrence: HabitOccurrenceEntity,
     today: string,
+    now: Date,
   ): Omit<DayPlannerHabitItemDto, ContextField> {
     if (!occurrence.habit || !occurrence.scheduleVersion) {
       throw new Error('Missing occurrence relations');
@@ -529,11 +529,13 @@ export class DayPlannerService {
         : null,
       scheduleType: occurrence.scheduleVersion.type,
       isOverdue: pending && dueDate < today,
-      timerEligible: isOccurrenceTimerEligible(
-        occurrence,
-        occurrence.habit,
-        today,
-      ),
+      timerEligible:
+        runRefusal({
+          run: occurrence,
+          version: occurrence.scheduleVersion,
+          habit: occurrence.habit,
+          now,
+        }) === null,
       focusBlock: occurrence.habit.focusBlock ?? 'default',
     };
   }

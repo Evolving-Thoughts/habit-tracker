@@ -149,7 +149,7 @@ redirected by the router to the first day of that week still ahead
 
 - `components/PlanEntry.vue`: a compact card. A quest's title, or a tap
   anywhere else on it, opens `EditItemDialog`; the whole card drags; its
-  menu (built by `PlanView` with `rowMenu`) holds Morgen / Nächste Woche,
+  menu (`rowMenu` from the actions `PlanView` gives the card) holds Morgen / Nächste Woche,
   "Anderer Tag …" (`MoveItemDialog`), Bearbeiten, Stoppuhr starten (a
   compact card has no ▶), "In Kampagne verschieben …"
   (`CampaignMoveDialog`), Nach oben / Nach unten in the day and Löschen

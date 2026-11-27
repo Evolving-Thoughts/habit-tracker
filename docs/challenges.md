@@ -96,7 +96,10 @@ counts neither way). Status:
 
 **Today's run** (`challengeToday`): the open run that can be done today
 (also one carried over into today, not one moved to a later day), else
-`done` when a run was done today, else `none`.
+`done` when a run was done today, else `none`. It asks the scheduler's rule
+`runRefusal` but, as before, leaves out the Daily's pause and the version
+in force (a run of an earlier version still counts while its window is
+open), since the Daily is not always brought up to now first.
 
 ## Heute
 
@@ -143,7 +146,7 @@ All routes need a session and only touch the signed-in person's rows.
 A challenge answers `{ id, month, startDate, endDate, habitId, title,
 reminderTime, status, endedAt, day, days, done, missed, remaining, total,
 percent, todayRun, todayOccurrenceId }`. Reading brings the running
-challenge's Daily up to now first (the scheduler's `reconcile`), so today's
+challenge's Daily up to now first (`HabitSchedulingService.openHabit`), so today's
 run is stored; closed results are frozen on the way.
 
 Beside its own routes:

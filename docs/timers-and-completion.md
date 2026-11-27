@@ -176,6 +176,12 @@ Protected endpoints, ownership taken exclusively from the session:
   takes `focusBlock`. Stopping ends a Soft Fokus-Sperre.
 - `PATCH /timers/:id/duration` with `{ durationMinutes }` sets the target.
 
+A daily run can carry a stopwatch while `runRefusal`
+(`habits/scheduling/run-actionability.ts`, the rule status changes and moves
+ask too) allows it: an open run of an active habit, of the schedule version
+in force, due by today and its window still open; `timerEligible` on Heute
+and `timerOccurrenceId` on a habit say the same.
+
 Foreign target/timer IDs return 404. Per-user row locks serialize transitions
 across devices and server processes; a partial unique index enforces at most one
 running/paused row. Database checks enforce exactly one target, a valid state and

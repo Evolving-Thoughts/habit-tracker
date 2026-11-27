@@ -173,9 +173,10 @@ export class MonthChallengesService {
         );
       // What was decided by now, with runs that ran out resolved.
       if (challenge.habitId !== null)
-        await this.scheduling.reconcile(
+        await this.scheduling.openHabit(
           manager,
-          await this.scheduling.lockHabit(userId, manager, challenge.habitId),
+          userId,
+          challenge.habitId,
           now,
         );
       challenge.endedAt = now;
@@ -236,11 +237,7 @@ export class MonthChallengesService {
       );
     if (status !== 'running') return challengeResponse(challenge, today);
     if (challenge.habit?.isActive)
-      await this.scheduling.reconcile(
-        manager,
-        await this.scheduling.lockHabit(userId, manager, challenge.habit.id),
-        now,
-      );
+      await this.scheduling.openHabit(manager, userId, challenge.habit.id, now);
     return challengeResponse(
       challenge,
       today,

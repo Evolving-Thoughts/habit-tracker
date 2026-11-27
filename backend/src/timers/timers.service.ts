@@ -10,13 +10,12 @@ import {
   HabitOccurrenceEntity,
 } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
-import { dayOf } from '../common/date/local-day';
+import { runRefusal } from '../habits/scheduling/run-actionability';
 import { TimerEntity } from './timer.entity';
 import { StartTimerDto } from './timer.dto';
 import type { FocusBlockRequestDto } from '../focus-blocks/focus-block.dto';
 import { startFocusBlock } from '../focus-blocks/focus-block-store';
 import {
-  isOccurrenceTimerEligible,
   isTodoTimerEligible,
   loggedMilliseconds,
   recordTransition,
@@ -97,14 +96,14 @@ export class TimersService {
         throw new ConflictException('Erledigte Quests zuerst wieder öffnen.');
       return todo;
     }
-    const { habit, occurrence } = await this.scheduling
+    const { habit, occurrence, version } = await this.scheduling
       .openRun(manager, userId, id, now)
       .catch((error: unknown) => {
         if (error instanceof NotFoundException)
           throw new NotFoundException('Daily-Ausführung nicht gefunden.');
         throw error;
       });
-    if (!isOccurrenceTimerEligible(occurrence, habit, dayOf(now)))
+    if (runRefusal({ run: occurrence, version, habit, now }) !== null)
       throw new ConflictException('Keine offene fällige Daily-Ausführung.');
     occurrence.habit = habit;
     return occurrence;

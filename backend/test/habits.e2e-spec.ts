@@ -11,6 +11,7 @@ import { resetDatabase } from './reset-database';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { UserEntity } from '../src/auth/auth.entities';
+import { UserUnitOfWork } from '../src/common/user-unit-of-work';
 import { configureApp } from '../src/configure-app';
 import {
   getCurrentDateInTimeZone,
@@ -196,6 +197,14 @@ describe('Habit domain and day planner (e2e)', () => {
       await move(999999, relativeDate(1)).expect(404);
     });
   });
+
+  /** Brings one habit's runs up to `at`, as opening it then would. */
+  const openHabitAt = (habitId: number, at: Date) =>
+    app
+      .get(UserUnitOfWork)
+      .run(TEST_USER, (manager) =>
+        scheduling.openHabit(manager, TEST_USER, habitId, at),
+      );
 
   async function planner(): Promise<DayPlannerResponseDto> {
     const response = await request(server)
@@ -408,8 +417,7 @@ describe('Habit domain and day planner (e2e)', () => {
         await create({ title: 'Other B' }),
       ];
       const sweep = jest.spyOn(scheduling, 'getToday');
-      const lock = jest.spyOn(scheduling, 'lockHabit');
-      const reconcile = jest.spyOn(scheduling, 'reconcile');
+      const open = jest.spyOn(scheduling, 'openHabit');
       try {
         const response = await request(server)
           .get(`/habits/${target.id}`)
@@ -418,18 +426,15 @@ describe('Habit domain and day planner (e2e)', () => {
         expect(body.timerOccurrenceId).toEqual(expect.any(Number));
         expect(body.timerDurationMinutes).toBe(15);
         expect(sweep).not.toHaveBeenCalled();
-        expect(lock).toHaveBeenCalledTimes(1);
-        expect(lock.mock.calls[0]?.[0]).toBe(TEST_USER);
-        expect(lock.mock.calls[0]?.[2]).toBe(target.id);
-        expect(reconcile).toHaveBeenCalledTimes(1);
-        expect(reconcile.mock.calls[0]?.[1].id).toBe(target.id);
+        expect(open).toHaveBeenCalledTimes(1);
+        expect(open.mock.calls[0]?.[1]).toBe(TEST_USER);
+        expect(open.mock.calls[0]?.[2]).toBe(target.id);
         expect(await pendingCount(target.id)).toBe(1);
         for (const other of others)
           expect(await pendingCount(other.id)).toBe(0);
       } finally {
         sweep.mockRestore();
-        lock.mockRestore();
-        reconcile.mockRestore();
+        open.mockRestore();
       }
     });
 
@@ -437,9 +442,7 @@ describe('Habit domain and day planner (e2e)', () => {
       const target = await create();
       const other = await create({ title: 'Other' });
       const sweep = jest.spyOn(scheduling, 'getToday');
-      const generate = jest.spyOn(scheduling, 'generateForHabit');
-      const reconcile = jest.spyOn(scheduling, 'reconcile');
-      const lock = jest.spyOn(scheduling, 'lockHabit');
+      const open = jest.spyOn(scheduling, 'openHabit');
       const versions = jest.spyOn(scheduling, 'getVersions');
       try {
         const response = await request(server)
@@ -447,18 +450,14 @@ describe('Habit domain and day planner (e2e)', () => {
           .expect(200);
         expect(response.body as unknown[]).toHaveLength(1);
         expect(sweep).not.toHaveBeenCalled();
-        expect(generate).not.toHaveBeenCalled();
-        expect(reconcile).not.toHaveBeenCalled();
-        expect(lock).not.toHaveBeenCalled();
+        expect(open).not.toHaveBeenCalled();
         expect(versions).toHaveBeenCalledTimes(1);
         expect(versions.mock.calls[0]?.[1]).toBe(target.id);
         expect(await pendingCount(target.id)).toBe(0);
         expect(await pendingCount(other.id)).toBe(0);
       } finally {
         sweep.mockRestore();
-        generate.mockRestore();
-        reconcile.mockRestore();
-        lock.mockRestore();
+        open.mockRestore();
         versions.mockRestore();
       }
     });
@@ -499,7 +498,6 @@ describe('Habit domain and day planner (e2e)', () => {
       const foreign = await dataSource
         .getRepository(HabitEntity)
         .save({ userId: foreignUser.id, title: 'Private', isActive: true });
-      const reconcile = jest.spyOn(scheduling, 'reconcile');
       const sweep = jest.spyOn(scheduling, 'getToday');
       const versions = jest.spyOn(scheduling, 'getVersions');
       try {
@@ -509,11 +507,11 @@ describe('Habit domain and day planner (e2e)', () => {
             .get(`/habits/${id}/schedule-versions`)
             .expect(404);
         }
-        expect(reconcile).not.toHaveBeenCalled();
         expect(sweep).not.toHaveBeenCalled();
         expect(versions).not.toHaveBeenCalled();
+        expect(await pendingCount(hidden.id)).toBe(0);
+        expect(await pendingCount(foreign.id)).toBe(0);
       } finally {
-        reconcile.mockRestore();
         sweep.mockRestore();
         versions.mockRestore();
         await dataSource.getRepository(HabitEntity).delete({ id: foreign.id });
@@ -885,8 +883,7 @@ describe('Habit domain and day planner (e2e)', () => {
 
       expect(before.status).toBe(HabitOccurrenceStatus.PENDING);
 
-      await scheduling.generateForHabit(
-        TEST_USER,
+      await openHabitAt(
         habit.id,
         new Date(midnightInTimeZone(tomorrow).getTime() + 1000),
       );
@@ -916,8 +913,7 @@ describe('Habit domain and day planner (e2e)', () => {
 
       await change(habit.id, interval(3), changeDate);
 
-      await scheduling.generateForHabit(
-        '11111111-1111-4111-8111-111111111111',
+      await openHabitAt(
         habit.id,
         new Date(midnightInTimeZone(changeDate).getTime() + 1000),
       );

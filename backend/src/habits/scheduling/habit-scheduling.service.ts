@@ -25,9 +25,9 @@ import { endFocusBlocksOfDone } from '../../focus-blocks/focus-block-store';
 import {
   effectiveDuration,
   HabitOccurrenceEntity,
-  occurrenceDueDate,
 } from '../../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../../habit-occurrences/enums/habit-occurrence-status.enum';
+import { runRefusal } from './run-actionability';
 import { ChangeHabitScheduleDto } from '../dto/change-habit-schedule.dto';
 import {
   HabitResponseDto,
@@ -38,7 +38,6 @@ import { loadTodoAncestry, TodoAncestry } from '../../todos/todo-ancestry';
 import { HabitScheduleVersionEntity } from '../entities/habit-schedule-version.entity';
 import {
   buildVersion,
-  expiresAt,
   isInMoveWindow,
   normalizeSchedule,
   ruleResponse,
@@ -59,10 +58,18 @@ import {
 export type OpenRun = {
   habit: HabitEntity;
   occurrence: HabitOccurrenceEntity;
-  /** The schedule version active at the moment the run was opened. */
-  active: HabitScheduleVersionEntity | undefined;
+  /** The run's own schedule version, for `runRefusal`. */
+  version: HabitScheduleVersionEntity | undefined;
 };
 
+/**
+ * Runs as of now. Callers ask three things and never reconcile or lock
+ * themselves: the user's runs as of now (`getToday`, `reconcileAll`), a
+ * habit or run opened for a change (`openHabit`, `editHabit`, `openRun`,
+ * inside the per-user unit of work), and whether a run may be acted on
+ * (`runRefusal`, pure). The user row is the one lock: every path here
+ * takes it first, so habit rows are read without a lock of their own.
+ */
 @Injectable()
 export class HabitSchedulingService {
   constructor(
@@ -71,17 +78,16 @@ export class HabitSchedulingService {
     private readonly unitOfWork: UserUnitOfWork,
   ) {}
 
-  /** Locks the owner first, then the habit (same order as timers and todos). */
-  async lockHabit(
-    userId: string,
+  /** One of the user's habits, read after locking the user row. */
+  private async ownedHabit(
     manager: EntityManager,
+    userId: string,
     habitId: number,
   ): Promise<HabitEntity> {
     await lockUser(manager, userId);
-    const habit = await manager.getRepository(HabitEntity).findOne({
-      where: { id: habitId, userId },
-      lock: { mode: 'pessimistic_write' },
-    });
+    const habit = await manager
+      .getRepository(HabitEntity)
+      .findOneBy({ id: habitId, userId });
 
     if (!habit) {
       throw new NotFoundException(`Habit with ID ${habitId} was not found`);
@@ -179,7 +185,7 @@ export class HabitSchedulingService {
     const definition = normalizeSchedule(dto.schedule);
 
     return this.unitOfWork.run(userId, async (manager) => {
-      const habit = await this.lockHabit(userId, manager, habitId);
+      const habit = await this.ownedHabit(manager, userId, habitId);
 
       // Erst nach dem Lock bestimmen: parallele Änderungen erhalten
       // ihre tatsächliche Reihenfolge.
@@ -250,25 +256,14 @@ export class HabitSchedulingService {
     });
   }
 
-  async generateForHabit(
-    userId: string,
-    habitId: number,
-    at?: Date,
-  ): Promise<void> {
-    await this.unitOfWork.run(userId, async (manager) => {
-      const habit = await this.lockHabit(userId, manager, habitId);
-
-      await this.reconcile(manager, habit, at ?? this.clock.now());
-    });
-  }
-
   /**
    * Stores what has to change so the habit's runs match `now` (resolving
    * runs that ran out, creating due ones) and ends the stopwatch of every
-   * run it resolves. Returns the habit's schedule versions it read; the
-   * caller must hold the habit's lock (`lockHabit`).
+   * run it resolves. Returns the habit's schedule versions it read. The
+   * caller holds the user lock. `lifecycleChanges` walks every slot of
+   * every version, so it needs all of the habit's runs, not a window.
    */
-  async reconcile(
+  private async reconcile(
     manager: EntityManager,
     habit: HabitEntity,
     now: Date,
@@ -329,8 +324,9 @@ export class HabitSchedulingService {
   }
 
   /**
-   * Opens one of the user's habits: locks it (after the user row) and brings
-   * its runs up to `now`. Returns the habit and its schedule versions.
+   * Opens one of the user's habits: takes the user lock and brings its runs
+   * up to `now`. Returns the habit and its schedule versions. Throws
+   * `NotFoundException` for a habit the user does not own.
    */
   async openHabit(
     manager: EntityManager,
@@ -338,24 +334,31 @@ export class HabitSchedulingService {
     habitId: number,
     now: Date,
   ): Promise<{ habit: HabitEntity; versions: HabitScheduleVersionEntity[] }> {
-    const habit = await this.lockHabit(userId, manager, habitId);
+    const habit = await this.ownedHabit(manager, userId, habitId);
     const versions = await this.reconcile(manager, habit, now);
     return { habit, versions };
   }
 
   /**
-   * Stores a habit changed under its lock. A paused habit ends the stopwatch
-   * of its runs; then its runs are brought up to `now`.
+   * Changes one of the user's habits: takes the user lock, lets `edit`
+   * change the habit as it is stored, saves it, ends the stopwatch of its
+   * runs when it is paused now, and only then brings its runs up to `now`
+   * (so they follow the new state). Returns the habit and its versions.
    */
-  async saveHabit(
+  async editHabit(
     manager: EntityManager,
-    habit: HabitEntity,
+    userId: string,
+    habitId: number,
     now: Date,
-  ): Promise<void> {
+    edit: (habit: HabitEntity) => Promise<void>,
+  ): Promise<{ habit: HabitEntity; versions: HabitScheduleVersionEntity[] }> {
+    const habit = await this.ownedHabit(manager, userId, habitId);
+    await edit(habit);
     await manager.getRepository(HabitEntity).save(habit);
     if (!habit.isActive)
-      await releaseTimers(manager, habit.userId, { habitId: habit.id }, now);
-    await this.reconcile(manager, habit, now);
+      await releaseTimers(manager, userId, { habitId: habit.id }, now);
+    const versions = await this.reconcile(manager, habit, now);
+    return { habit, versions };
   }
 
   /**
@@ -369,18 +372,18 @@ export class HabitSchedulingService {
     habitId: number,
     now: Date,
   ): Promise<void> {
-    const habit = await this.lockHabit(userId, manager, habitId);
+    const habit = await this.ownedHabit(manager, userId, habitId);
     await closeChallengesOfHabit(manager, habit, now);
     await manager.getRepository(HabitEntity).softRemove(habit);
     await releaseTimers(manager, userId, { habitId: habit.id }, now);
   }
 
   /**
-   * Opens one of the user's runs for a change: locks its habit (after the
-   * user row, the one lock order), brings the habit's runs up to `now` and
-   * reads the run as it is then, with its habit and the schedule version
-   * active at `now`. Throws `NotFoundException` for a run the user does not
-   * own. Call it inside the per-user unit of work.
+   * Opens one of the user's runs for a change: takes the user lock, brings
+   * its habit's runs up to `now` and reads the run as it is then, with its
+   * habit and its own schedule version (ask `runRefusal` whether it may be
+   * acted on). Throws `NotFoundException` for a run the user does not own.
+   * Call it inside the per-user unit of work.
    */
   async openRun(
     manager: EntityManager,
@@ -395,12 +398,19 @@ export class HabitSchedulingService {
       throw new NotFoundException(
         `Habit occurrence with ID ${id} was not found`,
       );
-    const habit = await this.lockHabit(userId, manager, initial.habitId);
-    const versions = await this.reconcile(manager, habit, now);
+    const { habit, versions } = await this.openHabit(
+      manager,
+      userId,
+      initial.habitId,
+      now,
+    );
     const occurrence = await manager
       .getRepository(HabitOccurrenceEntity)
       .findOneByOrFail({ id });
-    return { habit, occurrence, active: activeVersion(versions, now) };
+    const version = versions.find(
+      (item) => item.id === occurrence.scheduleVersionId,
+    );
+    return { habit, occurrence, version };
   }
 
   async changeStatus(
@@ -414,12 +424,12 @@ export class HabitSchedulingService {
   }
 
   /**
-   * Completes, skips or reopens a run (`openRun` first). Only a run of the
-   * active version that is due and not run out can change; resolving it
-   * ends its stopwatch, reopening needs it to be the habit's only open or
-   * completed-today run. Positions in the day's order stay.
+   * Completes, skips or reopens a run (`openRun` first). Only a run that may
+   * be acted on (`runRefusal`, resolved runs included) can change;
+   * resolving it ends its stopwatch, reopening needs it to be the habit's
+   * only open or completed-today run. Positions in the day's order stay.
    */
-  async setRunStatus(
+  private async setRunStatus(
     manager: EntityManager,
     userId: string,
     id: number,
@@ -436,7 +446,7 @@ export class HabitSchedulingService {
       throw new BadRequestException('Invalid manual status');
     }
 
-    const { habit, occurrence, active } = await this.openRun(
+    const { habit, occurrence, version } = await this.openRun(
       manager,
       userId,
       id,
@@ -454,11 +464,10 @@ export class HabitSchedulingService {
     }
 
     if (
-      !habit.isActive ||
-      !active ||
-      occurrence.scheduleVersionId !== active.id ||
-      occurrenceDueDate(occurrence) > today ||
-      expiresAt(active, occurrence.scheduledDate) <= now
+      runRefusal(
+        { run: occurrence, version, habit, now },
+        { resolved: true },
+      ) !== null
     ) {
       throw new ConflictException('This occurrence is no longer actionable');
     }
@@ -524,10 +533,10 @@ export class HabitSchedulingService {
   }
 
   /**
-   * Moves an open run of the active version of an active habit to `date`
-   * within its window (`openRun` first), never while a stopwatch runs on it.
-   * Throws `ConflictException` when it may not move. Its place in the day's
-   * order stays, as before.
+   * Moves a run that may be acted on (`runRefusal`, one moved ahead
+   * included) to `date` within its window (`openRun` first), never while a
+   * stopwatch runs on it. Throws `ConflictException` when it may not move.
+   * Its place in the day's order stays, as before.
    */
   async moveRun(
     manager: EntityManager,
@@ -536,7 +545,7 @@ export class HabitSchedulingService {
     date: string,
     now: Date,
   ): Promise<HabitOccurrenceEntity> {
-    const { habit, occurrence, active } = await this.openRun(
+    const { habit, occurrence, version } = await this.openRun(
       manager,
       userId,
       id,
@@ -544,17 +553,18 @@ export class HabitSchedulingService {
     );
 
     if (
-      !habit.isActive ||
-      !active ||
-      occurrence.status !== HabitOccurrenceStatus.PENDING ||
-      occurrence.scheduleVersionId !== active.id
+      !version ||
+      runRefusal(
+        { run: occurrence, version, habit, now },
+        { movedAhead: true },
+      ) !== null
     ) {
       throw new ConflictException(
         'Diese Ausführung kann nicht mehr verschoben werden.',
       );
     }
 
-    if (!isInMoveWindow(active, occurrence.scheduledDate, date, dayOf(now))) {
+    if (!isInMoveWindow(version, occurrence.scheduledDate, date, dayOf(now))) {
       throw new ConflictException(
         'Der Tag liegt außerhalb des Terminfensters.',
       );
@@ -614,7 +624,6 @@ export class HabitSchedulingService {
     const habits = await manager.getRepository(HabitEntity).find({
       where: { isActive: true, userId },
       order: { id: 'ASC' },
-      lock: { mode: 'pessimistic_write' },
     });
 
     if (!habits.length) return;

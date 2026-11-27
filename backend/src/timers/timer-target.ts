@@ -1,5 +1,4 @@
 import { Brackets, EntityManager } from 'typeorm';
-import { occurrenceDueDate } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { WorkLogEntity } from '../work-logs/work-log.entity';
 import { coveredMilliseconds } from '../work-logs/work-time';
 import { TimerEntity } from './timer.entity';
@@ -7,7 +6,8 @@ import { StopwatchEvent, StopwatchState, transition } from './timer-transition';
 import { focusBlockFollowsStopwatch } from '../focus-blocks/focus-block-store';
 
 /**
- * Timer targets: which todo or habit occurrence may carry a stopwatch, the
+ * Timer targets: which todo may carry a stopwatch (a habit run may while
+ * `runRefusal` in `habits/scheduling/run-actionability.ts` allows it), the
  * adapter that stores a stopwatch event with its Logbuch writes
  * (`recordTransition`, the rules are in `timer-transition.ts`), and what
  * happens to a stopwatch when its target stops being eligible. No Nest
@@ -20,23 +20,6 @@ export const TIMER_MAX_MINUTES = 10080;
 /** A todo can carry a timer while it is open. */
 export function isTodoTimerEligible(todo: { completed: boolean }): boolean {
   return !todo.completed;
-}
-
-/** An occurrence can carry a timer while pending, due and its habit active. */
-export function isOccurrenceTimerEligible(
-  occurrence: {
-    status: string;
-    scheduledDate: string;
-    movedToDate?: string | null;
-  },
-  habit: { isActive: boolean },
-  today: string,
-): boolean {
-  return (
-    habit.isActive &&
-    occurrence.status === 'pending' &&
-    occurrenceDueDate(occurrence) <= today
-  );
 }
 
 /**

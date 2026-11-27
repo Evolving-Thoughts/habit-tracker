@@ -24,11 +24,7 @@ export async function loadChallengeReminder(
   const challenge = await findRunningChallenge(manager, userId, dayOf(now));
   if (!challenge) return null;
   if (challenge.habit?.isActive)
-    await scheduling.reconcile(
-      manager,
-      await scheduling.lockHabit(userId, manager, challenge.habit.id),
-      now,
-    );
+    await scheduling.openHabit(manager, userId, challenge.habit.id, now);
   const { today } = await countChallenge(manager, challenge, now);
   return {
     challengeId: challenge.id,

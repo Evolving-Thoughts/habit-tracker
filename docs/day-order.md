@@ -50,9 +50,11 @@ The time-based replanner ("Neu planen"), the day-end setting and the per-calenda
   `backend/src/todos/quest-commands.ts` (day, time, completion; it ends the
   stopwatch of a completed quest in the same transaction). `TodosService`
   and the Google sync both go through it. Daily runs move and change status
-  through `HabitSchedulingService.moveRun` / `setRunStatus`, which lock the
-  habit, reconcile its runs and end a resolved run's stopwatch; the Google
-  sync moves runs through `moveRun` too.
+  through `HabitSchedulingService.moveRun` / `changeStatus`, which open the
+  run (`openRun`: the user lock, its habit's runs brought up to now), ask
+  `runRefusal` (`habits/scheduling/run-actionability.ts`) whether it may be
+  acted on and end a resolved run's stopwatch; the Google sync moves runs
+  through `moveRun` too.
 
 ## API
 
@@ -143,7 +145,7 @@ export only, as Logbuch events (see `logbook.md`).
   offen." and names the next appointment. One that is over and
   still open (`past`) asks quietly "Vorbei – erledigt?" in one line below
   its meta; the ring answers it, and "Anderer Tag …" leads its menu
-  (`rowMenu` with `otherDay.lead`). A row with its time in the time column
+  (`rowMenu` with `past`). A row with its time in the time column
   leaves "Termin" out of its meta line; the column says it. `nextChangeAt` names the next minute at which this can
   change (a start, an end), and `composables/useDayClock.ts` sets one
   timeout for exactly that minute instead of polling; it catches up when a
