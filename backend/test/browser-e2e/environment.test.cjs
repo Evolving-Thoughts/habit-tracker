@@ -68,6 +68,14 @@ test('uses fresh test Push keys and disables outgoing jobs instead of inherited 
   assert.equal(env.PUSH_WORKER_ENABLED, 'false');
 });
 
+test('always hands out a 32-byte Push private key', () => {
+  // About one key in 256 starts with a zero byte, which Node drops.
+  for (let run = 0; run < 2000; run++) {
+    const key = browserEnvironment({}).VAPID_PRIVATE_KEY;
+    assert.equal(Buffer.from(key, 'base64url').length, 32);
+  }
+});
+
 test('serves the silent fixture sounds instead of an inherited sounds folder', () => {
   const env = browserEnvironment({ SOUNDS_DIR: '/home/someone/real-sounds' });
   assert.equal(env.SOUNDS_DIR, join(__dirname, '..', 'fixtures', 'sounds'));

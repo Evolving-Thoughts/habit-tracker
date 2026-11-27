@@ -6,11 +6,14 @@ const FRONTEND_URL = 'http://127.0.0.1:4173';
 function browserEnvironment(source = process.env) {
   const curve = createECDH('prime256v1');
   curve.generateKeys();
+  // Node leaves out leading zero bytes; a VAPID private key is 32 bytes.
+  const secret = curve.getPrivateKey();
+  const privateKey = Buffer.concat([Buffer.alloc(32 - secret.length), secret]);
   const env = {
     NODE_ENV: 'test',
     BROWSER_E2E: '1',
     VAPID_PUBLIC_KEY: curve.getPublicKey().toString('base64url'),
-    VAPID_PRIVATE_KEY: curve.getPrivateKey().toString('base64url'),
+    VAPID_PRIVATE_KEY: privateKey.toString('base64url'),
     VAPID_SUBJECT: 'https://example.invalid',
     PUSH_WORKER_ENABLED: 'false',
     DB_HOST: source.E2E_DB_HOST ?? '127.0.0.1',
