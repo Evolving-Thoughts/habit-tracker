@@ -78,6 +78,8 @@ const emit = defineEmits<{
   busy: [value: boolean];
   /** A quest's editor switched to "Daily" (or back). */
   mode: [kind: "todo" | "habit"];
+  /** The quest turned out to be a campaign, once it is loaded. */
+  campaign: [value: boolean];
 }>();
 
 const isLoading = ref(true);
@@ -174,6 +176,15 @@ const isCampaign = computed(
     !!loadedTodo.value &&
     loadedTodo.value.campaign?.id === loadedTodo.value.id,
 );
+/** The way to deletion names what goes. */
+const deleteLabel = computed(() =>
+  props.kind === "habit"
+    ? "Gesamtes Daily löschen"
+    : isCampaign.value
+      ? "Kampagne löschen"
+      : "Quest löschen",
+);
+watch(isCampaign, (value) => emit("campaign", value));
 /** At the top now (as chosen): colour, icon and goal are on offer. */
 const isTopLevel = computed(() => parentId.value === null);
 const showPlan = computed(
@@ -517,7 +528,7 @@ onMounted(loadEntity);
     :aria-labelledby="embedded ? undefined : 'item-editor-heading'"
   >
     <h2 v-if="!embedded" id="item-editor-heading">
-      {{ kind === "todo" ? "Quest" : "Daily" }}
+      {{ kind === "habit" ? "Daily" : isCampaign ? "Kampagne" : "Quest" }}
       bearbeiten
     </h2>
 
@@ -935,7 +946,7 @@ onMounted(loadEntity);
             @click="requestDeletion"
           >
             <AppIcon name="trash" />
-            {{ kind === "todo" ? "Quest löschen" : "Gesamtes Daily löschen" }}
+            {{ deleteLabel }}
           </button>
         </div>
 
@@ -948,6 +959,7 @@ onMounted(loadEntity);
           <TodoDeletionSummary
             v-if="deletionPreview"
             :preview="deletionPreview"
+            :campaign="isCampaign"
           />
           <p>„{{ title }}“ wirklich löschen?</p>
 
@@ -1004,7 +1016,7 @@ onMounted(loadEntity);
               @click="requestDeletion"
             >
               <AppIcon name="trash" />
-              {{ kind === "todo" ? "Quest löschen" : "Gesamtes Daily löschen" }}
+              {{ deleteLabel }}
             </button>
           </div>
         </div>

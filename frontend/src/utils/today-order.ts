@@ -115,12 +115,13 @@ export function stepInDay(
   item: OrderRow,
   direction: -1 | 1,
 ): number | null {
-  if (isEventSlot(item)) return null;
+  // A card carried over from an earlier day has no place in today's order.
+  if (isEventSlot(item) || item.isOverdue) return null;
   const rows = sortableRows(agenda);
   const from = rows.indexOf(item);
   if (from === -1) return null;
   const pinned = agenda.eveningChallenge;
-  if (item === pinned && (direction === 1 || item.isOverdue)) return null;
+  if (item === pinned && direction === 1) return null;
   for (
     let to = from + direction;
     to >= 0 && to < rows.length;

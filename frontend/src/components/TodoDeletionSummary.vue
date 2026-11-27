@@ -1,6 +1,21 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import type { DeletionPreview } from "../types/todo-hierarchy";
-defineProps<{ preview: DeletionPreview }>();
+const props = defineProps<{
+  preview: DeletionPreview;
+  /** The quest that goes is a campaign: the count names it apart. */
+  campaign?: boolean;
+}>();
+/** "3 Quests werden gelöscht." or "Die Kampagne und 2 Quests werden gelöscht." */
+const countLine = computed(() => {
+  const count = props.preview.todos.length - Number(!!props.campaign);
+  const quests = count === 1 ? "1 Quest" : `${count} Quests`;
+  if (!props.campaign)
+    return `${quests} ${count === 1 ? "wird" : "werden"} gelöscht.`;
+  return count > 0
+    ? `Die Kampagne und ${quests} werden gelöscht.`
+    : "Die Kampagne wird gelöscht.";
+});
 const stateLabel = {
   running: "läuft",
   paused: "pausiert",
@@ -14,11 +29,7 @@ const stateLabel = {
     aria-label="Betroffene Quests und Stoppuhren"
   >
     <p>
-      <strong>{{
-        preview.todos.length === 1
-          ? "1 Quest wird gelöscht."
-          : `${preview.todos.length} Quests werden gelöscht.`
-      }}</strong>
+      <strong>{{ countLine }}</strong>
       Was schon im Logbuch steht, bleibt erhalten.
     </p>
     <ul>

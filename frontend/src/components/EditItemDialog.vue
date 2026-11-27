@@ -24,12 +24,16 @@ function onMode(next: "todo" | "habit"): void {
   switched.value = true;
   mode.value = next;
 }
+/** The quest is a campaign (known once the editor has loaded it). */
+const campaign = ref(false);
 const title = computed(() =>
   props.kind === "habit"
     ? "Daily bearbeiten"
     : mode.value === "habit"
       ? "Quest als Daily speichern"
-      : "Quest bearbeiten",
+      : campaign.value
+        ? "Kampagne bearbeiten"
+        : "Quest bearbeiten",
 );
 // Once the switch was used the focus stays on it, not on the new title field.
 const focusSelector = computed(() =>
@@ -63,6 +67,7 @@ function changed(): void {
       @changed="changed"
       @close="close"
       @mode="onMode"
+      @campaign="campaign = $event"
     />
   </ModalDialog>
 </template>

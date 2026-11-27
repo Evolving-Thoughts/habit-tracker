@@ -246,6 +246,13 @@ export function timerStateOf(
   return current.state === "running" ? "running" : "paused";
 }
 
+/** The `itemKey` (today-agenda) of what the stopwatch is on; null without one. */
+export function timedItemKey(controller: TimerController | null): string | null {
+  const current = controller?.timer.value;
+  if (!current) return null;
+  return `${current.kind === "todo" ? "todo" : "habit"}-${current.targetId}`;
+}
+
 export const timerKey: InjectionKey<TimerController> = Symbol("timer");
 export function useTimer(): TimerController | null {
   return inject(timerKey, null);
