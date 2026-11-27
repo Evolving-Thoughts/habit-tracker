@@ -11,7 +11,12 @@ export const TODO_FIELDS = {
   color: null,
   icon: null,
   campaign: null,
+  blocked: false,
+  setAsideAt: null,
 };
+
+/** What `GET /todos/hierarchy` adds to a quest nobody is working on. */
+export const HIERARCHY_FIELDS = { inProgress: false };
 
 /** A Daily without a series yet. */
 export const NO_STREAK = { current: 0, best: 0, unit: "runs" as const };

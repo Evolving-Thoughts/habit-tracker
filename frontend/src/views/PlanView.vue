@@ -30,9 +30,11 @@ import DeleteItemDialog, {
 import PlanDay from "../components/PlanDay.vue";
 import PlanOverdue from "../components/PlanOverdue.vue";
 import PlanQuestlog from "../components/PlanQuestlog.vue";
+import ColumnChips from "../components/ColumnChips.vue";
 import UndoToast from "../components/UndoToast.vue";
 import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
 import { useListFocus } from "../composables/useListFocus";
+import { useSnapColumns } from "../composables/useSnapColumns";
 import { useLoader } from "../composables/useLoader";
 import { SHEET_QUERY, useMediaQuery } from "../composables/useMediaQuery";
 import {
@@ -67,7 +69,6 @@ import {
 import {
   BOARD,
   boardColumns,
-  columnAt,
   dropOnDay,
   dropRunOnDay,
   entryKey,
@@ -704,63 +705,14 @@ async function onDialogDone(): Promise<void> {
 
 /*
  * On a phone the board shows one column at a time; the chip of the column
- * in view is marked, and a tap on a chip brings its column.
+ * in view is marked, and a tap on a chip brings its column (shared with
+ * the campaign board: `useSnapColumns`, `ColumnChips`).
  */
-const current = ref(0);
-const chipStrip = ref<HTMLElement | null>(null);
-function columnStep(scroller: HTMLElement): number {
-  const gap = parseFloat(getComputedStyle(scroller).columnGap) || 0;
-  return scroller.clientWidth + gap;
-}
-let scrollFrame = 0;
-function onBoardScroll(): void {
-  if (!phone.value || scrollFrame) return;
-  scrollFrame = requestAnimationFrame(() => {
-    scrollFrame = 0;
-    const scroller = board.value;
-    if (scroller)
-      current.value = columnAt(
-        scroller.scrollLeft,
-        columnStep(scroller),
-        chips.value.length,
-      );
-  });
-}
-onBeforeUnmount(() => cancelAnimationFrame(scrollFrame));
-const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
-function showColumn(index: number, smooth = true): void {
-  const scroller = board.value;
-  const column = scroller?.children[index];
-  if (!scroller || !(column instanceof HTMLElement)) return;
-  current.value = index;
-  if (typeof scroller.scrollTo !== "function") {
-    scroller.scrollLeft = column.offsetLeft;
-    return;
-  }
-  scroller.scrollTo({
-    left: column.offsetLeft,
-    behavior: smooth && !reducedMotion.value ? "smooth" : "auto",
-  });
-}
-/* The marked chip stays in sight in its own strip. */
-watch(
+const {
   current,
-  (index) => {
-    const strip = chipStrip.value;
-    const chip = strip?.children[index];
-    if (!strip || !(chip instanceof HTMLElement)) return;
-    const edge = 16;
-    if (chip.offsetLeft - edge < strip.scrollLeft)
-      strip.scrollLeft = chip.offsetLeft - edge;
-    else if (
-      chip.offsetLeft + chip.offsetWidth + edge >
-      strip.scrollLeft + strip.clientWidth
-    )
-      strip.scrollLeft =
-        chip.offsetLeft + chip.offsetWidth + edge - strip.clientWidth;
-  },
-  { flush: "post" },
-);
+  onScroll: onBoardScroll,
+  showColumn,
+} = useSnapColumns(board, { active: phone, count: () => chips.value.length });
 
 /*
  * A freshly shown board opens on today. On a phone that is today's column
@@ -1257,24 +1209,13 @@ useShortcutHandlers({
       A phone's chips: one per column, the one in view marked by its frame and
       weight (aria-current); a tap brings its column.
     -->
-    <nav
+    <ColumnChips
       v-if="phone && plan && !isLoading && !loadError"
-      ref="chipStrip"
-      class="plan-view__chips"
-      aria-label="Spalten des Plans"
-    >
-      <button
-        v-for="(chip, index) in chips"
-        :key="chip.key"
-        type="button"
-        class="plan-view__chip"
-        :aria-current="index === current ? 'true' : undefined"
-        :aria-label="chip.name === chip.label ? undefined : chip.name"
-        @click="showColumn(index)"
-      >
-        {{ chip.label }}
-      </button>
-    </nav>
+      :chips="chips"
+      :current="current"
+      label="Spalten des Plans"
+      @show="showColumn"
+    />
 
     <!-- Measured for the columns that fit; always there, whatever it holds. -->
     <div ref="frame" class="plan-view__frame">
@@ -1307,7 +1248,7 @@ useShortcutHandlers({
         v-else-if="plan"
         ref="board"
         class="plan-view__board"
-        :class="{ 'plan-view__board--phone': phone }"
+        :class="{ 'snap-board': phone }"
         :style="{ gridTemplateColumns: columns }"
         @scroll.passive="onBoardScroll"
       >
@@ -1423,72 +1364,9 @@ useShortcutHandlers({
   padding-bottom: var(--space-2);
 }
 
-/*
- * A phone: every column a screen wide, snapping into place. While a card is
- * carried (Sortable's floating copy is in the board), the board scrolls
- * freely, so it can glide under the card near the edges.
- */
-.plan-view__board--phone {
+/* A phone: one column per screen, snapping (`.snap-board` in style.css). */
+.plan-view__board.snap-board {
   gap: var(--space-3);
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-}
-
-.plan-view__board--phone > * {
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
-}
-
-.plan-view__board--phone:has(.sortable-fallback) {
-  scroll-snap-type: none;
-}
-
-/*
- * The chips stay at the top while the columns scroll down; they scroll
- * sideways in themselves when they do not all fit.
- */
-.plan-view__chips {
-  position: sticky;
-  top: env(safe-area-inset-top, 0px);
-  z-index: 2;
-  display: flex;
-  gap: var(--space-2);
-  margin: calc(-1 * var(--space-2)) -1rem var(--space-2);
-  padding: var(--space-2) 1rem;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  background: var(--color-ground);
-  scrollbar-width: none;
-}
-
-.plan-view__chip {
-  flex: none;
-  min-height: var(--tap);
-  padding: 0 var(--space-4);
-  border: 1.5px solid var(--color-line);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--color-ink-muted);
-  font: inherit;
-  font-size: 0.9375rem;
-  font-weight: 700;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: transform 420ms var(--spring);
-}
-
-.plan-view__chip:active {
-  transform: var(--press);
-  transition-duration: 90ms;
-}
-
-/* The column in view: ink on white in an ink frame, heavier, never a colour alone. */
-.plan-view__chip[aria-current="true"] {
-  border-color: var(--color-ink);
-  background: var(--color-surface);
-  box-shadow: inset 0 0 0 1px var(--color-ink);
-  color: var(--color-ink);
-  font-weight: 800;
 }
 
 /* The bones take the board's columns but are clipped, never scrolled. */

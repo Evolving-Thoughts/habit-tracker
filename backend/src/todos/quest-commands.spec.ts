@@ -166,7 +166,20 @@ describe('saveQuest', () => {
     await saveQuest(manager, todo, { completed: true }, new Date());
     expect(todo.completedAt).toEqual(NOW);
     await saveQuest(manager, todo, { completed: false }, NOW);
-    expect(todo).toMatchObject({ completed: false, completedAt: null });
+    expect(todo).toMatchObject({
+      completed: false,
+      completedAt: null,
+      setAsideAt: NOW,
+    });
+  });
+
+  it('lifts the "Geblockt" marker of a quest it completes', async () => {
+    const { manager } = store(null);
+    const blocked = quest({ blocked: true });
+    await saveQuest(manager, blocked, { scheduledDate: '2026-10-03' }, NOW);
+    expect(blocked.blocked).toBe(true);
+    await saveQuest(manager, blocked, { completed: true }, NOW);
+    expect(blocked.blocked).toBe(false);
   });
 
   it('ends the stopwatch of a quest it completes, not of one it edits', async () => {

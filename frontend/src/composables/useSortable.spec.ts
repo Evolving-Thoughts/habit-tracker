@@ -7,6 +7,7 @@ import {
   pressesControl,
   useSortable,
 } from "./useSortable";
+import { onCardClick } from "../utils/card-click";
 
 type Handlers = {
   onStart: (event: { item: HTMLElement }) => void;
@@ -109,6 +110,68 @@ describe("useSortable", () => {
     expect(() =>
       handlers.onChoose({ item: card, originalEvent: touch }),
     ).not.toThrow();
+    wrapper.unmount();
+  });
+});
+
+describe("useSortable: a long press without a drag", () => {
+  /** A list that reports a held card, as the campaign board does. */
+  function holdList(onHold: (item: HTMLElement) => void) {
+    return defineComponent({
+      setup() {
+        const container = ref<HTMLElement | null>(null);
+        useSortable(container, {
+          item: "[data-key]",
+          onMove: () => undefined,
+          onHold,
+        });
+        return () =>
+          h("div", { ref: container }, [h("p", { "data-key": "A" }, "A")]);
+      },
+    });
+  }
+  const touch = () => new PointerEvent("pointerdown", { pointerType: "touch" });
+
+  it("reports a card a finger held and let go without moving, and opens nothing", async () => {
+    const onHold = vi.fn();
+    const wrapper = mount(holdList(onHold), { attachTo: document.body });
+    await nextTick();
+    const card = (wrapper.element as HTMLElement).querySelector<HTMLElement>(
+      '[data-key="A"]',
+    )!;
+    const handlers = sortables.at(-1)!;
+    handlers.onChoose({ item: card, originalEvent: touch() });
+    handlers.onUnchoose({ item: card });
+    expect(onHold).toHaveBeenCalledWith(card);
+
+    // The click the release may bring is no tap on the card.
+    const open = vi.fn();
+    card.addEventListener("click", (event) => onCardClick(event, open));
+    card.click();
+    expect(open).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("leaves a drag a drag, and a mouse press a click", async () => {
+    const onHold = vi.fn();
+    const wrapper = mount(holdList(onHold), { attachTo: document.body });
+    await nextTick();
+    const card = (wrapper.element as HTMLElement).querySelector<HTMLElement>(
+      '[data-key="A"]',
+    )!;
+    const handlers = sortables.at(-1)!;
+    // Held, then moved: the card was carried.
+    handlers.onChoose({ item: card, originalEvent: touch() });
+    handlers.onStart({ item: card });
+    handlers.onUnchoose({ item: card });
+    handlers.onEnd({ item: card, from: card.parentElement, to: card.parentElement });
+    // A mouse press that never moved: an ordinary click, no hold.
+    handlers.onChoose({
+      item: card,
+      originalEvent: new PointerEvent("pointerdown", { pointerType: "mouse" }),
+    });
+    handlers.onUnchoose({ item: card });
+    expect(onHold).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 });

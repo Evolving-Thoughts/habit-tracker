@@ -250,6 +250,46 @@ describe("QuickAddQuest", () => {
     expect(wrapper.get('[role="alert"]').text()).toBe("Offline");
   });
 
+  describe("below a campaign (the campaign board)", () => {
+    const parent = { id: 1, categoryId: 11 };
+
+    it("creates the quest below the field's campaign, with its category", async () => {
+      const wrapper = mount(QuickAddQuest, {
+        props: { date: null, parent, placeToggle: false },
+      });
+      await wrapper.get('input[name="quickTitle"]').setValue("Gliederung");
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+
+      expect(createTodo).toHaveBeenCalledWith({
+        title: "Gliederung",
+        scheduledDate: null,
+        timeOfDay: null,
+        plannedDurationMinutes: null,
+        parentId: 1,
+        categoryId: 11,
+        backlogPlace: "bottom",
+      });
+    });
+
+    it("lets a campaign without a category leave it to the server", async () => {
+      const wrapper = mount(QuickAddQuest, {
+        props: { date: "2026-10-02", parent: { id: 1, categoryId: null } },
+      });
+      await wrapper.get('input[name="quickTitle"]').setValue("Gliederung");
+      await wrapper.get("form").trigger("submit");
+      await flushPromises();
+
+      expect(createTodo).toHaveBeenCalledWith({
+        title: "Gliederung",
+        scheduledDate: "2026-10-02",
+        timeOfDay: null,
+        plannedDurationMinutes: null,
+        parentId: 1,
+      });
+    });
+  });
+
   describe("day and duration in the text", () => {
     // Tuesday, 24 Nov 2026, in Berlin: "morgen" is Wednesday the 25th.
     beforeEach(() => {

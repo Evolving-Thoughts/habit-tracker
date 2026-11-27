@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TODO_FIELDS } from "../types/fixtures";
+import { HIERARCHY_FIELDS, TODO_FIELDS } from "../types/fixtures";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
 import {
   goalWords,
@@ -15,6 +15,7 @@ const todo = (
   completed = false,
 ): HierarchyTodo => ({
   ...TODO_FIELDS,
+  ...HIERARCHY_FIELDS,
   id,
   parentId,
   title: `Quest ${id}`,

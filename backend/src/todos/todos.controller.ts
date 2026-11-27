@@ -21,6 +21,7 @@ import {
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { ReorderBacklogDto } from './dto/reorder-backlog.dto';
 import { RescheduleTodoDto } from './dto/reschedule-todo.dto';
+import { SetAsideTodoDto } from './dto/set-aside-todo.dto';
 import { NotesResponse, SetNotesDto } from './dto/todo-notes.dto';
 import { TodoResponseDto } from './dto/todo-response.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
@@ -148,6 +149,29 @@ export class TodosController {
     @Body() dto: RescheduleTodoDto,
   ): Promise<TodoResponseDto> {
     const todo = await this.todosService.reschedule(user.id, id, dto);
+
+    return (await this.respond(user.id, [todo]))[0];
+  }
+
+  @Post(':id/set-aside')
+  @HttpCode(HttpStatus.OK)
+  async setAside(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SetAsideTodoDto,
+  ): Promise<TodoResponseDto> {
+    const todo = await this.todosService.setAside(user.id, id, dto.blocked);
+
+    return (await this.respond(user.id, [todo]))[0];
+  }
+
+  @Post(':id/start-work')
+  @HttpCode(HttpStatus.OK)
+  async startWork(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<TodoResponseDto> {
+    const todo = await this.todosService.startWork(user.id, id);
 
     return (await this.respond(user.id, [todo]))[0];
   }

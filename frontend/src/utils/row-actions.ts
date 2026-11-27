@@ -29,7 +29,11 @@ export type MenuIcon =
   | "arrow-up"
   | "arrow-down"
   | "campaigns"
-  | "challenge";
+  | "challenge"
+  | "questlog"
+  | "pause"
+  | "play"
+  | "blocked";
 
 /** One entry of an action menu. */
 export type MenuEntry = {
@@ -161,6 +165,16 @@ export type RowMenuSteps = {
     plan?: boolean;
     lead?: boolean;
   };
+  /** "Zurück ins To-Do": the day goes, the quest waits without one. */
+  unplan?: () => void;
+  /** "Erledigen", for a card whose ring is not the only way (the campaign board). */
+  complete?: () => void;
+  /** "In Arbeit nehmen": into In Arbeit by hand, without a stopwatch. */
+  startWork?: () => void;
+  /** "Zurückstellen …": work stops for now; asks whether it is blocked. */
+  setAside?: () => void;
+  /** "Als geblockt markieren" (`blocked` false) or "Blocker aufheben". */
+  block?: { run: () => void; blocked: boolean };
   /** A daily's run: skip it for this day. */
   skip?: () => void;
   edit?: () => void;
@@ -211,6 +225,49 @@ export function rowMenu(
         ? `Tag für ${title} wählen`
         : `${title} verschieben`,
       run: otherDay.run,
+    });
+  if (steps.unplan)
+    add({
+      id: "unplan",
+      label: "Zurück ins To-Do",
+      icon: "questlog",
+      ariaLabel: `${title} zurück ins To-Do, ohne Tag`,
+      run: steps.unplan,
+    });
+  if (steps.complete)
+    add({
+      id: "complete",
+      label: "Erledigen",
+      icon: "check",
+      ariaLabel: `${title} erledigen`,
+      shortcut: "row.done",
+      run: steps.complete,
+    });
+  if (steps.startWork)
+    add({
+      id: "start-work",
+      label: "In Arbeit nehmen",
+      icon: "play",
+      ariaLabel: `${title} in Arbeit nehmen`,
+      run: steps.startWork,
+    });
+  if (steps.setAside)
+    add({
+      id: "set-aside",
+      label: "Zurückstellen …",
+      icon: "pause",
+      ariaLabel: `${title} zurückstellen`,
+      run: steps.setAside,
+    });
+  if (steps.block)
+    add({
+      id: "block",
+      label: steps.block.blocked ? "Blocker aufheben" : "Als geblockt markieren",
+      icon: "blocked",
+      ariaLabel: steps.block.blocked
+        ? `Blocker von ${title} aufheben`
+        : `${title} als geblockt markieren`,
+      run: steps.block.run,
     });
   if (steps.skip)
     add({

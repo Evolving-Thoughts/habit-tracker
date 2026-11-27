@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TODO_FIELDS } from "../types/fixtures";
+import { HIERARCHY_FIELDS, TODO_FIELDS } from "../types/fixtures";
 import type { QuestHoursResponse } from "../types/quest-hours";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
 import {
@@ -141,6 +141,7 @@ describe("campaignTiles", () => {
     changes: Partial<HierarchyTodo> = {},
   ): HierarchyTodo => ({
     ...TODO_FIELDS,
+    ...HIERARCHY_FIELDS,
     id,
     parentId,
     title: `Quest ${id}`,

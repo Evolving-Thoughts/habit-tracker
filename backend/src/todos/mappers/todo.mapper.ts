@@ -30,6 +30,8 @@ export class TodoMapper {
       plannedDurationMinutes: todo.plannedDurationMinutes,
       focusBlock: todo.focusBlock,
       timerEligible: isTodoTimerEligible(todo),
+      blocked: todo.blocked,
+      setAsideAt: todo.setAsideAt?.toISOString() ?? null,
     });
   }
 }

@@ -146,6 +146,24 @@ export class TodoEntity {
   })
   plannedDurationMinutes!: number | null;
 
+  /**
+   * Kampagnen-Board (campaign-board.md): when the quest was last put back out
+   * of "In Arbeit"; only work after it counts as in progress.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  setAsideAt!: Date | null;
+
+  /**
+   * When the user last took the quest into "In Arbeit" by hand; it counts
+   * like work, until the quest is set aside again.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  startedAt!: Date | null;
+
+  /** The user's "Geblockt" marker; starting a stopwatch or completing clears it. */
+  @Column({ type: 'boolean', default: false })
+  blocked!: boolean;
+
   /** Fokus-Sperre: the default rule, always or never (focus-block-rules.ts). */
   @Column({ type: 'varchar', length: 8, default: 'default' })
   focusBlock!: FocusBlockOverride;
