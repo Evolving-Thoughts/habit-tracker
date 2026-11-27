@@ -57,11 +57,8 @@ const { timer, elapsed, reached, error, busy, switching } = controller;
  */
 const focusBlock = createFocusBlockController();
 provide(focusBlockKey, focusBlock);
-watch(
-  // A string, so the 3-second poll's fresh objects do not count as a change.
-  () => `${timer.value?.id ?? ""}:${timer.value?.state ?? ""}`,
-  () => void focusBlock.refresh(),
-);
+// What the server confirmed, not what a press shows ahead of its answer.
+watch(controller.confirmed, () => void focusBlock.refresh());
 function openFocus(): void {
   window.location.hash = hrefOf("focus");
 }

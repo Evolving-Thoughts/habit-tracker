@@ -88,6 +88,12 @@ these instants (`timer-math.ts`), never from a counter that ticks, so a locked
 phone or a restarted server cannot make it drift. The browser counts on from the
 server's answer on a monotonic clock.
 
+A start, pause or resume pressed in this tab shows at once, before the server
+answers (`mutate` in `useTimer.ts`), so a slow connection never makes a press
+look ignored; the answer replaces what was shown and a refusal takes it back.
+A start shows ahead only when no other stopwatch is in the way. What follows
+the server, like the Fokus-Sperre, watches `confirmed`, not the state shown.
+
 Every stretch is logged as work when it ends (pause, end, completion); the
 calendar shows the logs as the Logbuch (see `logbook.md`). A stretch
 that nobody ends counts for at most **twelve hours**: the next read cuts it there
