@@ -23,6 +23,7 @@ import type { HabitResponseDto } from '../src/habits/dto/habit-response.dto';
 import type { DayPlannerResponseDto } from '../src/day-planner/dto/day-planner-response.dto';
 import type { StartTimerDto } from '../src/timers/timer.dto';
 import { resetDatabase } from './reset-database';
+import { holdUserLock, stillPending, within } from './user-lock';
 describe('Synced timers and Dump completion (e2e)', () => {
   let app: INestApplication;
   let db: DataSource;
@@ -285,6 +286,83 @@ describe('Synced timers and Dump completion (e2e)', () => {
     expect(stored[0].endedAt).toEqual(
       new Date(started.getTime() + 12 * 3_600_000),
     );
+  });
+  it('reads the stopwatch and Heute without waiting for a change in progress', async () => {
+    await habit();
+    const run = (await planner()).items.find((item) => item.type === 'habit');
+    const id = await todo(30);
+    const timer = (await start({ kind: 'todo', targetId: id })).timer!;
+    later(MINUTE);
+    const release = await holdUserLock(db, TEST_USER);
+    try {
+      const [current, today] = await within(
+        Promise.all([read(), planner()]),
+        2_000,
+      );
+      expect(current.timer).toMatchObject({
+        id: timer.id,
+        state: 'running',
+        elapsedMilliseconds: MINUTE,
+      });
+      expect(today.items).toEqual([
+        expect.objectContaining({ title: 'Gitarre', timerEligible: true }),
+      ]);
+    } finally {
+      await release();
+    }
+    // A Daily's stopwatch reads its run as stored, without opening it.
+    await action(timer.id, 'stop');
+    await start({ kind: 'occurrence', targetId: run!.occurrenceId });
+    const again = await holdUserLock(db, TEST_USER);
+    try {
+      expect((await within(read(), 2_000)).timer).toMatchObject({
+        kind: 'occurrence',
+        targetId: run!.occurrenceId,
+        state: 'running',
+      });
+    } finally {
+      await again();
+    }
+  });
+  it('catches a forgotten stopwatch up under the lock, after the change in progress', async () => {
+    const id = await todo();
+    const timer = (await start({ kind: 'todo', targetId: id })).timer!;
+    later(13 * 3_600_000);
+    const release = await holdUserLock(db, TEST_USER);
+    const reading = read();
+    try {
+      // Something has to be stored, so the read waits for the lock.
+      expect(await stillPending(reading, 300)).toBe(true);
+    } finally {
+      await release();
+    }
+    expect((await reading).timer).toMatchObject({
+      id: timer.id,
+      state: 'paused',
+      elapsedMilliseconds: 12 * 3_600_000,
+    });
+    expect(await logs()).toHaveLength(1);
+  });
+  it('stores the runs Heute needs under the lock once a day has passed', async () => {
+    await habit();
+    const first = (await planner()).items[0];
+    later(2 * 24 * 3_600_000);
+    const release = await holdUserLock(db, TEST_USER);
+    const loading = planner();
+    try {
+      expect(await stillPending(loading, 300)).toBe(true);
+    } finally {
+      await release();
+    }
+    const [today] = (await loading).items;
+    expect(today).toMatchObject({ title: 'Gitarre', status: 'pending' });
+    expect(today.type === 'habit' && today.occurrenceId).not.toBe(
+      first.type === 'habit' && first.occurrenceId,
+    );
+    const ranOut = await db
+      .getRepository(HabitOccurrenceEntity)
+      .findOneByOrFail({ id: first.type === 'habit' ? first.occurrenceId : 0 });
+    expect(ranOut.status).toBe('skipped');
   });
   it('allows only one timer across simultaneous devices, including paused timers', async () => {
     const a = await todo(),

@@ -67,8 +67,10 @@ export type OpenRun = {
  * themselves: the user's runs as of now (`getToday`, `reconcileAll`), a
  * habit or run opened for a change (`openHabit`, `editHabit`, `openRun`,
  * inside the per-user unit of work), and whether a run may be acted on
- * (`runRefusal`, pure). The user row is the one lock: every path here
- * takes it first, so habit rows are read without a lock of their own.
+ * (`runRefusal`, pure). The user row is the one lock: every change here
+ * takes it first, so habit rows are read without a lock of their own. The
+ * runs as of now are decided in a lock-free read and stored under the lock
+ * only when something has to be stored (`asOfNow`).
  */
 @Injectable()
 export class HabitSchedulingService {
@@ -599,20 +601,73 @@ export class HabitSchedulingService {
     });
   }
 
-  /** Reconciles every active habit of the user in one locked transaction, then reads today's occurrences. */
-  async getToday(userId: string): Promise<HabitOccurrenceEntity[]> {
-    return this.unitOfWork.run(userId, (manager) =>
-      this.todayIn(manager, userId),
+  /**
+   * Today's runs of the user's active habits as of `now`: open ones due by
+   * today, and those completed or skipped today.
+   */
+  getToday(
+    userId: string,
+    now = this.clock.now(),
+  ): Promise<HabitOccurrenceEntity[]> {
+    return this.asOfNow(userId, now, (manager) =>
+      this.todayIn(manager, userId, now),
     );
   }
 
   /**
-   * Reconciles every active habit of the user in one locked transaction, so
-   * today's runs are stored (the Plan reads them afterwards, as Heute does).
+   * Stores today's runs of every active habit when they are not stored yet
+   * (the Plan reads them afterwards, as Heute does).
    */
   async reconcileAll(userId: string): Promise<void> {
-    await this.unitOfWork.run(userId, (manager) =>
-      this.reconcileActive(manager, userId, this.clock.now()),
+    await this.asOfNow(userId, this.clock.now(), () => Promise.resolve());
+  }
+
+  /**
+   * Answers from the user's runs as of `now`. Decides in a consistent read
+   * whether any active habit has runs to store (`lifecycleChanges`); in the
+   * common case it has none, and `answer` reads in that same snapshot,
+   * without the user lock. Otherwise the runs are brought up to `now` under
+   * the lock (decided again there) and `answer` reads after that, in the
+   * same transaction.
+   */
+  private async asOfNow<T>(
+    userId: string,
+    now: Date,
+    answer: (manager: EntityManager) => Promise<T>,
+  ): Promise<T> {
+    const asStored = await this.unitOfWork.read(async (manager) =>
+      (await this.runsUpToDate(manager, userId, now))
+        ? { value: await answer(manager) }
+        : null,
+    );
+    if (asStored) return asStored.value;
+    return this.unitOfWork.run(userId, async (manager) => {
+      await this.reconcileActive(manager, userId, now);
+      return answer(manager);
+    });
+  }
+
+  /**
+   * Whether the runs of the user's active habits (or of `habitIds` among
+   * them) match `now` as stored: nothing to create, nothing ran out. Reads
+   * only, so a lock-free read may ask it.
+   */
+  async runsUpToDate(
+    manager: EntityManager,
+    userId: string,
+    now: Date,
+    habitIds?: number[],
+  ): Promise<boolean> {
+    return (await this.loadActive(manager, userId, habitIds)).every(
+      ({ habit, versions, occurrences }) => {
+        const { resolve, create } = lifecycleChanges(
+          habit,
+          versions,
+          occurrences,
+          now,
+        );
+        return !resolve.length && !create.length;
+      },
     );
   }
 
@@ -621,14 +676,38 @@ export class HabitSchedulingService {
     userId: string,
     now: Date,
   ): Promise<void> {
+    for (const loaded of await this.loadActive(manager, userId))
+      await this.reconcile(manager, loaded.habit, now, loaded);
+  }
+
+  /**
+   * The user's active habits (or `habitIds` among them) with all their runs
+   * and schedule versions, as `reconcile` reads them for one habit. Three
+   * reads for all habits: Heute and the Plan come through here on every
+   * load.
+   */
+  private async loadActive(
+    manager: EntityManager,
+    userId: string,
+    habitIds?: number[],
+  ): Promise<
+    {
+      habit: HabitEntity;
+      occurrences: HabitOccurrenceEntity[];
+      versions: HabitScheduleVersionEntity[];
+    }[]
+  > {
+    if (habitIds?.length === 0) return [];
     const habits = await manager.getRepository(HabitEntity).find({
-      where: { isActive: true, userId },
+      where: {
+        isActive: true,
+        userId,
+        ...(habitIds ? { id: In(habitIds) } : {}),
+      },
       order: { id: 'ASC' },
     });
 
-    if (!habits.length) return;
-    // Two reads for all habits, in the order `reconcile` reads one habit's
-    // in: Heute and the Plan come through here on every load.
+    if (!habits.length) return [];
     const habitId = In(habits.map((habit) => habit.id));
     const [occurrences, versions] = await Promise.all([
       manager.getRepository(HabitOccurrenceEntity).find({
@@ -651,22 +730,18 @@ export class HabitSchedulingService {
     };
     const runs = ofHabit(occurrences);
     const plans = ofHabit(versions);
-
-    for (const habit of habits) {
-      await this.reconcile(manager, habit, now, {
-        occurrences: runs.get(habit.id) ?? [],
-        versions: plans.get(habit.id) ?? [],
-      });
-    }
+    return habits.map((habit) => ({
+      habit,
+      occurrences: runs.get(habit.id) ?? [],
+      versions: plans.get(habit.id) ?? [],
+    }));
   }
 
-  private async todayIn(
+  private todayIn(
     manager: EntityManager,
     userId: string,
+    now: Date,
   ): Promise<HabitOccurrenceEntity[]> {
-    const now = this.clock.now();
-    await this.reconcileActive(manager, userId, now);
-
     const today = dayOf(now);
 
     return ownedOccurrences(manager, userId, { select: true })

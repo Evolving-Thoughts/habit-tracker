@@ -177,7 +177,8 @@ whole user's tree; pagination/virtualization would require further load testing.
 
 1. `GET /todos/:id/deletion-preview` returns all affected live Todos and their
    attached timers, including running/paused states, plus a SHA-256 snapshot token.
-   Reading a preview makes no persistent change.
+   Reading a preview makes no persistent change: it is one read-only snapshot
+   without the user lock (`UserUnitOfWork.read`).
 2. The user reviews the list and explicitly confirms.
 3. `DELETE /todos/:id` accepts `{ "confirmationToken": "..." }`.
 4. Under the same per-user lock, the server computes the current snapshot again.

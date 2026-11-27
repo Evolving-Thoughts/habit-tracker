@@ -121,6 +121,7 @@ describe('TodosService', () => {
       { now: () => NOW, today: () => '2026-10-02' },
       {
         run: (_userId: string, work: (m: unknown) => unknown) => work(manager),
+        read: (work: (m: unknown) => unknown) => work(manager),
       } as unknown as UserUnitOfWork,
     );
   });

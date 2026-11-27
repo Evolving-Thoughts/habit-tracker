@@ -12,6 +12,7 @@ import { minutesOfTime } from '../day-bests/day-best-rules';
 import { HabitEntity } from '../habits/entities/habit.entity';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
 import {
+  awaitsFreeze,
   challengeResponse,
   countChallenge,
   freezeIfClosed,
@@ -66,32 +67,72 @@ export class MonthChallengesService {
    * This month's challenge with its progress, next month's and the earlier
    * ones, newest first. Closed results are frozen on the way; the running
    * challenge's Daily is brought up to now first, so today's run is there.
+   * Both are stores, so it decides in a lock-free read whether one is due;
+   * in the common case none is and the read is the answer. Otherwise it
+   * does them under the lock and answers from there.
    */
-  overview(userId: string): Promise<MonthChallengesResponse> {
-    return this.unitOfWork.run(userId, async (manager) => {
-      const now = this.clock.now();
-      const today = dayOf(now);
-      const current = monthOf(today);
-      const challenges = await manager
-        .getRepository(MonthChallengeEntity)
-        .find({
-          where: { userId },
-          relations: { habit: true },
-          order: { month: 'DESC' },
-        });
+  async overview(userId: string): Promise<MonthChallengesResponse> {
+    const now = this.clock.now();
+    const asStored = await this.unitOfWork.read(async (manager) => {
+      const challenges = await this.challengesOf(manager, userId);
+      const running = challenges.filter(
+        (challenge) =>
+          challengeStatus(challenge, dayOf(now)) === 'running' &&
+          challenge.habit?.isActive,
+      );
+      if (
+        challenges.some((challenge) => awaitsFreeze(challenge, now)) ||
+        !(await this.scheduling.runsUpToDate(
+          manager,
+          userId,
+          now,
+          running.map((challenge) => challenge.habit!.id),
+        ))
+      )
+        return null;
       const responses: MonthChallengeResponse[] = [];
       for (const challenge of challenges)
-        responses.push(await this.respond(manager, userId, challenge, now));
-      return {
-        today,
-        current:
-          responses.find((item) => `${item.month}-01` === current) ?? null,
-        next:
-          responses.find((item) => `${item.month}-01` === nextMonth(current)) ??
-          null,
-        past: responses.filter((item) => `${item.month}-01` < current),
-      };
+        responses.push(await this.asStored(manager, challenge, now));
+      return this.sorted(responses, now);
     });
+    if (asStored) return asStored;
+    return this.unitOfWork.run(userId, async (manager) => {
+      const lockedNow = this.clock.now();
+      const responses: MonthChallengeResponse[] = [];
+      for (const challenge of await this.challengesOf(manager, userId))
+        responses.push(
+          await this.respond(manager, userId, challenge, lockedNow),
+        );
+      return this.sorted(responses, lockedNow);
+    });
+  }
+
+  private challengesOf(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<MonthChallengeEntity[]> {
+    return manager.getRepository(MonthChallengeEntity).find({
+      where: { userId },
+      relations: { habit: true },
+      order: { month: 'DESC' },
+    });
+  }
+
+  /** The overview's shape: this month's, next month's and the earlier ones. */
+  private sorted(
+    responses: MonthChallengeResponse[],
+    now: Date,
+  ): MonthChallengesResponse {
+    const today = dayOf(now);
+    const current = monthOf(today);
+    return {
+      today,
+      current: responses.find((item) => `${item.month}-01` === current) ?? null,
+      next:
+        responses.find((item) => `${item.month}-01` === nextMonth(current)) ??
+        null,
+      past: responses.filter((item) => `${item.month}-01` < current),
+    };
   }
 
   /** A Daily of one's own, still active, for this month or the next. */
@@ -218,26 +259,36 @@ export class MonthChallengesService {
     return challenge;
   }
 
-  /** The response, frozen once closed, counted (Daily brought up to now) while it runs. */
+  /**
+   * The response, frozen once closed, counted (Daily brought up to now)
+   * while it runs. Under the lock.
+   */
   private async respond(
     manager: EntityManager,
     userId: string,
     challenge: MonthChallengeEntity,
     now: Date,
   ): Promise<MonthChallengeResponse> {
-    const today = dayOf(now);
     await freezeIfClosed(manager, challenge, now);
-    const status = challengeStatus(challenge, today);
-    if (status === 'upcoming')
-      // Nothing stored yet: the Daily's rhythm says what will be due.
-      return challengeResponse(
-        challenge,
-        today,
-        await countChallenge(manager, challenge, now),
-      );
-    if (status !== 'running') return challengeResponse(challenge, today);
-    if (challenge.habit?.isActive)
+    if (
+      challengeStatus(challenge, dayOf(now)) === 'running' &&
+      challenge.habit?.isActive
+    )
       await this.scheduling.openHabit(manager, userId, challenge.habit.id, now);
+    return this.asStored(manager, challenge, now);
+  }
+
+  /** The response from what is stored: frozen or not, runs as they are. */
+  private async asStored(
+    manager: EntityManager,
+    challenge: MonthChallengeEntity,
+    now: Date,
+  ): Promise<MonthChallengeResponse> {
+    const today = dayOf(now);
+    const status = challengeStatus(challenge, today);
+    // An upcoming one has nothing stored yet: the Daily's rhythm says what will be due.
+    if (status !== 'upcoming' && status !== 'running')
+      return challengeResponse(challenge, today);
     return challengeResponse(
       challenge,
       today,

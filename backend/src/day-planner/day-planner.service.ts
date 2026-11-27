@@ -85,17 +85,18 @@ export class DayPlannerService {
     private readonly unitOfWork: UserUnitOfWork,
   ) {}
 
+  /** Heute: one response, one `now`, so every part speaks of the same moment. */
   async getToday(userId: string): Promise<DayPlannerResponseDto> {
-    const today = this.clock.today();
+    const now = this.clock.now();
+    const today = dayOf(now);
 
     const [todos, occurrences, context] = await Promise.all([
       this.findTodosForToday(userId, today),
-      this.scheduling.getToday(userId),
+      this.scheduling.getToday(userId, now),
       loadAgendaContext(this.db.manager, userId, today),
     ]);
     const { ancestry } = context;
-    // Runs are reconciled now: the challenge counts today's as stored.
-    const now = this.clock.now();
+    // Runs are as of now: the challenge counts today's as stored.
     const monthChallenge = await runningChallengeResponse(
       this.db.manager,
       userId,
@@ -407,7 +408,7 @@ export class DayPlannerService {
   async setEventDone(userId: string, id: number, done: boolean): Promise<void> {
     const result = await this.db
       .getRepository(ExternalEventEntity)
-      .update({ id, userId }, { doneAt: done ? new Date() : null });
+      .update({ id, userId }, { doneAt: done ? this.clock.now() : null });
     if (!result.affected) throw new NotFoundException('Event not found');
   }
 

@@ -362,11 +362,12 @@ export class TodosService {
     });
   }
 
+  /** What deleting would remove, from one lock-free snapshot. */
   async deletionPreview(
     userId: string,
     id: number,
   ): Promise<DeletionPreviewResponse> {
-    return this.unitOfWork.run(userId, async (manager) => {
+    return this.unitOfWork.read(async (manager) => {
       const snapshot = await this.deletionSnapshot(manager, userId, id);
       return {
         confirmationToken: snapshot.confirmationToken,

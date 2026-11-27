@@ -147,7 +147,9 @@ A challenge answers `{ id, month, startDate, endDate, habitId, title,
 reminderTime, status, endedAt, day, days, done, missed, remaining, total,
 percent, todayRun, todayOccurrenceId }`. Reading brings the running
 challenge's Daily up to now first (`HabitSchedulingService.openHabit`), so today's
-run is stored; closed results are frozen on the way.
+run is stored; closed results are frozen on the way. `GET /month-challenges`
+decides that in a read without the user lock and takes the lock only when a
+run is missing or ran out, or a result is still to be frozen.
 
 Beside its own routes:
 

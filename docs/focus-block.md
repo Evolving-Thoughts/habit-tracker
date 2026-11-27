@@ -99,7 +99,9 @@ The UI says so in Einstellungen.
 - **Time**: ending at `endsAt` needs no worker. Every read closes a block
   past its moment (`openFocusBlock` sets `endedAt = endsAt`, reason
   `target_reached`, or `expired` after twelve hours for a block without
-  `endsAt`). Devices count down on the server's clock (`serverNow`).
+  `endsAt`). `GET /focus-block` reads without the user lock and takes it
+  only when it finds such a block to close. Devices count down on the
+  server's clock (`serverNow`).
 
 ## Data
 

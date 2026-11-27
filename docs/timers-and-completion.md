@@ -184,7 +184,13 @@ and `timerOccurrenceId` on a habit say the same.
 
 Foreign target/timer IDs return 404. Per-user row locks serialize transitions
 across devices and server processes; a partial unique index enforces at most one
-running/paused row. Database checks enforce exactly one target, a valid state and
+running/paused row. `GET /timers/current`, polled every few seconds, takes no
+lock: it reads the stopwatch and its target in one read-only snapshot and asks
+one pure decision, `stopwatchCatchUp` (`stopwatch-catch-up.ts`), whether
+anything has to be stored (target gone or no longer eligible, a new title, the
+Soll reached, a forgotten stretch to cut). Only then does it take the lock,
+read and decide again and store the outcome; a Daily's run is opened
+(`openRun`) on that path only. Database checks enforce exactly one target, a valid state and
 that exactly a running stopwatch has a running stretch. Old stopped rows are
 retained.
 

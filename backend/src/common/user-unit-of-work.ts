@@ -19,7 +19,19 @@ export async function lockUser(
   if (!user) throw new NotFoundException();
 }
 
-/** One transaction per user change, holding the per-user lock. */
+/**
+ * The per-user transaction policy, with two intents:
+ *
+ * - `run`, a change: one transaction holding the user lock (`lockUser`), so
+ *   every change of a user serializes behind the others. Every write takes it.
+ * - `read`, a consistent read: one read-only `REPEATABLE READ` transaction
+ *   without the lock, so everything it reads is one snapshot of committed
+ *   state and it never waits for a change (nor a change for it).
+ *
+ * A read that finds something to store (a run that ran out, a stopwatch
+ * forgotten overnight) never stores it from its snapshot: it answers "not
+ * as is" and the caller decides again inside `run`.
+ */
 @Injectable()
 export class UserUnitOfWork {
   constructor(private readonly db: DataSource) {}
@@ -30,6 +42,13 @@ export class UserUnitOfWork {
   ): Promise<T> {
     return this.db.transaction(async (manager) => {
       await lockUser(manager, userId);
+      return work(manager);
+    });
+  }
+
+  read<T>(work: (manager: EntityManager) => Promise<T>): Promise<T> {
+    return this.db.transaction('REPEATABLE READ', async (manager) => {
+      await manager.query('SET TRANSACTION READ ONLY');
       return work(manager);
     });
   }

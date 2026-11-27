@@ -4,13 +4,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { EntityManager, In } from 'typeorm';
+import { EntityManager } from 'typeorm';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
-import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
-import { TimerEntity } from '../timers/timer.entity';
-import { elapsedAt } from '../timers/timer-math';
-import { TodoEntity } from '../todos/entities/todo.entity';
+import {
+  findOpenTimer,
+  focusOverrideOf,
+  startFocusFor,
+} from '../timers/timer-target';
 import type {
   AddFocusEntryDto,
   FocusBlockRequestDto,
@@ -26,15 +27,15 @@ import {
 import {
   assertListChangeAllowed,
   assertLiftable,
+  lapsedReason,
   MAX_ENTRIES_PER_LIST,
   normalizeDomain,
   normalizePackage,
-  type FocusBlockOverride,
 } from './focus-block-rules';
 import {
   openFocusBlock,
   readFocusSettings,
-  startFocusBlock,
+  storedOpenFocusBlock,
 } from './focus-block-store';
 
 /**
@@ -58,9 +59,24 @@ export class FocusBlocksService {
     private readonly unitOfWork: UserUnitOfWork,
   ) {}
 
-  state(userId: string): Promise<FocusBlockStateResponse> {
-    return this.unitOfWork.run(userId, (manager) =>
-      this.read(manager, userId, this.clock.now()),
+  /**
+   * The state as of now. Polled by the phone, so it reads without the user
+   * lock; only a block whose moment has passed has to be closed, and that
+   * happens under the lock, decided again there.
+   */
+  async state(userId: string): Promise<FocusBlockStateResponse> {
+    const asStored = await this.unitOfWork.read(async (manager) => {
+      const block = await storedOpenFocusBlock(manager, userId);
+      // After the snapshot, as after the lock: nothing it shows lies ahead.
+      const now = this.clock.now();
+      if (block && lapsedReason(block, now)) return null;
+      return this.respond(manager, userId, block, now);
+    });
+    return (
+      asStored ??
+      this.unitOfWork.run(userId, (manager) =>
+        this.read(manager, userId, this.clock.now()),
+      )
     );
   }
 
@@ -149,29 +165,17 @@ export class FocusBlocksService {
   ): Promise<FocusBlockStateResponse> {
     return this.unitOfWork.run(userId, async (manager) => {
       const now = this.clock.now();
-      const timer = await manager.findOne(TimerEntity, {
-        where: { userId, state: In(['running', 'paused']) },
-      });
+      const timer = await findOpenTimer(manager, userId);
       if (!timer)
         throw new ConflictException({
           message: 'Eine Sperre beginnt mit der Stoppuhr. Starte sie zuerst.',
           code: 'NO_ACTIVE_TIMER',
         });
-      await startFocusBlock(
+      await startFocusFor(
         manager,
-        userId,
-        {
-          target:
-            timer.todoId !== null
-              ? { todoId: timer.todoId }
-              : { occurrenceId: timer.occurrenceId! },
-          title: timer.title,
-          override: await this.overrideOf(manager, userId, timer),
-          targetMinutes: timer.targetMinutes,
-          elapsedMilliseconds: elapsedAt(timer, now),
-          mode: dto.mode,
-          force: true,
-        },
+        timer,
+        await focusOverrideOf(manager, timer),
+        { mode: dto.mode, force: true },
         now,
       );
       return this.read(manager, userId, now);
@@ -193,25 +197,6 @@ export class FocusBlocksService {
     });
   }
 
-  private async overrideOf(
-    manager: EntityManager,
-    userId: string,
-    timer: TimerEntity,
-  ): Promise<FocusBlockOverride> {
-    if (timer.todoId !== null) {
-      const todo = await manager.findOneBy(TodoEntity, {
-        id: timer.todoId,
-        userId,
-      });
-      return todo?.focusBlock ?? 'default';
-    }
-    const occurrence = await manager.findOne(HabitOccurrenceEntity, {
-      where: { id: timer.occurrenceId! },
-      relations: { habit: true },
-    });
-    return occurrence?.habit?.focusBlock ?? 'default';
-  }
-
   private async assertListChange(
     manager: EntityManager,
     userId: string,
@@ -223,12 +208,27 @@ export class FocusBlocksService {
     assertListChangeAllowed(block?.mode === 'hardcore', { list, action });
   }
 
+  /** The state after closing a block past its moment; under the lock. */
   private async read(
     manager: EntityManager,
     userId: string,
     now: Date,
   ): Promise<FocusBlockStateResponse> {
-    const block = await openFocusBlock(manager, userId, now);
+    return this.respond(
+      manager,
+      userId,
+      await openFocusBlock(manager, userId, now),
+      now,
+    );
+  }
+
+  /** The response around the open block (null: none). */
+  private async respond(
+    manager: EntityManager,
+    userId: string,
+    block: FocusBlockEntity | null,
+    now: Date,
+  ): Promise<FocusBlockStateResponse> {
     const settings = await readFocusSettings(manager, userId);
     const entries = await manager.find(FocusBlockEntryEntity, {
       where: { userId },

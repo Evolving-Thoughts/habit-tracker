@@ -4,8 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager } from 'typeorm';
 import { CalendarSyncService } from '../calendar/calendar-sync.service';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
@@ -22,8 +21,6 @@ import { lengthInMinutes } from './work-time';
 @Injectable()
 export class WorkLogsService {
   constructor(
-    @InjectRepository(WorkLogEntity)
-    private readonly logs: Repository<WorkLogEntity>,
     private readonly calendar: CalendarSyncService,
     private readonly clock: Clock,
     private readonly unitOfWork: UserUnitOfWork,
@@ -71,8 +68,11 @@ export class WorkLogsService {
     return result;
   }
 
+  /** Deletes a log in the user's unit of work, like every other change of it. */
   async remove(userId: string, id: number): Promise<void> {
-    const { affected } = await this.logs.delete({ id, userId });
+    const { affected } = await this.unitOfWork.run(userId, (manager) =>
+      manager.getRepository(WorkLogEntity).delete({ id, userId }),
+    );
     if (!affected)
       throw new NotFoundException(`Work log with ID ${id} was not found`);
   }

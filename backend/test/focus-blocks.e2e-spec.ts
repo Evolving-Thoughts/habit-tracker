@@ -13,8 +13,9 @@ import type { HabitResponseDto } from '../src/habits/dto/habit-response.dto';
 import type { DayPlannerResponseDto } from '../src/day-planner/dto/day-planner-response.dto';
 import type { StartTimerDto } from '../src/timers/timer.dto';
 import type { TimerResponse } from '../src/timers/timers.service';
-import { authenticatedRequest, seedAuth } from './auth-fixture';
+import { authenticatedRequest, seedAuth, TEST_USER } from './auth-fixture';
 import { resetDatabase } from './reset-database';
+import { holdUserLock, stillPending, within } from './user-lock';
 
 describe('Fokus-Sperre (e2e)', () => {
   let app: INestApplication;
@@ -113,6 +114,26 @@ describe('Fokus-Sperre (e2e)', () => {
     );
   });
 
+  it('answers the state without waiting for a change in progress, and closes a lapsed block under the lock', async () => {
+    const id = await todo();
+    await start({ kind: 'todo', targetId: id });
+    const release = await holdUserLock(db, TEST_USER);
+    let lapsed: Promise<FocusBlockStateResponse>;
+    try {
+      expect((await within(state(), 2_000)).block).toMatchObject({
+        todoId: id,
+        mode: 'soft',
+      });
+      // Past its twelve hours the block has to be closed: that waits.
+      later(13 * 60 * MINUTE);
+      lapsed = state();
+      expect(await stillPending(lapsed, 300)).toBe(true);
+    } finally {
+      await release();
+    }
+    expect((await lapsed).block).toBeNull();
+    expect((await blocks())[0].endReason).toBe('expired');
+  });
   it('keeps the settings and both lists, with websites reduced to their host', async () => {
     const saved = (
       await settings({

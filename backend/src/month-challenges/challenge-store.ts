@@ -92,6 +92,14 @@ export async function countChallenge(
   };
 }
 
+/** Whether the challenge is closed by `now` and its result not fixed yet. */
+export function awaitsFreeze(
+  challenge: MonthChallengeEntity,
+  now: Date,
+): boolean {
+  return challenge.dueCount === null && isClosed(challenge, dayOf(now));
+}
+
 /**
  * Fixes the result of a closed challenge once: done runs against the due
  * runs that were decided. Runs still open when it was ended early do not
@@ -102,8 +110,7 @@ export async function freezeIfClosed(
   challenge: MonthChallengeEntity,
   now: Date,
 ): Promise<boolean> {
-  if (challenge.dueCount !== null || !isClosed(challenge, dayOf(now)))
-    return false;
+  if (!awaitsFreeze(challenge, now)) return false;
   const { tally } = await countChallenge(
     manager,
     challenge,
