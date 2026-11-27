@@ -68,8 +68,9 @@ Unter Linux benötigt der Playwright-Browser außerdem Systembibliotheken;
 - Der Server-Launcher prüft Testmodus, Kennzeichnung, DB-Namen, Loopback-Host und
   Testports, **bevor** Nest eine Verbindung öffnet oder seine Migrationen ausführt.
 - Das Reset-Skript prüft dieselben Werte und zusätzlich `current_database()`.
-  Es leert alle 22 Anwendungstabellen in einem einzigen `TRUNCATE`, ohne `CASCADE` und ohne
-  einen HTTP-Reset-Endpunkt in der Anwendung.
+  Es liest die Tabellen aus der Datenbank (alle des Schemas `public` außer der
+  Migrationstabelle) und leert sie in einem einzigen `TRUNCATE`, ohne `CASCADE` und ohne
+  einen HTTP-Reset-Endpunkt in der Anwendung; eine neue Tabelle braucht dort keinen Eintrag.
 - Jede Testausführung einschließlich Retry beginnt/endet mit sauberen Daten.
   Ein Worker verarbeitet Tests und beide Projekte nacheinander. Kein paralleler
   zweiter Playwright-Lauf gegen dieselbe DB; die belegten Serverports verhindern
