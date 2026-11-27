@@ -11,7 +11,8 @@ Code:
 - `composables/useVoiceInputSettings.ts`: Schalter pro Gerät.
 - `components/MicButton.vue`: der Knopf.
 - `utils/quest-parse.ts`: Tag und Dauer aus dem Text, mit `utils/quest-parse-names.ts` auch Kampagne und Kategorie; `components/QuestParseChips.vue` zeigt das Erkannte.
-- `composables/useQuestParseContext.ts`: die offenen Kampagnen und die Kategorien für das Schnell-Anlegen, einmal geladen für alle Felder.
+- `composables/useQuestParseContext.ts`: die offenen Kampagnen und die Kategorien für das Schnell-Anlegen, einmal geladen für alle Felder; „Neue Quest“ reicht ihm die Listen seiner Auswahlfelder (`supply`).
+- `composables/useQuestFromText.ts`: was Schnell-Anlegen und „Neue Quest“ gleich aus dem Erkannten machen (Tag, Kategorie der Kampagne) und das Anlegen: erst das Neue, dann die Quest, ohne Doppeltes bei einem neuen Versuch.
 - `api/new-places.api.ts`: legt eine genannte, noch fehlende Kampagne oder Kategorie vor der Quest an (`createCampaign` nutzt auch „Gehört zu“).
 - `utils/insert-text.ts`: Diktat an der Schreibmarke in ein Textfeld.
 - `components/VoiceInputSettings.vue`: der Abschnitt in den Einstellungen.
@@ -165,7 +166,7 @@ Passt ein Name **nach seinem Schlüsselwort** zu keiner Kampagne bzw. Kategorie 
 - Eine erledigte Kampagne zählt nicht als vorhanden: „Kampagne Umzug“ bietet dann eine neue an.
 - `matches` liefert die neue als `campaign` bzw. `category` mit `isNew: true` (ohne `id`), das Ergebnis `newCampaign` bzw. `newCategory`.
 - **Chip:** „Neue Kampagne: Umzug“ bzw. „Neue Kategorie: Haushalt“, mit Plus statt Symbol oder Marke, dem Wort „Neue“ und gestricheltem Rand statt Füllung, nie nur Farbe. Der Name sagt „…, wird beim Anlegen erstellt, entfernen“. Ein ✕ verwirft ihn wie die anderen: Seine Wörter bleiben im Titel, und nichts wird angelegt.
-- **Beim Anlegen** entsteht erst das Neue, dann die Quest (`createNewPlaces` in `api/new-places.api.ts`): zuerst die Kategorie, wie in ihrem Auswahlfeld (`createCategory`; der Server gibt ihr die erste Kernfarbe, die noch keine Kategorie zeigt), dann die Kampagne, wie „Gehört zu“ sie anlegt (`createCampaign`: oberste Quest ohne Tag und Dauer, in der Farbe ihres Titels), danach die Quest mit `parentId` der Kampagne.
+- **Beim Anlegen** entsteht erst das Neue, dann die Quest (`useQuestFromText` mit `createNewPlaces` aus `api/new-places.api.ts`): zuerst die Kategorie, wie in ihrem Auswahlfeld (`createCategory`; der Server gibt ihr die erste Kernfarbe, die noch keine Kategorie zeigt), dann die Kampagne, wie „Gehört zu“ sie anlegt (`createCampaign`: oberste Quest ohne Tag und Dauer, in der Farbe ihres Titels), danach die Quest mit `parentId` der Kampagne.
   - Eine neue Kampagne bekommt die genannte Kategorie (neu oder vorhanden), die Quest dieselbe. Ohne genannte Kategorie bekommen beide keine.
   - Scheitert das Anlegen, entsteht keine Quest, der Text bleibt, und die Fehlerzeile sagt, was nicht ging: „Die Kategorie „Haushalt“ konnte nicht angelegt werden, die Quest ist nicht erstellt.“ und dahinter der Grund vom Server.
   - Was schon entstanden ist (die Kategorie, bevor die Kampagne scheiterte), kennt der nächste Versuch: Es wird nicht doppelt angelegt.
@@ -180,7 +181,7 @@ Passt ein Name **nach seinem Schlüsselwort** zu keiner Kampagne bzw. Kategorie 
 
 ### In „Neue Quest“
 
-- Wie Tag und Dauer nur aus dem Diktat. Erkanntes füllt „Gehört zu“ und Kategorie, solange niemand sie selbst gewählt hat; „Gehört zu“ zeigt dann auch das übernommene Warum der Kampagne. Die Listen kommen aus den beiden Auswahlfeldern, die sie ohnehin laden.
+- Wie Tag und Dauer nur aus dem Diktat. Erkanntes füllt „Gehört zu“ und Kategorie, solange niemand sie selbst gewählt hat; „Gehört zu“ zeigt dann auch das übernommene Warum der Kampagne. Die Listen kommen aus den beiden Auswahlfeldern, die sie ohnehin laden; sie gehen in die gemeinsame Kopie von `useQuestParseContext` (`supply`), erkannt wird aber nur, was die eigenen Auswahlfelder geladen haben.
 - Eine genannte Kampagne bringt ihre Kategorie mit, wenn keine genannt ist. Verschwindet der Chip, kommt die Kategorie zurück, die vorher galt (keine, die der Kampagne, in der der Dialog geöffnet wurde, oder die eines gewählten Platzes).
 - Geöffnet in einer Kampagne steht „Gehört zu“ schon fest: Dort wird nur die Kategorie erkannt.
 - Eine neue Kampagne oder Kategorie steht vorläufig in ihrem Auswahlfeld, als letzte Wahl mit Plus: „Neue Kampagne: Umzug“, „Neue Kategorie: Haushalt“ (`pending` an `ParentPicker` und `CategoryPicker`); die eingeklappte Kategorie zeigt „Haushalt (neu)“. Angelegt wird erst beim Erstellen, wie im Schnell-Anlegen. Wählt jemand im Feld etwas anderes (auch „Keine“), verschwindet das Vorläufige samt Chip, und die Wörter bleiben im Titel.

@@ -7,17 +7,16 @@ import {
   ref,
   watch,
 } from "vue";
-import { createTodo, reorderDay } from "../api/day-planner.api";
-import {
-  createNewPlaces,
-  NewPlaceError,
-  type CreatedPlaces,
-} from "../api/new-places.api";
-import { notifyDataChanged } from "../composables/data-sync";
+import { reorderDay } from "../api/day-planner.api";
 import { useInsertPlace } from "../composables/useInsertPlace";
+import {
+  newPlaces,
+  questDay,
+  textCategory,
+  useQuestFromText,
+} from "../composables/useQuestFromText";
 import { useQuestParseContext } from "../composables/useQuestParseContext";
 import { contentWidth, firstThatFits } from "../utils/fit-text";
-import { getCurrentDateInTimeZone } from "../utils/date";
 import type { OrderRef } from "../utils/day-order";
 import { parseQuest, type QuestParseKind } from "../utils/quest-parse";
 import InsertPlaceToggle from "./InsertPlaceToggle.vue";
@@ -159,12 +158,8 @@ onMounted(() => {
 });
 onBeforeUnmount(() => observer?.disconnect());
 
-/** What was just created: known to the next quest and to every view. */
-function learn(places: CreatedPlaces): void {
-  if (!places.category && !places.campaign) return;
-  names.remember(places);
-  notifyDataChanged();
-}
+/* What it creates becomes known to the next quest at once (`remember`). */
+const quest = useQuestFromText({ learn: names.remember });
 
 async function add(): Promise<void> {
   const text = title.value.trim();
@@ -174,53 +169,38 @@ async function add(): Promise<void> {
     return;
   }
   const result = parsed.value;
-  // A time without a day is an appointment today (or on the field's day).
-  const date =
-    result.scheduledDate !== undefined
-      ? result.scheduledDate
-      : (props.date ??
-        (result.timeOfDay ? getCurrentDateInTimeZone() : null));
+  const date = questDay(result, props.date);
   const dateMatch = result.matches.find((match) => match.kind === "date");
   busy.value = true;
   errorMessage.value = null;
-  let places: CreatedPlaces;
   try {
-    places = await createNewPlaces(
-      { category: result.newCategory, campaign: result.newCampaign },
-      result.categoryId ?? null,
-    );
-  } catch (error: unknown) {
-    if (error instanceof NewPlaceError) learn(error.created);
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : "Die Quest konnte nicht erstellt werden.";
-    busy.value = false;
-    return;
-  }
-  learn(places);
-  const named = places.campaign?.id ?? result.campaignId;
-  const campaignId = named ?? props.parent?.id;
-  // A new campaign has the category named, or none; the field's own
-  // campaign lends its category like a named one.
-  const categoryId =
-    places.category?.id ??
-    result.categoryId ??
-    (result.campaignId !== undefined
-      ? names.campaignCategory(result.campaignId)
-      : named === undefined
-        ? (props.parent?.categoryId ?? undefined)
-        : undefined);
-  try {
-    // Into the Questlog the server places it at the head or the end itself.
-    const created = await createTodo({
-      title: result.title.trim(),
-      scheduledDate: date,
-      timeOfDay: result.timeOfDay ?? null,
-      plannedDurationMinutes: result.plannedDurationMinutes ?? null,
-      ...(campaignId === undefined ? {} : { parentId: campaignId }),
-      ...(categoryId === undefined ? {} : { categoryId }),
-      ...(date === null ? { backlogPlace: place.value } : {}),
+    const created = await quest.create({
+      places: newPlaces(result),
+      campaignCategoryId: result.categoryId ?? null,
+      input: (places) => {
+        const named = places.campaign?.id ?? result.campaignId;
+        const campaignId = named ?? props.parent?.id;
+        // A new campaign has the category named, or none; the field's own
+        // campaign lends its category like a named one.
+        const fromText =
+          places.category?.id ?? textCategory(result, names.campaignCategory);
+        const categoryId =
+          fromText !== undefined
+            ? fromText
+            : named === undefined
+              ? (props.parent?.categoryId ?? undefined)
+              : undefined;
+        // Into the Questlog the server places it at the head or the end itself.
+        return {
+          title: result.title.trim(),
+          scheduledDate: date,
+          timeOfDay: result.timeOfDay ?? null,
+          plannedDurationMinutes: result.plannedDurationMinutes ?? null,
+          ...(campaignId === undefined ? {} : { parentId: campaignId }),
+          ...(categoryId === undefined ? {} : { categoryId }),
+          ...(date === null ? { backlogPlace: place.value } : {}),
+        };
+      },
     });
     title.value = "";
     ignored.value = [];
