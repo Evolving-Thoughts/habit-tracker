@@ -18,7 +18,7 @@ import { useTargetNotice } from "../composables/useTargetNotice";
 import { writeDone } from "../composables/useTicks";
 import { primeMissingMilestones } from "../composables/action-sounds";
 import { formatStopwatch } from "../utils/stopwatch";
-import { CARD_CONTROLS } from "../utils/card-click";
+import { controlHit } from "../utils/card-click";
 import type { MenuEntry } from "../utils/row-actions";
 import ActionMenu from "./ActionMenu.vue";
 import TimerIconButton from "./TimerIconButton.vue";
@@ -66,10 +66,10 @@ const stopOpenFocus = focusBlock.native?.onOpenFocus(openFocus);
 /** A tap on the bar, not on one of its buttons, opens the Fokus-Modus. */
 function openFocusFromBar(event: MouseEvent): void {
   if (event.defaultPrevented || event.button !== 0) return;
-  const target = event.target;
-  if (!(target instanceof Element)) return;
+  const bar = event.currentTarget;
+  if (!(bar instanceof Element)) return;
   // The words are a link of their own; the buttons keep their own tap.
-  if (target.closest(CARD_CONTROLS)) return;
+  if (controlHit(event, bar)) return;
   openFocus();
 }
 const notice = useTargetNotice(controller);
