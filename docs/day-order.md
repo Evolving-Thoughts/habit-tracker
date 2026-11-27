@@ -247,11 +247,12 @@ with the runs the schedule forecasts. Its entries wear Heute's cards
 counts one.
 
 - A later day takes quests in its quick add, sorts its open quests and
-  stored runs by dragging (the Plan's `dropOnDay` / `dropRunOnDay`) and
-  moves them with the quick moves of their menu. Quests tick; runs only
-  tick on their own day.
+  stored runs by dragging (the Plan's `planMove`, sent by `usePlanMove`)
+  and moves them with the quick moves of their menu. Quests tick as on
+  today (`useTicks`: the sound, the undo toast, the campaign question);
+  runs only tick on their own day.
 - Its Google events are entries of the Plan's day, at their places; on a
-  later day they drag like on today (the Plan's `dropEventOnDay`).
+  later day they drag like on today (the Plan's `planMove`).
 - A run the schedule only forecasts (`isForecast`: no occurrence stored
   yet) shows as planned, not there: no ring, no fill, a dashed edge, here
   and in the Plan. See "Vorhergesagte Läufe" below.
@@ -269,7 +270,7 @@ daily's run on a later day is not stored before its day; the Plan forecasts
 it from the schedule. It still takes a place in that day's order:
 
 - It drags within its day like a card (`data-forecast-id`, `boardDrop`
-  kind `forecast`, `dropForecastOnDay`) and is written as
+  kind `forecast`, `planMove`) and is written as
   `{ type: "forecast", id: habitId, date }` among the day's items
   (`PUT /day-planner/order`).
 - `habit_forecast_places` (habit, day, position) keeps the place; the Plan
@@ -342,7 +343,7 @@ around them. Their time and day never change.
 - An event counts as a row: a card dropped right after it stays after it,
   and the event itself drags among the untimed cards, stopping at the
   appointments and events before and after it on the clock
-  (`clockBoundIndex`, in `dropInDay` on Heute and `dropEventOnDay` on the
+  (`clockBoundIndex`, in `dropInDay` on Heute and `planMove` on the
   Plan's days). It opens no editor and counts in no tally. The keyboard's
   "Nach oben" / "Nach unten" step over events; they have no menu.
 

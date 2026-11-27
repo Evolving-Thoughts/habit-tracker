@@ -6,8 +6,8 @@ import { useSortable } from "../composables/useSortable";
 import type { WeekPlanDay, WeekPlanEntry } from "../types/week-plan";
 import { dayLabel, shortDate, weekdayName } from "../utils/history";
 import type { MenuEntry } from "../utils/row-actions";
+import { boardDrop, type BoardDrop } from "../utils/plan-move";
 import {
-  boardDrop,
   dayOrder,
   doneEntries,
   DRAGGABLE,
@@ -18,7 +18,6 @@ import {
   isMovableRun,
   openEntries,
   openSummary,
-  type BoardDrop,
 } from "../utils/week-plan";
 
 /**

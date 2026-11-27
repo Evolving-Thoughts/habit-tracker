@@ -2472,6 +2472,39 @@ describe("TodayView on other days", () => {
     expect(labels(earlier)).toEqual(["Liste", "Logbuch"]);
   });
 
+  it("ticks a quest of another day as today does: campaign question, toast, undo", async () => {
+    route.query = { tag: "2026-10-03" };
+    const campaign = { id: 41, title: "Steuer vorbereiten", color: null, icon: null };
+    vi.mocked(getPlan).mockResolvedValue(
+      dayPlan("2026-10-03", [{ ...plannedQuest, campaign }]),
+    );
+    vi.mocked(getTodoHierarchy).mockResolvedValue([
+      { id: 41, progress: { todoCount: 2, doneCount: 0 } } as never,
+    ]);
+    const wrapper = mount(TodayView);
+    await flushPromises();
+
+    await wrapper
+      .get('button[aria-label="Steuer vorbereiten erledigen"]')
+      .trigger("click");
+    await flushPromises();
+    expect(wrapper.get(".campaign-completion__lead").text()).toContain(
+      "2 Quests in „Steuer vorbereiten“ sind noch offen.",
+    );
+    expect(updateTodoMock).not.toHaveBeenCalled();
+    await wrapper.get("[data-campaign-confirm]").trigger("click");
+    await flushPromises();
+    expect(updateTodoMock).toHaveBeenCalledWith(41, true);
+    expect(wrapper.get(".other-day__toast").text()).toContain(
+      "„Steuer vorbereiten“ abgeschlossen",
+    );
+
+    await wrapper.get(".other-day__toast button").trigger("click");
+    await flushPromises();
+    expect(updateTodoMock).toHaveBeenLastCalledWith(41, false);
+    expect(wrapper.get(".other-day__toast").text()).toBe("");
+  });
+
   it("opens a quest of another day in the same editor as today's", async () => {
     route.query = { tag: "2026-10-03" };
     vi.mocked(getPlan).mockResolvedValue(

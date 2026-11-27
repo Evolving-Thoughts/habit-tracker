@@ -1,18 +1,14 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onDeactivated, ref } from "vue";
+import CampaignCompletionDialog from "./CampaignCompletionDialog.vue";
 import DayBestDay from "./DayBestDay.vue";
 import DayReflection from "./DayReflection.vue";
 import PlannerItem from "./PlannerItem.vue";
 import QuickAddQuest from "./QuickAddQuest.vue";
 import AppIcon from "./AppIcon.vue";
 import CalendarEventRow from "./CalendarEventRow.vue";
-import {
-  getPlan,
-  rescheduleOccurrence,
-  rescheduleTodo,
-  reorderDay,
-  updateTodoCompletion,
-} from "../api/day-planner.api";
+import UndoToast from "./UndoToast.vue";
+import { getPlan } from "../api/day-planner.api";
 import { useLoader } from "../composables/useLoader";
 import { DAY_DROP, useSortable } from "../composables/useSortable";
 import { useEventTick } from "../composables/useEventTick";
@@ -22,18 +18,21 @@ import {
   runWindowLine,
 } from "../utils/day-drop";
 import { useWrites } from "../composables/useWrites";
-import { useEventDrop, useForecastDrop } from "../composables/useEventDrop";
-import type { WeekPlanEntry, WeekPlanResponse } from "../types/week-plan";
+import { usePlanMove } from "../composables/usePlanMove";
+import { useTicks } from "../composables/useTicks";
+import type {
+  WeekPlanEntry,
+  WeekPlanResponse,
+  WeekPlanTodoEntry,
+} from "../types/week-plan";
 import { dayRelation, tallyLine } from "../utils/day-tally";
 import { dayLabel } from "../utils/history";
 import { asPlannerItem, relationLabel, tallyOfEntries } from "../utils/other-day";
 import { planRow, rowMenu, type MenuEntry } from "../utils/row-actions";
+import { boardDrop, entryTarget } from "../utils/plan-move";
 import {
-  boardDrop,
   doneEntries,
   DRAGGABLE,
-  dropOnDay,
-  dropRunOnDay,
   entryKey,
   isEvent,
   isMovable,
@@ -42,14 +41,17 @@ import {
   openEntries,
   runMayMoveTo,
   withEventDone,
+  type OpenRun,
 } from "../utils/week-plan";
 
 /**
  * Heute on another day, reached with ‹ › in its head. The day comes from
  * the Plan's read, so a past day lists what was done and skipped, with the
  * day's reflection and its best; a later day lists what is planned, takes
- * new quests, sorts by dragging and moves a quest with its menu. The focus
- * card and the stopwatch stay with today. See docs/day-order.md › Andere Tage.
+ * new quests, sorts by dragging and moves a quest with its menu. A quest
+ * ticks as on today (`useTicks`: sound, undo toast, the campaign question).
+ * The focus card and the stopwatch stay with today. See docs/day-order.md ›
+ * Andere Tage.
  */
 const props = defineProps<{
   date: string;
@@ -81,6 +83,13 @@ const {
   },
 );
 const writes = useWrites(reload, errorMessage);
+/* Ticks and moves off this day: the paths today's cards take. */
+const ticks = useTicks(writes.write);
+/* Leaving the view: the campaign question says no, a held undo goes through. */
+onDeactivated(() => {
+  ticks.answerCampaign(false);
+  ticks.flushUndo();
+});
 
 const day = computed(() =>
   plan.value?.days.find((entry) => entry.date === props.date) ?? null,
@@ -108,17 +117,20 @@ const busy = computed(() => props.held || writes.busy.value);
 const list = ref<HTMLElement | null>(null);
 /* Status line for a move: read out, since the card itself moved. */
 const status = ref("");
+/* Sorting within the day, by every kind of card: the Plan's move. */
+const moves = usePlanMove({ plan }, writes, {
+  key: "day",
+  words: "day",
+  said: (line) => (status.value = line),
+  refused: (line) => emit("notice", line),
+});
 useSortable(list, {
   item: DRAGGABLE,
   accepts: () => !busy.value,
   onMove: (_from, _to, { item, list: target, index }) => {
     const drop = boardDrop(item, target, index);
     if (!drop || busy.value) return;
-    if (drop.kind === "day") void applyDrop(drop.drop);
-    else if (drop.kind === "run") void applyRunDrop(drop.drop);
-    else if (drop.kind === "event") void applyEventDrop(drop.drop);
-    else if (drop.kind === "forecast") void applyForecastDrop(drop.drop);
-    else if (drop.kind === "refused") emit("notice", forecastStaysLine(drop.title));
+    void moves.move(drop);
   },
   // A card dropped on "Heute" in the head moves to today.
   dropTarget: {
@@ -130,18 +142,10 @@ useSortable(list, {
       const entry = movedTo(card, date);
       if (!entry || busy.value) return;
       // A drop needs no question: an appointment moves with its time.
-      const moved = isMovable(entry)
-        ? await writes.write(() => rescheduleTodo(entry.todoId, date, true), {
-            key: `todo-${entry.todoId}`,
-            fallbackError: "Die Quest konnte nicht verschoben werden.",
-          })
-        : await writes.write(
-            () => rescheduleOccurrence(entry.occurrenceId, date),
-            {
-              key: `run-${entry.occurrenceId}`,
-              fallbackError: "Das Daily konnte nicht verschoben werden.",
-            },
-          );
+      const moved = await ticks.move(entryTarget(entry), date, {
+        key: writeKey(entry),
+        confirmFixed: true,
+      });
       const where = relationLabel(date, props.today)?.toLowerCase() ?? "heute";
       if (moved) emit("notice", `„${entry.title}“ steht jetzt bei ${where}.`);
     },
@@ -166,6 +170,13 @@ useSortable(list, {
     },
   },
 });
+
+/** The busy key of an open quest or run. */
+function writeKey(entry: WeekPlanTodoEntry | OpenRun): string {
+  return entry.type === "todo"
+    ? `todo-${entry.todoId}`
+    : `run-${entry.occurrenceId}`;
+}
 
 /** The open quest or run on `card` when it may move to `date`. */
 function movedTo(card: HTMLElement, date: string) {
@@ -192,59 +203,6 @@ const tickEvent = useEventTick(
   (line) => (status.value = line),
 );
 
-async function applyDrop(drop: Parameters<typeof dropOnDay>[1]): Promise<void> {
-  const before = plan.value;
-  const result = before && dropOnDay(before, drop);
-  if (!result) return;
-  await writes.writeShown(
-    () => {
-      plan.value = result.plan;
-      status.value = "Reihenfolge gespeichert.";
-      return () => {
-        plan.value = before;
-        status.value = "";
-      };
-    },
-    async () => {
-      if (result.write.order) await reorderDay(result.write.order);
-    },
-    { key: "day", fallbackError: "Die Reihenfolge konnte nicht gespeichert werden." },
-  );
-}
-
-async function applyRunDrop(
-  drop: Parameters<typeof dropRunOnDay>[1],
-): Promise<void> {
-  const before = plan.value;
-  const result = before && dropRunOnDay(before, drop);
-  if (!result) return;
-  await writes.writeShown(
-    () => {
-      plan.value = result.plan;
-      status.value = "Reihenfolge gespeichert.";
-      return () => {
-        plan.value = before;
-        status.value = "";
-      };
-    },
-    async () => {
-      if (result.write.order) await reorderDay(result.write.order);
-    },
-    { key: "day", fallbackError: "Die Reihenfolge konnte nicht gespeichert werden." },
-  );
-}
-
-/* A Google event sorted within the day: the rule all day views share. */
-const applyEventDrop = useEventDrop(plan, writes, {
-  key: "day",
-  said: (line) => (status.value = line),
-});
-/* A forecast run sorted within the day: its place waits for the day. */
-const applyForecastDrop = useForecastDrop(plan, writes, {
-  key: "day",
-  said: (line) => (status.value = line),
-});
-
 function edit(entry: WeekPlanEntry): void {
   if (busy.value || isEvent(entry)) return;
   if (entry.type === "todo") emit("edit", { kind: "todo", entityId: entry.todoId });
@@ -256,14 +214,25 @@ function edit(entry: WeekPlanEntry): void {
     });
 }
 
+/**
+ * A quest's ring: done through the path every ring takes (`useTicks`), so
+ * it sounds, offers its undo and asks first for a campaign with open
+ * quests, as on today; done, it opens again without a toast.
+ */
 function toggle(entry: WeekPlanEntry): void {
   if (entry.type !== "todo" || busy.value) return;
-  const completed = entry.status !== "completed";
-  void writes.write(() => updateTodoCompletion(entry.todoId, completed), {
-    key: `todo-${entry.todoId}`,
-    fallbackError: completed
-      ? "Die Quest konnte nicht abgehakt werden."
-      : "Die Quest konnte nicht wieder geöffnet werden.",
+  const key = `todo-${entry.todoId}`;
+  if (entry.status === "completed") {
+    void ticks.reopen(entryTarget(entry), {
+      key,
+      fallbackError: "Die Quest konnte nicht wieder geöffnet werden.",
+    });
+    return;
+  }
+  void ticks.complete(entryTarget(entry), {
+    key,
+    fallbackError: "Die Quest konnte nicht abgehakt werden.",
+    campaign: entry.campaign?.id === entry.todoId ? "lookup" : undefined,
   });
 }
 
@@ -278,16 +247,8 @@ function menu(entry: WeekPlanEntry): MenuEntry[] {
     today: props.today,
     busy: busy.value,
     move: (date) => {
-      if (isMovable(entry))
-        void writes.write(() => rescheduleTodo(entry.todoId, date, false), {
-          key: `todo-${entry.todoId}`,
-          fallbackError: "Die Quest konnte nicht verschoben werden.",
-        });
-      else if (isMovableRun(entry))
-        void writes.write(() => rescheduleOccurrence(entry.occurrenceId, date), {
-          key: `run-${entry.occurrenceId}`,
-          fallbackError: "Das Daily konnte nicht verschoben werden.",
-        });
+      if (isMovable(entry) || isMovableRun(entry))
+        void ticks.move(entryTarget(entry), date, { key: writeKey(entry) });
     },
   });
 }
@@ -416,6 +377,19 @@ function menu(entry: WeekPlanEntry): MenuEntry[] {
     </template>
 
     <p class="visually-hidden" role="status">{{ status }}</p>
+
+    <CampaignCompletionDialog
+      v-if="ticks.campaignQuestion.value"
+      :title="ticks.campaignQuestion.value.title"
+      :open="ticks.campaignQuestion.value.open"
+      @confirm="ticks.answerCampaign(true)"
+      @cancel="ticks.answerCampaign(false)"
+    />
+    <UndoToast
+      class="other-day__toast"
+      :label="ticks.undo.value?.label ?? null"
+      @undo="ticks.undoLast"
+    />
   </div>
 </template>
 

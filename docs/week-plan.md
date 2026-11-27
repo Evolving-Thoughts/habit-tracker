@@ -16,8 +16,9 @@ of its day. In code the feature keeps its earlier name, the week plan
 malformed or out-of-range date or an unknown query field). The board only
 asks from today on, but a past day would just show what was done. First it
 reconciles the user's active habits the way Heute does
-(`HabitSchedulingService.reconcileAll`), so today's runs are stored and the
-board can sort, move and open them; then the answer is one `REPEATABLE READ`
+(`HabitSchedulingService.reconcileAll`: under the user lock only when a run
+is missing or ran out), so today's runs are stored and the board can sort,
+move and open them; then the answer is one `REPEATABLE READ`
 snapshot that writes nothing:
 
 ```ts
@@ -209,24 +210,28 @@ redirected by the router to the first day of that week still ahead
 - `views/PlanView.vue` (`#/plan`, `?ab=<first day>`): the range as heading,
   "Heute" and the arrows, loading skeleton, load error with retry, a lead
   when nothing is planned on the days shown and nothing was left behind.
-- `utils/week-plan.ts`: the pure rules: `dropOnDay` applies a drop on a day
-  at once and says what to write (also for an `incoming` quest from the
-  Questlog column and for a quest left behind), `shelveQuest` the same for a
-  drop into the Questlog column, `stepDrop` turns "Nach oben" / "Nach unten"
-  and the arrow keys into drops, `dropRunOnDay` and `stepRunDrop` do the
-  same for a stored run (`isMovableRun`) within its window, `arrangeOpen`
-  mirrors the server's sorting for the optimistic view, `boardDrop` reads
-  where a drag ended from the card (`data-todo-id` or `data-run-id`) and the
-  list's `data-date` / `data-questlog`, plus the column and address rules
-  above.
-- Writes go through `useWrites` (one at a time, then `notifyDataChanged` and a
-  quiet reload). A failed write puts the old plan (and column) back at once,
-  shows the error and reloads quietly to show what the server kept.
+- `utils/plan-move.ts`: "move this entry there" as one pure rule.
+  `boardDrop` reads where a drag ended from the card (`data-todo-id`,
+  `data-run-id`, `data-event-id`, `data-forecast-id`) and the list's
+  `data-date` / `data-questlog`; `planMove` says what any such move means,
+  by kind (a quest from a day, left behind or from the Questlog column; a
+  stored run within its window; an event or forecast within its day; a
+  quest into the Questlog column): the plan (and column) as shown at once,
+  the writes in their order, the status line and the error text, or why it
+  may not land. `stepDrop` turns "Nach oben" / "Nach unten" and the arrow
+  keys into the same moves.
+- `utils/week-plan.ts`: the board's read and layout: which entries move
+  (`isMovable`, `isMovableRun`), `arrangeOpen` mirroring the server's
+  sorting for the optimistic view, plus the column and address rules above.
+- `composables/usePlanMove.ts` sends a move for the Plan and Heute's other
+  days alike, through `useWrites` (one at a time, then `notifyDataChanged`
+  and a quiet reload). A failed write puts the old plan (and column) back
+  at once, shows the error and reloads quietly to show what the server kept.
 - `useSortable` takes an optional `group` (and `accepts`, and `sort: false`
   for a list whose items only leave it) so lists trade items; it reports
   the drop's target list and its index among all children.
 - Google events are entries of their days (`type: "event"`, see
   day-order.md › Google-Termine in der Reihenfolge). They drag within their
-  own day from today on (`data-event-id`, `dropEventOnDay`, written by the
-  shared `useEventDrop`), never to another day, open no editor and do not
+  own day from today on (`data-event-id`, `planMove`, written by the
+  shared `usePlanMove`), never to another day, open no editor and do not
   count in a day's summary.

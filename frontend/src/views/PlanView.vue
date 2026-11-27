@@ -8,15 +8,8 @@ import {
   watch,
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import {
-  getBacklogTodos,
-  getPlan,
-  reorderBacklog,
-  reorderDay,
-  rescheduleOccurrence,
-  rescheduleTodo,
-} from "../api/day-planner.api";
-import { planQuest, unplanQuest } from "../api/questlog.api";
+import { getBacklogTodos, getPlan } from "../api/day-planner.api";
+import { planQuest } from "../api/questlog.api";
 import AppIcon from "../components/AppIcon.vue";
 import InsertPlaceToggle from "../components/InsertPlaceToggle.vue";
 import EditItemDialog from "../components/EditItemDialog.vue";
@@ -44,8 +37,7 @@ import {
 import { useTimer } from "../composables/useTimer";
 import { useTicks } from "../composables/useTicks";
 import { useWrites } from "../composables/useWrites";
-import { useEventDrop, useForecastDrop } from "../composables/useEventDrop";
-import { forecastStaysLine } from "../utils/day-drop";
+import { usePlanMove } from "../composables/usePlanMove";
 import type {
   WeekPlanEntry,
   WeekPlanResponse,
@@ -69,10 +61,15 @@ import {
   weekdayName,
 } from "../utils/history";
 import {
+  dropAt,
+  entryTarget,
+  stepDrop,
+  type BoardDrop,
+  type ShelfDrop,
+} from "../utils/plan-move";
+import {
   BOARD,
   boardColumns,
-  dropOnDay,
-  dropRunOnDay,
   entryKey,
   firstDayFromQuery,
   fittingDays,
@@ -83,21 +80,13 @@ import {
   PHONE_PLAN_DAYS,
   planChips,
   planQuery,
-  questlogEntry,
   questlogStartsOpen,
-  shelveQuest,
   shiftedStart,
   startColumn,
-  stepDrop,
-  stepRunDrop,
   todayScroll,
-  type BoardDrop,
-  type Drop,
   type OpenRun,
   type QuestlogChoice,
   type QuestlogQuest,
-  type RunDrop,
-  type ShelfDrop,
 } from "../utils/week-plan";
 
 const route = useRoute();
@@ -325,139 +314,21 @@ const nothingPlanned = computed(
 
 /* The order of a day and moves between days, shown at once. */
 const status = ref("");
-/* A Google event sorted within its day: the rule all day views share. */
-const applyEventDrop = useEventDrop(plan, writes, {
-  key: "plan",
-  said: (line) => {
-    notice.value = "";
-    status.value = line;
-  },
-});
 /** Said in sight when a drop could not land, such as a run beyond its window. */
 const notice = ref("");
-/* A forecast run sorted within its day: its place waits for that day. */
-const applyForecastDrop = useForecastDrop(plan, writes, {
+/*
+ * Every move on the board (a drag, a menu step, an arrow key), whatever it
+ * moves: shown at once, written, taken back on failure (`usePlanMove`).
+ */
+const moves = usePlanMove({ plan, backlog }, writes, {
   key: "plan",
+  words: "plan",
   said: (line) => {
     notice.value = "";
     status.value = line;
   },
+  refused: (line) => (notice.value = line),
 });
-
-/** Where an open entry now stands, for the live region. */
-function placeLine(
-  plan: WeekPlanResponse,
-  toDate: string,
-  matches: (entry: WeekPlanEntry) => boolean,
-  moved: boolean,
-): string {
-  const day = plan.days.find(({ date }) => date === toDate)!;
-  const open = openEntries(day);
-  const entry = open.find(matches)!;
-  return moved
-    ? fullStop(`„${entry.title}“ steht jetzt am ${dayLabel(toDate)}`)
-    : `„${entry.title}“ steht jetzt an Stelle ${open.indexOf(entry) + 1} von ${
-        open.length
-      }.`;
-}
-
-async function applyDrop(drop: Drop): Promise<void> {
-  const before = plan.value;
-  if (!before || writes.busy.value) return;
-  const result = dropOnDay(before, drop);
-  if (!result) return;
-  const { write } = result;
-  await writes.writeShown(
-    () => {
-      plan.value = result.plan;
-      notice.value = "";
-      status.value = placeLine(
-        result.plan,
-        drop.toDate,
-        (item) => item.type === "todo" && item.todoId === write.todoId,
-        !!write.moveTo,
-      );
-      return () => {
-        plan.value = before;
-        status.value = "";
-      };
-    },
-    async () => {
-      if (write.moveTo)
-        await rescheduleTodo(write.todoId, write.moveTo, write.confirmFixed);
-      if (write.order) await reorderDay(write.order);
-    },
-    {
-      key: "plan",
-      fallbackError: "Die Quest konnte nicht verschoben werden.",
-    },
-  );
-}
-
-/** An open stored run on the board or left behind, with the day it is on. */
-function findRun(occurrenceId: number): { run: OpenRun; date: string | null } | null {
-  const current = plan.value;
-  if (!current) return null;
-  for (const entry of current.overdue)
-    if (isMovableRun(entry) && entry.occurrenceId === occurrenceId)
-      return { run: entry, date: null };
-  for (const day of current.days)
-    for (const entry of day.entries)
-      if (isMovableRun(entry) && entry.occurrenceId === occurrenceId)
-        return { run: entry, date: day.date };
-  return null;
-}
-
-/** "bis Freitag, 21. Nov." or, when it may stay only where it is, nothing. */
-function windowLine(run: OpenRun): string {
-  return run.moveUntil
-    ? fullStop(`„${run.title}“ kann höchstens bis ${dayLabel(run.moveUntil)} warten`)
-    : `„${run.title}“ bleibt an seinem Tag.`;
-}
-
-/**
- * A daily's run dropped or stepped onto a day: shown at once, then moved
- * through the same path as Heute's "Morgen" and sorted into its new day.
- * Beyond its window it stays and the board says how far it may go.
- */
-async function applyRunDrop(drop: RunDrop): Promise<boolean> {
-  const before = plan.value;
-  if (!before || writes.busy.value) return false;
-  const result = dropRunOnDay(before, drop);
-  if (!result) {
-    const found = findRun(drop.occurrenceId);
-    if (found && found.date !== drop.toDate)
-      notice.value = windowLine(found.run);
-    return false;
-  }
-  const { write } = result;
-  return writes.writeShown(
-    () => {
-      plan.value = result.plan;
-      notice.value = "";
-      status.value = placeLine(
-        result.plan,
-        drop.toDate,
-        (item) =>
-          isMovableRun(item) && item.occurrenceId === write.occurrenceId,
-        !!write.moveTo,
-      );
-      return () => {
-        plan.value = before;
-        status.value = "";
-      };
-    },
-    async () => {
-      if (write.moveTo)
-        await rescheduleOccurrence(write.occurrenceId, write.moveTo);
-      if (write.order) await reorderDay(write.order);
-    },
-    {
-      key: "plan",
-      fallbackError: "Das Daily konnte nicht verschoben werden.",
-    },
-  );
-}
 
 /**
  * A step without dragging: "Nach oben" and "Nach unten" in a card's menu,
@@ -470,19 +341,7 @@ async function stepEntry(
   focusOn: "menu" | "card" = "menu",
 ): Promise<void> {
   if (!shownPlan.value || writes.busy.value || dialogBusy.value) return;
-  if (isMovable(entry)) {
-    const drop = stepDrop(shownPlan.value, entry.todoId, direction);
-    if (!drop) return;
-    await applyDrop(drop);
-  } else if (isMovableRun(entry)) {
-    const drop = stepRunDrop(shownPlan.value, entry.occurrenceId, direction);
-    if (!drop) {
-      if (direction === "left" || direction === "right")
-        notice.value = windowLine(entry);
-      return;
-    }
-    await applyRunDrop(drop);
-  } else return;
+  if (!(await moves.step(entry, direction, shownPlan.value))) return;
   await nextTick();
   focusCard(entryKey(entry, ""), focusOn);
 }
@@ -514,110 +373,17 @@ function openEditing(entry: WeekPlanEntry | { todoId: number }, date = ""): void
 }
 
 /**
- * A quest from the Questlog column lands on a day: shown there at once,
- * gone from the column, then planned with the Questlog's own save and put
- * at its place in the day's order. A failure puts both back.
+ * A card was dropped: on a day (from wherever it came, the Questlog column
+ * too) or into the column; what that means is `planMove`'s rule.
  */
-async function applyQuestlogDrop(drop: Drop): Promise<void> {
-  const before = plan.value;
-  const backlogBefore = backlog.value;
-  const todo = backlogBefore.find((item) => item.id === drop.todoId);
-  if (!before || !todo || writes.busy.value) return;
-  const result = dropOnDay(before, drop, questlogEntry(todo, drop.toDate));
-  if (!result) return;
-  const { order } = result.write;
-  await writes.writeShown(
-    () => {
-      plan.value = result.plan;
-      backlog.value = backlogBefore.filter((item) => item.id !== todo.id);
-      status.value = fullStop(
-        `„${todo.title}“ steht jetzt am ${dayLabel(drop.toDate)}`,
-      );
-      return () => {
-        plan.value = before;
-        backlog.value = backlogBefore;
-        status.value = "";
-      };
-    },
-    async () => {
-      await planQuest(todo, drop.toDate);
-      if (order) await reorderDay(order);
-    },
-    { key: "plan", fallbackError: "Die Quest konnte nicht eingeplant werden." },
-  );
-}
-
-/**
- * A quest dropped into the Questlog column: a quest of the column takes its
- * new place, one from the board loses its day and lands where it was
- * dropped. Shown at once; the Questlog's order is then stored as shown.
- */
-async function applyShelve(drop: ShelfDrop): Promise<boolean> {
-  const before = plan.value;
-  const backlogBefore = backlog.value;
-  if (!before || writes.busy.value) return false;
-  const result = shelveQuest(before, backlogBefore, drop);
-  if (!result) return false;
-  const { write } = result;
-  const place = write.order.indexOf(write.todoId);
-  const quest = result.backlog[place]!;
-  return writes.writeShown(
-    () => {
-      plan.value = result.plan;
-      backlog.value = result.backlog;
-      status.value = `„${quest.title}“ steht jetzt im Questlog an Stelle ${
-        place + 1
-      } von ${write.order.length}.`;
-      return () => {
-        plan.value = before;
-        backlog.value = backlogBefore;
-        status.value = "";
-      };
-    },
-    async () => {
-      if (write.unplan) await unplanQuest(write.todoId);
-      await reorderBacklog(write.order);
-    },
-    {
-      key: "plan",
-      fallbackError: write.unplan
-        ? "Die Quest konnte nicht zurück in den Questlog."
-        : "Die Reihenfolge konnte nicht gespeichert werden.",
-    },
-  );
-}
-
-/** A card was dropped: on a day (from wherever it came) or into the column. */
 function onMove(move: BoardDrop): void {
-  if (move.kind === "questlog") {
-    void applyShelve(move.drop);
-    return;
-  }
-  if (move.kind === "run") {
-    void applyRunDrop(move.drop);
-    return;
-  }
-  if (move.kind === "event") {
-    void applyEventDrop(move.drop);
-    return;
-  }
-  if (move.kind === "forecast") {
-    void applyForecastDrop(move.drop);
-    return;
-  }
-  if (move.kind === "refused") {
-    notice.value = forecastStaysLine(move.title);
-    return;
-  }
-  const drop = move.drop;
-  const queued = backlog.value.some((todo) => todo.id === drop.todoId);
-  void (queued ? applyQuestlogDrop(drop) : applyDrop(drop));
+  void moves.move(move);
 }
 
 /** "Nach oben" / "Nach unten" in the column; the focus stays on the menu. */
 async function stepQuestlog(drop: ShelfDrop): Promise<void> {
   if (dialogBusy.value) return;
-  await applyShelve(drop);
+  await moves.move({ kind: "questlog", drop });
   await nextTick();
   focusCard(`todo-${drop.todoId}`, "menu");
 }
@@ -627,41 +393,41 @@ function planFromQuestlog(todo: QuestlogQuest, date: string): void {
   const day = plan.value?.days.find((item) => item.date === date);
   if (!day) return;
   void listFocus.around(`todo-${todo.id}`, () =>
-    applyQuestlogDrop({
-      todoId: todo.id,
-      toDate: date,
-      index: openEntries(day).length,
+    moves.move({
+      kind: "day",
+      drop: { todoId: todo.id, toDate: date, index: openEntries(day).length },
     }),
   );
 }
 
-function openMoving(entry: WeekPlanTodoEntry): void {
+/**
+ * "Anderer Tag …": a quest to any day (an appointment's move is confirmed
+ * there), a run to any day of its window, as on Heute. `date` is the
+ * column a run stands in; null for one left behind.
+ */
+function openMoving(entry: WeekPlanTodoEntry | OpenRun, date: string | null): void {
   if (dialogBusy.value || writes.busy.value) return;
   listFocus.remember(entryKey(entry, ""));
-  moving.value = {
-    target: {
-      type: "todo",
-      todoId: entry.todoId,
-      title: entry.title,
-      timeOfDay: entry.timeOfDay,
-    },
-    date: entry.scheduledDate,
-  };
-}
-
-/** "Anderer Tag …" of a run: any day of its window, as on Heute. */
-function openMovingRun(run: OpenRun, date: string | null): void {
-  if (dialogBusy.value || writes.busy.value) return;
-  listFocus.remember(entryKey(run, ""));
-  moving.value = {
-    target: {
-      type: "habit",
-      occurrenceId: run.occurrenceId,
-      title: run.title,
-      moveUntil: run.moveUntil,
-    },
-    date: date ?? "",
-  };
+  moving.value =
+    entry.type === "todo"
+      ? {
+          target: {
+            type: "todo",
+            todoId: entry.todoId,
+            title: entry.title,
+            timeOfDay: entry.timeOfDay,
+          },
+          date: entry.scheduledDate,
+        }
+      : {
+          target: {
+            type: "habit",
+            occurrenceId: entry.occurrenceId,
+            title: entry.title,
+            moveUntil: entry.moveUntil,
+          },
+          date: date ?? "",
+        };
 }
 
 function openMenuDialog(
@@ -758,10 +524,7 @@ async function complete(
 }
 /** X on a run due by today: done through the same path as Heute's ring. */
 async function completeRun(run: OpenRun): Promise<void> {
-  await ticks.complete(
-    { kind: "occurrence", id: run.occurrenceId, title: run.title },
-    { key: "plan" },
-  );
+  await ticks.complete(entryTarget(run), { key: "plan" });
 }
 
 /** "Überspringen": this run is left out, the daily goes on. */
@@ -769,69 +532,30 @@ async function skipRun(run: OpenRun): Promise<void> {
   if (writes.busy.value || dialogBusy.value) return;
   const key = entryKey(run, "");
   await listFocus.around(key, async () => {
-    if (
-      await ticks.skip(
-        { kind: "occurrence", id: run.occurrenceId, title: run.title },
-        "plan",
-      )
-    )
+    if (await ticks.skip(entryTarget(run), "plan"))
       status.value = `„${run.title}“ übersprungen.`;
   });
 }
 
 /**
- * Moves a quest by key or menu the way dragging does: onto a day of the
- * board at the end of its order, shown at once, or beyond the board the
- * way of "Verschieben". Where it may go is row-actions' rule.
+ * Moves an open quest or run by key or menu the way dragging does: onto a
+ * day of the board at the end of its order, shown at once, or beyond the
+ * board straight away (`useTicks`). Where it may go (a run within its
+ * window) is row-actions' rule.
  */
-function moveQuest(entry: WeekPlanTodoEntry, date: string): boolean {
+function moveEntry(entry: WeekPlanTodoEntry | OpenRun, date: string): boolean {
   if (writes.busy.value || dialogBusy.value) return false;
   const day = shownDays.value.find((item) => item.date === date);
   void listFocus.around(entryKey(entry, ""), async () => {
     if (day) {
-      await applyDrop({
-        todoId: entry.todoId,
-        toDate: date,
-        index: openEntries(day).length,
-      });
+      await moves.move(dropAt(entry, date, openEntries(day).length));
       return;
     }
-    const moved = await ticks.move(
-      { kind: "todo", id: entry.todoId, title: entry.title },
-      date,
-      { key: "plan" },
-    );
+    const moved = await ticks.move(entryTarget(entry), date, { key: "plan" });
     if (moved)
       status.value = fullStop(
         `„${entry.title}“ steht jetzt am ${dayLabel(date)}`,
       );
-  });
-  return true;
-}
-
-/**
- * Moves a run by key or menu like Heute: onto the end of that day of the
- * board, or beyond the board straight away; within its window only.
- */
-function moveRun(run: OpenRun, date: string): boolean {
-  if (writes.busy.value || dialogBusy.value) return false;
-  const day = shownDays.value.find((item) => item.date === date);
-  void listFocus.around(entryKey(run, ""), async () => {
-    if (day) {
-      await applyRunDrop({
-        occurrenceId: run.occurrenceId,
-        toDate: date,
-        index: openEntries(day).length,
-      });
-      return;
-    }
-    const moved = await ticks.move(
-      { kind: "occurrence", id: run.occurrenceId, title: run.title },
-      date,
-      { key: "plan" },
-    );
-    if (moved)
-      status.value = fullStop(`„${run.title}“ steht jetzt am ${dayLabel(date)}`);
   });
   return true;
 }
@@ -865,29 +589,27 @@ function planQueued(todo: QuestlogQuest, date: string): boolean {
   return true;
 }
 
-/** An open quest of the board by its row key; dailies and done rows give none. */
-function openQuest(key: string | null): WeekPlanTodoEntry | null {
-  const current = plan.value;
-  if (!current) return null;
-  for (const entry of current.overdue)
-    if (isMovable(entry) && entryKey(entry, "") === key) return entry;
-  for (const day of shownDays.value)
-    for (const entry of day.entries)
-      if (isMovable(entry) && entryKey(entry, day.date) === key) return entry;
-  return null;
+/** An open quest or stored run: what moves, ticks and takes the row keys. */
+function isOwnOpen(entry: WeekPlanEntry): entry is WeekPlanTodoEntry | OpenRun {
+  return isMovable(entry) || isMovableRun(entry);
 }
 
-/** An open stored run of the board by its row key, with its day (null: left behind). */
-function openRun(key: string | null): { run: OpenRun; date: string | null } | null {
+/**
+ * An open quest or stored run of the board by its row key, with the column
+ * it stands in (null: left behind); events, forecasts and done rows give none.
+ */
+function openEntry(
+  key: string | null,
+): { entry: WeekPlanTodoEntry | OpenRun; date: string | null } | null {
   const current = plan.value;
   if (!current) return null;
   for (const entry of current.overdue)
-    if (isMovableRun(entry) && entryKey(entry, "") === key)
-      return { run: entry, date: null };
+    if (isOwnOpen(entry) && entryKey(entry, "") === key)
+      return { entry, date: null };
   for (const day of shownDays.value)
     for (const entry of day.entries)
-      if (isMovableRun(entry) && entryKey(entry, day.date) === key)
-        return { run: entry, date: day.date };
+      if (isOwnOpen(entry) && entryKey(entry, day.date) === key)
+        return { entry, date: day.date };
   return null;
 }
 
@@ -920,11 +642,15 @@ function entryActions(
     today: current.today,
     busy: writes.busy.value || dialogBusy.value,
   };
+  const step: RowActions["step"] = (direction) =>
+    stepDrop(current, entry, direction)
+      ? () => void stepEntry(entry, direction)
+      : undefined;
   if (isMovable(entry))
     return {
       ...base,
-      move: (to) => moveQuest(entry, to),
-      pickDay: () => openMoving(entry),
+      move: (to) => moveEntry(entry, to),
+      pickDay: () => openMoving(entry, date),
       complete: () =>
         void listFocus.around(entryKey(entry, ""), () =>
           complete(entry, entry.campaign),
@@ -932,26 +658,20 @@ function entryActions(
       edit: () => openEditing(entry),
       menuTimer: timer,
       reparent: () => openMenuDialog("move", entry),
-      step: (direction) =>
-        stepDrop(current, entry.todoId, direction)
-          ? () => void stepEntry(entry, direction)
-          : undefined,
+      step,
       remove: () => openMenuDialog("delete", entry),
     };
   if (isMovableRun(entry))
     return {
       ...base,
-      move: (to) => moveRun(entry, to),
-      pickDay: () => openMovingRun(entry, date),
+      move: (to) => moveEntry(entry, to),
+      pickDay: () => openMoving(entry, date),
       complete: () =>
         void listFocus.around(entryKey(entry, ""), () => completeRun(entry)),
       skip: () => void skipRun(entry),
       edit: () => openEditing(entry, date ?? ""),
       menuTimer: timer,
-      step: (direction) =>
-        date !== null && stepRunDrop(current, entry.occurrenceId, direction)
-          ? () => void stepEntry(entry, direction)
-          : undefined,
+      step,
       remove: () => openDeleteDaily(entry, date ?? ""),
     };
   return {
@@ -993,10 +713,8 @@ function rowByKey(key: string | null): RowActions | null {
   const queued = questlogQuest(key);
   if (queued) return queuedActions(queued, current);
   if (!current) return null;
-  const found = openRun(key);
-  if (found) return entryActions(found.run, found.date, current);
-  const entry = openQuest(key);
-  return entry ? entryActions(entry, null, current) : null;
+  const found = openEntry(key);
+  return found ? entryActions(found.entry, found.date, current) : null;
 }
 
 useShortcutHandlers({

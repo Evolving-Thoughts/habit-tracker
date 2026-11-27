@@ -9,11 +9,10 @@ import { getCurrentDateInTimeZone } from "../utils/date";
 import { questRow, rowMenu, type MenuEntry } from "../utils/row-actions";
 import {
   boardDrop,
-  questlogEntry,
   type BoardDrop,
-  type QuestlogQuest,
   type ShelfDrop,
-} from "../utils/week-plan";
+} from "../utils/plan-move";
+import { questlogEntry, type QuestlogQuest } from "../utils/week-plan";
 
 /**
  * The Questlog at the far left of the board: open quests without a day in
