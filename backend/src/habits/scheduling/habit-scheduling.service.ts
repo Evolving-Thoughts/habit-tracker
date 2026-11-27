@@ -609,8 +609,8 @@ export class HabitSchedulingService {
     userId: string,
     now = this.clock.now(),
   ): Promise<HabitOccurrenceEntity[]> {
-    return this.asOfNow(userId, now, (manager) =>
-      this.todayIn(manager, userId, now),
+    return this.asOfNow(userId, now, (manager, at) =>
+      this.todayIn(manager, userId, at),
     );
   }
 
@@ -626,24 +626,27 @@ export class HabitSchedulingService {
    * Answers from the user's runs as of `now`. Decides in a consistent read
    * whether any active habit has runs to store (`lifecycleChanges`); in the
    * common case it has none, and `answer` reads in that same snapshot,
-   * without the user lock. Otherwise the runs are brought up to `now` under
+   * without the user lock. Otherwise the runs are brought up to date under
    * the lock (decided again there) and `answer` reads after that, in the
-   * same transaction.
+   * same transaction. Under the lock the moment is read again: a change
+   * that got the lock first happened before it, and runs it created must
+   * not be judged by an earlier `now`.
    */
   private async asOfNow<T>(
     userId: string,
     now: Date,
-    answer: (manager: EntityManager) => Promise<T>,
+    answer: (manager: EntityManager, at: Date) => Promise<T>,
   ): Promise<T> {
     const asStored = await this.unitOfWork.read(async (manager) =>
       (await this.runsUpToDate(manager, userId, now))
-        ? { value: await answer(manager) }
+        ? { value: await answer(manager, now) }
         : null,
     );
     if (asStored) return asStored.value;
     return this.unitOfWork.run(userId, async (manager) => {
-      await this.reconcileActive(manager, userId, now);
-      return answer(manager);
+      const lockedNow = this.clock.now();
+      await this.reconcileActive(manager, userId, lockedNow);
+      return answer(manager, lockedNow);
     });
   }
 
