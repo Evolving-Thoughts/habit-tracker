@@ -7,7 +7,12 @@ import { UserEntity } from '../src/auth/auth.entities';
 import { addDays, dayOf } from '../src/common/date/local-day';
 import { configureApp } from '../src/configure-app';
 import { ReflectionEntity } from '../src/reflections/reflection.entity';
-import { authenticatedRequest as request, seedAuth } from './auth-fixture';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  SEEDED_AUTH_TABLES,
+} from './auth-fixture';
+import { resetDatabase } from './reset-database';
 
 const OTHER_USER = '33333333-3333-4333-8333-333333333333';
 
@@ -34,7 +39,7 @@ describe('Daily reflections (e2e)', () => {
       verifiedAt: new Date(),
     });
   });
-  beforeEach(() => db.query('TRUNCATE reflections'));
+  beforeEach(() => resetDatabase(db, { keep: SEEDED_AUTH_TABLES }));
   afterAll(() => app.close());
 
   it('reads an empty day, then stores and replaces one text', async () => {

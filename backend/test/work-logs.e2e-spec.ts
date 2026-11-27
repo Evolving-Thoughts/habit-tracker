@@ -9,7 +9,12 @@ import { dayOf } from '../src/common/date/local-day';
 import { configureApp } from '../src/configure-app';
 import { HistoryResponse } from '../src/history/history.dto';
 import { WorkLogEntity } from '../src/work-logs/work-log.entity';
-import { authenticatedRequest as request, seedAuth } from './auth-fixture';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  SEEDED_AUTH_TABLES,
+} from './auth-fixture';
+import { resetDatabase } from './reset-database';
 
 const OTHER_USER = '44444444-4444-4444-8444-444444444444';
 type Log = { id: number; title: string; minutes: number; source: string };
@@ -82,9 +87,7 @@ describe('Work logs (e2e)', () => {
   });
   beforeEach(async () => {
     now = new Date('2026-10-30T09:00:00.000Z');
-    await db.query(
-      'TRUNCATE work_logs, push_deliveries, timers, todos CASCADE',
-    );
+    await resetDatabase(db, { keep: SEEDED_AUTH_TABLES });
   });
   afterAll(() => app.close());
 

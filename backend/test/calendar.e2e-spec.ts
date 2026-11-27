@@ -7,7 +7,12 @@ import { addDays, dayOf } from '../src/common/date/local-day';
 import { configureApp } from '../src/configure-app';
 import { HabitOccurrenceEntity } from '../src/habit-occurrences/entities/habit-occurrence.entity';
 import type { HistoryResponse } from '../src/history/history.dto';
-import { authenticatedRequest as request, seedAuth } from './auth-fixture';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  SEEDED_AUTH_TABLES,
+} from './auth-fixture';
+import { resetDatabase } from './reset-database';
 
 describe('Calendar month view (e2e)', () => {
   let app: INestApplication, server: Server, db: DataSource;
@@ -28,11 +33,7 @@ describe('Calendar month view (e2e)', () => {
     server = app.getHttpServer() as Server;
     db = app.get(DataSource);
   });
-  beforeEach(() =>
-    db.query(
-      'TRUNCATE timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos CASCADE',
-    ),
-  );
+  beforeEach(() => resetDatabase(db, { keep: SEEDED_AUTH_TABLES }));
   afterAll(() => app.close());
 
   it('reports the habit quota in the week view only', async () => {

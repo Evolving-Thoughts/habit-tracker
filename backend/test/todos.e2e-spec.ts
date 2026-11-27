@@ -5,6 +5,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Server } from 'node:http';
 import {
   authenticatedRequest as request,
+  SEEDED_AUTH_TABLES,
   seedAuth,
   TEST_USER,
 } from './auth-fixture';
@@ -13,6 +14,7 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
 import { addDays, dayOf } from '../src/common/date/local-day';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
+import { resetDatabase } from './reset-database';
 
 type TodoResponseBody = {
   id: number;
@@ -54,10 +56,7 @@ describe('Todos API (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await app.get(DataSource).query(
-      // Dailies may name a todo as their campaign, so they go along.
-      'TRUNCATE TABLE push_deliveries, push_subscriptions, timers, todos RESTART IDENTITY CASCADE',
-    );
+    await resetDatabase(app.get(DataSource), { keep: SEEDED_AUTH_TABLES });
   });
 
   afterAll(async () => {

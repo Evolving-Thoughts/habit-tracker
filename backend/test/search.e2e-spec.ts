@@ -10,7 +10,12 @@ import { HabitOccurrenceResponseDto } from '../src/habit-occurrences/dto/habit-o
 import { HabitScheduleType } from '../src/habits/enums/habit-schedule-type.enum';
 import type { SearchResponse } from '../src/search/search.dto';
 import { shortDate, weekSpan } from '../src/search/search-text';
-import { authenticatedRequest as request, seedAuth } from './auth-fixture';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  SEEDED_AUTH_TABLES,
+} from './auth-fixture';
+import { resetDatabase } from './reset-database';
 
 const OTHER_USER = '44444444-4444-4444-8444-444444444444';
 
@@ -65,11 +70,7 @@ describe('Search (e2e)', () => {
       verifiedAt: new Date(),
     });
   });
-  beforeEach(() =>
-    db.query(
-      'TRUNCATE week_reviews, reflections, day_bests, work_logs, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos CASCADE',
-    ),
-  );
+  beforeEach(() => resetDatabase(db, { keep: SEEDED_AUTH_TABLES }));
   afterAll(() => app.close());
 
   it('finds campaigns, quests and dailies by title, without case or accents', async () => {

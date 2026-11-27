@@ -22,6 +22,7 @@ import { addDays, dayOf } from '../src/common/date/local-day';
 import type { HabitResponseDto } from '../src/habits/dto/habit-response.dto';
 import type { DayPlannerResponseDto } from '../src/day-planner/dto/day-planner-response.dto';
 import type { StartTimerDto } from '../src/timers/timer.dto';
+import { resetDatabase } from './reset-database';
 describe('Synced timers and Dump completion (e2e)', () => {
   let app: INestApplication;
   let db: DataSource;
@@ -76,18 +77,13 @@ describe('Synced timers and Dump completion (e2e)', () => {
     if (db.options.database !== 'habit_tracker_test')
       throw new Error('Test DB required');
   });
-  async function clear() {
-    await db.query(
-      'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos, categories, reflections, week_reviews, day_bests, day_best_settings, month_challenges, focus_blocks, focus_block_entries, focus_block_settings, work_logs, goal_snapshots, auth_tokens, auth_sessions, auth_rate_limits, weekly_quest_targets, users RESTART IDENTITY',
-    );
-  }
   beforeEach(async () => {
-    await clear();
+    await resetDatabase(db);
     await seedAuth(app);
     now = new Date();
   });
   afterAll(async () => {
-    if (db?.isInitialized) await clear();
+    if (db?.isInitialized) await resetDatabase(db);
     await app?.close();
   });
   const MINUTE = 60_000;

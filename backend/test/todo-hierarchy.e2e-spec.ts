@@ -7,6 +7,7 @@ import { dayOf } from '../src/common/date/local-day';
 import { configureApp } from '../src/configure-app';
 import {
   authenticatedRequest as request,
+  SEEDED_AUTH_TABLES,
   seedAuth,
   TEST_USER,
 } from './auth-fixture';
@@ -15,6 +16,7 @@ import { UserEntity } from '../src/auth/auth.entities';
 import { TimerEntity } from '../src/timers/timer.entity';
 import { TodoResponseDto } from '../src/todos/dto/todo-response.dto';
 import { TodoProgress } from '../src/todos/todo-hierarchy';
+import { resetDatabase } from './reset-database';
 type Node = TodoResponseDto & { progress: TodoProgress };
 type Preview = {
   confirmationToken: string;
@@ -35,10 +37,7 @@ describe('Todo hierarchy T2/T3 PostgreSQL API', () => {
     server = app.getHttpServer() as Server;
   });
   beforeEach(async () => {
-    await db.query(
-      // Dailies may name a todo as their campaign, so they go along.
-      'TRUNCATE push_deliveries, push_subscriptions, timers, todos RESTART IDENTITY CASCADE',
-    );
+    await resetDatabase(db, { keep: SEEDED_AUTH_TABLES });
   });
   afterAll(async () => {
     await app.close();

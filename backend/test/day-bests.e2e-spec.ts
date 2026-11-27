@@ -12,7 +12,12 @@ import type {
   DayBestRangeResponse,
 } from '../src/day-bests/day-best.dto';
 import { DayBestEntity } from '../src/day-bests/day-best.entities';
-import { authenticatedRequest as request, seedAuth } from './auth-fixture';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  SEEDED_AUTH_TABLES,
+} from './auth-fixture';
+import { resetDatabase } from './reset-database';
 
 const OTHER_USER = '55555555-5555-4555-8555-555555555555';
 
@@ -39,7 +44,7 @@ describe('Das Beste des Tages (e2e)', () => {
       verifiedAt: new Date(),
     });
   });
-  beforeEach(() => db.query('TRUNCATE day_bests, day_best_settings'));
+  beforeEach(() => resetDatabase(db, { keep: SEEDED_AUTH_TABLES }));
   afterAll(() => app.close());
 
   it('needs a session', async () => {

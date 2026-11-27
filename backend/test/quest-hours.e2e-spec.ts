@@ -16,9 +16,11 @@ import { TodoEntity } from '../src/todos/entities/todo.entity';
 import { WorkLogEntity } from '../src/work-logs/work-log.entity';
 import {
   authenticatedRequest as request,
+  SEEDED_AUTH_TABLES,
   seedAuth,
   TEST_USER,
 } from './auth-fixture';
+import { resetDatabase } from './reset-database';
 
 const OTHER_USER = '55555555-5555-4555-8555-555555555555';
 // A Wednesday; its week runs from Monday 16 to Sunday 22 November.
@@ -87,9 +89,7 @@ describe('Quest hours (e2e)', () => {
     });
   });
   beforeEach(async () => {
-    await db.query(
-      'TRUNCATE weekly_quest_targets, work_logs, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos CASCADE',
-    );
+    await resetDatabase(db, { keep: SEEDED_AUTH_TABLES });
   });
   afterAll(() => app.close());
 

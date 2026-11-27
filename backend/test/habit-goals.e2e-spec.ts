@@ -7,7 +7,12 @@ import { addDays, dayOf } from '../src/common/date/local-day';
 import { configureApp } from '../src/configure-app';
 import { HabitOccurrenceEntity } from '../src/habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../src/habit-occurrences/enums/habit-occurrence-status.enum';
-import { authenticatedRequest as request, seedAuth } from './auth-fixture';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  SEEDED_AUTH_TABLES,
+} from './auth-fixture';
+import { resetDatabase } from './reset-database';
 
 type Node = {
   id: number;
@@ -57,11 +62,7 @@ describe('Habit goals on todos (e2e)', () => {
     server = app.getHttpServer() as Server;
     db = app.get(DataSource);
   });
-  beforeEach(() =>
-    db.query(
-      'TRUNCATE work_logs, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos CASCADE',
-    ),
-  );
+  beforeEach(() => resetDatabase(db, { keep: SEEDED_AUTH_TABLES }));
   afterAll(() => app.close());
 
   it('counts completions in the period, live and reversibly', async () => {

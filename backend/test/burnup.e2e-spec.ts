@@ -6,7 +6,12 @@ import { AppModule } from '../src/app.module';
 import { Clock } from '../src/common/clock';
 import { dayOf } from '../src/common/date/local-day';
 import { configureApp } from '../src/configure-app';
-import { authenticatedRequest as request, seedAuth } from './auth-fixture';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  SEEDED_AUTH_TABLES,
+} from './auth-fixture';
+import { resetDatabase } from './reset-database';
 
 type Point = { date: string; doneCount: number; totalCount: number };
 
@@ -42,7 +47,7 @@ describe('Burnup (e2e)', () => {
   });
   beforeEach(async () => {
     now = new Date('2026-10-30T09:00:00.000Z');
-    await db.query('TRUNCATE goal_snapshots, timers, todos CASCADE');
+    await resetDatabase(db, { keep: SEEDED_AUTH_TABLES });
   });
   afterAll(() => app.close());
 

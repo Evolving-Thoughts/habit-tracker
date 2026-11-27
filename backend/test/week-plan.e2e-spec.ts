@@ -18,11 +18,13 @@ import { MissedOccurrencePolicy } from '../src/habits/enums/missed-occurrence-po
 import { TodoEntity } from '../src/todos/entities/todo.entity';
 import {
   authenticatedRequest as request,
+  SEEDED_AUTH_TABLES,
   seedAuth,
   TEST_USER,
 } from './auth-fixture';
 import { HabitForecastPlaceEntity } from '../src/habits/entities/habit-forecast-place.entity';
 import { HabitOccurrenceEntity } from '../src/habit-occurrences/entities/habit-occurrence.entity';
+import { resetDatabase } from './reset-database';
 
 const OTHER_USER = '22222222-2222-4222-8222-222222222222';
 
@@ -80,7 +82,7 @@ describe('Plan board (e2e)', () => {
       verifiedAt: new Date(),
     });
   });
-  beforeEach(() => db.query('TRUNCATE timers, todos, habits CASCADE'));
+  beforeEach(() => resetDatabase(db, { keep: SEEDED_AUTH_TABLES }));
   afterAll(() => app.close());
 
   it('requires authentication', async () => {
@@ -217,7 +219,10 @@ describe('Plan board (e2e)', () => {
       (
         await request(server)
           .post('/habits')
-          .send({ title: 'Laufen', schedule: { type: 'interval', intervalDays: 1 } })
+          .send({
+            title: 'Laufen',
+            schedule: { type: 'interval', intervalDays: 1 },
+          })
           .expect(201)
       ).body as { id: number }
     ).id;
@@ -274,13 +279,17 @@ describe('Plan board (e2e)', () => {
       dayPosition: 3,
     });
     await request(server).get('/day-planner/today').expect(200);
-    const stored = await db.getRepository(HabitOccurrenceEntity).findOneByOrFail({
-      habitId,
-      scheduledDate: today,
-    });
+    const stored = await db
+      .getRepository(HabitOccurrenceEntity)
+      .findOneByOrFail({
+        habitId,
+        scheduledDate: today,
+      });
     expect(stored.dayPosition).toBe(3);
     expect(
-      await db.getRepository(HabitForecastPlaceEntity).countBy({ habitId, date: today }),
+      await db
+        .getRepository(HabitForecastPlaceEntity)
+        .countBy({ habitId, date: today }),
     ).toBe(0);
   });
 

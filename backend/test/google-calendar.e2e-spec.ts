@@ -21,7 +21,12 @@ import { configureApp } from '../src/configure-app';
 import { HabitOccurrenceEntity } from '../src/habit-occurrences/entities/habit-occurrence.entity';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
 import { WorkLogEntity } from '../src/work-logs/work-log.entity';
-import { authenticatedRequest as request, seedAuth } from './auth-fixture';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  SEEDED_AUTH_TABLES,
+} from './auth-fixture';
+import { resetDatabase } from './reset-database';
 
 const OWN = 'own-calendar';
 const now = new Date('2026-10-30T06:00:00.000Z');
@@ -164,9 +169,7 @@ describe('Google calendar sync (e2e)', () => {
     db = app.get(DataSource);
   });
   beforeEach(async () => {
-    await db.query(
-      'TRUNCATE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, work_logs, timers, todos, habits CASCADE',
-    );
+    await resetDatabase(db, { keep: SEEDED_AUTH_TABLES });
     google.calendars.clear();
     google.writes = [];
     google.calls = [];

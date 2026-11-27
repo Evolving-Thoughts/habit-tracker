@@ -25,6 +25,7 @@ import {
   PushSubscriptionEntity,
 } from '../src/push/push.entities';
 import type { TimerResponse } from '../src/timers/timers.service';
+import { resetDatabase } from './reset-database';
 
 describe('Session-scoped timer Push (e2e)', () => {
   let app: INestApplication;
@@ -95,9 +96,7 @@ describe('Session-scoped timer Push (e2e)', () => {
       throw new Error('Test DB required');
   });
   beforeEach(async () => {
-    await db.query(
-      'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos, categories, reflections, week_reviews, day_bests, day_best_settings, month_challenges, focus_blocks, focus_block_entries, focus_block_settings, work_logs, goal_snapshots, auth_tokens, auth_sessions, auth_rate_limits, weekly_quest_targets, users RESTART IDENTITY',
-    );
+    await resetDatabase(db);
     await seedAuth(app);
     now = new Date();
     transport.send.mockReset().mockResolvedValue('sent');

@@ -5,6 +5,8 @@ import { DataSource } from 'typeorm';
 import { SessionEntity, UserEntity } from '../src/auth/auth.entities';
 import { hashPassword, tokenHash } from '../src/auth/auth.crypto';
 export const TEST_USER = '11111111-1111-4111-8111-111111111111';
+/** What seedAuth fills, for suites that seed once and reset per test. */
+export const SEEDED_AUTH_TABLES = ['users', 'auth_sessions'];
 const TOKEN = 'a'.repeat(43);
 export async function seedAuth(app: INestApplication): Promise<void> {
   const db = app.get(DataSource);

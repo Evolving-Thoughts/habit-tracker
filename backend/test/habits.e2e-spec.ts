@@ -3,9 +3,11 @@ import { Test } from '@nestjs/testing';
 import type { Server } from 'node:http';
 import {
   authenticatedRequest as request,
+  SEEDED_AUTH_TABLES,
   seedAuth,
   TEST_USER,
 } from './auth-fixture';
+import { resetDatabase } from './reset-database';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { UserEntity } from '../src/auth/auth.entities';
@@ -47,45 +49,6 @@ describe('Habit domain and day planner (e2e)', () => {
   const date = (): string => getCurrentDateInTimeZone();
 
   const relativeDate = (days: number): string => addDays(date(), days);
-
-  async function clear(): Promise<void> {
-    if (dataSource.options.database !== 'habit_tracker_test') {
-      throw new Error('Refusing to delete non-test data');
-    }
-
-    // Work logs do not hang on a todo, so a log another suite left behind
-    // would count as time worked today.
-    await dataSource.query('DELETE FROM work_logs');
-    await dataSource.query('DELETE FROM timers');
-    // A weekly Quest target another suite left behind would show in the
-    // planner's quest hours.
-    await dataSource.query('DELETE FROM weekly_quest_targets');
-    await dataSource.transaction(async (manager) => {
-      await manager
-        .getRepository(HabitOccurrenceEntity)
-        .createQueryBuilder()
-        .delete()
-        .execute();
-
-      await manager
-        .getRepository(HabitScheduleVersionEntity)
-        .createQueryBuilder()
-        .delete()
-        .execute();
-
-      await manager
-        .getRepository(HabitEntity)
-        .createQueryBuilder()
-        .delete()
-        .execute();
-
-      await manager
-        .getRepository(TodoEntity)
-        .createQueryBuilder()
-        .delete()
-        .execute();
-    });
-  }
 
   async function create(
     overrides: Partial<CreateHabitDto> = {},
@@ -264,9 +227,7 @@ describe('Habit domain and day planner (e2e)', () => {
     habitService = app.get(HabitsService);
   });
 
-  beforeEach(async () => {
-    await clear();
-  });
+  beforeEach(() => resetDatabase(dataSource, { keep: SEEDED_AUTH_TABLES }));
 
   afterAll(async () => {
     if (!app) {
@@ -274,12 +235,7 @@ describe('Habit domain and day planner (e2e)', () => {
     }
 
     try {
-      if (
-        dataSource?.isInitialized &&
-        dataSource.options.database === 'habit_tracker_test'
-      ) {
-        await clear();
-      }
+      if (dataSource?.isInitialized) await resetDatabase(dataSource);
     } finally {
       await app.close();
     }

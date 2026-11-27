@@ -15,7 +15,12 @@ import type {
   MonthChallengesResponse,
 } from '../src/month-challenges/month-challenge.dto';
 import { MonthChallengeEntity } from '../src/month-challenges/month-challenge.entity';
-import { authenticatedRequest as request, seedAuth } from './auth-fixture';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  SEEDED_AUTH_TABLES,
+} from './auth-fixture';
+import { resetDatabase } from './reset-database';
 
 const OTHER_USER = '77777777-7777-4777-8777-777777777777';
 
@@ -77,13 +82,11 @@ describe('Monats-Challenge (e2e)', () => {
   beforeEach(async () => {
     // Thursday, 12 November 2026: the challenge counts from today.
     setNow('2026-11-12');
-    await db.query(
-      'TRUNCATE month_challenges, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits CASCADE',
-    );
+    await resetDatabase(db, { keep: SEEDED_AUTH_TABLES });
   });
   afterAll(async () => {
     // Leaves no challenge behind for the suites after this one.
-    await db.query('TRUNCATE month_challenges');
+    await resetDatabase(db);
     await app.close();
   });
 
