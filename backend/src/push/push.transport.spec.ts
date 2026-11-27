@@ -69,7 +69,12 @@ describe('Push input and transport', () => {
     const curve = createECDH('prime256v1');
     curve.generateKeys();
     process.env.VAPID_PUBLIC_KEY = curve.getPublicKey().toString('base64url');
-    process.env.VAPID_PRIVATE_KEY = curve.getPrivateKey().toString('base64url');
+    // Node leaves out leading zero bytes; a VAPID private key is 32 bytes.
+    const secret = curve.getPrivateKey();
+    process.env.VAPID_PRIVATE_KEY = Buffer.concat([
+      Buffer.alloc(32 - secret.length),
+      secret,
+    ]).toString('base64url');
     process.env.VAPID_SUBJECT = 'https://example.invalid';
     return new PushTransport();
   }
