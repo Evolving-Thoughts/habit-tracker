@@ -64,8 +64,8 @@ it for the whole hierarchy with two queries (open stopwatches, and the latest
 
 - `utils/campaign-board.ts` holds the pure rules: the column of a quest
   (`columnOf`), which quests are cards (`campaignCards`: quests of the
-  campaign without children), the order per column and what a drop does
-  (`dropAction(from, to)`).
+  campaign without children), the order per column, what a drop does
+  (`dropAction(from, to)`) and what a whole move means (`planBoardMove`, below).
 - `CampaignBoard.vue` (in the campaign detail of `CampaignsView.vue`, behind
   the choice "Liste · Board", remembered per device as `campaign:view`) and
   `CampaignBoardColumn.vue` draw it. A drop on Geplant asks for the day, on
@@ -73,8 +73,9 @@ it for the whole hierarchy with two queries (open stopwatches, and the latest
   Arbeit takes the quest into work by hand (`start-work`). Out of In Arbeit a dialog asks "Als geblockt markieren?";
   either answer calls `POST /todos/:id/set-aside`, closing it leaves the card.
   The same steps are in each card's menu. A quest whose stopwatch runs shows
-  in In Arbeit at once; when the stopwatch ends the board reloads, and the
-  server says whether it stays.
+  in In Arbeit at once; when the stopwatch ends the board emits `changed`
+  (like a quick add), the view reloads, and the server says whether it
+  stays.
 - Quick add on To-Do and Geplant (`QuickAddQuest` with `parent`) creates the
   quest below the campaign with its category; in Geplant for today.
 - On a phone the board shares the Plan's pieces: `.snap-board`,
@@ -94,8 +95,19 @@ it for the whole hierarchy with two queries (open stopwatches, and the latest
   one step per marked card from its own `dropAction` (cards already in the
   target are skipped), asks "Als geblockt markieren?" once if any step sets
   aside and the day once if any step plans, then writes the steps one after
-  another through the single-card paths (`apply`, `startWork`, `complete`).
-  Every card shows in its new column at once; the status line then says how
-  many landed (`movedGroupLine`). No answer, no write. The marks clear after
-  the move, with "Auswahl aufheben" and with Escape. Keyboard users have no
+  another through the single-card paths (`write`, `complete`). Every card
+  shows in its new column at once; the status line then says how many
+  landed (`movedGroupLine`, via `landedLine`). No answer, no write. The
+  marks clear when the group's writes start (a marked card moved alone: at
+  once), with "Auswahl aufheben" and with Escape. Keyboard users have no
   multi-select yet.
+- Every move, single or group, by drop, menu or key, is planned by
+  `planBoardMove(request, answers, now)`: the request is the drop (card, target
+  column, the cards and marked ids at that moment), a menu step (target
+  column, maybe a day) or "Zurückstellen …". It answers null (nothing
+  moves), the next question with the quests it is about (blocked first,
+  then the day; each only while a step still waits for it), or the finished
+  plan: per card its step (`complete`, or `move`/`start` with its ordered
+  `BoardWrite`s), the changes shown at once, the group's status line and
+  when the marks clear. `CampaignBoard` keeps the dialogs, the focus, the
+  marks and the runner that sends the planned writes.

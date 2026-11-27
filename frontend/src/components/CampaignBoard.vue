@@ -37,11 +37,18 @@ import {
   columnLabel,
   columnOf,
   DONE_SHOWN,
-  dropAction,
-  movedGroupLine,
+  landedLine,
   movedLine,
+  planBoardMove,
   type BoardCard,
   type BoardColumn,
+  type BoardQuestion,
+  type BoardWrite,
+  type FinishedMove,
+  type MoveAnswers,
+  type MovePlan,
+  type MoveRequest,
+  type PlannedStep,
 } from "../utils/campaign-board";
 import { getCurrentDateInTimeZone } from "../utils/date";
 import {
@@ -84,7 +91,7 @@ const emit = defineEmits<{
   reparent: [todo: HierarchyTodo];
   remove: [todo: HierarchyTodo];
   /** The quests changed from outside the board's writes: a quick add, a stopwatch that ended. */
-  created: [];
+  changed: [];
 }>();
 
 const root = ref<HTMLElement | null>(null);
@@ -140,7 +147,7 @@ const active = computed(
 /* A stopwatch that ends leaves its time in the Logbuch: the server says
    whether its quest stays in "In Arbeit". */
 watch(active, (now, before) => {
-  if (before !== null && now !== before) emit("created");
+  if (before !== null && now !== before) emit("changed");
 });
 const columns = computed(() =>
   boardColumns(cards.value, {
@@ -189,170 +196,52 @@ function placeOf(card: BoardCard): Place {
 }
 
 /**
- * One card's part of a move, as the drop rules ask for it (`dropAction`):
- * `move` opens again first, sets aside with the answer to "Als geblockt
- * markieren?", then gives or takes the day; `start` takes it into In
- * Arbeit; `complete` completes it. `day`: a date for Geplant, null for
- * To-Do, undefined while still to ask.
- */
-type Step = {
-  card: BoardCard;
-  to: BoardColumn;
-  kind: "move" | "start" | "complete";
-  reopen: boolean;
-  setAside: boolean;
-  /** The day stays as it is ("Zurückstellen …"). */
-  keepDay: boolean;
-  day?: string | null;
-  blocked?: boolean;
-  from: Place;
-};
-/**
- * What one drop or menu step moves: a single card, or every marked card
- * when a marked one is dragged (`group`). Its questions are asked once for
- * all its steps; without an answer nothing moves.
+ * A move under way: what was asked for (the plan comes from `planBoardMove`),
+ * the answers so far, where its cards stood (for the focus afterwards) and
+ * whether it came from a card's menu.
  */
 type Move = {
-  steps: Step[];
-  to: BoardColumn;
+  request: MoveRequest;
+  answers: MoveAnswers;
+  from: Map<number, Place>;
   fromMenu: boolean;
-  group: boolean;
 };
-const question = ref<{ kind: "blocked" | "day"; move: Move } | null>(null);
+const question = ref<(BoardQuestion & { move: Move }) | null>(null);
 /** The move a question was last asked for; kept once its dialog closes. */
 let asking: Move | null = null;
-/** Steps still waiting for an answer, one kind of question each. */
-const needsBlocked = (step: Step) =>
-  step.setAside && step.blocked === undefined;
-const needsDay = (step: Step) =>
-  step.kind === "move" && !step.keepDay && step.day === undefined;
-
-/** A card's step onto column `to`; null where the drop does nothing. */
-function stepFor(card: BoardCard, to: BoardColumn, date?: string): Step | null {
-  const action = dropAction(columnOf(card.todo), to);
-  if (!action) return null;
-  const base = {
-    card,
-    to,
-    reopen: false,
-    setAside: false,
-    keepDay: false,
-    from: placeOf(card),
-  };
-  if (action.kind === "complete") return { ...base, kind: "complete" };
-  if (action.kind === "start")
-    return { ...base, kind: "start", reopen: action.reopen };
-  return {
-    ...base,
-    kind: "move",
-    reopen: action.reopen,
-    setAside: action.setAside,
-    day: action.kind === "unplan" ? null : date,
-  };
-}
-
-/** Moves a card onto another column, by drop or by its menu. */
-function moveCard(
-  card: BoardCard,
-  to: BoardColumn,
-  options: { date?: string; fromMenu?: boolean } = {},
-): boolean {
-  if (props.busy || question.value) return false;
-  const step = stepFor(card, to, options.date);
-  if (!step) return false;
-  proceed({ steps: [step], to, fromMenu: options.fromMenu ?? false, group: false });
-  return true;
-}
+const timestamp = (): string => new Date().toISOString();
 
 /**
- * Every marked card onto column `to`, each by its own drop rule; cards
- * already there stay. The carried card comes first.
+ * Starts a move by drop, menu or key, unless a write or a question is
+ * under way. False where nothing moves. A marked card moved alone lets go
+ * of the marks at once; a group does when its writes start.
  */
-function moveGroup(group: BoardCard[], to: BoardColumn): void {
-  if (props.busy || question.value) return;
-  const steps = group
-    .map((card) => stepFor(card, to))
-    .filter((step): step is Step => step !== null);
-  if (steps.length) proceed({ steps, to, fromMenu: false, group: true });
-}
-
-/** A day for a card, from its menu or a key: Geplant moves within itself. */
-function planCard(card: BoardCard, date?: string): boolean {
+function startMove(request: MoveRequest, fromMenu = false): boolean {
   if (props.busy || question.value) return false;
-  if (columnOf(card.todo) !== "planned")
-    return moveCard(card, "planned", { date, fromMenu: true });
-  if (date === card.todo.scheduledDate) return false;
-  proceed({
-    steps: [
-      {
-        card,
-        to: "planned",
-        kind: "move",
-        reopen: false,
-        setAside: false,
-        keepDay: false,
-        day: date,
-        from: placeOf(card),
-      },
-    ],
-    to: "planned",
-    fromMenu: true,
-    group: false,
-  });
+  const plan = planBoardMove(request, {}, timestamp());
+  if (!plan) return false;
+  const from = new Map(plan.cards.map((card) => [card.todo.id, placeOf(card)]));
+  proceed({ request, answers: {}, from, fromMenu }, plan);
+  if (plan.clearMarks === "at-once") clearSelection();
   return true;
 }
 
-/** "Zurückstellen …": out of In Arbeit, the day stays. */
-function setAsideCard(card: BoardCard): void {
-  if (props.busy || question.value) return;
-  const to = card.todo.scheduledDate ? "planned" : "todo";
-  proceed({
-    steps: [
-      {
-        card,
-        to,
-        kind: "move",
-        reopen: false,
-        setAside: true,
-        keepDay: true,
-        from: placeOf(card),
-      },
-    ],
-    to,
-    fromMenu: true,
-    group: false,
-  });
-}
-
-/** Asks what is still open, the blocked question first; then writes. */
-function proceed(move: Move): void {
+/** Asks the plan's next question, or writes once everything is answered. */
+function proceed(move: Move, plan: MovePlan): void {
   asking = move;
-  if (move.steps.some(needsBlocked)) question.value = { kind: "blocked", move };
-  else if (move.steps.some(needsDay)) question.value = { kind: "day", move };
-  else void execute(move);
+  if (plan.question === null) void execute(plan, move);
+  else question.value = { ...plan.question, move };
 }
-/** One answer for every step that waits for it. */
-function answerBlocked(blocked: boolean): void {
+/** One answer for every card that waits for it; then the next step. */
+function answer(answers: MoveAnswers): void {
   const asked = question.value;
   if (!asked) return;
   question.value = null;
-  proceed({
+  const move = {
     ...asked.move,
-    steps: asked.move.steps.map((step) =>
-      needsBlocked(step) ? { ...step, blocked } : step,
-    ),
-  });
-}
-function answerDay(date: string): void {
-  const asked = question.value;
-  if (!asked) return;
-  question.value = null;
-  proceed({
-    ...asked.move,
-    steps: asked.move.steps.map((step) =>
-      needsDay(step) ? { ...step, day: date } : step,
-    ),
-  });
+    answers: { ...asked.move.answers, ...answers },
+  };
+  proceed(move, planBoardMove(move.request, move.answers, timestamp())!);
 }
 /** Closed without an answer: no card moves, the marks stay. */
 function dismissQuestion(): void {
@@ -360,55 +249,41 @@ function dismissQuestion(): void {
 }
 
 /**
- * Writes a move, one card after the other: each through its own path,
- * shown at once and confirmed by the reload. A group shows every card in
- * its new column right away, then says how many made it.
+ * Writes a finished plan, one card after the other: each through its own
+ * path, shown at once and confirmed by the reload. A group shows every card
+ * in its new column right away, then says how many made it.
  */
-async function execute(move: Move): Promise<void> {
-  const { group } = move;
+async function execute(plan: FinishedMove, move: Move): Promise<void> {
+  const { group } = plan;
   if (group) {
-    for (const step of move.steps) showChange(step.card.todo.id, changesFor(step));
-    status.value = movedGroupLine(move.steps.length, move.steps.length, move.to);
-    clearSelection();
+    for (const step of plan.steps) showChange(step.card.todo.id, step.changes);
+    status.value = plan.line ?? "";
   }
-  for (const step of move.steps) {
+  if (plan.clearMarks === "on-write") clearSelection();
+  for (const step of plan.steps) {
     const options = { fromMenu: move.fromMenu, quiet: group };
     if (step.kind === "complete") await complete(step.card, options);
-    else if (step.kind === "start") await startWork(step, options);
-    else await apply(step, options);
+    else await write(step, move.from.get(step.card.todo.id)!, options);
   }
-  if (!group) return;
-  const landed = move.steps.filter((step) => {
-    const card = cards.value.find((item) => item.todo.id === step.card.todo.id);
-    return card && columnOf(card.todo) === step.to;
-  }).length;
-  status.value = movedGroupLine(landed, move.steps.length, move.to);
-}
-
-/** What a step changes on screen before the server answers. */
-function changesFor(step: Step): Partial<HierarchyTodo> {
-  if (step.kind === "complete")
-    return { completed: true, completedAt: new Date().toISOString() };
-  const reopened = step.reopen ? { completed: false, completedAt: null } : {};
-  if (step.kind === "start")
-    return { inProgress: true, blocked: false, ...reopened };
-  const changes: Partial<HierarchyTodo> = { inProgress: false, ...reopened };
-  if (step.blocked !== undefined) changes.blocked = step.blocked;
-  if (!step.keepDay) {
-    changes.scheduledDate = step.day ?? null;
-    if (!step.day) changes.timeOfDay = null;
-  }
-  return changes;
+  if (group) status.value = landedLine(plan, cards.value);
 }
 
 /** How a single write behaves: focus after a menu step; a group speaks once. */
 type WriteOptions = { fromMenu?: boolean; quiet?: boolean };
 
-async function apply(step: Step, options: WriteOptions = {}): Promise<void> {
+/**
+ * One card's planned move or start into In Arbeit: shown at once with its
+ * line, its calls sent in order, taken back when the server refuses.
+ */
+async function write(
+  step: Exclude<PlannedStep, { kind: "complete" }>,
+  from: Place,
+  options: WriteOptions,
+): Promise<void> {
   const { todo } = step.card;
   const done = await props.writes.writeShown(
     () => {
-      const takeBack = showChange(todo.id, changesFor(step));
+      const takeBack = showChange(todo.id, step.changes);
       if (!options.quiet) status.value = movedLine(todo.title, step.to);
       return () => {
         takeBack();
@@ -416,50 +291,37 @@ async function apply(step: Step, options: WriteOptions = {}): Promise<void> {
       };
     },
     async () => {
-      if (step.reopen)
-        await writeDone({ kind: "todo", id: todo.id, title: todo.title }, false);
-      if (step.setAside) await setAsideTodo(todo.id, step.blocked ?? false);
-      if (step.keepDay) return;
-      if (!step.day) {
-        if (todo.scheduledDate) await unplanQuest(todo.id);
-      } else if (todo.scheduledDate)
-        // An appointment keeps its time; its move was confirmed in the dialog.
-        await rescheduleTodo(todo.id, step.day, true);
-      else await planQuest(todo, step.day);
+      for (const call of step.writes) await send(todo, call);
     },
     {
       key: `board-${todo.id}`,
-      fallbackError: "Die Quest konnte nicht verschoben werden.",
+      fallbackError:
+        step.kind === "start"
+          ? "Die Quest konnte nicht in Arbeit genommen werden."
+          : "Die Quest konnte nicht verschoben werden.",
     },
   );
   if (done) settle(todo.id, options.quiet);
-  if (options.fromMenu) await focusAfter(todo.id, step.from);
+  if (options.fromMenu) await focusAfter(todo.id, from);
 }
 
-/** Into In Arbeit by hand: no stopwatch, so several quests can be in work. */
-async function startWork(step: Step, options: WriteOptions = {}): Promise<void> {
-  const { todo } = step.card;
-  const done = await props.writes.writeShown(
-    () => {
-      const takeBack = showChange(todo.id, changesFor(step));
-      if (!options.quiet) status.value = movedLine(todo.title, "working");
-      return () => {
-        takeBack();
-        if (!options.quiet) status.value = "";
-      };
-    },
-    async () => {
-      if (step.reopen)
-        await writeDone({ kind: "todo", id: todo.id, title: todo.title }, false);
-      await startWorkOnTodo(todo.id);
-    },
-    {
-      key: `board-${todo.id}`,
-      fallbackError: "Die Quest konnte nicht in Arbeit genommen werden.",
-    },
-  );
-  if (done) settle(todo.id, options.quiet);
-  if (options.fromMenu) await focusAfter(todo.id, step.from);
+/** One server call of a planned step. */
+function send(todo: HierarchyTodo, call: BoardWrite): Promise<unknown> {
+  switch (call.kind) {
+    case "reopen":
+      return writeDone({ kind: "todo", id: todo.id, title: todo.title }, false);
+    case "setAside":
+      return setAsideTodo(todo.id, call.blocked);
+    case "unplan":
+      return unplanQuest(todo.id);
+    case "reschedule":
+      // An appointment keeps its time; its move was confirmed in the dialog.
+      return rescheduleTodo(todo.id, call.day, true);
+    case "plan":
+      return planQuest(todo, call.day);
+    case "start":
+      return startWorkOnTodo(todo.id);
+  }
 }
 
 /** The reload is in: the server's column counts, and the line says so. */
@@ -573,8 +435,8 @@ async function focusAfter(id: number, from: Place): Promise<void> {
 }
 /** A question closes: the focus goes where the card now is (or still is). */
 function questionFocus(): HTMLElement | null {
-  const first = asking?.steps[0];
-  return first ? focusTarget(first.card.todo.id, first.from) : null;
+  const [first] = asking?.from ?? [];
+  return first ? focusTarget(...first) : null;
 }
 
 /*
@@ -619,16 +481,14 @@ onBeforeUnmount(() => document.removeEventListener("keydown", onKeydown));
  */
 function onDrop(todoId: number, to: BoardColumn): void {
   const card = cards.value.find((item) => item.todo.id === todoId);
-  if (!card) return;
-  if (!selected.value.has(todoId)) {
-    moveCard(card, to);
-    return;
-  }
-  const others = cards.value.filter(
-    (item) => item !== card && selected.value.has(item.todo.id),
-  );
-  if (others.length) moveGroup([card, ...others], to);
-  else if (moveCard(card, to)) clearSelection();
+  if (card)
+    startMove({
+      via: "drop",
+      card,
+      to,
+      cards: cards.value,
+      marked: selected.value,
+    });
 }
 
 /*
@@ -643,12 +503,12 @@ function actionsOf(card: BoardCard): RowActions {
     }),
     today: today(),
     busy: props.busy,
-    move: (date) => planCard(card, date),
-    pickDay: () => void planCard(card),
-    unplan: () => void moveCard(card, "todo", { fromMenu: true }),
+    move: (date) => startMove({ via: "menu", card, to: "planned", date }, true),
+    pickDay: () => void startMove({ via: "menu", card, to: "planned" }, true),
+    unplan: () => void startMove({ via: "menu", card, to: "todo" }, true),
     complete: () => void complete(card, { fromMenu: true }),
-    startWork: () => void moveCard(card, "working", { fromMenu: true }),
-    setAside: () => setAsideCard(card),
+    startWork: () => void startMove({ via: "menu", card, to: "working" }, true),
+    setAside: () => void startMove({ via: "setAside", card }, true),
     toggleBlocked: () => void toggleBlocked(card),
     edit: () => emit("edit", todo),
     reparent: () => emit("reparent", todo),
@@ -671,10 +531,7 @@ useShortcutHandlers(
 const asked = computed(() => {
   const open = question.value;
   if (!open) return null;
-  const todos = open.move.steps
-    .filter(open.kind === "blocked" ? needsBlocked : needsDay)
-    .map((step) => step.card.todo);
-  const group = open.move.group && todos.length > 1;
+  const { todos, group } = open;
   return {
     todos,
     group,
@@ -769,7 +626,7 @@ const asked = computed(() => {
                 : `Quest ins To-Do von „${campaign.title}“ hinzufügen`
             "
             :place-toggle="false"
-            @created="emit('created')"
+            @created="emit('changed')"
           />
         </template>
         <template v-if="column.key === 'done' && hiddenDone" #more>
@@ -797,7 +654,7 @@ const asked = computed(() => {
       :today="today()"
       offer-today
       :return-focus="questionFocus"
-      @chosen="answerDay"
+      @chosen="(day) => answer({ day })"
       @close="dismissQuestion"
     />
     <ModalDialog
@@ -824,10 +681,10 @@ const asked = computed(() => {
         >
       </p>
       <div class="campaign-board__answers">
-        <button type="button" data-blocked-answer @click="answerBlocked(true)">
+        <button type="button" data-blocked-answer @click="answer({ blocked: true })">
           <AppIcon name="blocked" />Ja, geblockt
         </button>
-        <button type="button" @click="answerBlocked(false)">
+        <button type="button" @click="answer({ blocked: false })">
           Nein, nur zurückstellen
         </button>
       </div>

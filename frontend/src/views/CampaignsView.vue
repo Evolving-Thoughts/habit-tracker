@@ -662,7 +662,7 @@ useShortcutHandlers({
         @edit="(todo) => open('edit', todo)"
         @reparent="(todo) => open('move', todo)"
         @remove="(todo) => open('delete', todo)"
-        @created="applied()"
+        @changed="applied()"
       />
       <template v-else>
       <template v-for="list in lists" :key="list.key">

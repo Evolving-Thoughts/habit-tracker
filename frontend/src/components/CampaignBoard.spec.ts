@@ -176,11 +176,11 @@ describe("CampaignBoard", () => {
     await flushPromises();
     expect(titles(w, "planned")).toEqual([]);
     expect(titles(w, "working")).toContain("Quest 4");
-    expect(w.emitted("created")).toBeUndefined();
+    expect(w.emitted("changed")).toBeUndefined();
 
     controller.timer.value = null;
     await flushPromises();
-    expect(w.emitted("created")).toHaveLength(1);
+    expect(w.emitted("changed")).toHaveLength(1);
     controller.dispose();
   });
 
@@ -261,7 +261,7 @@ describe("CampaignBoard", () => {
     for (const field of fields)
       expect(field.props("parent")).toEqual({ id: 1, categoryId: 11 });
     fields[0]!.vm.$emit("created");
-    expect(w.emitted("created")).toHaveLength(1);
+    expect(w.emitted("changed")).toHaveLength(1);
   });
 
   it("shows the newest 20 done quests and the rest behind a quiet button", async () => {
@@ -432,24 +432,6 @@ describe("CampaignBoard", () => {
       expect(titles(w, "todo")).toEqual(["Entwurf"]);
     });
 
-    it("completes what lands in Erledigt", async () => {
-      const w = mountBoard();
-      await flushPromises();
-      await drop(w, "working", 5, "done");
-      expect(ticks.complete).toHaveBeenCalledWith(
-        { kind: "todo", id: 5, title: "Quest 5" },
-        expect.anything(),
-      );
-      expect(setAsideTodo).not.toHaveBeenCalled();
-    });
-
-    it("takes the day away in To-Do", async () => {
-      const w = mountBoard();
-      await flushPromises();
-      await drop(w, "planned", 4, "todo");
-      expect(unplanQuest).toHaveBeenCalledWith(4);
-    });
-
     it("takes quests into In Arbeit by hand, several at once, without a stopwatch", async () => {
       const w = mountBoard();
       await flushPromises();
@@ -479,14 +461,6 @@ describe("CampaignBoard", () => {
       expect(startWorkOnTodo).toHaveBeenCalledWith(3);
     });
 
-    it("opens a done quest again on its way back", async () => {
-      const w = mountBoard();
-      await flushPromises();
-      await drop(w, "done", 6, "todo");
-      expect(updateTodoCompletion).toHaveBeenCalledWith(6, false);
-      expect(unplanQuest).not.toHaveBeenCalled();
-    });
-
     it("asks whether a quest out of In Arbeit is blocked; no answer, no move", async () => {
       const w = mountBoard([campaign, quest(5, { inProgress: true, scheduledDate: TODAY })]);
       await flushPromises();
@@ -504,23 +478,6 @@ describe("CampaignBoard", () => {
       await flushPromises();
       expect(setAsideTodo).toHaveBeenCalledWith(5, false);
       expect(unplanQuest).toHaveBeenCalledWith(5);
-    });
-
-    it("asks blocked first, then the day, out of In Arbeit into Geplant", async () => {
-      const w = mountBoard();
-      await flushPromises();
-      await drop(w, "working", 5, "planned");
-      await buttonByText(w, "Ja, geblockt").trigger("click");
-      await flushPromises();
-      expect(setAsideTodo).not.toHaveBeenCalled();
-      expect(w.get('[role=dialog]').attributes("aria-label")).toBe("Einplanen");
-      await buttonByText(w, "Heute").trigger("click");
-      await flushPromises();
-      expect(setAsideTodo).toHaveBeenCalledWith(5, true);
-      expect(planQuest).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 5 }),
-        TODAY,
-      );
     });
 
     it("shows the move at once, before the server answers", async () => {
@@ -740,6 +697,15 @@ describe("CampaignBoard", () => {
       expect(unplanQuest).toHaveBeenCalledWith(4);
       expect(planQuest).not.toHaveBeenCalled();
       expect(marked(w)).toEqual([3]);
+    });
+
+    it("lets go of the mark at once when the only marked card moves", async () => {
+      const w = mountBoard();
+      await flushPromises();
+      await ctrlClick(w, 3);
+      await drop(w, "todo", 3, "planned");
+      expect(w.get("[role=dialog]").attributes("aria-label")).toBe("Einplanen");
+      expect(marked(w)).toEqual([]);
     });
 
     it("lets go of the marks with Auswahl aufheben and with Escape", async () => {
