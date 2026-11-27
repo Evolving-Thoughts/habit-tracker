@@ -67,8 +67,8 @@ and other calendars are only read.
 - `CalendarLinkEntity` has a third target, `workLogId`; a check constraint
   (`CHK_calendar_link_target`) keeps exactly one of `todoId`, `occurrenceId`,
   `workLogId` (migration `1795200000000-LogbookEvents`).
-- `logChanges` in `calendar-sync.service.ts` follows the outgoing pattern of
-  todos and runs: every stretch of **at least five minutes** becomes an event
+- `logSteps` and `logPushes` in `calendar-sync-rules.ts` follow the outgoing
+  pattern of todos and runs: every stretch of **at least five minutes** becomes an event
   at its real start and end; a correction, or a stopwatch block extended after a
   short pause (same row, later `updatedAt`), patches it; deleting the stretch removes its event. A correction queues a sync after the
   database commit, even when the exported stretch is shortened below five minutes. New stretches are exported back

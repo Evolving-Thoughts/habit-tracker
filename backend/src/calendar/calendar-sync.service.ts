@@ -14,28 +14,15 @@ import {
 } from 'typeorm';
 import { Clock } from '../common/clock';
 import { LiveService } from '../live/live.service';
-import { DEFAULT_TIME_ZONE } from '../common/date/date-only.utils';
-import {
-  addDays,
-  atTimeOfDay,
-  dayOf,
-  endOfDay,
-  startOfDay,
-  timeOfDayOf,
-} from '../common/date/local-day';
+import { addDays, endOfDay, startOfDay } from '../common/date/local-day';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
-import {
-  effectiveDuration,
-  HabitOccurrenceEntity,
-  occurrenceDueDate,
-} from '../habit-occurrences/entities/habit-occurrence.entity';
+import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
-import { runRefusal } from '../habits/scheduling/run-actionability';
 import { TodoEntity } from '../todos/entities/todo.entity';
 import { saveQuest } from '../todos/quest-commands';
 import { loadTodoAncestry } from '../todos/todo-ancestry';
-import { CampaignLog, withCampaigns } from '../work-logs/day-logs';
+import { withCampaigns } from '../work-logs/day-logs';
 import { WorkLogEntity } from '../work-logs/work-log.entity';
 import { decryptToken } from './calendar.crypto';
 import {
@@ -45,81 +32,37 @@ import {
   ExternalEventEntity,
 } from './calendar.entities';
 import {
+  Appointment,
+  eventEdit,
+  incomingStep,
+  lastSyncedDay,
+  logbookSince,
+  logPushes,
+  logSteps,
+  OutgoingPlan,
+  plannedTimes,
+  PushOperation,
+  runPushes,
+  todoPushes,
+} from './calendar-sync-rules';
+import {
   GoogleAccessRevokedError,
   GoogleCalendar,
   GoogleCalendarClient,
   GoogleEvent,
-  GoogleEventInput,
   GoogleEventMissingError,
   GoogleForbiddenError,
 } from './google-calendar.client';
 
-const HORIZON_DAYS = 60;
 /** The month view also shows the recent past of the read calendars. */
 const READ_PAST_DAYS = 31;
-const DEFAULT_MINUTES = 30;
-const MINUTE_MS = 60_000;
-const MARKER = 'habitTracker';
 
 /** One Google event across syncs: its calendar and its id there. */
 function placeKey(calendarId: string, eventId: string): string {
   return `${calendarId}\n${eventId}`;
 }
 
-/** Shorter stretches stay out of the calendar; they would only clutter it. */
-const LOGBOOK_MIN_MS = 5 * MINUTE_MS;
-/**
- * New stretches are exported back this far, so connecting a calendar does
- * not write the whole history at once. Linked ones are kept up to date.
- */
-const LOGBOOK_PAST_DAYS = 31;
-
-type Local = {
-  todoId: number | null;
-  occurrenceId: number | null;
-  workLogId: number | null;
-};
-type Change = { input: GoogleEventInput; localUpdatedAt: Date };
-type PushOperation =
-  | ({ type: 'insert'; local: Local } & Change)
-  | ({ type: 'patch'; link: CalendarLinkEntity } & Change)
-  | { type: 'delete'; link: CalendarLinkEntity };
-
-const newest = (...dates: Date[]): Date =>
-  new Date(Math.max(...dates.map((date) => date.getTime())));
-
-const minutesAfter = (start: Date, minutes: number): Date =>
-  new Date(start.getTime() + minutes * MINUTE_MS);
-
-function eventInput(
-  summary: string,
-  start: Date,
-  end: Date,
-  description?: string,
-): GoogleEventInput {
-  return {
-    summary,
-    ...(description ? { description } : {}),
-    start: { dateTime: start.toISOString(), timeZone: DEFAULT_TIME_ZONE },
-    end: { dateTime: end.toISOString(), timeZone: DEFAULT_TIME_ZONE },
-    extendedProperties: { private: { [MARKER]: 'true' } },
-  };
-}
-
-/** Only a finished stretch of at least five minutes has an event. */
-const exported = (log: WorkLogEntity): boolean =>
-  log.endedAt.getTime() - log.startedAt.getTime() >= LOGBOOK_MIN_MS;
-
-/** Start and length of a timed event; all-day events have none. */
-function eventTimes(
-  event: GoogleEvent,
-): { start: Date; end: Date; minutes: number } | null {
-  if (!event.start?.dateTime || !event.end?.dateTime) return null;
-  const start = new Date(event.start.dateTime);
-  const end = new Date(event.end.dateTime);
-  const minutes = Math.round((end.getTime() - start.getTime()) / MINUTE_MS);
-  return { start, end, minutes };
-}
+type Push = PushOperation<CalendarLinkEntity>;
 
 /**
  * Exchanges a user's data with Google in two phases: incoming changes are
@@ -179,7 +122,7 @@ export class CalendarSyncService {
       );
       const today = this.clock.today();
       const from = startOfDay(today);
-      const to = endOfDay(addDays(today, HORIZON_DAYS));
+      const to = endOfDay(lastSyncedDay(today));
       const own = await this.client.listEvents(
         token,
         connection.calendarId,
@@ -252,6 +195,7 @@ export class CalendarSyncService {
     }
   }
 
+  /** Carries out what each event of the own calendar asks for. */
   private async applyIncoming(
     manager: EntityManager,
     userId: string,
@@ -263,17 +207,15 @@ export class CalendarSyncService {
     );
     for (const event of events) {
       const link = known.get(event.id);
-      if (!link) await this.adoptEvent(manager, userId, event);
-      else if (event.status === 'cancelled')
-        await this.applyDeletion(manager, link);
-      // A Logbuch event only reports measured work: an edit in Google
-      // neither changes the log nor turns the event into a plan.
-      else if (link.workLogId !== null) continue;
-      else if (new Date(event.updated) > link.remoteUpdatedAt) {
-        if (link.todoId !== null)
-          await this.applyToTodo(manager, userId, link, event);
-        else await this.applyToOccurrence(manager, link, event);
-      }
+      const step = incomingStep(link, event);
+      if (step.kind === 'adopt')
+        await this.adoptEvent(manager, userId, event, step.appointment);
+      else if (step.kind === 'deleted')
+        await this.applyDeletion(manager, link!);
+      else if (step.kind === 'editTodo')
+        await this.applyToTodo(manager, userId, link!, event);
+      else if (step.kind === 'moveRun')
+        await this.applyToOccurrence(manager, link!, event, step.day);
     }
   }
 
@@ -282,23 +224,11 @@ export class CalendarSyncService {
     manager: EntityManager,
     userId: string,
     event: GoogleEvent,
+    appointment: Appointment,
   ): Promise<void> {
-    const times = eventTimes(event);
-    if (
-      event.status === 'cancelled' ||
-      !times ||
-      event.extendedProperties?.private?.[MARKER]
-    )
-      return;
     const repository = manager.getRepository(TodoEntity);
     const todo = await repository.save(
-      repository.create({
-        userId,
-        title: (event.summary?.trim() || 'Termin').slice(0, 200),
-        scheduledDate: dayOf(times.start),
-        timeOfDay: timeOfDayOf(times.start),
-        plannedDurationMinutes: times.minutes,
-      }),
+      repository.create({ userId, ...appointment }),
     );
     await manager.getRepository(CalendarLinkEntity).save({
       userId,
@@ -345,12 +275,12 @@ export class CalendarSyncService {
   }
 
   /**
-   * The newer side wins. A change from Google moves the quest like any other
-   * move (`saveQuest`): a new day or time resets its place in the order of
-   * the day and drops its place in the Questlog. Unlike
+   * An edit that wins (`eventEdit`) moves the quest like any other move
+   * (`saveQuest`): a new day or time resets its place in the order of the
+   * day and drops its place in the Questlog. Unlike
    * `POST /todos/:id/reschedule` it is not refused for a past day, an
    * appointment or an open stopwatch: Google already shows the new time, as
-   * after `PATCH /todos/:id`. A completed quest is left alone.
+   * after `PATCH /todos/:id`.
    */
   private async applyToTodo(
     manager: EntityManager,
@@ -360,24 +290,15 @@ export class CalendarSyncService {
   ): Promise<void> {
     const repository = manager.getRepository(TodoEntity);
     const todo = await repository.findOneBy({ id: link.todoId!, userId });
-    const times = eventTimes(event);
-    const remote = new Date(event.updated);
-    // Both changed: the newer one wins; the outgoing phase sends a local win.
-    const localWins =
-      todo !== null &&
-      todo.updatedAt > link.syncedAt &&
-      todo.updatedAt > remote;
-    link.remoteUpdatedAt = remote;
-    if (todo && times && !todo.completedAt && !localWins) {
-      todo.title = (event.summary?.trim() || todo.title).slice(0, 200);
-      todo.plannedDurationMinutes = times.minutes;
+    const edit = todo && eventEdit(todo, link, event);
+    link.remoteUpdatedAt = new Date(event.updated);
+    if (todo && edit) {
+      todo.title = edit.title;
+      todo.plannedDurationMinutes = edit.plannedDurationMinutes;
       const saved = await saveQuest(
         manager,
         todo,
-        {
-          scheduledDate: dayOf(times.start),
-          timeOfDay: timeOfDayOf(times.start),
-        },
+        { scheduledDate: edit.scheduledDate, timeOfDay: edit.timeOfDay },
         this.clock.now(),
       );
       link.syncedAt = saved.updatedAt;
@@ -396,17 +317,17 @@ export class CalendarSyncService {
     manager: EntityManager,
     link: CalendarLinkEntity,
     event: GoogleEvent,
+    day: string | null,
   ): Promise<void> {
-    const times = eventTimes(event);
     link.remoteUpdatedAt = new Date(event.updated);
     link.syncedAt = new Date(0);
-    if (times)
+    if (day)
       try {
         await this.scheduling.moveRun(
           manager,
           link.userId,
           link.occurrenceId!,
-          dayOf(times.start),
+          day,
           this.clock.now(),
         );
       } catch (error) {
@@ -460,13 +381,8 @@ export class CalendarSyncService {
         primary: calendar.primary ?? false,
       });
       const rows = events.flatMap((event) => {
-        const times = eventTimes(event);
-        if (
-          event.status === 'cancelled' ||
-          !times ||
-          event.extendedProperties?.private?.[MARKER]
-        )
-          return [];
+        const times = plannedTimes(event);
+        if (!times) return [];
         return [
           repository.create({
             userId,
@@ -489,7 +405,7 @@ export class CalendarSyncService {
     manager: EntityManager,
     userId: string,
     today: string,
-  ): Promise<PushOperation[]> {
+  ): Promise<Push[]> {
     const links = await manager
       .getRepository(CalendarLinkEntity)
       .findBy({ userId });
@@ -499,29 +415,27 @@ export class CalendarSyncService {
     return [...todos, ...runs, ...logs];
   }
 
+  /** Drops the links of the plan here and hands its requests on. */
+  private async carryOut(
+    manager: EntityManager,
+    { unlink, push }: OutgoingPlan<CalendarLinkEntity>,
+  ): Promise<Push[]> {
+    for (const link of unlink)
+      await manager.getRepository(CalendarLinkEntity).remove(link);
+    return push;
+  }
+
   private async todoChanges(
     manager: EntityManager,
     userId: string,
     today: string,
     links: CalendarLinkEntity[],
-  ): Promise<PushOperation[]> {
+  ): Promise<Push[]> {
     const repository = manager.getRepository(TodoEntity);
-    const linked = links.filter((link) => link.todoId !== null);
     const known = await repository.find({
-      where: { userId, id: In(linked.map((link) => link.todoId!)) },
+      where: { userId, id: In(links.flatMap((link) => link.todoId ?? [])) },
       withDeleted: true,
     });
-    const operations: PushOperation[] = [];
-    for (const link of linked) {
-      const todo = known.find((item) => item.id === link.todoId);
-      // Only an appointment has an event; a todo that lost its time loses it.
-      if (!todo || todo.deletedAt || !todo.scheduledDate || !todo.timeOfDay)
-        operations.push({ type: 'delete', link });
-      else if (todo.completedAt)
-        await manager.getRepository(CalendarLinkEntity).remove(link);
-      else if (todo.updatedAt > link.syncedAt)
-        operations.push({ type: 'patch', link, ...this.todoChange(todo) });
-    }
     const open = await repository
       .createQueryBuilder('todo')
       .where('todo.userId = :userId', { userId })
@@ -529,30 +443,10 @@ export class CalendarSyncService {
       .andWhere('todo.timeOfDay IS NOT NULL')
       .andWhere('todo.scheduledDate BETWEEN :today AND :lastDay', {
         today,
-        lastDay: addDays(today, HORIZON_DAYS),
+        lastDay: lastSyncedDay(today),
       })
       .getMany();
-    const taken = new Set(linked.map((link) => link.todoId));
-    for (const todo of open)
-      if (!taken.has(todo.id))
-        operations.push({
-          type: 'insert',
-          local: { todoId: todo.id, occurrenceId: null, workLogId: null },
-          ...this.todoChange(todo),
-        });
-    return operations;
-  }
-
-  private todoChange(todo: TodoEntity): Change {
-    const start = atTimeOfDay(todo.scheduledDate!, todo.timeOfDay!);
-    return {
-      input: eventInput(
-        todo.title,
-        start,
-        minutesAfter(start, todo.plannedDurationMinutes ?? DEFAULT_MINUTES),
-      ),
-      localUpdatedAt: todo.updatedAt,
-    };
+    return this.carryOut(manager, todoPushes(links, known, open));
   }
 
   private async runChanges(
@@ -560,153 +454,57 @@ export class CalendarSyncService {
     userId: string,
     today: string,
     links: CalendarLinkEntity[],
-  ): Promise<PushOperation[]> {
-    const linked = links.filter((link) => link.occurrenceId !== null);
-    const known = await manager.getRepository(HabitOccurrenceEntity).find({
-      where: { id: In(linked.map((link) => link.occurrenceId!)) },
+  ): Promise<Push[]> {
+    const repository = manager.getRepository(HabitOccurrenceEntity);
+    const known = await repository.find({
+      where: { id: In(links.flatMap((link) => link.occurrenceId ?? [])) },
       relations: { habit: true },
     });
-    const operations: PushOperation[] = [];
-    for (const link of linked) {
-      const run = known.find((item) => item.id === link.occurrenceId);
-      const open = run?.status === HabitOccurrenceStatus.PENDING;
-      const planned = open && run.habit.isActive && run.habit.timeOfDay;
-      if (run?.status === HabitOccurrenceStatus.COMPLETED)
-        await manager.getRepository(CalendarLinkEntity).remove(link);
-      else if (link.suppressed) {
-        if (!open) await manager.getRepository(CalendarLinkEntity).remove(link);
-      } else if (!planned) operations.push({ type: 'delete', link });
-      else {
-        const change = this.runChange(run);
-        if (change.localUpdatedAt > link.syncedAt)
-          operations.push({ type: 'patch', link, ...change });
-      }
-    }
-    const open = await manager.getRepository(HabitOccurrenceEntity).find({
+    const open = await repository.find({
       where: {
         status: HabitOccurrenceStatus.PENDING,
         habit: { userId, isActive: true },
       },
       relations: { habit: true, scheduleVersion: true },
     });
-    const taken = new Set(linked.map((link) => link.occurrenceId));
-    const lastDay = addDays(today, HORIZON_DAYS);
-    const now = this.clock.now();
-    for (const run of open) {
-      const due = occurrenceDueDate(run);
-      // Runs are not brought up to now here: any version still counts, as
-      // before, and so does a run moved to a later day within the horizon.
-      if (
-        !taken.has(run.id) &&
-        run.habit.timeOfDay &&
-        due >= today &&
-        due <= lastDay &&
-        runRefusal(
-          { run, version: run.scheduleVersion, habit: run.habit, now },
-          { movedAhead: true, anyVersion: true },
-        ) === null
-      )
-        operations.push({
-          type: 'insert',
-          local: { todoId: null, occurrenceId: run.id, workLogId: null },
-          ...this.runChange(run),
-        });
-    }
-    return operations;
+    const plan = runPushes(links, known, open, today, this.clock.now());
+    return this.carryOut(manager, plan);
   }
 
-  private runChange(run: HabitOccurrenceEntity): Change {
-    const start = atTimeOfDay(occurrenceDueDate(run), run.habit.timeOfDay!);
-    return {
-      input: eventInput(
-        run.habit.title,
-        start,
-        minutesAfter(
-          start,
-          effectiveDuration(run, run.habit) ?? DEFAULT_MINUTES,
-        ),
-      ),
-      localUpdatedAt: newest(run.updatedAt, run.habit.updatedAt),
-    };
-  }
-
-  /**
-   * The Logbuch only goes out: every finished stretch of five minutes or more
-   * becomes an event at its real times. A corrected log (moved, lengthened
-   * or shortened) patches its event; only a deleted log loses it. An event
-   * deleted in Google stays
-   * deleted: its link is kept suppressed until the log itself goes.
-   */
+  /** Described stretches name their title and campaign in the event. */
   private async logChanges(
     manager: EntityManager,
     userId: string,
     today: string,
     links: CalendarLinkEntity[],
-  ): Promise<PushOperation[]> {
+  ): Promise<Push[]> {
     const repository = manager.getRepository(WorkLogEntity);
-    const linked = links.filter((link) => link.workLogId !== null);
     const known = await repository.findBy({
       userId,
-      id: In(linked.map((link) => link.workLogId!)),
+      id: In(links.flatMap((link) => link.workLogId ?? [])),
     });
-    const taken = new Set(linked.map((link) => link.workLogId));
-    const fresh = (
-      await repository.findBy({
-        userId,
-        endedAt: MoreThanOrEqual(
-          startOfDay(addDays(today, -LOGBOOK_PAST_DAYS)),
-        ),
-      })
-    ).filter((log) => !taken.has(log.id) && exported(log));
-
-    const operations: PushOperation[] = [];
-    const patched: { link: CalendarLinkEntity; log: WorkLogEntity }[] = [];
-    for (const link of linked) {
-      const log = known.find((item) => item.id === link.workLogId);
-      if (link.suppressed) {
-        if (!log) await manager.getRepository(CalendarLinkEntity).remove(link);
-      } else if (!log) operations.push({ type: 'delete', link });
-      else if (log.updatedAt > link.syncedAt) patched.push({ link, log });
-    }
-    if (!patched.length && !fresh.length) return operations;
-
+    const recent = await repository.findBy({
+      userId,
+      endedAt: MoreThanOrEqual(logbookSince(today)),
+    });
+    const steps = logSteps(links, known, recent);
+    await this.carryOut(manager, steps);
+    if (!steps.patched.length && !steps.fresh.length) return steps.push;
     const ancestry = await loadTodoAncestry(manager, userId, today);
     const described = await withCampaigns(
       manager,
       userId,
-      [...patched.map(({ log }) => log), ...fresh],
+      [...steps.patched.map(({ log }) => log), ...steps.fresh],
       ancestry,
     );
-    const change = (id: number): Change =>
-      this.logChange(described.find((log) => log.id === id)!);
-    for (const { link, log } of patched)
-      operations.push({ type: 'patch', link, ...change(log.id) });
-    for (const log of fresh)
-      operations.push({
-        type: 'insert',
-        local: { todoId: null, occurrenceId: null, workLogId: log.id },
-        ...change(log.id),
-      });
-    return operations;
-  }
-
-  /** Named as Logbuch in Google, so it never reads as a plan. */
-  private logChange(log: CampaignLog): Change {
-    const description = [
-      'Logbuch · gemessene Arbeitszeit',
-      ...(log.campaign ? [`Kampagne: ${log.campaign.title}`] : []),
-    ].join('\n');
-    return {
-      input: eventInput(log.title, log.startedAt, log.endedAt, description),
-      localUpdatedAt: log.updatedAt,
-    };
+    return logPushes(steps, described);
   }
 
   private async send(
     userId: string,
     token: string,
     calendarId: string,
-    operation: PushOperation,
+    operation: Push,
   ): Promise<void> {
     const links = this.db.getRepository(CalendarLinkEntity);
     if (operation.type === 'insert') {

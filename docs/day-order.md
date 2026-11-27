@@ -123,6 +123,11 @@ its window, no open stopwatch); otherwise the run stays and the next sync
 writes the event back to it. Finished work also goes out,
 export only, as Logbuch events (see `logbook.md`).
 
+These decisions (what an event asks for here, who wins a conflict, which
+quests, runs and stretches get, keep or lose an event, the 60 days synced)
+are pure functions in `backend/src/calendar/calendar-sync-rules.ts`;
+`CalendarSyncService` loads, locks, calls Google and stores the links.
+
 ## Frontend
 
 - `PlanFields.vue`: the day (with "Heute" / "Morgen"); `AppointmentFields.vue`:
