@@ -5,8 +5,13 @@ import {
 } from "../composables/useTimer";
 import type { ShortcutHandler } from "../composables/useShortcuts";
 import type { DayPlannerItem } from "../types/day-planner";
-import type { TimerTarget } from "../types/timer";
-import type { WeekPlanEntry } from "../types/week-plan";
+import type { HistoryPlannedItem } from "../types/history";
+import type { ItemTarget } from "../types/item-target";
+import type {
+  WeekPlanEntry,
+  WeekPlanHabitEntry,
+  WeekPlanTodoEntry,
+} from "../types/week-plan";
 import type { BoardColumn } from "./campaign-board";
 import { addDays, weekStart } from "./date";
 import { dayLabel } from "./history";
@@ -16,11 +21,11 @@ import type { ShortcutId } from "./shortcuts";
  * The card contract (DESIGN.md › Karten): a ring where the item can be done,
  * the card opens the editor, ▶ where measuring makes sense, and everything
  * else in one menu "Aktionen für …". This file answers, for any row of any
- * view, what can be done with it: its stopwatch target (`timerTargetOf`),
- * its menu (`rowMenu`) and its keys (`rowShortcuts`). A view describes the
- * row (`plannerRow`, `planRow`, `questRow`, `dailyRow`) and hands over the
- * writes it has (`RowActions`); when an entry or a key applies is decided
- * here, never in the view.
+ * view, what can be done with it: what its steps act on (`targetOf`), its
+ * menu (`rowMenu`) and its keys (`rowShortcuts`). A view describes the row
+ * (`plannerRow`, `planRow`, `questRow`, `historyRow`, `dailyRow`);
+ * `useRowActions` performs the steps and hands them over (`RowActions`).
+ * When an entry or a key applies is decided here, never in the view.
  */
 
 /** Icons the menu entries use; a subset of AppIcon's names. */
@@ -73,7 +78,12 @@ export type QuestRow = {
   date: string | null;
   /** An appointment's time: it moves only where the move is confirmed. */
   timeOfDay: string | null;
+  /** Planning it from the Questlog keeps its planned minutes. */
+  plannedDurationMinutes: number | null;
+  /** The server's rule: an open quest can be measured. */
   timerEligible: boolean;
+  /** Itself a campaign: completing it asks first, its dialogs say so. */
+  campaign: boolean;
   /** A card of the campaign board, in its column. */
   board?: { column: BoardColumn; blocked: boolean };
   /** A row of a campaign's tree: Löschen takes the quests below along. */
@@ -84,12 +94,15 @@ export type QuestRow = {
 export type RunRow = {
   type: "run";
   occurrenceId: number;
+  /** Its daily: the editor and Löschen are the daily's. */
+  habitId: number;
   title: string;
   open: boolean;
   /** The day it stands on; null for one left behind (the Plan). */
   date: string | null;
   /** The last day it may move to; null once it may not move. */
   moveUntil: string | null;
+  /** The server's `runRefusal`: an open run due by today, of an active daily. */
   timerEligible: boolean;
   /** A run of the Daily carrying the running Monats-Challenge. */
   monthChallenge: boolean;
@@ -103,11 +116,11 @@ export type RunRow = {
 export type ActionRow =
   | QuestRow
   | RunRow
-  | { type: "forecast"; title: string; open: boolean }
+  | { type: "forecast"; habitId: number; title: string; open: boolean }
   | { type: "event"; title: string; open: boolean }
   | { type: "daily"; title: string; open: boolean };
 
-/** A row of Heute and of the Fokus-Modus. */
+/** A row of Heute and of the Fokus-Modus; the server says what can be measured. */
 export function plannerRow(item: DayPlannerItem): QuestRow | RunRow {
   const open = item.status === "pending";
   if (item.type === "todo")
@@ -118,11 +131,14 @@ export function plannerRow(item: DayPlannerItem): QuestRow | RunRow {
       open,
       date: item.scheduledDate,
       timeOfDay: item.timeOfDay,
+      plannedDurationMinutes: item.plannedDurationMinutes,
       timerEligible: item.timerEligible,
+      campaign: item.campaign?.id === item.todoId,
     };
   return {
     type: "run",
     occurrenceId: item.occurrenceId,
+    habitId: item.habitId,
     title: item.title,
     open,
     date: item.scheduledDate,
@@ -135,8 +151,14 @@ export function plannerRow(item: DayPlannerItem): QuestRow | RunRow {
 /**
  * An entry of the Plan's read (the Plan, Heute on another day) in the
  * column of `date`; null for what was left behind. A quest keeps its own
- * day, and any open quest can be measured.
+ * day and can be measured while open (the server's rule; the read carries
+ * no flag for quests); a run carries the server's flag.
  */
+export function planRow(
+  entry: WeekPlanTodoEntry | (WeekPlanHabitEntry & { occurrenceId: number }),
+  date: string | null,
+): QuestRow | RunRow;
+export function planRow(entry: WeekPlanEntry, date: string | null): ActionRow;
 export function planRow(entry: WeekPlanEntry, date: string | null): ActionRow {
   const open = entry.status === "pending";
   if (entry.type === "event")
@@ -149,13 +171,21 @@ export function planRow(entry: WeekPlanEntry, date: string | null): ActionRow {
       open,
       date: entry.scheduledDate,
       timeOfDay: entry.timeOfDay,
-      timerEligible: true,
+      plannedDurationMinutes: entry.plannedDurationMinutes,
+      timerEligible: open,
+      campaign: entry.campaign?.id === entry.todoId,
     };
   if (entry.occurrenceId === null)
-    return { type: "forecast", title: entry.title, open };
+    return {
+      type: "forecast",
+      habitId: entry.habitId,
+      title: entry.title,
+      open,
+    };
   return {
     type: "run",
     occurrenceId: entry.occurrenceId,
+    habitId: entry.habitId,
     title: entry.title,
     open,
     date,
@@ -165,7 +195,10 @@ export function planRow(entry: WeekPlanEntry, date: string | null): ActionRow {
   };
 }
 
-/** A quest of the Questlog or of a campaign; `place` for the campaign pages. */
+/**
+ * A quest of the Questlog or of a campaign, with the server's flag;
+ * `place` for the campaign pages, whose tree knows its campaigns itself.
+ */
 export function questRow(
   todo: {
     id: number;
@@ -174,8 +207,10 @@ export function questRow(
     completed?: boolean;
     scheduledDate?: string | null;
     timeOfDay?: string | null;
+    plannedDurationMinutes?: number | null;
+    campaign?: { id: number } | null;
   },
-  place: Pick<QuestRow, "board" | "tree"> = {},
+  place: Partial<Pick<QuestRow, "board" | "tree" | "campaign">> = {},
 ): QuestRow {
   return {
     type: "quest",
@@ -184,8 +219,50 @@ export function questRow(
     open: !todo.completed,
     date: todo.scheduledDate ?? null,
     timeOfDay: todo.timeOfDay ?? null,
+    plannedDurationMinutes: todo.plannedDurationMinutes ?? null,
     timerEligible: todo.timerEligible,
+    campaign: todo.campaign?.id === todo.id,
     ...place,
+  };
+}
+
+/**
+ * A planned row of the Kalender: it stands on the day it was scheduled
+ * for. Its read carries no stopwatch flag, so the server's rule for the
+ * Plan applies: an open quest, a stored run due by today. A run the
+ * schedule only forecasts is a forecast; a row without its quest or daily
+ * has no steps (null).
+ */
+export function historyRow(
+  item: HistoryPlannedItem,
+  today: string,
+): ActionRow | null {
+  const shared = { title: item.title, open: true };
+  if (item.type === "todo")
+    return item.id === null
+      ? null
+      : {
+          ...shared,
+          type: "quest",
+          todoId: item.id,
+          date: item.scheduledDate,
+          timeOfDay: item.timeOfDay,
+          plannedDurationMinutes: item.plannedDurationMinutes,
+          timerEligible: true,
+          campaign: item.campaign?.id === item.id,
+        };
+  if (item.habitId === null) return null;
+  if (item.id === null)
+    return { ...shared, type: "forecast", habitId: item.habitId };
+  return {
+    ...shared,
+    type: "run",
+    occurrenceId: item.id,
+    habitId: item.habitId,
+    date: item.scheduledDate,
+    moveUntil: item.moveUntil,
+    timerEligible: item.date <= today,
+    monthChallenge: false,
   };
 }
 
@@ -194,12 +271,15 @@ export function dailyRow(habit: { title: string }): ActionRow {
   return { type: "daily", title: habit.title, open: true };
 }
 
-/* The stopwatch */
+/* What a step acts on */
 
-/** What the stopwatch of a row is started on; null where nothing is measured. */
-export function timerTargetOf(row: QuestRow | RunRow): TimerTarget;
-export function timerTargetOf(row: ActionRow): TimerTarget | null;
-export function timerTargetOf(row: ActionRow): TimerTarget | null {
+/**
+ * What a row's steps act on (tick, move, skip, stopwatch): its quest or
+ * its stored run; null for a row without one.
+ */
+export function targetOf(row: QuestRow | RunRow): ItemTarget;
+export function targetOf(row: ActionRow): ItemTarget | null;
+export function targetOf(row: ActionRow): ItemTarget | null {
   if (row.type === "quest")
     return { kind: "todo", targetId: row.todoId, title: row.title };
   if (row.type === "run")
@@ -209,11 +289,11 @@ export function timerTargetOf(row: ActionRow): TimerTarget | null {
 
 /** ▶ of a row (ItemRow's `measure`): its target and whether it may start. */
 export function measureOf(row: QuestRow | RunRow): {
-  kind: TimerTarget["kind"];
+  kind: ItemTarget["kind"];
   targetId: number;
   eligible: boolean;
 } {
-  const { kind, targetId } = timerTargetOf(row);
+  const { kind, targetId } = targetOf(row);
   return { kind, targetId, eligible: row.timerEligible };
 }
 
@@ -223,7 +303,7 @@ type TimerStep = { run: () => void; label: string; disabled: boolean };
 /** The stopwatch step for a card without ▶: the same toggle as ▶ and Space. */
 function timerStep(
   controller: TimerController | null,
-  target: TimerTarget,
+  target: ItemTarget,
   eligible: boolean,
 ): TimerStep {
   const own = timerStateOf(controller, target);
@@ -242,7 +322,7 @@ function timerStep(
 /* Moves */
 
 /** A day an item can go to in one tap, with the key that does the same. */
-export type QuickMove = {
+type QuickMove = {
   label: "Heute" | "Morgen" | "Nächste Woche";
   date: string;
   shortcut: ShortcutId;
@@ -268,33 +348,23 @@ const QUICK_DAYS: {
 ];
 
 /**
- * Where an item can move without a dialog: today (when it is not on today),
- * tomorrow and next week's Monday, never into the past, never beyond the
- * last day a daily run may go to, never onto its own day. Appointments move
- * only through "Verschieben", where the move is confirmed.
+ * Where a quest or run can move without a dialog: today (when it is not on
+ * today), tomorrow and next week's Monday, never into the past, never
+ * beyond the last day a daily run may go to, never onto its own day.
+ * Appointments move only through "Verschieben", where the move is confirmed.
  */
-export function quickMoves(
-  today: string,
-  item: {
-    /** The day the item is on now; null for a quest in the Questlog. */
-    date: string | null;
-    /** An appointment's time; appointments take no quick moves. */
-    timeOfDay?: string | null;
-    /** Last day a daily run may move to; undefined for quests. */
-    moveUntil?: string | null;
-  },
-): QuickMove[] {
-  if (item.timeOfDay) return [];
+function movesOf(today: string, row: QuestRow | RunRow): QuickMove[] {
+  if (row.type === "quest" && row.timeOfDay) return [];
   return QUICK_DAYS.map(({ label, shortcut, from }) => ({
     label,
     date: from(today),
     shortcut,
   })).filter(
     (move) =>
-      move.date !== item.date &&
+      move.date !== row.date &&
       move.date >= today &&
-      (item.moveUntil === undefined ||
-        (item.moveUntil !== null && move.date <= item.moveUntil)),
+      (row.type === "quest" ||
+        (row.moveUntil !== null && move.date <= row.moveUntil)),
   );
 }
 
@@ -305,7 +375,7 @@ const MOVE_ICONS: Record<QuickMove["label"], MenuIcon> = {
 };
 
 /** Quick moves as menu entries; `plan` names them for a quest without a day. */
-export function quickMoveEntries(
+function quickMoveEntries(
   title: string,
   moves: QuickMove[],
   run: (move: QuickMove) => void,
@@ -326,15 +396,6 @@ export function quickMoveEntries(
   }));
 }
 
-/** The quick moves of a quest or run, by its day and its window. */
-function movesOf(today: string, row: QuestRow | RunRow): QuickMove[] {
-  return quickMoves(today, {
-    date: row.date,
-    timeOfDay: row.type === "quest" ? row.timeOfDay : null,
-    moveUntil: row.type === "run" ? row.moveUntil : undefined,
-  });
-}
-
 /** Where a moved row stands now, for its status line: "bei heute", "am Freitag, 4. Dez.". */
 export function whereLabel(date: string, today: string): string {
   if (date === today) return "bei heute";
@@ -345,15 +406,16 @@ export function whereLabel(date: string, today: string): string {
 /* What a view can do */
 
 /**
- * What a view can do with one row: the row, today, whether it is busy, and
- * the writes it has. A write left out means the view does not offer it;
- * when an offered write shows as an entry or answers a key is decided by
- * `rowMenu` and `rowShortcuts`.
+ * What can be done with one row: the row, today, whether it is busy, and
+ * the steps on offer, as `useRowActions` performs them (the Dailies page
+ * hands over its two). A step left out is not offered; when an offered
+ * step shows as an entry or answers a key is decided by `rowMenu` and
+ * `rowShortcuts`.
  */
 export type RowActions = {
   row: ActionRow;
   today: string;
-  /** A write or a dialog runs: every entry waits, the keys pass. */
+  /** A write or a dialog runs: every entry waits, every key passes. */
   busy: boolean;
   /** Onto `date` without a dialog: T, D, W and the menu's days. False: it did not. */
   move?: (date: string) => boolean | void;
@@ -396,7 +458,7 @@ function isDue(row: RunRow, today: string): boolean {
  * A row's "Aktionen für …", by what it is:
  * - a done row has none, except on the campaign pages, where done quests
  *   stay at work (the board moves them back, the tree edits them);
- * - an open quest or run gets the quick moves (`quickMoves`), or the
+ * - an open quest or run gets the quick moves (`movesOf`), or the
  *   board's days (`planDays`); "Anderer Tag …" for a quest, and for a run
  *   while its window reaches past its day; first for an appointment that
  *   is over but still open (`past`);
@@ -495,7 +557,7 @@ export function rowMenu(
       focusMode: actions.focusMode,
       timer:
         actions.menuTimer !== undefined
-          ? timerStep(actions.menuTimer, timerTargetOf(row), row.timerEligible)
+          ? timerStep(actions.menuTimer, targetOf(row), row.timerEligible)
           : undefined,
       child: actions.addChild,
       reparent: quest ? actions.reparent : undefined,
@@ -515,9 +577,9 @@ export function rowMenu(
   );
 }
 
-/** The steps a menu can offer, as `rowMenu` (or the Kalender) fills them in. */
-export type MenuSteps = {
-  /** Heute, Morgen, Nächste Woche, from \`quickMoveEntries\`. */
+/** The steps a menu can offer, as `rowMenu` fills them in. */
+type MenuSteps = {
+  /** Heute, Morgen, Nächste Woche, from `quickMoveEntries`. */
   quickMoves?: MenuEntry[];
   /**
    * Picks a day; an appointment's move is confirmed ("Termin verschieben …").
@@ -553,11 +615,9 @@ export type MenuSteps = {
  * for a past, still open appointment), the board's steps, Überspringen,
  * Bearbeiten, Fokus-Modus, Stoppuhr, Unter-Quest, "In Kampagne verschieben
  * …", "Zur Monats-Challenge", Nach oben / Nach unten, and Löschen last,
- * set apart (every view offers it, with the editor's confirmation). The
- * Kalender fills it by hand: its runs take their quick moves from the day
- * they were scheduled for, not the day they stand on.
+ * set apart (every view offers it, with the editor's confirmation).
  */
-export function menuInOrder(
+function menuInOrder(
   title: string,
   steps: MenuSteps,
   disabled = false,
@@ -710,10 +770,9 @@ export function menuInOrder(
 /* Keys */
 
 /**
- * T, D or W on a row: it moves where the menu's quick move goes. An
- * appointment opens "Anderer Tag …" instead, where its move is confirmed.
- * The board, as found, leaves an appointment be, and moves a card that is
- * not in Geplant yet there even onto its own day.
+ * T, D or W on a row: it moves where the menu's quick move goes, never
+ * onto the day it already has. An appointment opens "Anderer Tag …"
+ * instead, where its move is confirmed; the board leaves an appointment be.
  */
 function moveByKey(actions: RowActions, date: string): boolean {
   const { row, move, today } = actions;
@@ -724,19 +783,16 @@ function moveByKey(actions: RowActions, date: string): boolean {
     actions.pickDay();
     return true;
   }
-  const offered =
-    row.type === "quest" && row.board && row.board.column !== "planned"
-      ? date >= today
-      : movesOf(today, row).some((quick) => quick.date === date);
+  const offered = movesOf(today, row).some((quick) => quick.date === date);
   return offered && move(date) !== false;
 }
 
 /**
  * The keys on a row, for the row the keyboard is on (`rowOf` its
- * `data-focus-key`; null where the view has no such row or holds it):
- * Space starts, pauses or resumes the stopwatch of an open quest or run,
- * as its ▶ does; X completes an open row that is not busy, a run once it
- * is due; T, D and W move it (`moveByKey`). A key that does not apply
+ * `data-focus-key`; null where the view has no such row or holds it).
+ * A busy row takes no key. Space starts, pauses or resumes the stopwatch of
+ * an open quest or run, as its ▶ does; X completes an open row, a run once
+ * it is due; T, D and W move it (`moveByKey`). A key that does not apply
  * returns false, so the key does what it did before.
  */
 export function rowShortcuts(
@@ -745,10 +801,12 @@ export function rowShortcuts(
 ): Partial<Record<ShortcutId, ShortcutHandler>> {
   const handlers: Partial<Record<ShortcutId, ShortcutHandler>> = {
     "row.timer": ({ key }) => {
-      const row = rowOf(key)?.row;
-      if (!row?.open || (row.type !== "quest" && row.type !== "run"))
+      const actions = rowOf(key);
+      if (!actions || actions.busy) return false;
+      const { row } = actions;
+      if (!row.open || (row.type !== "quest" && row.type !== "run"))
         return false;
-      return toggleTimer(timer, timerTargetOf(row), row.timerEligible);
+      return toggleTimer(timer, targetOf(row), row.timerEligible);
     },
     "row.done": ({ key }) => {
       const actions = rowOf(key);

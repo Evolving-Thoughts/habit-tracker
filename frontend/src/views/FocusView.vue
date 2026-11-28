@@ -30,7 +30,7 @@ import { hrefOf } from "../routes";
 import type { DayPlannerItem, DayPlannerResponse } from "../types/day-planner";
 import CampaignChip from "../components/CampaignChip.vue";
 import ChallengeMark from "../components/ChallengeMark.vue";
-import { plannerRow, timerTargetOf } from "../utils/row-actions";
+import { plannerRow, targetOf } from "../utils/row-actions";
 import { formatStopwatch } from "../utils/stopwatch";
 import { streakLine } from "../utils/streak";
 import {
@@ -78,7 +78,7 @@ const agenda = computed(() =>
 );
 
 function isTimed(item: DayPlannerItem): boolean {
-  return timerStateOf(timer, timerTargetOf(plannerRow(item))) !== null;
+  return timerStateOf(timer, targetOf(plannerRow(item))) !== null;
 }
 
 /**
@@ -253,7 +253,7 @@ function toggleStopwatch(): boolean {
   // Starting or resuming here lets the chosen sound start with it. When no
   // other stopwatch has to end first (that asks), the sound follows the
   // press at once instead of waiting for the server's answer.
-  const target = timerTargetOf(plannerRow(item));
+  const target = targetOf(plannerRow(item));
   if (!timerFreeFor(timer, target)) sound.gesture();
   else if (running.value) sound.gesture("pause");
   else if (timer?.timer.value || item.timerEligible) sound.gesture("start");
@@ -273,12 +273,7 @@ async function complete(): Promise<void> {
   if (!item) return;
   await write(
     () =>
-      writeDone(
-        item.type === "todo"
-          ? { kind: "todo", id: item.todoId, title: item.title }
-          : { kind: "occurrence", id: item.occurrenceId, title: item.title },
-        true,
-      ),
+      writeDone(targetOf(plannerRow(item)), true),
     {
       fallbackError: "Das Erledigen hat nicht geklappt.",
       alongside: () => timer?.refresh(),

@@ -29,6 +29,7 @@ import { writeDone, type useTicks } from "../composables/useTicks";
 import { timerStateOf, useTimer } from "../composables/useTimer";
 import type { useWrites } from "../composables/useWrites";
 import type { RowDialogs } from "../composables/useRowDialogs";
+import { useRowActions, type RowCall } from "../composables/useRowActions";
 import type { TodoResponse } from "../types/todo";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
 import {
@@ -55,11 +56,8 @@ import { getCurrentDateInTimeZone } from "../utils/date";
 import {
   questRow,
   rowControl,
-  rowMenu,
-  rowShortcuts,
-  timerTargetOf,
+  targetOf,
   type MenuEntry,
-  type RowActions,
 } from "../utils/row-actions";
 
 /**
@@ -122,7 +120,7 @@ const shown = computed(() =>
     const working =
       !todo.completed &&
       !todo.inProgress &&
-      timerStateOf(timer, timerTargetOf(questRow(todo))) !== null;
+      timerStateOf(timer, targetOf(questRow(todo))) !== null;
     return changes || working
       ? { ...todo, ...(working ? { inProgress: true } : {}), ...changes }
       : todo;
@@ -142,7 +140,7 @@ const { data: questlog } = useLoader<TodoResponse[]>(
 const active = computed(
   () =>
     cards.value.find((card) =>
-      timerStateOf(timer, timerTargetOf(questRow(card.todo))),
+      timerStateOf(timer, targetOf(questRow(card.todo))),
     )?.todo.id ?? null,
 );
 /* A stopwatch that ends leaves its time in the Logbuch: the server says
@@ -310,7 +308,7 @@ async function write(
 function send(todo: HierarchyTodo, call: BoardWrite): Promise<unknown> {
   switch (call.kind) {
     case "reopen":
-      return writeDone({ kind: "todo", id: todo.id, title: todo.title }, false);
+      return writeDone(targetOf(questRow(todo)), false);
     case "setAside":
       return setAsideTodo(todo.id, call.blocked);
     case "unplan":
@@ -343,7 +341,7 @@ async function complete(
   let confirmed = false;
   try {
     confirmed = await props.ticks.complete(
-      { kind: "todo", id: todo.id, title: todo.title },
+      targetOf(questRow(todo)),
       {
         key: `board-${todo.id}`,
         fallbackError: "Die Quest konnte nicht erledigt werden.",
@@ -375,7 +373,7 @@ async function toggle(card: BoardCard): Promise<void> {
   try {
     if (
       await props.ticks.reopen(
-        { kind: "todo", id: todo.id, title: todo.title },
+        targetOf(questRow(todo)),
         { key: `board-${todo.id}` },
       )
     )
@@ -493,52 +491,47 @@ function onDrop(todoId: number, to: BoardColumn): void {
 }
 
 /*
- * What a card can do: its "…" and its keys (row-actions). Every step runs
- * the same move as a drop; Geplant asks the day unless the step names it.
+ * What a card can do: its "…" and its keys. Its column steps are the
+ * board's own: each runs the same move as a drop, and Geplant asks the day
+ * unless the step names it. The editor, the campaign move, Löschen and the
+ * stopwatch are every row's (`useRowActions`).
  */
-function actionsOf(card: BoardCard): RowActions {
+const rowActions = useRowActions({
+  today,
+  dialogs: props.dialogs,
+  timer,
+  busy: () => props.busy,
+});
+function callOf(card: BoardCard): RowCall {
   const { todo } = card;
   return {
+    key: `todo-${todo.id}`,
     row: questRow(todo, {
       board: { column: columnOf(todo), blocked: todo.blocked },
     }),
-    today: today(),
-    busy: props.busy,
-    move: (date) => startMove({ via: "menu", card, to: "planned", date }, true),
-    pickDay: () => void startMove({ via: "menu", card, to: "planned" }, true),
-    unplan: () => void startMove({ via: "menu", card, to: "todo" }, true),
-    complete: () => void complete(card, { fromMenu: true }),
-    startWork: () => void startMove({ via: "menu", card, to: "working" }, true),
-    setAside: () => void startMove({ via: "setAside", card }, true),
-    toggleBlocked: () => void toggleBlocked(card),
-    edit: () => edit(todo),
-    reparent: () =>
-      props.dialogs.reparent(`todo-${todo.id}`, {
-        todoId: todo.id,
-        title: todo.title,
-      }),
-    remove: () =>
-      props.dialogs.remove(`todo-${todo.id}`, {
-        kind: "todo",
-        id: todo.id,
-        title: todo.title,
-      }),
+    boardSteps: {
+      move: (date) =>
+        startMove({ via: "menu", card, to: "planned", date }, true),
+      pickDay: () => void startMove({ via: "menu", card, to: "planned" }, true),
+      unplan: () => void startMove({ via: "menu", card, to: "todo" }, true),
+      complete: () => void complete(card, { fromMenu: true }),
+      startWork: () =>
+        void startMove({ via: "menu", card, to: "working" }, true),
+      setAside: () => void startMove({ via: "setAside", card }, true),
+      toggleBlocked: () => void toggleBlocked(card),
+    },
   };
 }
-/** A card's editor; the board's cards are quests below the campaign, never one. */
-function edit(todo: HierarchyTodo): void {
-  props.dialogs.edit(`todo-${todo.id}`, { kind: "todo", id: todo.id });
-}
 function menuOf(card: BoardCard): MenuEntry[] {
-  return rowMenu(actionsOf(card));
+  return rowActions.menu(callOf(card));
 }
 
 /* The keys work on the card under the pointer or focus. */
 useShortcutHandlers(
-  rowShortcuts((key) => {
+  rowActions.shortcuts((key) => {
     const card = cards.value.find((item) => `todo-${item.todo.id}` === key);
-    return card ? actionsOf(card) : null;
-  }, timer),
+    return card ? callOf(card) : null;
+  }),
 );
 
 /** The quest a question is asked about. */
@@ -557,7 +550,7 @@ const asked = computed(() => {
     /** An appointment among them still asks to be moved on purpose. */
     timeOfDay: todos.find((todo) => todo.timeOfDay)?.timeOfDay ?? null,
     timing: todos.some((todo) =>
-      timerStateOf(timer, timerTargetOf(questRow(todo))),
+      timerStateOf(timer, targetOf(questRow(todo))),
     ),
   };
 });
@@ -624,7 +617,7 @@ const asked = computed(() => {
         @move="onDrop"
         @select="toggleSelected"
         @toggle="toggle"
-        @edit="(card) => edit(card.todo)"
+        @edit="(card) => rowActions.edit(callOf(card))"
       >
         <template
           v-if="column.key === 'todo' || column.key === 'planned'"

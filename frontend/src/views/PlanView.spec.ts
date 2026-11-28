@@ -640,20 +640,8 @@ describe("PlanView keyboard shortcuts", () => {
     expect(rescheduleTodo).toHaveBeenCalledWith(1, WEDNESDAY, false);
     expect(openTitles(wrapper, WEDNESDAY)).toEqual(["Quest 1"]);
     expect(wrapper.get(".visually-hidden[role='status']").text()).toBe(
-      "„Quest 1“ steht jetzt am Mittwoch, 18. Nov.",
+      "„Quest 1“ steht jetzt bei morgen.",
     );
-  });
-
-  it("moves a quest left behind to today with T", async () => {
-    vi.mocked(getPlan).mockResolvedValue(
-      board(TODAY, {}, [quest(5, { isOverdue: true, scheduledDate: MONDAY })]),
-    );
-    await mountPlan();
-    hover("todo-5");
-    press("t");
-    await flushPromises();
-    expect(rescheduleTodo).toHaveBeenCalledWith(5, TODAY, false);
-    expect(reorderDay).toHaveBeenCalledWith([{ type: "todo", id: 5 }]);
   });
 
   it("moves beyond the board the way of Verschieben", async () => {
@@ -682,36 +670,6 @@ describe("PlanView keyboard shortcuts", () => {
     await wrapper.get(".undo-toast button").trigger("click");
     await flushPromises();
     expect(updateTodoCompletion).toHaveBeenLastCalledWith(1, false);
-  });
-
-  it("leaves runs to their window, done quests and appointments to their own ways", async () => {
-    vi.mocked(getPlan).mockResolvedValue(
-      board(TODAY, {
-        [TODAY]: [
-          quest(1, { timeOfDay: "09:30" }),
-          daily({ occurrenceId: 9, moveUntil: TODAY }),
-          daily({ habitId: 5, title: "Lesen" }),
-          quest(2, { status: "completed" }),
-        ],
-      }),
-    );
-    const { wrapper } = await mountPlan();
-    // A run that may not wait beyond today stays; a forecast takes no keys.
-    hover("habit-9");
-    expect(press("d").defaultPrevented).toBe(false);
-    hover(`forecast-5-${TODAY}`);
-    expect(press("x").defaultPrevented).toBe(false);
-    hover("todo-2");
-    expect(press("x").defaultPrevented).toBe(false);
-    // An appointment opens "Verschieben", where its move is confirmed.
-    hover("todo-1");
-    press("d");
-    await flushPromises();
-    expect(rescheduleTodo).not.toHaveBeenCalled();
-    expect(updateTodoCompletion).not.toHaveBeenCalled();
-    expect(wrapper.findComponent({ name: "MoveItemDialog" }).exists()).toBe(
-      true,
-    );
   });
 
   it("puts N into the first column's quick add: today's, or the first day shown", async () => {
@@ -792,7 +750,7 @@ describe("PlanView Questlog column", () => {
       { type: "todo", id: 2 },
     ]);
     expect(wrapper.get('[role="status"].visually-hidden').text()).toBe(
-      "„Fahrrad putzen“ steht jetzt am Mittwoch, 18. Nov.",
+      "„Fahrrad putzen“ steht jetzt bei morgen.",
     );
   });
 
@@ -868,6 +826,8 @@ describe("PlanView Questlog column", () => {
       "Samstag, 21. Nov.",
       "Sonntag, 22. Nov.",
       "Montag, 23. Nov.",
+      // Days beyond the board: the editor at its day field, as in the Questlog.
+      "Anderer Tag …",
       "Bearbeiten",
       "Stoppuhr starten",
       "In Kampagne verschieben …",

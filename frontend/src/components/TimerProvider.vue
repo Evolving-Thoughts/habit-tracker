@@ -133,7 +133,7 @@ async function complete(): Promise<void> {
   completing.value = true;
   try {
     await writeDone(
-      { kind: target.kind, id: target.targetId, title: target.title },
+      { kind: target.kind, targetId: target.targetId, title: target.title },
       true,
     );
     notifyDataChanged();

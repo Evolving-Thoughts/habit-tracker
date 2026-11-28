@@ -111,7 +111,7 @@ describe("usePlanMove", () => {
     const done = move({ kind: "day", drop: { todoId: 2, toDate: WEDNESDAY, index: 0 } });
     // Before the server answers.
     expect(titles(plan.value, WEDNESDAY)).toEqual(["Quest 2", "Quest 3"]);
-    expect(lines).toEqual(["„Quest 2“ steht jetzt am Mittwoch, 18. Nov."]);
+    expect(lines).toEqual(["„Quest 2“ steht jetzt bei morgen."]);
     expect(await done).toBe(true);
     expect(sent).toEqual(["rescheduleTodo", "reorderDay"]);
     expect(rescheduleTodo).toHaveBeenCalledWith(2, WEDNESDAY, false);

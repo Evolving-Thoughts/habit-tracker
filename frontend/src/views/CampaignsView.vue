@@ -31,6 +31,7 @@ import QuestTrend from "../components/QuestTrend.vue";
 import CampaignBoard from "../components/CampaignBoard.vue";
 import { useListFocus } from "../composables/useListFocus";
 import { useRowDialogs, type RowDialog } from "../composables/useRowDialogs";
+import { useRowActions, type RowCall } from "../composables/useRowActions";
 import { useViewSession } from "../composables/useViewSession";
 import { useTicks } from "../composables/useTicks";
 import { useTimer } from "../composables/useTimer";
@@ -48,12 +49,7 @@ import { formatDuration } from "../utils/today-agenda";
 import { againstTargetParts, campaignTiles } from "../utils/quest-hours";
 import { readyToComplete } from "../utils/campaign-next";
 import type { QuestHoursResponse } from "../types/quest-hours";
-import {
-  questRow,
-  rowMenu as menuOf,
-  type MenuEntry,
-  type RowActions,
-} from "../utils/row-actions";
+import { questRow, targetOf, type MenuEntry } from "../utils/row-actions";
 const page = ref<HTMLElement | null>(null),
   listFocus = useListFocus(page);
 const collapsed = ref(new Set<number>());
@@ -296,22 +292,28 @@ function details(todo: HierarchyTodo): string[] {
     );
   return parts;
 }
-/** What a quest of the tree can do; Löschen takes the quests below along. */
-function actionsOf(todo: HierarchyTodo): RowActions {
+/*
+ * What a quest of the tree can do: its editor, an Unter-Quest, the
+ * campaign move and Löschen, which takes the quests below along
+ * (`useRowActions`; the tree knows which of its quests are campaigns).
+ */
+const rowActions = useRowActions({
+  today: getCurrentDateInTimeZone,
+  dialogs: rows,
+  timer,
+  busy: () => busy.value,
+});
+function callOf(todo: HierarchyTodo, menuTimer = false): RowCall {
   return {
-    row: questRow(todo, { tree: true }),
-    today: getCurrentDateInTimeZone(),
-    busy: busy.value,
-    edit: () => edit(todo),
+    key: `todo-${todo.id}`,
+    row: questRow(todo, { tree: true, campaign: campaignIds.value.has(todo.id) }),
     addChild: () => openCreate(todo),
-    reparent: () =>
-      rows.reparent(`todo-${todo.id}`, { todoId: todo.id, title: todo.title }),
-    remove: () => remove(todo),
+    menuTimer,
   };
 }
 /** "Aktionen für …" of a row; its ▶ measures, so the menu needs no stopwatch. */
 function rowMenu(todo: HierarchyTodo): MenuEntry[] {
-  return menuOf(actionsOf(todo));
+  return rowActions.menu(callOf(todo));
 }
 
 /*
@@ -332,7 +334,7 @@ function campaignMenu(todo: HierarchyTodo): MenuEntry[] {
       disabled: busy.value,
       run: () => void toggleCompletion(todo),
     },
-    ...menuOf({ ...actionsOf(todo), menuTimer: timer }),
+    ...rowActions.menu(callOf(todo, true)),
   ];
 }
 
@@ -381,7 +383,7 @@ function checked(todo: HierarchyTodo) {
 async function toggleCompletion(todo: HierarchyTodo) {
   if (busy.value) return;
   const next = !checked(todo);
-  const target = { kind: "todo", id: todo.id, title: todo.title } as const;
+  const target = targetOf(questRow(todo));
   const fallbackError = "Die Quest konnte nicht aktualisiert werden.";
   const fill = () =>
     (pendingCompletion.value = new Map(pendingCompletion.value).set(

@@ -2,20 +2,19 @@ import { describe, expect, it, vi, type Mock } from "vitest";
 import { ref } from "vue";
 import type { TimerController } from "../composables/useTimer";
 import type { DayPlannerItem } from "../types/day-planner";
+import type { HistoryPlannedItem } from "../types/history";
 import type { WeekPlanEntry } from "../types/week-plan";
 import type { ShortcutId } from "./shortcuts";
 import {
+  historyRow,
   measureOf,
-  menuInOrder,
   plannerRow,
   planRow,
   questRow,
-  quickMoveEntries,
-  quickMoves,
   rowControl,
   rowMenu,
   rowShortcuts,
-  timerTargetOf,
+  targetOf,
   whereLabel,
   type ActionRow,
   type QuestRow,
@@ -35,12 +34,15 @@ const quest = (changes: Partial<QuestRow> = {}): QuestRow => ({
   open: true,
   date: TODAY,
   timeOfDay: null,
+  plannedDurationMinutes: null,
   timerEligible: true,
+  campaign: false,
   ...changes,
 });
 const run = (changes: Partial<RunRow> = {}): RunRow => ({
   type: "run",
   occurrenceId: 7,
+  habitId: 2,
   title: "Joggen",
   open: true,
   date: TODAY,
@@ -94,51 +96,43 @@ function everything(row: ActionRow, changes: Partial<RowActions> = {}) {
 const labels = (actions: RowActions, past = false) =>
   rowMenu(actions, { past }).map((entry) => entry.label);
 
-describe("quickMoves", () => {
-  it("offers tomorrow and next week for an item of today", () => {
-    expect(quickMoves(TODAY, { date: TODAY })).toEqual([
-      { label: "Morgen", date: TOMORROW, shortcut: "row.tomorrow" },
-      { label: "Nächste Woche", date: NEXT_WEEK, shortcut: "row.nextWeek" },
-    ]);
+/** The quick moves a row's menu offers, by label. */
+const quick = (row: ActionRow) =>
+  rowMenu(everything(row))
+    .filter((entry) => entry.id.startsWith("move-"))
+    .map((entry) => entry.label);
+
+describe("quick moves", () => {
+  it("offer tomorrow and next week for an item of today", () => {
+    expect(quick(quest())).toEqual(["Morgen", "Nächste Woche"]);
   });
 
-  it("offers today as well for a quest without a day or from another day", () => {
-    expect(quickMoves(TODAY, { date: null }).map((m) => m.label)).toEqual([
+  it("offer today as well for a quest without a day or from another day", () => {
+    expect(quick(quest({ date: null }))).toEqual([
       "Heute",
       "Morgen",
       "Nächste Woche",
     ]);
-    expect(
-      quickMoves(TODAY, { date: "2026-11-16" }).map((m) => m.label),
-    ).toEqual(["Heute", "Morgen", "Nächste Woche"]);
-    expect(quickMoves(TODAY, { date: TOMORROW }).map((m) => m.label)).toEqual([
+    expect(quick(quest({ date: "2026-11-16" }))).toEqual([
       "Heute",
+      "Morgen",
       "Nächste Woche",
     ]);
+    expect(quick(quest({ date: TOMORROW }))).toEqual(["Heute", "Nächste Woche"]);
   });
 
-  it("gives appointments none: they move only where it is confirmed", () => {
-    expect(quickMoves(TODAY, { date: TODAY, timeOfDay: "09:00" })).toEqual([]);
+  it("leave appointments out: they move only where it is confirmed", () => {
+    expect(quick(quest({ timeOfDay: "09:00" }))).toEqual([]);
   });
 
-  it("keeps a daily run within the last day it may move to", () => {
-    expect(
-      quickMoves(TODAY, { date: TODAY, moveUntil: "2026-11-20" }).map(
-        (m) => m.label,
-      ),
-    ).toEqual(["Morgen"]);
-    expect(quickMoves(TODAY, { date: TODAY, moveUntil: null })).toEqual([]);
+  it("keep a daily run within the last day it may move to", () => {
+    expect(quick(run({ moveUntil: "2026-11-20" }))).toEqual(["Morgen"]);
+    expect(quick(run({ moveUntil: null }))).toEqual([]);
   });
-});
 
-describe("quickMoveEntries", () => {
-  it("names each entry after its item and runs the move", () => {
-    const run = vi.fn();
-    const [entry] = quickMoveEntries(
-      "Lesen",
-      quickMoves(TODAY, { date: TODAY }),
-      run,
-    );
+  it("are named after their item, carry their key and move to their day", () => {
+    const move = vi.fn();
+    const [entry] = rowMenu(everything(quest(), { move }));
     expect(entry).toMatchObject({
       label: "Morgen",
       icon: "tomorrow",
@@ -146,19 +140,15 @@ describe("quickMoveEntries", () => {
       shortcut: "row.tomorrow",
     });
     entry!.run();
-    expect(run).toHaveBeenCalledWith(
-      expect.objectContaining({ date: TOMORROW }),
-    );
+    expect(move).toHaveBeenCalledWith(TOMORROW);
   });
 
-  it("says planning for a quest without a day", () => {
-    const entries = quickMoveEntries(
-      "Lesen",
-      quickMoves(TODAY, { date: null }),
-      () => {},
-      { plan: true },
-    );
-    expect(entries.map((entry) => entry.ariaLabel)).toEqual([
+  it("say planning for a quest without a day", () => {
+    expect(
+      rowMenu(everything(quest({ date: null })))
+        .filter((entry) => entry.id.startsWith("move-"))
+        .map((entry) => entry.ariaLabel),
+    ).toEqual([
       "Lesen einplanen für heute",
       "Lesen einplanen für morgen",
       "Lesen einplanen für nächste Woche",
@@ -166,14 +156,14 @@ describe("quickMoveEntries", () => {
   });
 });
 
-describe("rows and their stopwatch", () => {
-  it("measures a quest as a todo and a run as an occurrence", () => {
-    expect(timerTargetOf(quest())).toEqual({
+describe("rows and what their steps act on", () => {
+  it("acts on a quest as a todo and on a run as an occurrence", () => {
+    expect(targetOf(quest())).toEqual({
       kind: "todo",
       targetId: 3,
       title: "Lesen",
     });
-    expect(timerTargetOf(run())).toEqual({
+    expect(targetOf(run())).toEqual({
       kind: "occurrence",
       targetId: 7,
       title: "Joggen",
@@ -185,16 +175,12 @@ describe("rows and their stopwatch", () => {
     });
   });
 
-  it("measures nothing on a forecast, an event or a Daily", () => {
+  it("acts on nothing of a forecast, an event or a Daily", () => {
     expect(
-      timerTargetOf({ type: "forecast", title: "Joggen", open: true }),
+      targetOf({ type: "forecast", habitId: 2, title: "Joggen", open: true }),
     ).toBeNull();
-    expect(
-      timerTargetOf({ type: "event", title: "Zahnarzt", open: true }),
-    ).toBeNull();
-    expect(
-      timerTargetOf({ type: "daily", title: "Joggen", open: true }),
-    ).toBeNull();
+    expect(targetOf({ type: "event", title: "Zahnarzt", open: true })).toBeNull();
+    expect(targetOf({ type: "daily", title: "Joggen", open: true })).toBeNull();
   });
 
   it("reads Heute's items, the Plan's entries and quests alike", () => {
@@ -224,25 +210,84 @@ describe("rows and their stopwatch", () => {
       status: "pending",
       scheduledDate: "2026-11-16",
       timeOfDay: "09:00",
+      plannedDurationMinutes: 30,
+      campaign: { id: 3 },
     } as WeekPlanEntry;
-    // A quest keeps its own day; any open quest of the Plan can be measured.
+    // A quest keeps its own day; an open quest of the Plan can be measured.
     expect(planRow(entry, null)).toEqual(
-      quest({ date: "2026-11-16", timeOfDay: "09:00" }),
+      quest({
+        date: "2026-11-16",
+        timeOfDay: "09:00",
+        plannedDurationMinutes: 30,
+        campaign: true,
+      }),
     );
+    expect(
+      planRow({ ...entry, status: "completed" } as WeekPlanEntry, null),
+    ).toMatchObject({ open: false, timerEligible: false });
     const forecast = {
       type: "habit",
+      habitId: 2,
       occurrenceId: null,
       title: "Joggen",
       status: "pending",
     };
     expect(planRow(forecast as WeekPlanEntry, TOMORROW)).toEqual({
       type: "forecast",
+      habitId: 2,
       title: "Joggen",
       open: true,
     });
     expect(
       questRow({ id: 3, title: "Lesen", timerEligible: true, completed: true }),
     ).toEqual(quest({ open: false, date: null }));
+    // The campaign tree knows its campaigns itself.
+    expect(
+      questRow(
+        { id: 3, title: "Lesen", timerEligible: true, campaign: null },
+        { tree: true, campaign: true },
+      ),
+    ).toEqual(quest({ date: null, tree: true, campaign: true }));
+  });
+
+  it("reads the Kalender's planned rows on the day they were scheduled for", () => {
+    const planned = (changes: Partial<HistoryPlannedItem>) =>
+      ({
+        key: "planned-1",
+        type: "habit",
+        id: 7,
+        habitId: 2,
+        title: "Joggen",
+        campaign: null,
+        date: TODAY,
+        scheduledDate: "2026-11-16",
+        timeOfDay: null,
+        plannedDurationMinutes: null,
+        moveUntil: "2026-11-25",
+        ...changes,
+      }) as HistoryPlannedItem;
+    expect(historyRow(planned({}), TODAY)).toEqual(
+      run({ date: "2026-11-16" }),
+    );
+    // A run of a later day cannot be measured yet, as the server says.
+    expect(historyRow(planned({ date: TOMORROW }), TODAY)).toMatchObject({
+      timerEligible: false,
+    });
+    expect(historyRow(planned({ id: null }), TODAY)).toEqual({
+      type: "forecast",
+      habitId: 2,
+      title: "Joggen",
+      open: true,
+    });
+    expect(
+      historyRow(
+        planned({ type: "todo", id: 3, habitId: null, title: "Lesen" }),
+        TODAY,
+      ),
+    ).toEqual(quest({ date: "2026-11-16" }));
+    expect(
+      historyRow(planned({ type: "todo", id: null, habitId: null }), TODAY),
+    ).toBeNull();
   });
 });
 
@@ -346,7 +391,7 @@ describe("rowMenu", () => {
     ["a skipped run", run({ open: false }), []],
     [
       "a forecast run",
-      { type: "forecast", title: "Joggen", open: true },
+      { type: "forecast", habitId: 2, title: "Joggen", open: true },
       ["Bearbeiten", "Löschen"],
     ],
     ["a Google event", { type: "event", title: "Zahnarzt", open: true }, []],
@@ -487,7 +532,7 @@ describe("rowMenu", () => {
       delete: "Daily Joggen ganz löschen",
     });
     expect(
-      aria({ type: "forecast", title: "Joggen", open: true }),
+      aria({ type: "forecast", habitId: 2, title: "Joggen", open: true }),
     ).toMatchObject({
       delete: "Daily Joggen ganz löschen",
     });
@@ -555,7 +600,7 @@ describe("rowMenu", () => {
         disabled: false,
       });
       entry!.run();
-      expect(own.start).toHaveBeenCalledWith(timerTargetOf(quest()));
+      expect(own.start).toHaveBeenCalledWith(targetOf(quest()));
       const ineligible = quest({ timerEligible: false });
       expect(
         timerEntry({
@@ -597,32 +642,15 @@ describe("rowMenu", () => {
   });
 });
 
-describe("menuInOrder", () => {
-  const run = () => {};
-  it("puts every step in the one order, Löschen last and set apart", () => {
-    const entries = menuInOrder("Lesen", {
-      remove: { run },
-      down: run,
-      up: run,
-      challenge: run,
-      reparent: run,
-      child: run,
-      timer: { run, label: "Stoppuhr starten", disabled: false },
-      focusMode: run,
-      edit: run,
-      skip: run,
-      block: { run, blocked: false },
-      setAside: run,
-      startWork: run,
-      complete: run,
-      unplan: run,
-      otherDay: { run },
-      quickMoves: quickMoveEntries(
-        "Lesen",
-        quickMoves(TODAY, { date: TODAY }),
-        run,
-      ),
-    });
+describe("the one order", () => {
+  it("puts every step in place, Löschen last and set apart", () => {
+    const entries = rowMenu(
+      everything(board("planned"), {
+        focusMode: vi.fn(),
+        addChild: vi.fn(),
+        menuTimer: controller(),
+      }),
+    );
     expect(entries.map((entry) => entry.label)).toEqual([
       "Morgen",
       "Nächste Woche",
@@ -630,15 +658,12 @@ describe("menuInOrder", () => {
       "Zurück ins To-Do",
       "Erledigen",
       "In Arbeit nehmen",
-      "Zurückstellen …",
       "Als geblockt markieren",
-      "Überspringen",
       "Bearbeiten",
       "Fokus-Modus",
       "Stoppuhr starten",
       "Unter-Quest hinzufügen",
       "In Kampagne verschieben …",
-      "Zur Monats-Challenge",
       "Nach oben",
       "Nach unten",
       "Löschen",
@@ -646,6 +671,8 @@ describe("menuInOrder", () => {
     expect(entries.filter((entry) => entry.last).map((e) => e.label)).toEqual([
       "Löschen",
     ]);
+    // In work, "Zurückstellen …" takes the blocker's place.
+    expect(labels(everything(board("working")))).toContain("Zurückstellen …");
   });
 });
 
@@ -749,7 +776,7 @@ describe("rowShortcuts", () => {
     ],
     [
       "a forecast run",
-      { type: "forecast", title: "Joggen", open: true },
+      { type: "forecast", habitId: 2, title: "Joggen", open: true },
       {
         "row.timer": "–",
         "row.done": "–",
@@ -782,9 +809,20 @@ describe("rowShortcuts", () => {
       },
     ],
     [
-      // Not in Geplant yet: even its own day moves it there.
+      // Like its menu: never onto the day it already has.
       "a board card in work",
       board("working"),
+      {
+        "row.timer": "start",
+        "row.done": "complete",
+        "row.today": "–",
+        "row.tomorrow": `move ${TOMORROW}`,
+        "row.nextWeek": `move ${NEXT_WEEK}`,
+      },
+    ],
+    [
+      "a board card in To-Do",
+      board("todo"),
       {
         "row.timer": "start",
         "row.done": "complete",
@@ -815,9 +853,9 @@ describe("rowShortcuts", () => {
     ).toBe("pause");
   });
 
-  it("passes every key but Space while the row is busy", () => {
+  it("passes every key while the row is busy, Space too", () => {
     expect(keysOn(everything(quest({ date: null }), { busy: true }))).toEqual({
-      "row.timer": "start",
+      "row.timer": "–",
       "row.done": "–",
       "row.today": "–",
       "row.tomorrow": "–",

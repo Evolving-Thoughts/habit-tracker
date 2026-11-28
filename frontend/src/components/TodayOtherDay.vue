@@ -10,12 +10,9 @@ import CalendarEventRow from "./CalendarEventRow.vue";
 import UndoToast from "./UndoToast.vue";
 import { getPlan } from "../api/day-planner.api";
 import { useViewSession } from "../composables/useViewSession";
-import {
-  deleteTargetOf,
-  editTargetOf,
-  moveTargetOf,
-  type RowDialogs,
-} from "../composables/useRowDialogs";
+import { useListFocus } from "../composables/useListFocus";
+import type { RowDialogs } from "../composables/useRowDialogs";
+import { useRowActions, type RowCall } from "../composables/useRowActions";
 import { DAY_DROP, useSortable } from "../composables/useSortable";
 import { useEventTick } from "../composables/useEventTick";
 import {
@@ -25,16 +22,17 @@ import {
 } from "../utils/day-drop";
 import { usePlanMove } from "../composables/usePlanMove";
 import { useTicks } from "../composables/useTicks";
-import type {
-  WeekPlanEntry,
-  WeekPlanResponse,
-  WeekPlanTodoEntry,
-} from "../types/week-plan";
+import type { WeekPlanEntry, WeekPlanResponse } from "../types/week-plan";
 import { dayRelation, tallyLine } from "../utils/day-tally";
-import { dayLabel } from "../utils/history";
+import { dayLabel, fullStop } from "../utils/history";
 import { asPlannerItem, relationLabel, tallyOfEntries } from "../utils/other-day";
-import { planRow, rowMenu, type MenuEntry } from "../utils/row-actions";
-import { boardDrop, entryTarget } from "../utils/plan-move";
+import {
+  planRow,
+  targetOf,
+  whereLabel,
+  type MenuEntry,
+} from "../utils/row-actions";
+import { boardDrop } from "../utils/plan-move";
 import {
   doneEntries,
   DRAGGABLE,
@@ -46,7 +44,6 @@ import {
   openEntries,
   runMayMoveTo,
   withEventDone,
-  type OpenRun,
 } from "../utils/week-plan";
 
 /**
@@ -118,9 +115,28 @@ const name = computed(() => {
 
 const busy = computed(() => props.held || session.busy.value);
 
+const root = ref<HTMLElement | null>(null);
 const list = ref<HTMLElement | null>(null);
 /* Status line for a move: read out, since the card itself moved. */
 const status = ref("");
+
+/*
+ * A card's steps, its ring and menu: Heute's, performed the same way
+ * (`useRowActions`), through Heute's dialogs. The order of the day, the
+ * Fokus-Modus and the stopwatch belong to today, so their steps stay away.
+ */
+const rowActions = useRowActions({
+  today: () => props.today,
+  session,
+  ticks,
+  focus: useListFocus(root),
+  dialogs: props.dialogs,
+  said: (line) => (status.value = line),
+  busy: () => busy.value,
+});
+function callOf(entry: WeekPlanEntry): RowCall {
+  return { key: entryKey(entry, props.date), row: planRow(entry, props.date) };
+}
 /* Sorting within the day, by every kind of card: the Plan's move. */
 const moves = usePlanMove({ plan }, session, {
   key: "day",
@@ -146,12 +162,16 @@ useSortable(list, {
       const entry = movedTo(card, date);
       if (!entry || busy.value) return;
       // A drop needs no question: an appointment moves with its time.
-      const moved = await ticks.move(entryTarget(entry), date, {
-        key: writeKey(entry),
-        confirmFixed: true,
-      });
-      const where = relationLabel(date, props.today)?.toLowerCase() ?? "heute";
-      if (moved) emit("notice", `„${entry.title}“ steht jetzt bei ${where}.`);
+      const moved = await ticks.move(
+        targetOf(planRow(entry, props.date)),
+        date,
+        { key: entryKey(entry, props.date), confirmFixed: true },
+      );
+      if (moved)
+        emit(
+          "notice",
+          fullStop(`„${entry.title}“ steht jetzt ${whereLabel(date, props.today)}`),
+        );
     },
     // What may not move says why instead of failing in silence.
     onRefuse: (card) => {
@@ -174,13 +194,6 @@ useSortable(list, {
     },
   },
 });
-
-/** The busy key of an open quest or run. */
-function writeKey(entry: WeekPlanTodoEntry | OpenRun): string {
-  return entry.type === "todo"
-    ? `todo-${entry.todoId}`
-    : `run-${entry.occurrenceId}`;
-}
 
 /** The open quest or run on `card` when it may move to `date`. */
 function movedTo(card: HTMLElement, date: string) {
@@ -209,82 +222,27 @@ const tickEvent = useEventTick(
 
 /** A tap on a card opens Heute's editor; a run with the notes of its own run. */
 function edit(entry: WeekPlanEntry): void {
-  if (busy.value || isEvent(entry)) return;
-  props.dialogs.edit(entryKey(entry, props.date), editTargetOf(entry));
+  if (!busy.value) rowActions.edit(callOf(entry));
 }
 
 /**
- * A quest's ring: done through the path every ring takes (`useTicks`), so
- * it sounds, offers its undo and asks first for a campaign with open
- * quests, as on today; done, it opens again without a toast.
+ * A quest's ring: done through the path every ring takes, so it sounds,
+ * offers its undo and asks first for a campaign with open quests, as on
+ * today; done, it opens again without a toast.
  */
 function toggle(entry: WeekPlanEntry): void {
-  if (entry.type !== "todo" || busy.value) return;
-  const key = `todo-${entry.todoId}`;
-  if (entry.status === "completed") {
-    void ticks.reopen(entryTarget(entry), {
-      key,
-      fallbackError: "Die Quest konnte nicht wieder geöffnet werden.",
-    });
-    return;
-  }
-  void ticks.complete(entryTarget(entry), {
-    key,
-    fallbackError: "Die Quest konnte nicht abgehakt werden.",
-    campaign: entry.campaign?.id === entry.todoId ? "lookup" : undefined,
-  });
+  if (entry.type === "todo") void rowActions.tick(callOf(entry));
 }
 
-/**
- * A card's menu: Heute's, by the same rules (`rowMenu`), with what has
- * a meaning on another day. Moves and Überspringen write here; the editor,
- * "Anderer Tag …", "In Kampagne verschieben …" and Löschen open Heute's
- * dialogs. The order of the day, the Fokus-Modus and the stopwatch belong
- * to today, so their entries stay away.
- */
+/** A card's menu; a Google event changes in Google only and has none. */
 function menu(entry: WeekPlanEntry): MenuEntry[] {
-  // A Google event changes in Google only: it has no menu.
-  if (isEvent(entry)) return [];
-  const key = entryKey(entry, props.date);
-  const own = isMovable(entry) || isMovableRun(entry) ? entry : null;
-  return rowMenu({
-    row: planRow(entry, props.date),
-    today: props.today,
-    busy: busy.value,
-    move: own
-      ? (date) =>
-          void ticks.move(entryTarget(own), date, { key: writeKey(own) })
-      : undefined,
-    // Never on today, so today is always one tap away.
-    pickDay: own
-      ? () =>
-          props.dialogs.pickDay(key, moveTargetOf(own), { offerToday: true })
-      : undefined,
-    skip: own?.type === "habit" ? () => void skip(own) : undefined,
-    edit: () => edit(entry),
-    reparent:
-      entry.type === "todo"
-        ? () =>
-            props.dialogs.reparent(key, {
-              todoId: entry.todoId,
-              title: entry.title,
-            })
-        : undefined,
-    remove: () => props.dialogs.remove(key, deleteTargetOf(entry)),
-  });
-}
-
-/** "Überspringen" of a run that is due: left out, the daily goes on. */
-async function skip(run: OpenRun): Promise<void> {
-  if (busy.value) return;
-  if (await ticks.skip(entryTarget(run), writeKey(run)))
-    status.value = `„${run.title}“ übersprungen.`;
+  return rowActions.menu(callOf(entry));
 }
 
 </script>
 
 <template>
-  <div class="other-day" :data-date="date">
+  <div ref="root" class="other-day" :data-date="date">
     <p v-if="tally" class="other-day__tally">{{ tally }}</p>
 
     <QuickAddQuest

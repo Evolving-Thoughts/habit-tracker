@@ -1,4 +1,4 @@
-import type { TickTarget } from "../composables/useTicks";
+import type { ItemTarget } from "../types/item-target";
 import type {
   WeekPlanDay,
   WeekPlanEntry,
@@ -8,6 +8,13 @@ import type {
 import { clockBoundIndex } from "./day-order";
 import { forecastStaysLine, runWindowLine } from "./day-drop";
 import { dayLabel, fullStop } from "./history";
+import {
+  planRow,
+  targetOf,
+  whereLabel,
+  type QuestRow,
+  type RunRow,
+} from "./row-actions";
 import {
   arrangeOpen,
   dayOrder,
@@ -83,7 +90,7 @@ export type Board = {
 /** One write of a move; `usePlanMove` sends them in the order given. */
 export type MoveWrite =
   /** Reschedules a quest or run (`writeMove`); `confirmFixed` keeps an appointment's time. */
-  | { type: "move"; target: TickTarget; date: string; confirmFixed: boolean }
+  | { type: "move"; target: ItemTarget; date: string; confirmFixed: boolean }
   /** Gives a quest of the Questlog its day, with the Questlog's own save. */
   | { type: "plan"; quest: QuestlogQuest; date: string }
   /** Takes a quest's day away: it goes back into the Questlog. */
@@ -105,24 +112,17 @@ export type Landing = {
 /** A landing, a move that may not land and why, or null when nothing changes. */
 export type MoveOutcome = Landing | { refused: string } | null;
 
-/** The stopwatch-shaped target of an open quest or run, for `useTicks`. */
-export function entryTarget(entry: WeekPlanTodoEntry | OpenRun): TickTarget {
-  return entry.type === "todo"
-    ? { kind: "todo", id: entry.todoId, title: entry.title }
-    : { kind: "occurrence", id: entry.occurrenceId, title: entry.title };
-}
-
-/** The move that puts an open quest or run at `index` of the day `toDate`. */
+/** The move that puts a quest or stored run at `index` of the day `toDate`. */
 export function dropAt(
-  entry: WeekPlanTodoEntry | OpenRun,
+  row: QuestRow | RunRow,
   toDate: string,
   index: number,
 ): Extract<BoardDrop, { kind: "day" | "run" }> {
-  return entry.type === "todo"
-    ? { kind: "day", drop: { todoId: entry.todoId, toDate, index } }
+  return row.type === "quest"
+    ? { kind: "day", drop: { todoId: row.todoId, toDate, index } }
     : {
         kind: "run",
-        drop: { occurrenceId: entry.occurrenceId, toDate, index },
+        drop: { occurrenceId: row.occurrenceId, toDate, index },
       };
 }
 
@@ -307,7 +307,7 @@ function onDay(board: Board, move: DayMove, words: MoveWords): MoveOutcome {
   else if (moves && (isMovable(entry) || isMovableRun(entry)))
     writes.push({
       type: "move",
-      target: entryTarget(entry),
+      target: targetOf(planRow(entry, toDate)),
       date: toDate,
       confirmFixed: entry.type === "todo" && entry.timeOfDay !== null,
     });
@@ -356,7 +356,9 @@ function wordsOf(
     };
   return {
     line: landed.moved
-      ? fullStop(`„${landed.title}“ steht jetzt am ${dayLabel(move.drop.toDate)}`)
+      ? fullStop(
+          `„${landed.title}“ steht jetzt ${whereLabel(move.drop.toDate, landed.plan.today)}`,
+        )
       : placeLine(landed.plan, move),
     fallbackError: landed.queued
       ? "Die Quest konnte nicht eingeplant werden."
@@ -492,7 +494,8 @@ export function stepDrop(
   direction: "up" | "down" | "left" | "right",
 ): BoardDrop | null {
   if (!isMovable(entry) && !isMovableRun(entry)) return null;
-  const probe = dropAt(entry, "", 0);
+  const row = planRow(entry, null);
+  const probe = dropAt(row, "", 0);
   const step = stepPlace(plan, (item) => names(probe, item), direction);
   if (!step) return null;
   if (
@@ -501,7 +504,7 @@ export function stepDrop(
     !runMayMoveTo(entry, step.toDate, plan.today)
   )
     return null;
-  return dropAt(entry, step.toDate, step.index);
+  return dropAt(row, step.toDate, step.index);
 }
 
 /**

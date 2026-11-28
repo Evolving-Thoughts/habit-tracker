@@ -10,7 +10,6 @@ import type {
 import {
   boardDrop,
   dropAt,
-  entryTarget,
   planMove,
   stepDrop,
   windowLine,
@@ -21,6 +20,7 @@ import {
   type MoveWrite,
 } from "./plan-move";
 import type { OpenRun, OrderRef, QuestlogQuest } from "./week-plan";
+import { planRow } from "./row-actions";
 
 const MONDAY = "2026-11-16";
 const TODAY = "2026-11-17";
@@ -110,13 +110,13 @@ const order = (...items: OrderRef[]): MoveWrite => ({
 });
 const moveQuest = (id: number, date: string, confirmFixed = false): MoveWrite => ({
   type: "move",
-  target: { kind: "todo", id, title: `Quest ${id}` },
+  target: { kind: "todo", targetId: id, title: `Quest ${id}` },
   date,
   confirmFixed,
 });
 const moveRun = (date: string): MoveWrite => ({
   type: "move",
-  target: { kind: "occurrence", id: 9, title: "Laufen" },
+  target: { kind: "occurrence", targetId: 9, title: "Laufen" },
   date,
   confirmFixed: false,
 });
@@ -188,7 +188,7 @@ describe("planMove: a move that lands", () => {
         moveQuest(2, WEDNESDAY),
         order(todo(3), todo(2), habit(9)),
       ],
-      line: "„Quest 2“ steht jetzt am Mittwoch, 18. Nov.",
+      line: "„Quest 2“ steht jetzt bei morgen.",
       fallbackError: QUEST_FAILED,
       shown: (landing) => {
         expect(titles(landing.plan, TODAY)).toEqual(["Quest 1"]);
@@ -205,7 +205,7 @@ describe("planMove: a move that lands", () => {
       ),
       move: day(1, WEDNESDAY, 1),
       writes: [moveQuest(1, WEDNESDAY, true), order(todo(2), todo(1))],
-      line: "„Quest 1“ steht jetzt am Mittwoch, 18. Nov.",
+      line: "„Quest 1“ steht jetzt bei morgen.",
       fallbackError: QUEST_FAILED,
       shown: (landing) =>
         expect(titles(landing.plan, WEDNESDAY)).toEqual(["Quest 2", "Quest 1"]),
@@ -215,7 +215,7 @@ describe("planMove: a move that lands", () => {
       board: on(LEFT_BEHIND),
       move: day(1, TODAY, 1),
       writes: [moveQuest(1, TODAY), order(todo(2), todo(1))],
-      line: "„Quest 1“ steht jetzt am Dienstag, 17. Nov.",
+      line: "„Quest 1“ steht jetzt bei heute.",
       fallbackError: QUEST_FAILED,
       shown: (landing) => {
         expect(landing.plan.overdue.map(({ title }) => title)).toEqual(["Laufen"]);
@@ -234,7 +234,7 @@ describe("planMove: a move that lands", () => {
         { type: "plan", quest: FROM_QUESTLOG.backlog[0]!, date: WEDNESDAY },
         order(todo(2), todo(7)),
       ],
-      line: "„Neu“ steht jetzt am Mittwoch, 18. Nov.",
+      line: "„Neu“ steht jetzt bei morgen.",
       fallbackError: "Die Quest konnte nicht eingeplant werden.",
       shown: (landing) => {
         expect(titles(landing.plan, WEDNESDAY)).toEqual(["Quest 2", "Neu"]);
@@ -256,7 +256,7 @@ describe("planMove: a move that lands", () => {
       board: on(week({ [TODAY]: [run()] })),
       move: runTo(WEDNESDAY, 0),
       writes: [moveRun(WEDNESDAY), order(habit(9))],
-      line: "„Laufen“ steht jetzt am Mittwoch, 18. Nov.",
+      line: "„Laufen“ steht jetzt bei morgen.",
       fallbackError: RUN_FAILED,
     },
     {
@@ -264,7 +264,7 @@ describe("planMove: a move that lands", () => {
       board: on(week({}, [run({ isOverdue: true })])),
       move: runTo(TODAY, 0),
       writes: [moveRun(TODAY), order(habit(9))],
-      line: "„Laufen“ steht jetzt am Dienstag, 17. Nov.",
+      line: "„Laufen“ steht jetzt bei heute.",
       fallbackError: RUN_FAILED,
       shown: (landing) => expect(landing.plan.overdue).toEqual([]),
     },
@@ -523,12 +523,14 @@ describe("stepDrop", () => {
   });
 });
 
-describe("entryTarget, dropAt and windowLine", () => {
-  it("names a quest or a run the way useTicks and a drop do", () => {
-    expect(entryTarget(quest(3))).toEqual({ kind: "todo", id: 3, title: "Quest 3" });
-    expect(entryTarget(run())).toEqual({ kind: "occurrence", id: 9, title: "Laufen" });
-    expect(dropAt(quest(3), WEDNESDAY, 2)).toEqual(day(3, WEDNESDAY, 2));
-    expect(dropAt(run(), WEDNESDAY, 0)).toEqual(runTo(WEDNESDAY, 0));
+describe("dropAt and windowLine", () => {
+  it("names a quest or a run the way a drop does", () => {
+    expect(dropAt(planRow(quest(3), null), WEDNESDAY, 2)).toEqual(
+      day(3, WEDNESDAY, 2),
+    );
+    expect(dropAt(planRow(run(), null), WEDNESDAY, 0)).toEqual(
+      runTo(WEDNESDAY, 0),
+    );
   });
 
   it("says how far a run may go in each view's words", () => {

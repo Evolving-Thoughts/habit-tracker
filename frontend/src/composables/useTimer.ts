@@ -316,7 +316,7 @@ export function toggleTimer(
   return true;
 }
 
-/** What a stopwatch is on: a quest or a run (row-actions' `timerTargetOf`). */
+/** What a stopwatch is on: a quest or a run (row-actions' `targetOf`). */
 type TimerSubject = { kind: TimerTarget["kind"]; targetId: number | null };
 
 /** Whether the stopwatch of this target runs or waits paused; null when it has none. */

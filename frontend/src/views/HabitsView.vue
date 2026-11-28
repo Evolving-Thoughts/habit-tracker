@@ -146,7 +146,7 @@ async function toggleRun(habit: HabitResponse): Promise<void> {
   if (!run) return;
   const target = {
     kind: "occurrence",
-    id: run.id,
+    targetId: run.id,
     title: habit.title,
   } as const;
   const options = {

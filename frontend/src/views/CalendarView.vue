@@ -17,11 +17,11 @@ import CalendarDay from "../components/CalendarDay.vue";
 import CalendarMonth from "../components/CalendarMonth.vue";
 import CalendarWeek from "../components/CalendarWeek.vue";
 import type { PlannedActions } from "../components/HistoryPlannedItems.vue";
-import type { MoveTarget } from "../components/MoveItemDialog.vue";
 import RowDialogs from "../components/RowDialogs.vue";
 import UndoToast from "../components/UndoToast.vue";
 import { useListFocus } from "../composables/useListFocus";
 import { useRowDialogs } from "../composables/useRowDialogs";
+import { useRowActions, type RowCall } from "../composables/useRowActions";
 import { useViewSession } from "../composables/useViewSession";
 import { useLogRemoval } from "../composables/useLogRemoval";
 import { tickLabel, useTicks, writeDone } from "../composables/useTicks";
@@ -40,11 +40,7 @@ import {
   supportedHistoryDate,
   weekLabel,
 } from "../utils/history";
-import {
-  menuInOrder,
-  quickMoveEntries,
-  quickMoves,
-} from "../utils/row-actions";
+import { historyRow, measureOf } from "../utils/row-actions";
 
 type Mode = "month" | "week" | "day";
 
@@ -266,29 +262,11 @@ watch(
   { immediate: true },
 );
 
-/* Moving planned entries */
-function moveTarget(item: HistoryPlannedItem): MoveTarget | null {
-  if (item.id === null) return null;
-  if (item.type === "todo")
-    return {
-      type: "todo",
-      todoId: item.id,
-      title: item.title,
-      timeOfDay: item.timeOfDay,
-    };
-  if (!item.moveUntil || item.moveUntil <= item.date) return null;
-  return {
-    type: "habit",
-    occurrenceId: item.id,
-    title: item.title,
-    moveUntil: item.moveUntil,
-  };
-}
-
 /*
  * The planned rows follow the row contract: open quests get the ring (with
  * undo, as on Heute), the title opens the editor, and moving sits in the
- * menu "Aktionen für …" with the same quick days as Heute.
+ * menu "Aktionen für …", Heute's menu for the day the row was scheduled
+ * for (`historyRow`, performed by `useRowActions`).
  *
  * Deleting a Logbuch stretch shares the toast; its DELETE waits until the
  * offer ends (`useLogRemoval`).
@@ -304,24 +282,19 @@ const { hiddenLogs, removeLog, restoreLog } = useLogRemoval(
 /* Closing or reloading the page sends a held delete on its way. */
 onMounted(() => window.addEventListener("pagehide", flushUndo));
 onBeforeUnmount(() => window.removeEventListener("pagehide", flushUndo));
-const busyKey = (item: HistoryPlannedItem) => `planned-${item.key}`;
-function quickMove(item: HistoryPlannedItem, date: string): void {
-  if (item.id === null) return;
-  const id = item.id;
-  void listFocus.around(item.key, () =>
-    ticks.move(
-      {
-        kind: item.type === "todo" ? "todo" : "occurrence",
-        id,
-        title: item.title,
-      },
-      date,
-      {
-        key: busyKey(item),
-        fallbackError: "Der Eintrag konnte nicht verschoben werden.",
-      },
-    ),
-  );
+const today = (): string => result.value?.today ?? getCurrentDateInTimeZone();
+const rowActions = useRowActions({
+  today,
+  session,
+  ticks,
+  focus: listFocus,
+  dialogs: rows,
+  busy: () => session.busy.value,
+});
+/** A planned row under its key; null for one without its quest or daily. */
+function callOf(item: HistoryPlannedItem): RowCall | null {
+  const row = historyRow(item, today());
+  return row && { key: item.key, row };
 }
 /*
  * A Daily run can be ticked where it is due: today (the server refuses
@@ -339,10 +312,13 @@ function completeRun(item: HistoryPlannedItem): void {
         id ??= await openRunToday(habitId, item.scheduledDate);
         if (id === null)
           throw new Error("Dieses Daily ist heute nicht mehr fällig.");
-        await writeDone({ kind: "occurrence", id, title: item.title }, true);
+        await writeDone(
+          { kind: "occurrence", targetId: id, title: item.title },
+          true,
+        );
       },
       {
-        key: busyKey(item),
+        key: item.key,
         fallbackError: "Das Daily konnte nicht erledigt werden.",
       },
     );
@@ -350,7 +326,7 @@ function completeRun(item: HistoryPlannedItem): void {
       ticks.offerUndo(
         {
           kind: "tick",
-          target: { kind: "occurrence", id, title: item.title },
+          target: { kind: "occurrence", targetId: id, title: item.title },
         },
         tickLabel(item.title),
       );
@@ -363,94 +339,26 @@ const plannedActions: PlannedActions = {
       : item.habitId !== null && item.date === result.value?.today,
   complete: (item) => {
     if (item.type === "habit") return completeRun(item);
-    if (item.id === null) return;
-    const id = item.id;
-    // The calendar's rows do not ask about a campaign (todo-hierarchy.md).
-    void listFocus.around(item.key, () =>
-      ticks.complete(
-        { kind: "todo", id, title: item.title },
-        { key: busyKey(item) },
-      ),
-    );
+    const call = callOf(item);
+    if (call) rowActions.of(call).complete?.();
   },
-  editable: (item) =>
-    item.type === "todo" ? item.id !== null : item.habitId !== null,
+  editable: (item) => callOf(item) !== null,
   edit: (item) => {
-    const id = item.type === "todo" ? item.id : item.habitId;
-    if (id === null) return;
-    rows.edit(item.key, {
-      kind: item.type,
-      id,
-      occurrenceId:
-        item.type === "habit" && item.id !== null ? item.id : undefined,
-    });
+    const call = callOf(item);
+    if (call) rowActions.edit(call);
   },
   menu: (item) => {
-    const today = result.value?.today;
-    if (!today) return [];
-    const disabled = session.busy.value;
-    const target = moveTarget(item);
-    return menuInOrder(
-      item.title,
-      {
-        quickMoves: target
-          ? quickMoveEntries(
-              item.title,
-              quickMoves(today, {
-                date: item.scheduledDate,
-                timeOfDay: item.timeOfDay,
-                moveUntil: item.type === "habit" ? item.moveUntil : undefined,
-              }),
-              (move) => quickMove(item, move.date),
-              { disabled },
-            )
-          : [],
-        otherDay: target
-          ? {
-              run: () => rows.pickDay(item.key, target),
-              appointment: item.type === "todo" && !!item.timeOfDay,
-            }
-          : undefined,
-        edit: plannedActions.editable(item)
-          ? () => plannedActions.edit(item)
-          : undefined,
-        reparent:
-          item.type === "todo" && item.id !== null
-            ? () =>
-                rows.reparent(item.key, { todoId: item.id!, title: item.title })
-            : undefined,
-        remove: plannedActions.editable(item)
-          ? {
-              run: () => {
-                const id = item.type === "todo" ? item.id : item.habitId;
-                if (id === null) return;
-                rows.remove(item.key, {
-                  kind: item.type,
-                  id,
-                  title: item.title,
-                });
-              },
-              ariaLabel:
-                item.type === "habit"
-                  ? `Daily ${item.title} ganz löschen`
-                  : undefined,
-            }
-          : undefined,
-      },
-      disabled,
-    );
+    const call = callOf(item);
+    return call ? rowActions.menu(call) : [];
   },
+  /* ▶ where the stopwatch may start: an open quest, a stored run due by today. */
   measure: (item) => {
-    if (item.id === null) return null;
-    if (item.type === "todo")
-      return { kind: "todo", targetId: item.id, eligible: true };
-    const today = result.value?.today;
-    // A stored run can be measured once it is due.
-    return today && item.date <= today
-      ? { kind: "occurrence", targetId: item.id, eligible: true }
+    const row = callOf(item)?.row;
+    return (row?.type === "quest" || row?.type === "run") && row.timerEligible
+      ? measureOf(row)
       : null;
   },
-  busy: (item) => session.isWriting(busyKey(item)),
+  busy: (item) => session.isWriting(item.key),
 };
 </script>
 

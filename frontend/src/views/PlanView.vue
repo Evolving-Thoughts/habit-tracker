@@ -9,7 +9,6 @@ import {
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { getBacklogTodos, getPlan } from "../api/day-planner.api";
-import { planQuest } from "../api/questlog.api";
 import AppIcon from "../components/AppIcon.vue";
 import InsertPlaceToggle from "../components/InsertPlaceToggle.vue";
 import RowDialogs from "../components/RowDialogs.vue";
@@ -20,12 +19,8 @@ import ColumnChips from "../components/ColumnChips.vue";
 import UndoToast from "../components/UndoToast.vue";
 import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
 import { useListFocus } from "../composables/useListFocus";
-import {
-  deleteTargetOf,
-  editTargetOf,
-  moveTargetOf,
-  useRowDialogs,
-} from "../composables/useRowDialogs";
+import { useRowDialogs } from "../composables/useRowDialogs";
+import { useRowActions, type RowCall } from "../composables/useRowActions";
 import { useSnapColumns } from "../composables/useSnapColumns";
 import { useViewSession } from "../composables/useViewSession";
 import { SHEET_QUERY, useMediaQuery } from "../composables/useMediaQuery";
@@ -45,22 +40,12 @@ import {
   planRow,
   questRow,
   rowControl,
-  rowMenu,
-  rowShortcuts,
   type MenuEntry,
-  type RowActions,
 } from "../utils/row-actions";
 import { addDays, getCurrentDateInTimeZone } from "../utils/date";
-import {
-  dayLabel,
-  fullStop,
-  rangeLabel,
-  shortDate,
-  weekdayName,
-} from "../utils/history";
+import { rangeLabel, shortDate, weekdayName } from "../utils/history";
 import {
   dropAt,
-  entryTarget,
   stepDrop,
   type BoardDrop,
   type ShelfDrop,
@@ -329,12 +314,11 @@ function focusCard(key: string, on: "menu" | "card"): void {
 /**
  * Opens the card's editor: a quest's, or a daily's with the notes of this
  * run (a run the schedule only forecasts has none yet). `date` is the
- * column the card stands in, for the focus to come back to; a Google event
- * has no editor here, it is changed in Google.
+ * column the card stands in (null: left behind); a Google event has no
+ * editor here, it is changed in Google.
  */
-function openEditing(entry: WeekPlanEntry, date = ""): void {
-  if (entry.type !== "event")
-    rows.edit(entryKey(entry, date), editTargetOf(entry));
+function openEditing(entry: WeekPlanEntry, date: string | null): void {
+  rowActions.edit({ key: entryKey(entry, date ?? "overdue"), row: planRow(entry, date) });
 }
 
 /**
@@ -351,31 +335,6 @@ async function stepQuestlog(drop: ShelfDrop): Promise<void> {
   await moves.move({ kind: "questlog", drop });
   await nextTick();
   focusCard(`todo-${drop.todoId}`, "menu");
-}
-
-/** The keyboard's way from the column: "Einplanen auf …" puts it at the end of that day. */
-function planFromQuestlog(todo: QuestlogQuest, date: string): void {
-  const day = plan.value?.days.find((item) => item.date === date);
-  if (!day) return;
-  void listFocus.around(`todo-${todo.id}`, () =>
-    moves.move({
-      kind: "day",
-      drop: { todoId: todo.id, toDate: date, index: openEntries(day).length },
-    }),
-  );
-}
-
-/**
- * "Anderer Tag …": a quest to any day (an appointment's move is confirmed
- * there), a run to any day of its window, as on Heute. `date` is the
- * column a run stands in; null for one left behind. What is not on today
- * may come back to today in one tap.
- */
-function openMoving(entry: WeekPlanTodoEntry | OpenRun, date: string | null): void {
-  const on = entry.type === "todo" ? entry.scheduledDate : (date ?? "");
-  rows.pickDay(entryKey(entry, ""), moveTargetOf(entry), {
-    offerToday: on !== plan.value?.today,
-  });
 }
 
 /*
@@ -423,84 +382,9 @@ watch(phone, () => openOnToday(board.value), { flush: "post" });
 /* Ticking with X, its undo toast and the campaign question: `useTicks`. */
 const ticks = useTicks(session.write);
 const { undo, undoLast } = ticks;
-async function complete(
-  entry: { todoId: number; title: string },
-  campaign: { id: number } | null,
-): Promise<void> {
-  // A campaign with open quests asks first, as everywhere.
-  await ticks.complete(
-    { kind: "todo", id: entry.todoId, title: entry.title },
-    {
-      key: "plan",
-      campaign: campaign?.id === entry.todoId ? "lookup" : undefined,
-    },
-  );
-}
-/** X on a run due by today: done through the same path as Heute's ring. */
-async function completeRun(run: OpenRun): Promise<void> {
-  await ticks.complete(entryTarget(run), { key: "plan" });
-}
-
-/** "Überspringen": this run is left out, the daily goes on. */
-async function skipRun(run: OpenRun): Promise<void> {
-  if (session.busy.value || rows.busy.value) return;
-  const key = entryKey(run, "");
-  await listFocus.around(key, async () => {
-    if (await ticks.skip(entryTarget(run), "plan"))
-      status.value = `„${run.title}“ übersprungen.`;
-  });
-}
-
-/**
- * Moves an open quest or run by key or menu the way dragging does: onto a
- * day of the board at the end of its order, shown at once, or beyond the
- * board straight away (`useTicks`). Where it may go (a run within its
- * window) is row-actions' rule.
- */
-function moveEntry(entry: WeekPlanTodoEntry | OpenRun, date: string): boolean {
-  if (session.busy.value || rows.busy.value) return false;
-  const day = shownDays.value.find((item) => item.date === date);
-  void listFocus.around(entryKey(entry, ""), async () => {
-    if (day) {
-      await moves.move(dropAt(entry, date, openEntries(day).length));
-      return;
-    }
-    const moved = await ticks.move(entryTarget(entry), date, { key: "plan" });
-    if (moved)
-      status.value = fullStop(
-        `„${entry.title}“ steht jetzt am ${dayLabel(date)}`,
-      );
-  });
-  return true;
-}
-
 /** A quest of the Questlog column by its row key. */
 function questlogQuest(key: string | null): QuestlogQuest | null {
   return backlog.value.find((todo) => `todo-${todo.id}` === key) ?? null;
-}
-
-/**
- * T, D and W on a row of the column plan it like its menu: onto that day of
- * the board, or, beyond the board, with the Questlog's own save.
- */
-function planQueued(todo: QuestlogQuest, date: string): boolean {
-  if (session.busy.value || rows.busy.value) return false;
-  if (shownDays.value.some((day) => day.date === date)) {
-    planFromQuestlog(todo, date);
-    return true;
-  }
-  void listFocus.around(`todo-${todo.id}`, async () => {
-    if (
-      await session.write(() => planQuest(todo, date), {
-        key: "plan",
-        fallbackError: "Die Quest konnte nicht eingeplant werden.",
-      })
-    )
-      status.value = fullStop(
-        `„${todo.title}“ steht jetzt am ${dayLabel(date)}`,
-      );
-  });
-  return true;
 }
 
 /** An open quest or stored run: what moves, ticks and takes the row keys. */
@@ -539,66 +423,51 @@ function quickAddField(): HTMLElement | null {
 
 const timer = useTimer();
 
-/**
- * What a card of the board can do, by what it is: its menu and its keys
- * (row-actions). `date` is the column it stands in; null for what was left
- * behind (it has no place in a day yet, so no up or down). Compact cards
- * have no ▶, so the menu carries the stopwatch. A forecast run can only
- * have its daily edited or deleted yet.
+/*
+ * A card's steps, its menu and keys: `useRowActions` performs them. Every
+ * write of the board shares the key "plan", and a move onto a day the
+ * board shows goes the board's way: shown at once at the end of the day's
+ * order, like a drop (`usePlanMove`); beyond the board it is rescheduled,
+ * a quest of the Questlog column planned with the Questlog's save.
  */
-function entryActions(
+const rowActions = useRowActions({
+  today: () => plan.value?.today ?? today(),
+  session,
+  ticks,
+  focus: listFocus,
+  dialogs: rows,
+  timer,
+  said: (line) => {
+    notice.value = "";
+    status.value = line;
+  },
+  busy: () => session.busy.value,
+  writeKey: "plan",
+  moveWithin: (row, date) => {
+    const day = shownDays.value.find((item) => item.date === date);
+    return day
+      ? () => moves.move(dropAt(row, date, openEntries(day).length))
+      : null;
+  },
+});
+
+/**
+ * A card of the board with what only the board has: its place in the
+ * day's order (none for what was left behind, `date` null) and, since
+ * compact cards have no ▶, the stopwatch in its menu.
+ */
+function entryCall(
   entry: WeekPlanEntry,
   date: string | null,
   current: WeekPlanResponse,
-): RowActions {
-  const base = {
-    row: planRow(entry, date),
-    today: current.today,
-    busy: session.busy.value || rows.busy.value,
-  };
-  const step: RowActions["step"] = (direction) =>
-    stepDrop(current, entry, direction)
-      ? () => void stepEntry(entry, direction)
-      : undefined;
-  if (isMovable(entry))
-    return {
-      ...base,
-      move: (to) => moveEntry(entry, to),
-      pickDay: () => openMoving(entry, date),
-      complete: () =>
-        void listFocus.around(entryKey(entry, ""), () =>
-          complete(entry, entry.campaign),
-        ),
-      edit: () => openEditing(entry),
-      menuTimer: timer,
-      reparent: () =>
-        rows.reparent(entryKey(entry, ""), {
-          todoId: entry.todoId,
-          title: entry.title,
-        }),
-      step,
-      remove: () => rows.remove(entryKey(entry, ""), deleteTargetOf(entry)),
-    };
-  if (isMovableRun(entry))
-    return {
-      ...base,
-      move: (to) => moveEntry(entry, to),
-      pickDay: () => openMoving(entry, date),
-      complete: () =>
-        void listFocus.around(entryKey(entry, ""), () => completeRun(entry)),
-      skip: () => void skipRun(entry),
-      edit: () => openEditing(entry, date ?? ""),
-      menuTimer: timer,
-      step,
-      remove: () =>
-        rows.remove(entryKey(entry, date ?? ""), deleteTargetOf(entry)),
-    };
+): RowCall {
   return {
-    ...base,
-    edit: () => openEditing(entry, date ?? ""),
-    remove:
-      entry.type === "habit"
-        ? () => rows.remove(entryKey(entry, date ?? ""), deleteTargetOf(entry))
+    key: entryKey(entry, date ?? "overdue"),
+    row: planRow(entry, date),
+    menuTimer: true,
+    step: (direction) =>
+      stepDrop(current, entry, direction)
+        ? () => void stepEntry(entry, direction)
         : undefined,
   };
 }
@@ -606,37 +475,36 @@ function entryActions(
 /** A card's menu, in the column of `date` (null: left behind). */
 function entryMenu(entry: WeekPlanEntry, date: string | null): MenuEntry[] {
   const current = shownPlan.value;
-  return current ? rowMenu(entryActions(entry, date, current)) : [];
+  return current ? rowActions.menu(entryCall(entry, date, current)) : [];
 }
 
 /**
- * The keys on a quest of the Questlog column: planned like its menu, done
- * and measured like any quest. Its menu is the column's own (PlanQuestlog).
+ * A quest of the Questlog column: the board's days are its quick moves, its
+ * menu carries the stopwatch, and up and down sort the column.
  */
-function queuedActions(
-  todo: QuestlogQuest,
-  current: WeekPlanResponse | null,
-): RowActions {
+function questlogCall(todo: QuestlogQuest): RowCall {
+  const at = backlog.value.indexOf(todo);
   return {
+    key: `todo-${todo.id}`,
     row: questRow(todo),
-    today: current?.today ?? today(),
-    busy: session.busy.value || rows.busy.value,
-    move: current ? (date) => planQueued(todo, date) : undefined,
-    complete: () =>
-      void listFocus.around(`todo-${todo.id}`, () =>
-        complete({ todoId: todo.id, title: todo.title }, todo.campaign),
-      ),
+    planDays: plannableDays.value,
+    menuTimer: true,
+    step: (direction) => {
+      const index = at + (direction === "up" ? -1 : 1);
+      return index < 0 || index >= backlog.value.length
+        ? undefined
+        : () => void stepQuestlog({ todoId: todo.id, index });
+    },
   };
 }
 
 /** The row the keys mean: a quest of the column, an open run or quest of the board. */
-function rowByKey(key: string | null): RowActions | null {
-  const current = plan.value;
+function rowByKey(key: string | null): RowCall | null {
   const queued = questlogQuest(key);
-  if (queued) return queuedActions(queued, current);
-  if (!current) return null;
+  if (queued) return questlogCall(queued);
+  const current = plan.value;
   const found = openEntry(key);
-  return found ? entryActions(found.entry, found.date, current) : null;
+  return current && found ? entryCall(found.entry, found.date, current) : null;
 }
 
 useShortcutHandlers({
@@ -649,7 +517,7 @@ useShortcutHandlers({
     if (!field) return false;
     field.focus();
   },
-  ...rowShortcuts(rowByKey, timer),
+  ...rowActions.shortcuts(rowByKey),
 });
 </script>
 
@@ -761,24 +629,10 @@ useShortcutHandlers({
           :todos="backlog"
           :open="questlogOpen"
           :busy="session.busy.value || rows.busy.value"
-          :days="plannableDays"
+          :menu="(todo) => rowActions.menu(questlogCall(todo))"
           @toggle="toggleQuestlog"
           @move="onMove"
-          @step="stepQuestlog"
-          @plan="planFromQuestlog"
-          @edit="(todo) => rows.edit(`todo-${todo.id}`, { kind: 'todo', id: todo.id })"
-          @reparent="
-            (todo) =>
-              rows.reparent(`todo-${todo.id}`, { todoId: todo.id, title: todo.title })
-          "
-          @remove="
-            (todo) =>
-              rows.remove(`todo-${todo.id}`, {
-                kind: 'todo',
-                id: todo.id,
-                title: todo.title,
-              })
-          "
+          @edit="(todo) => rowActions.edit(questlogCall(todo))"
           @created="session.applied()"
         />
         <PlanOverdue
@@ -788,7 +642,7 @@ useShortcutHandlers({
           @toggle="toggleOverdue"
           :busy="session.busy.value || rows.busy.value"
           :menu="(entry) => entryMenu(entry, null)"
-          @edit="(entry) => openEditing(entry, 'overdue')"
+          @edit="(entry) => openEditing(entry, null)"
           @move="onMove"
         />
         <PlanDay

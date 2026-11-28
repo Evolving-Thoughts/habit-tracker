@@ -4,20 +4,10 @@ import {
   updateOccurrenceStatus,
   updateTodoCompletion,
 } from "../api/day-planner.api";
+import type { ItemTarget } from "../types/item-target";
 import { withActionSound } from "./action-sounds";
 import { useCampaignCompletion } from "./useCampaignCompletion";
 import { useUndo } from "./useUndo";
-
-/**
- * What a ring, a quick move or "Überspringen" acts on: a quest or one run
- * of a daily. Views map their own rows onto it; it has the shape of a
- * stopwatch target (`TimerTarget`).
- */
-export type TickTarget = {
-  kind: "todo" | "occurrence";
-  id: number;
-  title: string;
-};
 
 type Write = (
   action: () => Promise<unknown>,
@@ -32,16 +22,16 @@ type Write = (
  * Monats-Challenge, or its stopwatch ended at the weekly quest-hours goal
  * (`action-sounds.ts`). Opening again, undo included, stays silent.
  */
-export function writeDone(target: TickTarget, done: boolean): Promise<void> {
+export function writeDone(target: ItemTarget, done: boolean): Promise<void> {
   if (!done)
     return target.kind === "todo"
-      ? updateTodoCompletion(target.id, false)
-      : updateOccurrenceStatus(target.id, "pending");
+      ? updateTodoCompletion(target.targetId, false)
+      : updateOccurrenceStatus(target.targetId, "pending");
   return withActionSound(
     () =>
       target.kind === "todo"
-        ? updateTodoCompletion(target.id, true)
-        : updateOccurrenceStatus(target.id, "completed"),
+        ? updateTodoCompletion(target.targetId, true)
+        : updateOccurrenceStatus(target.targetId, "completed"),
     {
       sound: "chime-done",
       kinds:
@@ -52,19 +42,18 @@ export function writeDone(target: TickTarget, done: boolean): Promise<void> {
   );
 }
 
-/** Moves a target onto `date` without a dialog. */
 /**
  * Moves a quest or run to `date`. `confirmFixed` moves an appointment too,
  * keeping its time (a drop on a day says so plainly; the menu asks first).
  */
 export function writeMove(
-  target: TickTarget,
+  target: ItemTarget,
   date: string,
   confirmFixed = false,
 ): Promise<unknown> {
   return target.kind === "todo"
-    ? rescheduleTodo(target.id, date, confirmFixed)
-    : rescheduleOccurrence(target.id, date);
+    ? rescheduleTodo(target.targetId, date, confirmFixed)
+    : rescheduleOccurrence(target.targetId, date);
 }
 
 /** The toast's line: a campaign with open quests is "abgeschlossen". */
@@ -74,7 +63,7 @@ export function tickLabel(title: string, openQuests = 0): string {
 
 const UNDO_FAILED = "Das Rückgängigmachen hat nicht geklappt.";
 
-function failedText(target: TickTarget, verb: string): string {
+function failedText(target: ItemTarget, verb: string): string {
   return target.kind === "todo"
     ? `Die Quest konnte nicht ${verb} werden.`
     : `Das Daily konnte nicht ${verb} werden.`;
@@ -82,7 +71,7 @@ function failedText(target: TickTarget, verb: string): string {
 
 type HeldTick = {
   kind: "tick";
-  target: TickTarget;
+  target: ItemTarget;
   key?: string;
   onUndone?: () => void;
 };
@@ -127,7 +116,7 @@ export function useTicks(
 
   /** Resolves to whether it went through (false if a campaign said no). */
   async function complete(
-    target: TickTarget,
+    target: ItemTarget,
     options: CompleteOptions = {},
   ): Promise<boolean> {
     const { key, campaign, onUndone } = options;
@@ -135,7 +124,7 @@ export function useTicks(
       target.kind !== "todo" || campaign === undefined
         ? 0
         : campaign === "lookup"
-          ? await campaigns.openQuestsBelow(target.id)
+          ? await campaigns.openQuestsBelow(target.targetId)
           : campaign;
     if (!(await campaigns.confirm(target.title, open))) return false;
     options.onConfirmed?.();
@@ -153,7 +142,7 @@ export function useTicks(
 
   /** A completed target open again, straight away and without a toast. */
   function reopen(
-    target: TickTarget,
+    target: ItemTarget,
     { key, fallbackError }: { key?: string; fallbackError?: string } = {},
   ): Promise<boolean> {
     return write(() => writeDone(target, false), {
@@ -163,15 +152,15 @@ export function useTicks(
   }
 
   /** "Überspringen": this run is left out, the daily goes on. */
-  function skip(target: TickTarget, key?: string): Promise<boolean> {
-    return write(() => updateOccurrenceStatus(target.id, "skipped"), {
+  function skip(target: ItemTarget, key?: string): Promise<boolean> {
+    return write(() => updateOccurrenceStatus(target.targetId, "skipped"), {
       key,
       fallbackError: "Das Daily konnte nicht übersprungen werden.",
     });
   }
 
   function move(
-    target: TickTarget,
+    target: ItemTarget,
     date: string,
     {
       key,
@@ -192,7 +181,7 @@ export function useTicks(
     if (held.kind !== "tick") return onOtherUndo?.(held);
     const { target } = held;
     const done = await write(() => writeDone(target, false), {
-      key: held.key ?? `undo-${target.kind}-${target.id}`,
+      key: held.key ?? `undo-${target.kind}-${target.targetId}`,
       fallbackError: UNDO_FAILED,
     });
     if (done) held.onUndone?.();

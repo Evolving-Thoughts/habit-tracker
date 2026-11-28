@@ -88,8 +88,8 @@ once all its quests are done, else "Kampagne abschließen" in the tile's "…";
 "Abschließen" on its detail card, and "Kampagne abschließen" in the card's "…"), Heute
 and the Plan's X (they read `GET /todos/hierarchy` once, only for a row that
 is itself a campaign; a failed read asks nothing). The Questlog lists no
-campaigns (see below) and never asks. The calendar's rows do not name their
-campaign and do not ask. Every completion by ring, including the Kampagnen
+campaigns (see below) and never asks. The calendar's planned rows ask like
+Heute's (`useRowActions`: a quest that is its own campaign asks first). Every completion by ring, including the Kampagnen
 view, offers the undo toast.
 
 ### The Questlog: what one can work on

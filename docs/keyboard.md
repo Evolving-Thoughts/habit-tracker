@@ -96,7 +96,9 @@ mouse once one is ticked.
 
 If the focus was in the row, it moves on to the row that takes its place
 (`useListFocus().around`), since the row itself usually leaves. A row acted
-on by pointer leaves the focus where it was.
+on by pointer leaves the focus where it was. A row whose write is still
+running takes no key, Space included (`rowShortcuts`, fed by
+`useRowActions` in every view).
 
 Per row kind:
 

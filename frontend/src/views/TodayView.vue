@@ -8,15 +8,11 @@ import {
 } from "../api/day-planner.api";
 import { whileActive } from "../composables/useActive";
 import { useListFocus } from "../composables/useListFocus";
-import {
-  deleteTargetOf,
-  editTargetOf,
-  moveTargetOf,
-  useRowDialogs,
-} from "../composables/useRowDialogs";
+import { useRowDialogs } from "../composables/useRowDialogs";
+import { useRowActions, type RowCall } from "../composables/useRowActions";
 import { DAY_DROP, useSortable } from "../composables/useSortable";
 import { useViewSession } from "../composables/useViewSession";
-import { useTicks, type TickTarget } from "../composables/useTicks";
+import { useTicks } from "../composables/useTicks";
 import { useLogRemoval } from "../composables/useLogRemoval";
 import { useMediaQuery } from "../composables/useMediaQuery";
 import {
@@ -92,12 +88,9 @@ import { onCardClick } from "../utils/card-click";
 import {
   plannerRow,
   rowControl,
-  rowMenu,
-  rowShortcuts,
-  timerTargetOf,
+  targetOf,
   whereLabel,
   type MenuEntry,
-  type RowActions,
 } from "../utils/row-actions";
 
 /*
@@ -372,34 +365,28 @@ const { hiddenLogs, removeLog, restoreLog } = useLogRemoval(
 
 const getItemKey = itemKey;
 
+/*
+ * A card's steps, its ring, menu and keys: `useRowActions` performs them
+ * (the campaign question, the focus wrap, the status line). What only
+ * Heute has goes with each card (`callOf`).
+ */
+const rowActions = useRowActions({
+  today: () => today.value,
+  session,
+  ticks,
+  focus: listFocus,
+  dialogs: rows,
+  timer,
+  said: (line) => (orderMessage.value = line),
+});
+
 function isUpdating(item: DayPlannerItem): boolean {
-  return rows.busy.value || session.isWriting(getItemKey(item));
+  return rowActions.busy(getItemKey(item));
 }
 
-function tickTarget(item: DayPlannerItem): TickTarget {
-  return item.type === "todo"
-    ? { kind: "todo", id: item.todoId, title: item.title }
-    : { kind: "occurrence", id: item.occurrenceId, title: item.title };
-}
-
-async function toggleItem(item: DayPlannerItem): Promise<void> {
-  if (isUpdating(item)) {
-    return;
-  }
-  const options = {
-    key: getItemKey(item),
-    fallbackError: "Der Eintrag konnte nicht aktualisiert werden.",
-  };
-  if (item.status !== "pending") {
-    await ticks.reopen(tickTarget(item), options);
-    return;
-  }
-  // A campaign planned for today with open quests asks first.
-  const campaign =
-    item.type === "todo" && item.campaign?.id === item.todoId
-      ? ("lookup" as const)
-      : undefined;
-  await ticks.complete(tickTarget(item), { ...options, campaign });
+/** The ring: done (a campaign with open quests asks first), or open again. */
+function toggleItem(item: DayPlannerItem): void {
+  void rowActions.tick(callOf(item));
 }
 
 /**
@@ -429,24 +416,15 @@ function challengeLine(item: DayPlannerItem): string | null {
   return challenge && item === challengeRun.value ? runLine(challenge) : null;
 }
 
-async function skipHabit(item: DayPlannerHabitItem): Promise<void> {
-  if (isUpdating(item)) {
-    return;
-  }
-  await ticks.skip(tickTarget(item), getItemKey(item));
-}
-
 /** Movable to `date` without a dialog; appointments and habit limits ask. */
 function quickMovable(item: DayPlannerItem, date: string): boolean {
   if (item.type === "todo") return item.timeOfDay === null;
   return item.moveUntil !== null && date <= item.moveUntil;
 }
 
-function moveTo(item: DayPlannerItem, date: string): Promise<boolean> {
-  return ticks.move(tickTarget(item), date, {
-    key: getItemKey(item),
-    fallbackError: "Der Eintrag konnte nicht verschoben werden.",
-  });
+/** A card's steps, for the chips of what was carried over. */
+function stepsOf(item: DayPlannerItem) {
+  return rowActions.of(callOf(item));
 }
 
 const quickToday = computed(() => {
@@ -462,20 +440,16 @@ async function catchUpAll(): Promise<void> {
   const today = planner.value?.date;
   if (!today) return;
   for (const item of quickToday.value) {
-    if (!(await moveTo(item, today))) return;
+    const moved = await ticks.move(targetOf(plannerRow(item)), today, {
+      key: getItemKey(item),
+    });
+    if (!moved) return;
   }
 }
 
 /** A card asked for its editor; a daily opens with the notes of this run. */
 function openEditing(item: DayPlannerItem): void {
-  rows.edit(getItemKey(item), editTargetOf(item));
-}
-
-/** "Anderer Tag …"; one carried over may come back to today in one tap. */
-function openMoving(item: DayPlannerItem): void {
-  rows.pickDay(getItemKey(item), moveTargetOf(item), {
-    offerToday: item.isOverdue,
-  });
+  rowActions.edit(callOf(item));
 }
 
 /* The order of the day: the focus card is its head, the rows follow. */
@@ -569,9 +543,8 @@ function droppable(card: HTMLElement, date: string): DayPlannerItem | null {
 /** A drop needs no question: the day it lands on is the answer. */
 async function dropOnDay(item: DayPlannerItem, date: string): Promise<void> {
   if (session.busy.value) return;
-  const moved = await ticks.move(tickTarget(item), date, {
+  const moved = await ticks.move(targetOf(plannerRow(item)), date, {
     key: getItemKey(item),
-    fallbackError: "Der Eintrag konnte nicht verschoben werden.",
     confirmFixed: true,
   });
   if (moved)
@@ -612,7 +585,7 @@ const postponing = computed(() =>
     ? postponePlan(
         [...agenda.value.sequence, ...agenda.value.carriedOver],
         tomorrow.value,
-        (item) => timerStateOf(timer, timerTargetOf(plannerRow(item))) !== null,
+        (item) => timerStateOf(timer, targetOf(plannerRow(item))) !== null,
       )
     : { moving: [], staying: [] },
 );
@@ -621,9 +594,8 @@ async function postponeAll(): Promise<void> {
   const items = postponable.value;
   postponeOpen.value = false;
   for (const item of items) {
-    const moved = await ticks.move(tickTarget(item), tomorrow.value, {
+    const moved = await ticks.move(targetOf(plannerRow(item)), tomorrow.value, {
       key: getItemKey(item),
-      fallbackError: "Der Eintrag konnte nicht verschoben werden.",
       confirmFixed: true,
     });
     if (!moved) return;
@@ -675,43 +647,25 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
   creationOpen.value = false;
 }
 
-/*
- * What a row of the day can do: its menu and its keys (row-actions). The
- * quick moves run the same step as T, D and W; "Anderer Tag …" opens the
- * dialog the row had, where an appointment's move is confirmed. Done rows
- * and busy ones ignore the keys.
- */
+/** An open card by its key, unless it is busy: what a drop may move. */
 function pendingItem(key: string | null): DayPlannerItem | null {
   const item = planner.value?.items.find((entry) => getItemKey(entry) === key);
   return item && item.status === "pending" && !isUpdating(item) ? item : null;
 }
 const router = useRouter();
-function actionsOf(item: DayPlannerItem, today: string): RowActions {
-  const key = getItemKey(item);
+/**
+ * A card with what only Heute has: the order of the day, the focus card's
+ * way into the Fokus-Modus and the challenge's page.
+ */
+function callOf(item: DayPlannerItem): RowCall {
   const isFocus = item === agenda.value?.focus;
   return {
+    key: getItemKey(item),
     row: plannerRow(item),
-    today,
-    busy: isUpdating(item),
-    move: (date) =>
-      void listFocus.around(key, async () => {
-        if (await moveTo(item, date))
-          orderMessage.value = fullStop(
-            `„${item.title}“ steht jetzt ${whereLabel(date, today)}`,
-          );
-      }),
-    pickDay: () => openMoving(item),
-    complete: () => void listFocus.around(key, () => toggleItem(item)),
-    skip: item.type === "habit" ? () => void skipHabit(item) : undefined,
-    edit: () => openEditing(item),
     // The Fokus-Modus has no Später or Überspringen for an appointment.
     focusMode:
       isFocus && !focusSlot.value
         ? () => void router.push({ name: "focus" })
-        : undefined,
-    reparent:
-      item.type === "todo"
-        ? () => rows.reparent(key, { todoId: item.todoId, title: item.title })
         : undefined,
     // The challenge's own place is in the Dailies.
     openChallenge: () => void router.push(CHALLENGE_HREF.slice(1)),
@@ -721,13 +675,11 @@ function actionsOf(item: DayPlannerItem, today: string): RowActions {
         ? () => void shiftInOrder(item, by)
         : undefined;
     },
-    remove: () => rows.remove(key, deleteTargetOf(item)),
   };
 }
 /** `past`: an appointment that is over but open leads with "Anderer Tag …". */
 function menuOf(item: DayPlannerItem, past = false): MenuEntry[] {
-  const today = planner.value?.date;
-  return today ? rowMenu(actionsOf(item, today), { past }) : [];
+  return planner.value ? rowActions.menu(callOf(item), { past }) : [];
 }
 /** A tap anywhere on the focus card but its controls opens the editor. */
 function openFocusFromCard(event: MouseEvent, item: DayPlannerItem): void {
@@ -736,7 +688,7 @@ function openFocusFromCard(event: MouseEvent, item: DayPlannerItem): void {
 /** The focus card says in words when its stopwatch runs. */
 const focusTimer = computed(() => {
   const focus = agenda.value?.focus;
-  return focus ? timerStateOf(timer, timerTargetOf(plannerRow(focus))) : null;
+  return focus ? timerStateOf(timer, targetOf(plannerRow(focus))) : null;
 });
 
 /*
@@ -762,10 +714,12 @@ useShortcutHandlers(
         page.value?.querySelector<HTMLElement>('input[name="quickTitle"]'),
       );
     },
-    ...rowShortcuts((key) => {
-      const item = pendingItem(key);
-      return item && planner.value ? actionsOf(item, planner.value.date) : null;
-    }, timer),
+    ...rowActions.shortcuts((key) => {
+      const item = planner.value?.items.find(
+        (entry) => getItemKey(entry) === key,
+      );
+      return item ? callOf(item) : null;
+    }),
   },
   {
     // The same offer as "Alles Offene auf morgen" in the head's "…".
@@ -1269,7 +1223,7 @@ useShortcutHandlers(
                   type="button"
                   :disabled="isUpdating(item)"
                   :aria-label="`${item.title} heute einplanen`"
-                  @click="moveTo(item, planner.date)"
+                  @click="stepsOf(item).move?.(planner.date)"
                 >
                   Heute
                 </button>
@@ -1279,7 +1233,7 @@ useShortcutHandlers(
                   type="button"
                   :disabled="isUpdating(item)"
                   :aria-label="`${item.title} auf morgen`"
-                  @click="moveTo(item, tomorrow)"
+                  @click="stepsOf(item).move?.(tomorrow)"
                 >
                   Morgen
                 </button>
@@ -1292,7 +1246,7 @@ useShortcutHandlers(
                   data-move-button
                   :disabled="isUpdating(item)"
                   :aria-label="`${item.title} auf einen anderen Tag`"
-                  @click="openMoving(item)"
+                  @click="stepsOf(item).pickDay?.()"
                 >
                   Anderer Tag
                 </button>
@@ -1302,7 +1256,7 @@ useShortcutHandlers(
                   type="button"
                   :disabled="isUpdating(item)"
                   :aria-label="`${item.title} überspringen`"
-                  @click="skipHabit(item)"
+                  @click="stepsOf(item).skip?.()"
                 >
                   Überspringen
                 </button>

@@ -1085,6 +1085,7 @@ describe("TodayView creation flow", () => {
       timerEligible: true,
     });
   });
+
   it("hides the forms until plus is clicked, then offers Quest | Daily", async () => {
     const wrapper = mount(TodayView);
     await flushPromises();
@@ -1138,6 +1139,7 @@ describe("TodayView creation flow", () => {
     expect(wrapper.find("dialog").exists()).toBe(true);
     expect(getTodayMock).toHaveBeenCalledTimes(1);
   });
+
   it("closes on cancellation and opens on the quest form again", async () => {
     const wrapper = mount(TodayView);
     await flushPromises();
@@ -1280,38 +1282,6 @@ describe("TodayView keyboard shortcuts", () => {
     );
   });
 
-  it("moves to next Monday with W and does nothing with T for a row of today", async () => {
-    await mountToday();
-    hover("todo-2");
-    expect(press("t").defaultPrevented).toBe(false);
-    press("w");
-    await flushPromises();
-    // 2 Oct 2026 is a Friday.
-    expect(vi.mocked(rescheduleTodo).mock.calls).toEqual([
-      [2, "2026-10-05", false],
-    ]);
-  });
-
-  it("brings a carried-over quest to today with T", async () => {
-    getTodayMock.mockResolvedValue(
-      makePlanner([
-        makeTodo({ todoId: 1, title: "Heute" }),
-        makeTodo({
-          todoId: 4,
-          title: "Von gestern",
-          scheduledDate: "2026-10-01",
-          isOverdue: true,
-        }),
-      ]),
-    );
-    const wrapper = await mountToday();
-    await wrapper.get(".catch-up__toggle").trigger("click");
-    hover("todo-4");
-    press("t");
-    await flushPromises();
-    expect(rescheduleTodo).toHaveBeenCalledWith(4, "2026-10-02", false);
-  });
-
   it("opens Verschieben for an appointment instead of moving it", async () => {
     getTodayMock.mockResolvedValue(
       makePlanner([
@@ -1325,27 +1295,6 @@ describe("TodayView keyboard shortcuts", () => {
     await flushPromises();
     expect(rescheduleTodo).not.toHaveBeenCalled();
     expect(wrapper.get("dialog").attributes("aria-label")).toBe("Verschieben");
-  });
-
-  it("ignores a finished row", async () => {
-    getTodayMock.mockResolvedValue(
-      makePlanner([
-        makeTodo({ todoId: 1, title: "Erstens" }),
-        makeTodo({
-          todoId: 6,
-          title: "Fertig",
-          status: "completed",
-          completedAt: "2026-10-02T05:00:00Z",
-        }),
-      ]),
-    );
-    const wrapper = await mountToday();
-    await wrapper.get(".resolved__toggle").trigger("click");
-    hover("todo-6");
-    expect(press("x").defaultPrevented).toBe(false);
-    expect(press("d").defaultPrevented).toBe(false);
-    expect(updateTodoMock).not.toHaveBeenCalled();
-    expect(rescheduleTodo).not.toHaveBeenCalled();
   });
 
   it("moves the focus on to the next row when the focused row is ticked", async () => {

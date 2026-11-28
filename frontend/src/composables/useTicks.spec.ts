@@ -9,7 +9,8 @@ import {
 } from "../api/day-planner.api";
 import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import { withActionSound } from "./action-sounds";
-import { useTicks, writeDone, type TickTarget } from "./useTicks";
+import type { ItemTarget } from "../types/item-target";
+import { useTicks, writeDone } from "./useTicks";
 
 vi.mock("../api/day-planner.api", () => ({
   rescheduleOccurrence: vi.fn(),
@@ -22,8 +23,8 @@ vi.mock("./action-sounds", () => ({
   withActionSound: vi.fn((action: () => Promise<unknown>) => action()),
 }));
 
-const quest: TickTarget = { kind: "todo", id: 7, title: "Steuer" };
-const run: TickTarget = { kind: "occurrence", id: 3, title: "Laufen" };
+const quest: ItemTarget = { kind: "todo", targetId: 7, title: "Steuer" };
+const run: ItemTarget = { kind: "occurrence", targetId: 3, title: "Laufen" };
 
 type Write = Parameters<typeof useTicks>[0];
 

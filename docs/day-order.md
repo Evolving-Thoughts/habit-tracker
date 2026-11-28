@@ -206,7 +206,8 @@ and its tick live on the row; a sync never writes them.
 - Moving a single entry sits in its menu "Aktionen für …" (Morgen, Nächste
   Woche, "Anderer Tag …"; an appointment only "Termin verschieben …", where
   the move is confirmed; a past, still open one "Anderer Tag …" first). The quick days run the same step as D and W
-  (`utils/row-actions.ts` `quickMoves` decides which days apply).
+  (`utils/row-actions.ts` `movesOf` decides which days apply; `useRowActions`
+  performs the step and says "„X“ steht jetzt bei morgen." in the status line).
 - `QuickAddQuest.vue`: type a title, press Enter, the quest is planned for
   today, at the end or at the head of the order. Two small toggles beside the
   field, ↑ "Oben einfügen" and ↓ "Unten einfügen" (`aria-pressed`), choose
@@ -268,7 +269,8 @@ counts one.
   stored runs by dragging (the Plan's `planMove`, sent by `usePlanMove`)
   and moves them with the quick moves of their menu.
 - A card's menu is Heute's where it means something on another day
-  (`rowMenu`): quick moves, "Anderer Tag …", Überspringen for a due run,
+  (`rowMenu`, performed by `useRowActions` the same way, status line
+  included): quick moves, "Anderer Tag …", Überspringen for a due run,
   Bearbeiten, "In Kampagne verschieben …", Löschen; not the order's steps,
   the Fokus-Modus or the stopwatch. Its dialogs are Heute's
   (`useRowDialogs`, handed down as `dialogs`), so Heute holds its reload

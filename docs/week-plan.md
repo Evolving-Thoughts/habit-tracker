@@ -151,7 +151,8 @@ redirected by the router to the first day of that week still ahead
 
 - `components/PlanEntry.vue`: a compact card. A quest's title, or a tap
   anywhere else on it, opens `EditItemDialog`; the whole card drags; its
-  menu (`rowMenu` from the actions `PlanView` gives the card) holds Morgen / Nächste Woche,
+  menu (`rowMenu`, performed by `useRowActions`; `PlanView` adds only the
+  card's place in its day and the board's own way onto a shown day) holds Morgen / Nächste Woche,
   "Anderer Tag …" (`MoveItemDialog`), Bearbeiten, Stoppuhr starten (a
   compact card has no ▶), "In Kampagne verschieben …"
   (`CampaignMoveDialog`), Nach oben / Nach unten in the day and Löschen
@@ -171,7 +172,8 @@ redirected by the router to the first day of that week still ahead
   W move it like its menu. A forecast run only opens its daily, and its menu
   holds Bearbeiten and Löschen. Its details name a running series ("4 in
   Folge"). In the Questlog
-  column the menu holds the days shown, Bearbeiten, Stoppuhr starten,
+  column the menu holds the days shown, "Anderer Tag …" (the editor at its
+  day field, for a day beyond the board), Bearbeiten, Stoppuhr starten,
   "In Kampagne verschieben …", Nach oben / Nach unten in the Questlog and
   Löschen; its cards take no arrow keys. T, D and W on a column row plan it
   (beyond the board with the editor's save alone), X ticks it with the undo

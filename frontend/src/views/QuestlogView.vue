@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
 import { getBacklogTodos, reorderBacklog } from "../api/day-planner.api";
-import { planQuest } from "../api/questlog.api";
 import { useListFocus } from "../composables/useListFocus";
 import { useRowDialogs, type RowDialog } from "../composables/useRowDialogs";
+import { useRowActions, type RowCall } from "../composables/useRowActions";
 import { useSortable } from "../composables/useSortable";
 import AppIcon from "../components/AppIcon.vue";
 import CampaignChip from "../components/CampaignChip.vue";
@@ -22,25 +22,13 @@ import UndoToast from "../components/UndoToast.vue";
 import type { TodoResponse } from "../types/todo";
 import { shownWhy } from "../utils/why";
 import { campaignMark } from "../utils/category-mark";
-import { fullStop } from "../utils/history";
 import { moved } from "../utils/today-agenda";
-import {
-  measureOf,
-  questRow,
-  rowControl,
-  rowMenu,
-  rowShortcuts,
-  whereLabel,
-  type RowActions,
-} from "../utils/row-actions";
+import { measureOf, questRow, rowControl } from "../utils/row-actions";
 
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
 
 const successMessage = ref<string | null>(null);
-
-/** Where "Anderer Tag …" puts the focus in the editor. */
-const DAY_FIELD = 'input[name="scheduledDate"]';
 
 const creationOpen = ref(false);
 /** Opened by a long press on Plus: a quest, its title dictated at once. */
@@ -132,35 +120,15 @@ function detailsOf(todo: TodoResponse): string[] {
   return parts;
 }
 
-async function toggleTodo(todo: TodoResponse): Promise<void> {
-  if (isBusy.value) {
-    return;
-  }
-
+/** The ring: done, or open again (`useRowActions`). */
+function toggleTodo(todo: TodoResponse): void {
   successMessage.value = null;
-  const target = { kind: "todo", id: todo.id, title: todo.title } as const;
-  const fallbackError = "Die Quest konnte nicht aktualisiert werden.";
-  if (todo.completed) {
-    if (await ticks.reopen(target, { fallbackError })) forgetDone(todo.id);
-    return;
-  }
-  // The Questlog lists no campaigns, so nothing asks here.
-  const written = await ticks.complete(target, {
-    fallbackError,
-    onUndone: () => forgetDone(todo.id),
-  });
-  if (!written) return;
-  forgetDone(todo.id);
-  doneHere.value = [{ ...todo, completed: true }, ...doneHere.value];
+  void rowActions.tick(callOf(todo));
 }
 
-/** The editor of a quest; `atDay` starts it at the day field. */
-function openEditing(todo: TodoResponse, { atDay = false } = {}): void {
-  rows.edit(`todo-${todo.id}`, {
-    kind: "todo",
-    id: todo.id,
-    focus: atDay ? DAY_FIELD : undefined,
-  });
+/** The editor of a quest. */
+function openEditing(todo: TodoResponse): void {
+  rowActions.edit(callOf(todo));
 }
 
 function openCreation(dictate = false): void {
@@ -216,41 +184,28 @@ async function shiftInList(todo: TodoResponse, direction: -1 | 1): Promise<void>
 }
 
 /*
- * What a quest of the list can do: its menu and its keys (row-actions).
- * Einplanen for today, tomorrow or next week is the same step as T, D and
- * W; "Anderer Tag …" opens the editor at its day field. Finished rows and
- * keys while a dialog is open are ignored.
+ * What a quest of the list can do, its ring, menu and keys: `useRowActions`
+ * performs them. Einplanen for today, tomorrow or next week is the same
+ * step as T, D and W, with the editor's own save; "Anderer Tag …" opens
+ * the editor at its day field. A quest ticked here stays in sight under
+ * "N erledigt" until the view is left (`ticked`).
  */
-const timer = useTimer();
-function openTodo(key: string | null): TodoResponse | null {
-  if (isBusy.value || dialogOpen.value) return null;
-  return todos.value.find((todo) => `todo-${todo.id}` === key) ?? null;
-}
-function actionsOf(todo: TodoResponse): RowActions {
-  const key = `todo-${todo.id}`;
-  const today = getCurrentDateInTimeZone();
+const rowActions = useRowActions({
+  today: getCurrentDateInTimeZone,
+  session,
+  ticks,
+  focus: listFocus,
+  dialogs: rows,
+  timer: useTimer(),
+  said: (line) => (successMessage.value = line),
+  busy: () => isBusy.value,
+});
+/** A quest with what only the Questlog has: its place in the order and the done list. */
+function callOf(todo: TodoResponse): RowCall {
   const place = todos.value.indexOf(todo);
   return {
+    key: `todo-${todo.id}`,
     row: questRow(todo),
-    today,
-    busy: isBusy.value,
-    move: (date) =>
-      void listFocus.around(key, async () => {
-        successMessage.value = null;
-        if (
-          await write(() => planQuest(todo, date), {
-            fallbackError: "Die Quest konnte nicht eingeplant werden.",
-          })
-        )
-          successMessage.value = fullStop(
-            `„${todo.title}“ steht jetzt ${whereLabel(date, today)}`,
-          );
-      }),
-    pickDay: () => openEditing(todo, { atDay: true }),
-    complete: () => void listFocus.around(key, () => toggleTodo(todo)),
-    edit: () => openEditing(todo),
-    reparent: () =>
-      rows.reparent(key, { todoId: todo.id, title: todo.title }),
     step: (direction) =>
       direction === "up"
         ? place > 0
@@ -259,8 +214,12 @@ function actionsOf(todo: TodoResponse): RowActions {
         : place !== -1 && place < todos.value.length - 1
           ? () => void shiftInList(todo, 1)
           : undefined,
-    remove: () =>
-      rows.remove(key, { kind: "todo", id: todo.id, title: todo.title }),
+    ticked: (done) => {
+      forgetDone(todo.id);
+      if (!done) return;
+      successMessage.value = null;
+      doneHere.value = [{ ...todo, completed: true }, ...doneHere.value];
+    },
   };
 }
 useShortcutHandlers({
@@ -268,10 +227,10 @@ useShortcutHandlers({
     if (isBusy.value || dialogOpen.value) return;
     openCreation();
   },
-  ...rowShortcuts((key) => {
-    const todo = openTodo(key);
-    return todo ? actionsOf(todo) : null;
-  }, timer),
+  ...rowActions.shortcuts((key) => {
+    const todo = todos.value.find((item) => `todo-${item.id}` === key);
+    return todo ? callOf(todo) : null;
+  }),
 });
 </script>
 
@@ -381,7 +340,7 @@ useShortcutHandlers({
               :draggable="!todo.completed"
               :campaign-mark="campaignMark(todo.campaign)"
               :measure="todo.completed ? null : measureOf(questRow(todo))"
-              :menu="rowMenu(actionsOf(todo))"
+              :menu="rowActions.menu(callOf(todo))"
               @toggle="toggleTodo(todo)"
               @edit="openEditing(todo)"
             >

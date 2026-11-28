@@ -1,9 +1,7 @@
-/** What a stopwatch is started on. */
-export type TimerTarget = {
-  kind: "todo" | "occurrence";
-  targetId: number;
-  title: string;
-  /** From the Fokus-Modus: a Fokus-Sperre may start with the stopwatch. */
+import type { ItemTarget } from "./item-target";
+
+/** What a stopwatch is started on: an item, from the Fokus-Modus with its Fokus-Sperre. */
+export type TimerTarget = ItemTarget & {
   focusBlock?: { mode?: "soft" | "hardcore" };
 };
 /** The one running or paused stopwatch of the signed-in user. */

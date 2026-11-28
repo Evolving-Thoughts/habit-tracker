@@ -338,7 +338,7 @@ describe("CampaignBoard", () => {
       await openMenu(w, "Entwurf");
       await choose(w, "Erledigen");
       expect(ticks.complete).toHaveBeenCalledWith(
-        { kind: "todo", id: 3, title: "Entwurf" },
+        { kind: "todo", targetId: 3, title: "Entwurf" },
         expect.objectContaining({ key: "board-3" }),
       );
     });
@@ -676,7 +676,7 @@ describe("CampaignBoard", () => {
       await ctrlClick(w, 3);
       await ctrlClick(w, 4);
       await drop(w, "planned", 4, "done");
-      expect(ticks.complete.mock.calls.map(([target]) => target.id)).toEqual([
+      expect(ticks.complete.mock.calls.map(([target]) => target.targetId)).toEqual([
         4, 3,
       ]);
     });
