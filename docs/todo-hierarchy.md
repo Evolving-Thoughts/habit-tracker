@@ -59,7 +59,8 @@ a name that does not exist offers "Neue Kampagne „…“ anlegen", which creat
 top-level todo in the colour its title picks (so it is a campaign at once) and
 chooses it. Choosing a place shows its reason as the inherited Warum (live,
 never copied) and, while the quest has no category, preselects the place's
-category or else its campaign's.
+category or else its campaign's (`placeBrings` in `utils/editor-form.ts`, the
+one rule for the editor, "Neue Quest" and "Neues Daily").
 
 ### Atomic mutation and concurrency
 
@@ -140,8 +141,9 @@ Wochenziel hat").
 progress from that list bottom-up in O(n) time and space. Campaign, inherited
 why, habit goals and `inProgress` come from separate queries afterwards
 (`TodoAncestry`, `habitGoals`, `inProgressTodoIds` in `campaign-board.ts`,
-see `campaign-board.md`), without a shared transaction, so a concurrent change can show
-up in one part and not yet in another. A Todo whose parent is missing counts as a root,
+see `campaign-board.md`), all in one read-only snapshot with the todos
+(`UserUnitOfWork.read`, without the user lock), so a concurrent change shows
+up in every part or in none. A Todo whose parent is missing counts as a root,
 so one bad row cannot hide the whole tree; a stored cycle is reported as a 500.
 Create, move and delete do not load the whole tree: they read only the parent's
 ancestor chain or the affected subtree with recursive queries on the parent index.

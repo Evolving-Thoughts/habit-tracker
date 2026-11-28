@@ -8,6 +8,7 @@ import {
   TEST_USER,
 } from './auth-fixture';
 import { resetDatabase } from './reset-database';
+import { holdUserLock, within } from './user-lock';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { UserEntity } from '../src/auth/auth.entities';
@@ -248,6 +249,67 @@ describe('Habit domain and day planner (e2e)', () => {
     } finally {
       await app.close();
     }
+  });
+
+  describe('reading while a change holds the user lock', () => {
+    // Room for a slow machine: a test cut off mid-way keeps the lock.
+    const LOCK_TEST_MS = 20_000;
+
+    it(
+      'answers Heute from a snapshot',
+      async () => {
+        const habit = await create({ schedule: interval(1) });
+        await request(server)
+          .post('/todos')
+          .send({ title: 'Einkaufen', scheduledDate: date() })
+          .expect(201);
+        // Today's run is stored, so nothing is left to store.
+        await planner();
+
+        const release = await holdUserLock(dataSource, TEST_USER);
+        try {
+          const heute = await within(planner(), 2_000);
+          expect(heute.items).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ type: 'todo', title: 'Einkaufen' }),
+              expect.objectContaining({
+                type: 'habit',
+                habitId: habit.id,
+                status: HabitOccurrenceStatus.PENDING,
+              }),
+            ]),
+          );
+        } finally {
+          await release();
+        }
+      },
+      LOCK_TEST_MS,
+    );
+
+    it(
+      'answers the Daily list from a snapshot',
+      async () => {
+        const habit = await create({ schedule: interval(1) });
+        const [run] = await today();
+
+        const release = await holdUserLock(dataSource, TEST_USER);
+        try {
+          const list = await within(
+            request(server).get('/habits').expect(200),
+            2_000,
+          );
+          expect(list.body).toEqual([
+            expect.objectContaining({
+              id: habit.id,
+              timerOccurrenceId: run.id,
+            }),
+          ]);
+        } finally {
+          await release();
+        }
+      },
+      LOCK_TEST_MS,
+    );
   });
 
   describe('habit API', () => {

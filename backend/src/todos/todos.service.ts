@@ -64,16 +64,18 @@ export class TodosService {
   ) {}
 
   /** What the user's todos inherit their reason from, as of now. */
-  ancestry(userId: string): Promise<TodoAncestry> {
-    return loadTodoAncestry(
-      this.todoRepository.manager,
-      userId,
-      this.clock.today(),
-    );
+  ancestry(
+    userId: string,
+    manager: EntityManager = this.todoRepository.manager,
+  ): Promise<TodoAncestry> {
+    return loadTodoAncestry(manager, userId, this.clock.today());
   }
 
-  findAll(userId: string): Promise<TodoEntity[]> {
-    return this.todoRepository.find({
+  findAll(
+    userId: string,
+    manager: EntityManager = this.todoRepository.manager,
+  ): Promise<TodoEntity[]> {
+    return manager.getRepository(TodoEntity).find({
       where: { userId },
       order: { id: 'ASC' },
     });
@@ -146,22 +148,26 @@ export class TodosService {
     });
   }
 
-  /** Every todo with its subtree progress, from one consistent read. */
-  async hierarchy(userId: string): Promise<HierarchyTodoResponse[]> {
-    const todos = await this.findAll(userId);
-    const progress = this.tree(todos).progress();
-    const manager = this.todoRepository.manager;
-    const [goals, ancestry, inProgress] = await Promise.all([
-      habitGoals(manager, todos),
-      this.ancestry(userId),
-      inProgressTodoIds(manager, userId, todos),
-    ]);
-    return todos.map((todo) => ({
-      ...TodoMapper.toResponseDto(todo, ancestry),
-      progress: progress.get(todo.id)!,
-      habitGoal: goals.get(todo.id) ?? null,
-      inProgress: inProgress.has(todo.id),
-    }));
+  /**
+   * Every todo with its subtree progress, from one consistent read: the
+   * todos, campaigns, habit goals and `inProgress` come from one snapshot.
+   */
+  hierarchy(userId: string): Promise<HierarchyTodoResponse[]> {
+    return this.unitOfWork.read(async (manager) => {
+      const todos = await this.findAll(userId, manager);
+      const progress = this.tree(todos).progress();
+      const [goals, ancestry, inProgress] = await Promise.all([
+        habitGoals(manager, todos),
+        this.ancestry(userId, manager),
+        inProgressTodoIds(manager, userId, todos),
+      ]);
+      return todos.map((todo) => ({
+        ...TodoMapper.toResponseDto(todo, ancestry),
+        progress: progress.get(todo.id)!,
+        habitGoal: goals.get(todo.id) ?? null,
+        inProgress: inProgress.has(todo.id),
+      }));
+    });
   }
 
   async create(userId: string, dto: CreateTodoDto): Promise<TodoEntity> {

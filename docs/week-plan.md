@@ -14,12 +14,13 @@ of its day. In code the feature keeps its earlier name, the week plan
 `days` columns from `from`, any weekday, `days` from 1 to 31
 (`week-plan.ts` `planDates`, `MAX_PLAN_DAYS`; anything else is 400, as is a
 malformed or out-of-range date or an unknown query field). The board only
-asks from today on, but a past day would just show what was done. First it
-reconciles the user's active habits the way Heute does
-(`HabitSchedulingService.reconcileAll`: under the user lock only when a run
-is missing or ran out), so today's runs are stored and the board can sort,
-move and open them; then the answer is one `REPEATABLE READ`
-snapshot that writes nothing:
+asks from today on, but a past day would just show what was done. Like
+Heute, it hands its whole read to `HabitSchedulingService.answerAsOfNow`:
+one read-only snapshot with one `now`, without the user lock. Only when a
+run is missing or ran out are the user's active habits caught up under the
+lock first, and the answer reads in that transaction with a `now` taken
+after the lock. Either way today's runs are stored, so the board can sort,
+move and open them:
 
 ```ts
 { startDate, endDate, today, days: [{ date, entries: WeekPlanEntry[] }], overdue: WeekPlanEntry[] }
@@ -47,8 +48,8 @@ projection:
 - **Open habit runs** come from the forecast history uses
   (`history/habit-forecast.ts` → `history-planning.ts` `plannedHabits`): a
   stored pending run where it exists, otherwise a run the schedule forecasts,
-  with `occurrenceId: null`. Today's runs are stored by the reconciliation
-  before the read, so only later days hold forecasts. Today is always part of
+  with `occurrenceId: null`. Today's runs are stored before the answer
+  reads, so only later days hold forecasts. Today is always part of
   the forecast, so its carried-over runs are found even when the board starts
   later. A forecast has no stored position. A timed forecast follows the
   preceding appointment on the clock, or heads the day if there is none.

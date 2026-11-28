@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   Between,
   DataSource,
+  EntityManager,
   In,
   LessThanOrEqual,
   MoreThanOrEqual,
@@ -85,38 +86,48 @@ export class DayPlannerService {
     private readonly unitOfWork: UserUnitOfWork,
   ) {}
 
-  /** Heute: one response, one `now`, so every part speaks of the same moment. */
-  async getToday(userId: string): Promise<DayPlannerResponseDto> {
-    const now = this.clock.now();
+  /**
+   * Heute: one response from one snapshot with one `now`, so every part
+   * speaks of the same moment and the same stored state
+   * (`answerAsOfNow`).
+   */
+  getToday(userId: string): Promise<DayPlannerResponseDto> {
+    return this.scheduling.answerAsOfNow(userId, (manager, now) =>
+      this.todayIn(manager, userId, now),
+    );
+  }
+
+  private async todayIn(
+    manager: EntityManager,
+    userId: string,
+    now: Date,
+  ): Promise<DayPlannerResponseDto> {
     const today = dayOf(now);
 
     const [todos, occurrences, context] = await Promise.all([
-      this.findTodosForToday(userId, today),
-      this.scheduling.getToday(userId, now),
-      loadAgendaContext(this.db.manager, userId, today),
+      this.findTodosForToday(manager, userId, today),
+      this.scheduling.todayRuns(manager, userId, now),
+      loadAgendaContext(manager, userId, today),
     ]);
     const { ancestry } = context;
     // Runs are as of now: the challenge counts today's as stored.
-    const monthChallenge = await runningChallengeResponse(
-      this.db.manager,
-      userId,
-      now,
-    );
+    const monthChallenge = await runningChallengeResponse(manager, userId, now);
 
     // The week's stretches: today's work and the week's quest hours.
     const { startDate, endDate } = weekRange(today);
     const [parents, habitGoalsByHabit, logs, questTarget, streaks] =
       await Promise.all([
-        this.parentsOf(userId, todos),
+        this.parentsOf(manager, userId, todos),
         this.habitGoalsFor(
+          manager,
           userId,
           occurrences.map((occurrence) => occurrence.habitId),
           today,
         ),
-        logsOfDays(this.db.manager, userId, startDate, endDate),
-        weeklyQuestTarget(this.db.manager, userId, startDate),
+        logsOfDays(manager, userId, startDate, endDate),
+        weeklyQuestTarget(manager, userId, startDate),
         loadStreaks(
-          this.db.manager,
+          manager,
           occurrences.map((occurrence) => occurrence.habitId),
           now,
         ),
@@ -158,11 +169,7 @@ export class DayPlannerService {
       ...entry.item,
     })).map(({ item, dayPosition }) => ({ ...item, dayPosition }));
 
-    const externalEvents = await eventsOfDays(
-      this.db.manager,
-      { userId },
-      today,
-    );
+    const externalEvents = await eventsOfDays(manager, { userId }, today);
     return new DayPlannerResponseDto({
       date: today,
       items,
@@ -179,7 +186,7 @@ export class DayPlannerService {
       workedMinutes: workedMinutes(logs, today),
       questHours: {
         ...questSoFar(
-          await withCampaigns(this.db.manager, userId, logs, ancestry),
+          await withCampaigns(manager, userId, logs, ancestry),
           today,
         ),
         weeklyTargetMinutes: questTarget,
@@ -190,10 +197,11 @@ export class DayPlannerService {
 
   /**
    * `days` days from `from` as a board of columns, and what is overdue,
-   * from one consistent read. Todos follow the todo agenda, habits the
-   * forecast history uses; past days only show what was done. Today's runs
-   * are stored first, as Heute does, so the board can sort, move and open
-   * them like Heute; later days keep their forecast.
+   * from one snapshot with one `now` (`answerAsOfNow`). Todos follow the
+   * todo agenda, habits the forecast history uses; past days only show what
+   * was done. Today's runs are stored before the read, as for Heute, so the
+   * board can sort, move and open them like Heute; later days keep their
+   * forecast.
    */
   async getPlan(
     userId: string,
@@ -203,14 +211,12 @@ export class DayPlannerService {
     const dates = planDates(from, days);
     const firstDay = dates[0];
     const lastDay = dates[dates.length - 1];
-    const now = this.clock.now();
-    const today = dayOf(now);
-    // Open items only exist from today on; earlier ones are overdue.
-    const ahead = dates.filter((date) => date >= today);
-    // Today is always forecast: its carried-over runs are overdue.
-    const forecastDates = [today, ...ahead.filter((date) => date !== today)];
-    await this.scheduling.reconcileAll(userId);
-    return this.db.transaction('REPEATABLE READ', async (manager) => {
+    return this.scheduling.answerAsOfNow(userId, async (manager, now) => {
+      const today = dayOf(now);
+      // Open items only exist from today on; earlier ones are overdue.
+      const ahead = dates.filter((date) => date >= today);
+      // Today is always forecast: its carried-over runs are overdue.
+      const forecastDates = [today, ...ahead.filter((date) => date !== today)];
       const ancestry = await loadTodoAncestry(manager, userId, today);
       const open = ahead.length
         ? await openScheduledTodos(manager, userId, {
@@ -414,6 +420,7 @@ export class DayPlannerService {
 
   /** Titles of the direct parents: the goal a todo is a step towards. */
   private async parentsOf(
+    manager: EntityManager,
     userId: string,
     todos: TodoEntity[],
   ): Promise<Map<number, string>> {
@@ -425,7 +432,7 @@ export class DayPlannerService {
       ),
     ];
     if (!ids.length) return new Map();
-    const parents = await this.db.getRepository(TodoEntity).find({
+    const parents = await manager.getRepository(TodoEntity).find({
       select: { id: true, title: true },
       where: { userId, id: In(ids) },
     });
@@ -434,12 +441,13 @@ export class DayPlannerService {
 
   /** The goal each habit counts towards in a period covering today. */
   private async habitGoalsFor(
+    manager: EntityManager,
     userId: string,
     habitIds: number[],
     today: string,
   ): Promise<Map<number, DayPlannerGoalDto>> {
     if (!habitIds.length) return new Map();
-    const goals = await this.db.getRepository(TodoEntity).find({
+    const goals = await manager.getRepository(TodoEntity).find({
       where: {
         userId,
         goalHabitId: In([...new Set(habitIds)]),
@@ -447,7 +455,7 @@ export class DayPlannerService {
         periodEnd: MoreThanOrEqual(today),
       },
     });
-    const progress = await habitGoals(this.db.manager, goals);
+    const progress = await habitGoals(manager, goals);
     const result = new Map<number, DayPlannerGoalDto>();
     for (const goal of goals) {
       const counted = progress.get(goal.id);
@@ -463,16 +471,17 @@ export class DayPlannerService {
   }
 
   private async findTodosForToday(
+    manager: EntityManager,
     userId: string,
     today: string,
   ): Promise<TodoEntity[]> {
     const day = { firstDay: today, lastDay: today };
     const [open, completed] = await Promise.all([
-      openScheduledTodos(this.db.manager, userId, {
+      openScheduledTodos(manager, userId, {
         ...day,
         includeOverdue: true,
       }),
-      completedTodos(this.db.manager, userId, day),
+      completedTodos(manager, userId, day),
     ]);
     return [...open, ...completed];
   }
