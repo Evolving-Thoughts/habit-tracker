@@ -392,21 +392,18 @@ describe('Quest hours (e2e)', () => {
       });
     });
 
-    it.each([
-      { color: 'orange' },
-      { icon: 'rocket' },
-      { weeklyTargetMinutes: 0 },
-      { weeklyTargetMinutes: 6001 },
-      { weeklyTargetMinutes: 90.5 },
-      { weeklyTargetMinutes: '120' },
-    ])('rejects %p', async (body) => {
-      const { id } = await campaign('Buch');
-      await request(server).patch(`/todos/${id}`).send(body).expect(400);
-      await request(server)
-        .post('/todos')
-        .send({ title: 'Neu', ...body })
-        .expect(400);
-    });
+    // The keys and ranges themselves are campaign-style.spec.ts's table.
+    it.each([{ color: 'orange' }, { weeklyTargetMinutes: '120' }])(
+      'rejects %p',
+      async (body) => {
+        const { id } = await campaign('Buch');
+        await request(server).patch(`/todos/${id}`).send(body).expect(400);
+        await request(server)
+          .post('/todos')
+          .send({ title: 'Neu', ...body })
+          .expect(400);
+      },
+    );
 
     it('only lets a todo without parent carry them', async () => {
       const book = await campaign('Buch');
@@ -445,6 +442,12 @@ describe('Quest hours (e2e)', () => {
         weeklyTargetMinutes: 240,
       });
       const other = await todo({ title: 'Lebensziele' });
+      // Moved below in the same request that sets one: refused, nothing moves.
+      await request(server)
+        .patch(`/todos/${book.id}`)
+        .send({ parentId: other, weeklyTargetMinutes: 60 })
+        .expect(400);
+      expect(await getTodo(book.id)).toMatchObject({ parentId: null });
       await request(server)
         .patch(`/todos/${book.id}`)
         .send({ parentId: other })
@@ -484,11 +487,8 @@ describe('Quest hours (e2e)', () => {
       expect((await target()).body).toEqual({ weeklyTargetMinutes: null });
     });
 
+    // The range itself is campaign-style.spec.ts's table.
     it.each([
-      {},
-      { weeklyTargetMinutes: 0 },
-      { weeklyTargetMinutes: 6001 },
-      { weeklyTargetMinutes: 60.5 },
       { weeklyTargetMinutes: '600' },
       { weeklyTargetMinutes: 600, extra: true },
     ])('rejects %p', async (body) => {

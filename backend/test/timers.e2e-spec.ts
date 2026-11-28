@@ -75,8 +75,6 @@ describe('Synced timers and Dump completion (e2e)', () => {
     await app.init();
     db = app.get(DataSource);
     server = app.getHttpServer() as Server;
-    if (db.options.database !== 'habit_tracker_test')
-      throw new Error('Test DB required');
   });
   beforeEach(async () => {
     await resetDatabase(db);
@@ -658,7 +656,8 @@ describe('Synced timers and Dump completion (e2e)', () => {
       await client().post(`/timers/${timer.id}/${kind}`).send({}).expect(404);
     expect((await read()).timer).toBeNull();
   });
-  it.each([0, -1, 1.5, 10081, null])(
+  // The minute range itself is field-rules.spec.ts's table.
+  it.each([10081, null])(
     'rejects %s as target and never accepts a supplied owner',
     async (durationMinutes) => {
       const id = await todo();

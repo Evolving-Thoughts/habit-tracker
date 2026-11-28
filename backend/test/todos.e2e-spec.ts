@@ -24,6 +24,7 @@ type TodoResponseBody = {
   scheduledDate: string | null;
   timeOfDay: string | null;
   plannedDurationMinutes: number | null;
+  timerEligible: boolean;
 };
 
 type ErrorResponseBody = {
@@ -281,9 +282,11 @@ describe('Todos API (e2e)', () => {
       expect(completedTodo.scheduledDate).toBe('2026-09-21');
       expect(completedTodo.plannedDurationMinutes).toBe(60);
 
-      expect(Number.isNaN(Date.parse(completedTodo.completedAt ?? ''))).toBe(
-        false,
+      expect(completedTodo.completedAt).toBe(
+        new Date(completedTodo.completedAt!).toISOString(),
       );
+      // A completed todo offers no stopwatch.
+      expect(completedTodo.timerEligible).toBe(false);
 
       const originalCompletedAt = completedTodo.completedAt;
 
@@ -310,6 +313,7 @@ describe('Todos API (e2e)', () => {
 
       expect(reopenedTodo.completed).toBe(false);
       expect(reopenedTodo.completedAt).toBeNull();
+      expect(reopenedTodo.timerEligible).toBe(true);
 
       await request(httpServer).delete(`/todos/${createdTodo.id}`).expect(400);
       const preview = await request(httpServer)
@@ -628,6 +632,18 @@ describe('Todos API (e2e)', () => {
       await create({ title: 'Oben', backlogPlace: 'top' });
       await create({ title: 'Unten', backlogPlace: 'bottom' });
       expect(await backlog()).toEqual(['Oben', 'Erstes', 'Zweites', 'Unten']);
+      // A quest with a day takes no place in the order, wherever asked.
+      for (const backlogPlace of ['top', 'bottom']) {
+        const planned = await create({
+          title: 'Geplant',
+          scheduledDate: dayOf(new Date()),
+          backlogPlace,
+        });
+        expect(
+          (await todoRepository.findOneByOrFail({ id: planned }))
+            .backlogPosition,
+        ).toBeNull();
+      }
       await request(httpServer)
         .post('/todos')
         .send({ title: 'Seitwärts', backlogPlace: 'middle' })

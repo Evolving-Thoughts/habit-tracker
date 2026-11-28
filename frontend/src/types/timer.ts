@@ -1,4 +1,4 @@
-import type { ItemTarget } from "./item-target";
+import type { ItemTarget } from "./item-target.js";
 
 /** What a stopwatch is started on: an item, from the Fokus-Modus with its Fokus-Sperre. */
 export type TimerTarget = ItemTarget & {

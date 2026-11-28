@@ -12,6 +12,7 @@ import { LiveService } from '../src/live/live.service';
 import {
   authenticatedRequest as request,
   seedAuth,
+  TEST_SESSION_TOKEN,
   TEST_USER,
 } from './auth-fixture';
 
@@ -76,7 +77,7 @@ describe('Live updates (e2e)', () => {
 
   it('tells an open app about a write, naming the app that made it', async () => {
     const live = app.get(LiveService);
-    const stream = await listen(server, `habit_session=${'a'.repeat(43)}`);
+    const stream = await listen(server, `habit_session=${TEST_SESSION_TOKEN}`);
     expect(stream.response.statusCode).toBe(200);
     expect(stream.response.headers['content-type']).toContain(
       'text/event-stream',

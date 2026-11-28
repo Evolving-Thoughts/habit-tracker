@@ -7,7 +7,12 @@ import { DataSource } from 'typeorm';
 import { createECDH, randomBytes } from 'node:crypto';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
-import { authenticatedRequest, seedAuth, TEST_USER } from './auth-fixture';
+import {
+  authenticatedRequest,
+  seedAuth,
+  TEST_SESSION_TOKEN,
+  TEST_USER,
+} from './auth-fixture';
 import { tokenHash } from '../src/auth/auth.crypto';
 import {
   SessionEntity,
@@ -18,7 +23,11 @@ import { AuthService } from '../src/auth/auth.service';
 import type { HabitResponseDto } from '../src/habits/dto/habit-response.dto';
 import type { MonthChallengeResponse } from '../src/month-challenges/month-challenge.dto';
 import { Clock } from '../src/common/clock';
-import { PushTransport, type SendResult } from '../src/push/push.transport';
+import {
+  PushTransport,
+  type SendOptions,
+  type SendResult,
+} from '../src/push/push.transport';
 import { PushService } from '../src/push/push.service';
 import {
   PushDeliveryEntity,
@@ -39,10 +48,13 @@ describe('Session-scoped timer Push (e2e)', () => {
   };
   const transport = {
     publicKey: 'public-test-key',
-    send: jest.fn<Promise<SendResult>, [object, object, number]>(),
+    send: jest.fn<
+      Promise<SendResult>,
+      [object, object, number, SendOptions?]
+    >(),
   };
   const client = () => authenticatedRequest(server);
-  const sessionHash = tokenHash('a'.repeat(43));
+  const sessionHash = tokenHash(TEST_SESSION_TOKEN);
   const secondHash = tokenHash('b'.repeat(43));
   function dto(name = 'device-one') {
     const curve = createECDH('prime256v1');
@@ -92,8 +104,6 @@ describe('Session-scoped timer Push (e2e)', () => {
     db = app.get(DataSource);
     server = app.getHttpServer() as Server;
     push = app.get(PushService);
-    if (db.options.database !== 'habit_tracker_test')
-      throw new Error('Test DB required');
   });
   beforeEach(async () => {
     await resetDatabase(db);
@@ -118,7 +128,7 @@ describe('Session-scoped timer Push (e2e)', () => {
     });
     await anonymous(server)
       .post('/push/subscription')
-      .set('Cookie', `habit_session=${'a'.repeat(43)}`)
+      .set('Cookie', `habit_session=${TEST_SESSION_TOKEN}`)
       .set('Origin', 'https://evil.example')
       .send(dto())
       .expect(403);
@@ -162,6 +172,8 @@ describe('Session-scoped timer Push (e2e)', () => {
       expect(JSON.stringify(call[1])).not.toContain('Private test title');
       expect(call[2]).toBeLessThanOrEqual(30);
       expect((call[1] as { type: string }).type).toBe('timer-target-reached');
+      // No options: the provider sends with high urgency.
+      expect(call).toHaveLength(3);
     }
     await push.sendPending();
     expect(transport.send).toHaveBeenCalledTimes(2);
@@ -297,6 +309,8 @@ describe('Session-scoped timer Push (e2e)', () => {
     transport.send.mockResolvedValueOnce('gone').mockResolvedValue('failed');
     await push.sendPending();
     expect(await db.getRepository(PushSubscriptionEntity).count()).toBe(1);
+    // The gone device takes its delivery along.
+    expect(await deliveries()).toHaveLength(1);
     expect((await deliveries())[0].state).toBe('failed');
     now = new Date(now.getTime() + 5000);
     await push.sendPending();
@@ -504,6 +518,7 @@ describe('Session-scoped timer Push (e2e)', () => {
         ]);
         expect(call[2]).toBeGreaterThan(30);
         expect(call[2]).toBeLessThanOrEqual(3600);
+        expect(call[3]).toEqual({ urgency: 'normal' });
       }
       const receipt = (await reminders())[0];
       const hash =
@@ -662,6 +677,7 @@ describe('Session-scoped timer Push (e2e)', () => {
       ]);
       expect(transport.send.mock.calls[0][2]).toBeGreaterThan(30);
       expect(transport.send.mock.calls[0][2]).toBeLessThanOrEqual(3600);
+      expect(transport.send.mock.calls[0][3]).toEqual({ urgency: 'normal' });
       expect(await push.confirm(TEST_USER, sessionHash, queued[0].id)).toEqual({
         allowed: true,
         title: 'Sport',

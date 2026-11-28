@@ -189,6 +189,15 @@ describe('Todo hierarchy T2/T3 PostgreSQL API', () => {
       .send({ title: 'Invalid', parentId: deleted.id })
       .expect(400);
   });
+  it('answers a cycle stored in the database as a server error', async () => {
+    const a = await create('A'),
+      b = await create('B', a.id);
+    await db.query('UPDATE todos SET "parentId" = $1 WHERE id = $2', [
+      b.id,
+      a.id,
+    ]);
+    await request(server).get('/todos/hierarchy').expect(500);
+  });
   it('serializes concurrent inverse moves so no cycle can be committed', async () => {
     const a = await create('A'),
       b = await create('B');

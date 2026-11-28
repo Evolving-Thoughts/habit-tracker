@@ -1,4 +1,4 @@
-import type { ItemTarget } from "./item-target";
+import type { ItemTarget } from "./item-target.js";
 
 export type WorkLog = {
   id: number;

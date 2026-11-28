@@ -231,6 +231,17 @@ describe('Categories and why (e2e)', () => {
       .send({ why: '' })
       .expect(200);
     expect((await read(leaf.id)).inheritedWhy?.fromId).toBe(root.id);
+
+    // The tree of the Questlog names the same reasons.
+    const tree = (await request(server).get('/todos/hierarchy').expect(200))
+      .body as WithWhy[];
+    expect(
+      tree.map(({ id, why, inheritedWhy }) => [id, why, inheritedWhy?.fromId]),
+    ).toEqual([
+      [root.id, 'Marathon laufen', undefined],
+      [middle.id, null, root.id],
+      [leaf.id, null, root.id],
+    ]);
   });
 
   it('keeps entries when a category is deleted and frees its name', async () => {

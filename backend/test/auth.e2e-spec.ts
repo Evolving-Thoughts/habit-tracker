@@ -85,8 +85,6 @@ describe('Authentication and ownership (e2e)', () => {
     await app.init();
     db = app.get(DataSource);
     server = app.getHttpServer() as Server;
-    if (db.options.database !== 'habit_tracker_test')
-      throw new Error('Test DB required');
   });
   beforeEach(async () => {
     await resetDatabase(db);
