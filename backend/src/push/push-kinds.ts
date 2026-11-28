@@ -80,8 +80,9 @@ function timerTargetKind(timers: TimersService): PushKind<TimerEntity> {
       );
       // Still on its way to the target: look again once it is due.
       if (timer && !timer.targetReachedAt) return null;
-      // Don't save the stale candidate object: reconciliation may have just changed or stopped it.
-      await manager.update(TimerEntity, row.id, { pushHandledAt: now });
+      // Looked at once, whatever comes of it. Without a timer back the row
+      // was not the open one, so reconciliation left it as it was read.
+      await timers.markPushHandled(manager, timer ?? row, now);
       if (!timer?.targetReachedAt) return null;
       const expiresAt = new Date(
         timer.targetReachedAt.getTime() + DELIVERY_WINDOW_MS,

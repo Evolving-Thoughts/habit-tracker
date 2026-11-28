@@ -26,7 +26,8 @@ import {
 } from './timer-target';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
-import { elapsedAt, hasReachedTarget, targetReachesAt } from './timer-math';
+import { elapsedAt } from './timer-math';
+import { startedStopwatch } from './timer-transition';
 import { stopwatchCatchUp, type TargetAtHand } from './stopwatch-catch-up';
 
 export interface TimerResponse {
@@ -121,15 +122,6 @@ export class TimersService {
       now,
     );
   }
-  /** Ends the running stretch at `at` and leaves the stopwatch paused. */
-  private async pause(
-    manager: EntityManager,
-    timer: TimerEntity,
-    at: Date,
-  ): Promise<void> {
-    await recordTransition(manager, timer, 'pause', at);
-    timer.targetReachesAt = null;
-  }
   /**
    * The target as `stopwatchCatchUp` needs it, read under the lock the way
    * a start reads it: a Daily's runs are brought up to `now` first
@@ -212,12 +204,28 @@ export class TimersService {
         now,
       );
     if (decision.title !== undefined) timer.title = decision.title;
-    if (decision.reachedAt) {
-      timer.targetReachedAt = decision.reachedAt;
-      timer.targetReachesAt = null;
-    }
-    if (decision.cutAt) await this.pause(manager, timer, decision.cutAt);
+    if (decision.reachedAt)
+      await recordTransition(
+        manager,
+        timer,
+        { type: 'reach' },
+        decision.reachedAt,
+      );
+    if (decision.cutAt)
+      await recordTransition(manager, timer, { type: 'pause' }, decision.cutAt);
     return manager.save(timer);
+  }
+  /**
+   * The push worker looked at this stopwatch's reached Soll and does not
+   * look again. Caller holds the user lock and passes the row as it is now.
+   */
+  async markPushHandled(
+    manager: EntityManager,
+    timer: TimerEntity,
+    now: Date,
+  ): Promise<void> {
+    await recordTransition(manager, timer, { type: 'markPushHandled' }, now);
+    await manager.save(TimerEntity, timer);
   }
   // Internal worker/receipt hook. Caller MUST hold the same user write lock as timer transitions.
   async notificationTimer(
@@ -350,25 +358,14 @@ export class TimersService {
         todoId,
         occurrenceId,
         title: target instanceof TodoEntity ? target.title : target.habit.title,
-        state: 'running',
-        targetMinutes:
+        ...startedStopwatch(
+          logged,
           target instanceof HabitOccurrenceEntity
             ? effectiveDuration(target, target.habit)
             : target.plannedDurationMinutes,
-        elapsedMilliseconds: logged,
-        segmentStartedAt: now,
-        blockStartedAt: null,
-        pausedAt: null,
-        workLogId: null,
-        targetReachedAt: null,
-        pushHandledAt: null,
+          now,
+        ),
       });
-      timer.targetReachesAt = targetReachesAt(timer);
-      if (hasReachedTarget(timer, now)) {
-        // Worked past the target before: reached, but nothing to announce.
-        timer.targetReachedAt = now;
-        timer.pushHandledAt = now;
-      }
       const saved = await manager.save(TimerEntity, timer);
       await this.startFocus(manager, saved, target, dto.focusBlock, now);
       return this.response(saved, now);
@@ -399,14 +396,9 @@ export class TimersService {
       }
       const timer = await this.active(manager, userId, stored, now);
       if (action === 'pause' && timer.state === 'running')
-        await this.pause(manager, timer, now);
-      else if (action === 'resume' && timer.state === 'paused') {
-        await recordTransition(manager, timer, 'resume', now);
-        // A block continued past its target stays reached; nothing is due again.
-        timer.targetReachesAt = timer.targetReachedAt
-          ? null
-          : targetReachesAt(timer);
-      }
+        await recordTransition(manager, timer, { type: 'pause' }, now);
+      else if (action === 'resume' && timer.state === 'paused')
+        await recordTransition(manager, timer, { type: 'resume' }, now);
       const saved = await manager.save(timer);
       if (action === 'resume') {
         const target = await this.targetOf(manager, userId, saved, now);
@@ -435,19 +427,12 @@ export class TimersService {
         await this.targetOf(manager, userId, timer, now),
         minutes,
       );
-      timer.targetMinutes = minutes;
-      if (hasReachedTarget(timer, now)) {
-        timer.targetReachesAt = null;
-        if (!timer.targetReachedAt) {
-          timer.targetReachedAt = now;
-          // Whoever just set this target needs no notification about it.
-          timer.pushHandledAt = now;
-        }
-      } else {
-        timer.targetReachedAt = null;
-        timer.pushHandledAt = null;
-        timer.targetReachesAt = targetReachesAt(timer);
-      }
+      await recordTransition(
+        manager,
+        timer,
+        { type: 'changeTarget', minutes },
+        now,
+      );
       return this.response(await manager.save(timer), now);
     });
   }

@@ -99,24 +99,26 @@ export async function focusOverrideOf(
 
 /**
  * Runs one stopwatch event through `transition` (`timer-transition.ts`):
- * loads what it needs, writes its log operations and puts the next state on
- * the timer; the caller saves the timer. The block's log is read locked, so
- * a correction or deletion of it either happened before or waits until this
- * transaction ends. A pause or stop also ends the Fokus-Sperre that ends
- * with it (`focusBlockFollowsStopwatch`); a start or resume starts one in
+ * loads what it needs, writes its log operations and puts the next state,
+ * the Soll's bookkeeping included, on the timer; the caller saves the
+ * timer. The block's log is read locked, so a correction or deletion of it
+ * either happened before or waits until this transaction ends. A pause or
+ * stop also ends the Fokus-Sperre that ends with it
+ * (`focusBlockFollowsStopwatch`); a start or resume starts one in
  * `TimersService`, which knows the quest or daily.
  */
 export async function recordTransition(
   manager: EntityManager,
   timer: TimerEntity,
-  type: 'pause' | 'stop' | 'resume',
+  event: StopwatchEvent,
   at: Date,
 ): Promise<void> {
-  const event: StopwatchEvent =
-    type === 'resume'
-      ? { type }
-      : {
-          type,
+  const closes = event.type === 'pause' || event.type === 'stop';
+  const { state, logOps } = transition(
+    stopwatchState(timer),
+    closes
+      ? {
+          type: event.type,
           blockLog:
             timer.workLogId !== null && timer.segmentStartedAt
               ? await manager.findOne(WorkLogEntity, {
@@ -125,8 +127,10 @@ export async function recordTransition(
                   lock: { mode: 'pessimistic_write' },
                 })
               : null,
-        };
-  const { state, logOps } = transition(stopwatchState(timer), event, at);
+        }
+      : event,
+    at,
+  );
   for (const operation of logOps) {
     if (operation.type === 'extend') {
       await manager.update(
@@ -149,8 +153,8 @@ export async function recordTransition(
       state.workLogId = (identifiers[0] as { id: number }).id;
   }
   Object.assign(timer, state);
-  if (type !== 'resume')
-    await focusBlockFollowsStopwatch(manager, timer.userId, type, at);
+  if (closes)
+    await focusBlockFollowsStopwatch(manager, timer.userId, event.type, at);
 }
 
 function stopwatchState(timer: TimerEntity): StopwatchState {
@@ -162,6 +166,10 @@ function stopwatchState(timer: TimerEntity): StopwatchState {
     blockStartedAt: timer.blockStartedAt,
     pausedAt: timer.pausedAt,
     workLogId: timer.workLogId,
+    targetMinutes: timer.targetMinutes,
+    targetReachesAt: timer.targetReachesAt,
+    targetReachedAt: timer.targetReachedAt,
+    pushHandledAt: timer.pushHandledAt,
   };
 }
 
@@ -190,8 +198,7 @@ export async function stopTimer(
   timer: TimerEntity,
   at: Date,
 ): Promise<TimerEntity> {
-  await recordTransition(manager, timer, 'stop', at);
-  timer.targetReachesAt = null;
+  await recordTransition(manager, timer, { type: 'stop' }, at);
   return manager.save(TimerEntity, timer);
 }
 
