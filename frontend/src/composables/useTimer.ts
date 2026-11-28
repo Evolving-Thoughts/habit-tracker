@@ -14,7 +14,11 @@ import {
   RUNNING_STOPWATCH_MS,
   withActionSound,
 } from "./action-sounds";
-import { notifyDataChanged, notifyViewsChanged } from "./data-sync";
+import {
+  listenTargetsChanged,
+  notifyDataChanged,
+  notifyViewsChanged,
+} from "./data-sync";
 import type { FocusBlockRequest } from "../types/focus-block";
 export function createTimerController() {
   const timer = ref<Timer | null>(null);
@@ -26,10 +30,11 @@ export function createTimerController() {
   const tick = ref(performance.now());
   /**
    * What the server last said, as `${id}:${state}` ("" without a
-   * stopwatch). The state shown runs ahead of it while a press is on its
-   * way; whatever follows the server (the Fokus-Sperre) watches this.
+   * stopwatch, null before its first answer). The state shown runs ahead of
+   * it while a press is on its way; whatever follows the server (the
+   * Fokus-Sperre) watches this.
    */
-  const confirmed = ref("");
+  const confirmed = ref<string | null>(null);
   let alive = true;
   let revision = 0;
   let reading = false;
@@ -235,6 +240,35 @@ export function createTimerController() {
       return false;
     }
   }
+  function pulse(): void {
+    tick.value = performance.now();
+  }
+  /**
+   * Keeps the stopwatch in step with the server while the app is open:
+   * reads it now, every 3 seconds, when the window gets focus or the page
+   * shows again and after a target changed (`notifyDataChanged`), none of
+   * these while the page is hidden; a check while a read is on its way
+   * adds none. The time shown moves on four times a second. Returns the way
+   * to stop.
+   */
+  function startSync(): () => void {
+    const check = (): void => {
+      if (document.visibilityState !== "hidden") void refresh();
+    };
+    void refresh();
+    const ticker = setInterval(pulse, 250);
+    const poller = setInterval(check, 3000);
+    window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", check);
+    const unlisten = listenTargetsChanged(check);
+    return () => {
+      clearInterval(ticker);
+      clearInterval(poller);
+      window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", check);
+      unlisten();
+    };
+  }
   return {
     timer,
     error,
@@ -247,9 +281,8 @@ export function createTimerController() {
     start,
     action,
     setTarget,
-    pulse: () => {
-      tick.value = performance.now();
-    },
+    pulse,
+    startSync,
     dispose: () => {
       alive = false;
       ++revision;
@@ -283,16 +316,30 @@ export function toggleTimer(
   return true;
 }
 
+/** What a stopwatch is on: a quest or a run (row-actions' `targetOf`). */
+type TimerSubject = { kind: TimerTarget["kind"]; targetId: number | null };
+
 /** Whether the stopwatch of this target runs or waits paused; null when it has none. */
 export function timerStateOf(
   controller: TimerController | null,
-  kind: TimerTarget["kind"],
-  targetId: number | null,
+  target: TimerSubject | null,
 ): "running" | "paused" | null {
   const current = controller?.timer.value;
-  if (!current || targetId === null) return null;
-  if (current.kind !== kind || current.targetId !== targetId) return null;
+  if (!current || !target || target.targetId === null) return null;
+  if (current.kind !== target.kind || current.targetId !== target.targetId)
+    return null;
   return current.state === "running" ? "running" : "paused";
+}
+
+/**
+ * No stopwatch, or this target's own: a press acts at once. Otherwise
+ * starting one for this target first asks to end the other.
+ */
+export function timerFreeFor(
+  controller: TimerController | null,
+  target: TimerSubject | null,
+): boolean {
+  return !controller?.timer.value || timerStateOf(controller, target) !== null;
 }
 
 /** The `itemKey` (today-agenda) of what the stopwatch is on; null without one. */

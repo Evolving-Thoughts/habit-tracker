@@ -4,21 +4,16 @@ import AppIcon from "./AppIcon.vue";
 import PlanEntry from "./PlanEntry.vue";
 import QuickAddQuest from "./QuickAddQuest.vue";
 import { useSortable } from "../composables/useSortable";
-import { useTimer } from "../composables/useTimer";
-import { rowMenu, timerStep, type MenuEntry } from "../utils/row-actions";
-import {
-  boardDrop,
-  questlogEntry,
-  type BoardDrop,
-  type QuestlogQuest,
-  type ShelfDrop,
-} from "../utils/week-plan";
+import type { MenuEntry } from "../utils/row-actions";
+import { boardDrop, type BoardDrop } from "../utils/plan-move";
+import { questlogEntry, type QuestlogQuest } from "../utils/week-plan";
 
 /**
  * The Questlog at the far left of the board: open quests without a day in
  * the Questlog's own order. Each card drags onto any day, or to another
  * place in the column; a quest from the board dropped here loses its day.
- * The keyboard plans and sorts through each card's menu (its days first).
+ * The keyboard plans and sorts through each card's menu (the Plan's:
+ * the board's days first, the stopwatch, up and down).
  * On top a quick add puts a new quest at the head or the end of its order.
  * Collapsed it is a slim rail.
  */
@@ -26,21 +21,15 @@ const props = defineProps<{
   todos: QuestlogQuest[];
   open: boolean;
   busy: boolean;
-  /** The days a quest can go to: the board's days from today on. */
-  days: { date: string; label: string }[];
+  /** A card's "Aktionen für …". */
+  menu: (todo: QuestlogQuest) => MenuEntry[];
 }>();
 
 const emit = defineEmits<{
   toggle: [];
   /** A card was dropped on a day or at a place in the column. */
   move: [drop: BoardDrop];
-  /** "Nach oben" / "Nach unten": a card to another place in the column. */
-  step: [drop: ShelfDrop];
-  plan: [todo: QuestlogQuest, date: string];
   edit: [todo: QuestlogQuest];
-  /** "In Kampagne verschieben …" */
-  reparent: [todo: QuestlogQuest];
-  remove: [todo: QuestlogQuest];
   /** The quick add made a quest. */
   created: [];
 }>();
@@ -60,42 +49,6 @@ useSortable(list, {
 const entries = computed(() =>
   props.todos.map((todo) => ({ todo, entry: questlogEntry(todo, "") })),
 );
-
-const timer = useTimer();
-/** "Nach oben" / "Nach unten": the keyboard's way to sort the column. */
-function step(todo: QuestlogQuest, direction: -1 | 1): (() => void) | undefined {
-  const index = props.todos.indexOf(todo) + direction;
-  if (index < 0 || index >= props.todos.length) return undefined;
-  return () => emit("step", { todoId: todo.id, index });
-}
-
-/* The board's days are this card's quick moves; no ▶ fits the column. */
-function menu(todo: QuestlogQuest): MenuEntry[] {
-  return rowMenu(
-    todo.title,
-    {
-      quickMoves: props.days.map((day) => ({
-        id: `plan-${day.date}`,
-        label: day.label,
-        icon: "calendar",
-        ariaLabel: `${todo.title} einplanen am ${day.label}`,
-        disabled: props.busy,
-        run: () => emit("plan", todo, day.date),
-      })),
-      edit: () => emit("edit", todo),
-      timer: timerStep(
-        timer,
-        { kind: "todo", targetId: todo.id, title: todo.title },
-        todo.timerEligible,
-      ),
-      reparent: () => emit("reparent", todo),
-      up: step(todo, -1),
-      down: step(todo, 1),
-      remove: { run: () => emit("remove", todo) },
-    },
-    props.busy,
-  );
-}
 </script>
 
 <template>

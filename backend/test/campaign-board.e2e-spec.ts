@@ -13,6 +13,7 @@ import { WorkLogEntity } from '../src/work-logs/work-log.entity';
 import type { TimerResponse } from '../src/timers/timers.service';
 import type { TodoResponseDto } from '../src/todos/dto/todo-response.dto';
 import type { HierarchyTodoResponse } from '../src/todos/dto/todo-hierarchy-response.dto';
+import { resetDatabase } from './reset-database';
 
 const OTHER_USER = '22222222-2222-4222-8222-222222222222';
 const MINUTE = 60_000;
@@ -79,21 +80,14 @@ describe('Kampagnen-Board: In Arbeit, set-aside and Geblockt (e2e)', () => {
     await app.init();
     db = app.get(DataSource);
     server = app.getHttpServer() as Server;
-    if (db.options.database !== 'habit_tracker_test')
-      throw new Error('Test DB required');
   });
-  async function clear() {
-    await db.query(
-      'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos, categories, reflections, week_reviews, day_bests, day_best_settings, month_challenges, focus_blocks, focus_block_entries, focus_block_settings, work_logs, goal_snapshots, auth_tokens, auth_sessions, auth_rate_limits, weekly_quest_targets, users RESTART IDENTITY',
-    );
-  }
   beforeEach(async () => {
-    await clear();
+    await resetDatabase(db);
     await seedAuth(app);
     now = new Date();
   });
   afterAll(async () => {
-    if (db?.isInitialized) await clear();
+    if (db?.isInitialized) await resetDatabase(db);
     await app?.close();
   });
 

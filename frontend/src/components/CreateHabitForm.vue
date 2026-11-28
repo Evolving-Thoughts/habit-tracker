@@ -12,8 +12,8 @@ import ParentPicker from "./ParentPicker.vue";
 import type { CreateHabitInput, HabitResponse } from "../types/habit";
 import type { InheritedWhy } from "../types/todo";
 import WhyField from "./WhyField.vue";
-import { categoryOfChoice, type ParentChoice } from "../utils/parent-choice";
-import { whyBelow } from "../utils/why";
+import { placeBrings, type HabitDraft } from "../utils/editor-form";
+import type { ParentChoice } from "../utils/parent-choice";
 import {
   emptyScheduleDraft,
   positiveInteger,
@@ -24,14 +24,6 @@ import {
   getCurrentDateInTimeZone,
   isValidIsoDate,
 } from "../utils/date";
-
-/** What a daily made from a quest starts with. */
-export type HabitDraft = {
-  title: string;
-  why: string;
-  categoryId: number | null;
-  campaignId: number | null;
-};
 
 /**
  * "Neues Daily": Titel, then the rhythm with its details right below,
@@ -69,19 +61,17 @@ const habitCreated = ref(false);
 const today = getCurrentDateInTimeZone();
 const { preview, prepare, confirm, cancel } = useTodoDeletion();
 
-function readCampaign(choice: ParentChoice | null): void {
-  campaignWhy.value = choice ? whyBelow(choice.todo) : null;
-}
+/** A chosen campaign brings its reason and, unless one is chosen, its category. */
 function chooseCampaign(choice: ParentChoice | null): void {
-  readCampaign(choice);
-  // The campaign's category, unless one is chosen already.
-  if (choice && categoryId.value === null)
-    categoryId.value = categoryOfChoice(choice);
+  const brought = placeBrings(choice, categoryId.value);
+  campaignWhy.value = brought.inheritedWhy;
+  categoryId.value = brought.categoryId;
 }
+/** The campaign the daily starts with brings only its reason. */
 function presetCampaign(choices: ParentChoice[]): void {
-  readCampaign(
-    choices.find((choice) => choice.todo.id === campaignId.value) ?? null,
-  );
+  const choice =
+    choices.find((entry) => entry.todo.id === campaignId.value) ?? null;
+  campaignWhy.value = placeBrings(choice, categoryId.value).inheritedWhy;
 }
 
 function buildInput(): CreateHabitInput {

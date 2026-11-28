@@ -4,7 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { getHabits } from "../api/day-planner.api";
 import { getMonthChallenges } from "../api/month-challenges.api";
 import { useCategoryLabels } from "../composables/useCategoryLabels";
-import { useListFocus } from "../composables/useListFocus";
+import { useRowDialogs } from "../composables/useRowDialogs";
 import HabitHistoryLegend from "../components/HabitHistoryLegend.vue";
 import HabitHistoryStrip from "../components/HabitHistoryStrip.vue";
 import ActionMenu from "../components/ActionMenu.vue";
@@ -12,27 +12,23 @@ import AppIcon from "../components/AppIcon.vue";
 import CampaignChip from "../components/CampaignChip.vue";
 import ChallengeMark from "../components/ChallengeMark.vue";
 import MonthChallengeSection from "../components/MonthChallengeSection.vue";
-import DeleteItemDialog, {
-  type DeleteTarget,
-} from "../components/DeleteItemDialog.vue";
 import CheckRing from "../components/CheckRing.vue";
 import ItemPlayButton from "../components/ItemPlayButton.vue";
 import UndoToast from "../components/UndoToast.vue";
-import { useLoader } from "../composables/useLoader";
+import { useViewSession } from "../composables/useViewSession";
 import { useTicks } from "../composables/useTicks";
-import { useWrites } from "../composables/useWrites";
 import CreateButton from "../components/CreateButton.vue";
 import CreateHabitForm from "../components/CreateHabitForm.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
 import ModalDialog from "../components/ModalDialog.vue";
-import EditItemDialog from "../components/EditItemDialog.vue";
+import RowDialogs from "../components/RowDialogs.vue";
 import { getHistory } from "../api/history.api";
 import type { HabitResponse, HabitScheduleRule } from "../types/habit";
 import type { HistoryResponse } from "../types/history";
 import type { MonthChallenges } from "../types/month-challenge";
 import { shownWhy } from "../utils/why";
 import { onCardClick } from "../utils/card-click";
-import { rowMenu, type MenuEntry } from "../utils/row-actions";
+import { dailyRow, rowMenu, type MenuEntry } from "../utils/row-actions";
 import {
   formatDateForGermanDisplay,
   getCurrentDateInTimeZone,
@@ -50,14 +46,8 @@ import {
 } from "../utils/daily-groups";
 
 const page = ref<HTMLElement | null>(null);
-const listFocus = useListFocus(page);
 
 const successMessage = ref<string | null>(null);
-const editingId = ref<number | null>(null);
-/** Today's run of the daily being edited, for its notes. */
-const editingRun = ref<number | null>(null);
-const deleting = ref<DeleteTarget | null>(null);
-const editorBusy = ref(false);
 const creationOpen = ref(false);
 /** Opened by a long press on Plus: a quest, its title dictated at once. */
 const creationDictate = ref(false);
@@ -107,25 +97,24 @@ async function loadAll(): Promise<HabitResponse[]> {
   return habits;
 }
 
+const session = useViewSession({
+  holding: () =>
+    rows.holding() ||
+    creationOpen.value ||
+    starterTitle.value !== null ||
+    challengeActive.value,
+});
 const {
   data: habits,
   isLoading,
   hasLoaded,
   errorMessage,
   reload: loadHabits,
-} = useLoader(loadAll, {
+} = session.resource(loadAll, {
   initial: [] as HabitResponse[],
   fallbackError: "Die Dailies konnten nicht geladen werden.",
-  refreshOnChange: () =>
-    editingId.value === null &&
-    !deleting.value &&
-    !creationOpen.value &&
-    starterTitle.value === null &&
-    !challengeActive.value &&
-    !writes.busy.value,
 });
-const writes = useWrites(loadHabits, errorMessage);
-const { applied } = writes;
+const { applied } = session;
 
 /**
  * Today's run of a Daily, where one is due or was done today: the open run
@@ -149,7 +138,7 @@ function runToday(habit: HabitResponse): { id: number; done: boolean } | null {
 const anyRun = computed(() =>
   habits.value.some((habit) => runToday(habit) !== null),
 );
-const ticks = useTicks(writes.write);
+const ticks = useTicks(session.write);
 const { undo, undoLast } = ticks;
 const runKey = (habit: HabitResponse) => `run-${habit.id}`;
 async function toggleRun(habit: HabitResponse): Promise<void> {
@@ -157,7 +146,7 @@ async function toggleRun(habit: HabitResponse): Promise<void> {
   if (!run) return;
   const target = {
     kind: "occurrence",
-    id: run.id,
+    targetId: run.id,
     title: habit.title,
   } as const;
   const options = {
@@ -170,7 +159,7 @@ async function toggleRun(habit: HabitResponse): Promise<void> {
 }
 
 const isBusy = computed(
-  () => isLoading.value || editorBusy.value || challengeActive.value,
+  () => isLoading.value || rows.busy.value || challengeActive.value,
 );
 
 /* The filter lives in the address (#/dailies?kategorie=…&kampagne=…). */
@@ -239,32 +228,39 @@ function nextScheduleOf(habit: HabitResponse): string | null {
 
 const categoryOf = (habit: HabitResponse) => labelOf(habit.categoryId);
 
+/* A Daily's editor (with the notes of today's run) and its deletion. */
+const rows = useRowDialogs({
+  root: page,
+  session,
+  today: () => today.value,
+  blocked: () => isLoading.value || challengeActive.value,
+  opened: () => (successMessage.value = null),
+  saved: (dialog) =>
+    (successMessage.value =
+      dialog.kind === "delete"
+        ? "Daily gelöscht. Das Logbuch bleibt erhalten."
+        : "Änderungen gespeichert."),
+});
+
 /* The card contract: a tap on the card opens the editor, as its title does. */
-const canEdit = () =>
-  !isBusy.value && editingId.value === null && !deleting.value;
+const canEdit = () => !isBusy.value && !rows.holding();
 function openFromCard(event: MouseEvent, habit: HabitResponse): void {
   if (canEdit()) onCardClick(event, () => openEditing(habit));
 }
 const cardMenu = (habit: HabitResponse): MenuEntry[] =>
-  rowMenu(
-    habit.title,
-    {
-      edit: () => openEditing(habit),
-      remove: { run: () => openDeleting(habit) },
-    },
-    !canEdit(),
-  );
+  rowMenu({
+    row: dailyRow(habit),
+    today: today.value,
+    busy: !canEdit(),
+    edit: () => openEditing(habit),
+    remove: () => openDeleting(habit),
+  });
 function openDeleting(habit: HabitResponse): void {
-  if (!canEdit()) return;
-  successMessage.value = null;
-  listFocus.remember(`habit-${habit.id}`);
-  deleting.value = { kind: "habit", id: habit.id, title: habit.title };
-}
-async function onDeleted(): Promise<void> {
-  successMessage.value = "Daily gelöscht. Das Logbuch bleibt erhalten.";
-  await applied();
-  deleting.value = null;
-  editorBusy.value = false;
+  rows.remove(`habit-${habit.id}`, {
+    kind: "habit",
+    id: habit.id,
+    title: habit.title,
+  });
 }
 
 function statusOf(habit: HabitResponse): string | null {
@@ -280,27 +276,17 @@ function detailsOf(habit: HabitResponse): string[] {
 }
 
 function openCreation(dictate = false): void {
-  if (isBusy.value || editingId.value !== null) return;
+  if (isBusy.value || rows.holding()) return;
   successMessage.value = null;
   creationDictate.value = dictate;
   creationOpen.value = true;
 }
 function openEditing(habit: HabitResponse): void {
-  if (isBusy.value || editingId.value !== null) return;
-  successMessage.value = null;
-  listFocus.remember(`habit-${habit.id}`);
-  editingRun.value = runToday(habit)?.id ?? null;
-  editingId.value = habit.id;
-}
-function closeEditing(): void {
-  editingId.value = null;
-  editingRun.value = null;
-  editorBusy.value = false;
-}
-async function onEditorChanged(): Promise<void> {
-  successMessage.value = "Änderungen gespeichert.";
-  await applied();
-  closeEditing();
+  rows.edit(`habit-${habit.id}`, {
+    kind: "habit",
+    id: habit.id,
+    occurrenceId: runToday(habit)?.id ?? null,
+  });
 }
 async function onChallengeChanged(message: string): Promise<void> {
   successMessage.value = message || null;
@@ -312,7 +298,7 @@ async function onCreated(): Promise<void> {
   creationOpen.value = false;
 }
 function openStarter(title: string): void {
-  if (isBusy.value || editingId.value !== null) return;
+  if (isBusy.value || rows.holding()) return;
   successMessage.value = null;
   starterTitle.value = title;
 }
@@ -355,36 +341,14 @@ async function onStarterCreated(): Promise<void> {
         @cancel="closeStarter"
       />
     </ModalDialog>
-    <EditItemDialog
-      v-if="editingId !== null"
-      :key="editingId"
-      kind="habit"
-      :entity-id="editingId"
-      :occurrence-id="editingRun"
-      :return-focus="listFocus.returnFocus"
-      @busy="editorBusy = $event"
-      @changed="onEditorChanged"
-      @close="closeEditing"
-    />
-
-    <DeleteItemDialog
-      v-if="deleting"
-      :target="deleting"
-      :return-focus="listFocus.returnFocus"
-      @busy="editorBusy = $event"
-      @deleted="onDeleted"
-      @close="
-        deleting = null;
-        editorBusy = false;
-      "
-    />
+    <RowDialogs :dialogs="rows" />
 
     <div v-if="errorMessage" class="alert habits-view__alert">
       <p role="alert">{{ errorMessage }}</p>
       <button
         class="btn btn--ground"
         type="button"
-        :disabled="isLoading || editingId !== null"
+        :disabled="isLoading || rows.holding()"
         @click="loadHabits()"
       >
         Erneut versuchen
@@ -397,7 +361,7 @@ async function onStarterCreated(): Promise<void> {
       v-if="hasLoaded && challenges"
       :overview="challenges"
       :habits="habits"
-      :busy="isBusy || editingId !== null"
+      :busy="isBusy || rows.holding()"
       @changed="onChallengeChanged"
       @active="challengeActive = $event"
     />
@@ -539,8 +503,8 @@ async function onStarterCreated(): Promise<void> {
                       ? `${habit.title} heute wieder öffnen`
                       : `${habit.title} heute erledigen`
                   "
-                  :disabled="isBusy || writes.isWriting(runKey(habit))"
-                  :busy="writes.isWriting(runKey(habit))"
+                  :disabled="isBusy || session.isWriting(runKey(habit))"
+                  :busy="session.isWriting(runKey(habit))"
                   @toggle="toggleRun(habit)"
                 />
                 <span v-else class="habit-card__ring" aria-hidden="true" />
@@ -553,7 +517,7 @@ async function onStarterCreated(): Promise<void> {
                     data-edit-button
                     type="button"
                     :aria-label="`${habit.title} bearbeiten`"
-                    :disabled="isBusy || editingId !== null"
+                    :disabled="isBusy || rows.holding()"
                     @click="openEditing(habit)"
                   >
                     {{ habit.title }}
@@ -618,7 +582,7 @@ async function onStarterCreated(): Promise<void> {
     <!-- After the content in reading order; fixed in place, it looks the same. -->
     <CreateButton
       label="Daily erstellen"
-      :disabled="isBusy || editingId !== null"
+      :disabled="isBusy || rows.holding()"
       @click="openCreation()"
       @dictate="openCreation(true)"
     />

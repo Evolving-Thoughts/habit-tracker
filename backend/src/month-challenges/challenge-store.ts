@@ -77,7 +77,10 @@ async function loadRuns(
   return { versions, runs };
 }
 
-/** The tally of a challenge as of `now`, and today's run. */
+/**
+ * The tally of a challenge as of `now`, and today's run. Reads the pause
+ * from `challenge.habit`, so callers load it; without it no run is open.
+ */
 export async function countChallenge(
   manager: EntityManager,
   challenge: MonthChallengeEntity,
@@ -88,8 +91,18 @@ export async function countChallenge(
   const { versions, runs } = await loadRuns(manager, challenge.habitId, window);
   return {
     tally: challengeTally(versions, runs, window, now),
-    today: challengeToday(versions, runs, window, now),
+    today: challengeToday(versions, runs, window, now, {
+      isActive: challenge.habit?.isActive === true,
+    }),
   };
+}
+
+/** Whether the challenge is closed by `now` and its result not fixed yet. */
+export function awaitsFreeze(
+  challenge: MonthChallengeEntity,
+  now: Date,
+): boolean {
+  return challenge.dueCount === null && isClosed(challenge, dayOf(now));
 }
 
 /**
@@ -102,8 +115,7 @@ export async function freezeIfClosed(
   challenge: MonthChallengeEntity,
   now: Date,
 ): Promise<boolean> {
-  if (challenge.dueCount !== null || !isClosed(challenge, dayOf(now)))
-    return false;
+  if (!awaitsFreeze(challenge, now)) return false;
   const { tally } = await countChallenge(
     manager,
     challenge,

@@ -16,21 +16,15 @@ import AppIcon from "../components/AppIcon.vue";
 import CalendarDay from "../components/CalendarDay.vue";
 import CalendarMonth from "../components/CalendarMonth.vue";
 import CalendarWeek from "../components/CalendarWeek.vue";
-import EditItemDialog from "../components/EditItemDialog.vue";
-import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
-import DeleteItemDialog, {
-  type DeleteTarget,
-} from "../components/DeleteItemDialog.vue";
 import type { PlannedActions } from "../components/HistoryPlannedItems.vue";
-import MoveItemDialog, {
-  type MoveTarget,
-} from "../components/MoveItemDialog.vue";
+import RowDialogs from "../components/RowDialogs.vue";
 import UndoToast from "../components/UndoToast.vue";
 import { useListFocus } from "../composables/useListFocus";
-import { useLoader } from "../composables/useLoader";
+import { useRowDialogs } from "../composables/useRowDialogs";
+import { useRowActions, type RowCall } from "../composables/useRowActions";
+import { useViewSession } from "../composables/useViewSession";
 import { useLogRemoval } from "../composables/useLogRemoval";
 import { tickLabel, useTicks, writeDone } from "../composables/useTicks";
-import { useWrites } from "../composables/useWrites";
 import type {
   HistoryFilter,
   HistoryPlannedItem,
@@ -46,7 +40,7 @@ import {
   supportedHistoryDate,
   weekLabel,
 } from "../utils/history";
-import { quickMoveEntries, quickMoves, rowMenu } from "../utils/row-actions";
+import { historyRow, measureOf } from "../utils/row-actions";
 
 type Mode = "month" | "week" | "day";
 
@@ -64,17 +58,6 @@ const FILTERS: { value: HistoryFilter; label: string }[] = [
 const mode = ref<Mode>("month");
 const date = ref(getCurrentDateInTimeZone());
 const filter = ref<HistoryFilter>("all");
-const moving = ref<MoveTarget | null>(null);
-const editing = ref<{
-  kind: "todo" | "habit";
-  id: number;
-  /** The stored run a daily was opened from, for its notes. */
-  occurrenceId?: number;
-} | null>(null);
-/** "In Kampagne verschieben …" and "Löschen" from a row's menu. */
-const campaignMoving = ref<{ todoId: number; title: string } | null>(null);
-const deleting = ref<DeleteTarget | null>(null);
-const editorBusy = ref(false);
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
 
@@ -85,12 +68,24 @@ const requestDate = computed(() =>
     : date.value,
 );
 
+/* Kept apart from the load error: a failed tick must not hide the calendar. */
+const writeError = ref<string | null>(null);
+const session = useViewSession({
+  holding: () => rows.holding(),
+  writeError,
+});
+/* A planned row's editor, "Anderer Tag …", campaign move and delete. */
+const rows = useRowDialogs({
+  root: page,
+  session,
+  today: () => result.value?.today ?? getCurrentDateInTimeZone(),
+});
 const {
   data: result,
   isLoading: loading,
   errorMessage: error,
   reload,
-} = useLoader<HistoryResponse | null>(
+} = session.resource<HistoryResponse | null>(
   async (signal) => {
     if (!supportedHistoryDate(date.value, mode.value))
       throw new Error("Bitte wähle ein gültiges Datum.");
@@ -101,18 +96,8 @@ const {
     fallbackError: "Der Kalender konnte nicht geladen werden.",
     params: [requestDate, mode, filter],
     resetOnLoad: true,
-    refreshOnChange: () =>
-      !moving.value &&
-      !editing.value &&
-      !campaignMoving.value &&
-      !deleting.value &&
-      !editorBusy.value &&
-      !writes.busy.value,
   },
 );
-/* Kept apart from the load error: a failed tick must not hide the calendar. */
-const writeError = ref<string | null>(null);
-const writes = useWrites(reload, writeError);
 
 const title = computed(() => {
   if (!isValidIsoDate(date.value)) return "Kalender";
@@ -277,77 +262,39 @@ watch(
   { immediate: true },
 );
 
-/* Moving planned entries */
-function moveTarget(item: HistoryPlannedItem): MoveTarget | null {
-  if (item.id === null) return null;
-  if (item.type === "todo")
-    return {
-      type: "todo",
-      todoId: item.id,
-      title: item.title,
-      timeOfDay: item.timeOfDay,
-    };
-  if (!item.moveUntil || item.moveUntil <= item.date) return null;
-  return {
-    type: "habit",
-    occurrenceId: item.id,
-    title: item.title,
-    moveUntil: item.moveUntil,
-  };
-}
-function startMoving(item: HistoryPlannedItem): void {
-  listFocus.remember(item.key);
-  moving.value = moveTarget(item);
-}
-async function onDialogDone(): Promise<void> {
-  await writes.applied();
-  closeDialogs();
-}
-function closeDialogs(): void {
-  moving.value = null;
-  editing.value = null;
-  campaignMoving.value = null;
-  deleting.value = null;
-  editorBusy.value = false;
-}
-
 /*
  * The planned rows follow the row contract: open quests get the ring (with
  * undo, as on Heute), the title opens the editor, and moving sits in the
- * menu "Aktionen für …" with the same quick days as Heute.
+ * menu "Aktionen für …", Heute's menu for the day the row was scheduled
+ * for (`historyRow`, performed by `useRowActions`).
  *
  * Deleting a Logbuch stretch shares the toast; its DELETE waits until the
  * offer ends (`useLogRemoval`).
  */
-const ticks = useTicks(writes.write, {
+const ticks = useTicks(session.write, {
   onOtherUndo: (held) => restoreLog(held.id),
 });
 const { undo, undoLast, flushUndo } = ticks;
 const { hiddenLogs, removeLog, restoreLog } = useLogRemoval(
   ticks.offerUndo,
-  writes.write,
+  session.write,
 );
 /* Closing or reloading the page sends a held delete on its way. */
 onMounted(() => window.addEventListener("pagehide", flushUndo));
 onBeforeUnmount(() => window.removeEventListener("pagehide", flushUndo));
-const busyKey = (item: HistoryPlannedItem) => `planned-${item.key}`;
-function quickMove(item: HistoryPlannedItem, date: string): void {
-  if (item.id === null) return;
-  const id = item.id;
-  void listFocus.around(item.key, () =>
-    ticks.move(
-      {
-        kind: item.type === "todo" ? "todo" : "occurrence",
-        id,
-        title: item.title,
-      },
-      date,
-      {
-        key: busyKey(item),
-        fallbackError: "Der Eintrag konnte nicht verschoben werden.",
-      },
-    ),
-  );
+const today = (): string => result.value?.today ?? getCurrentDateInTimeZone();
+const rowActions = useRowActions({
+  today,
+  session,
+  ticks,
+  focus: listFocus,
+  dialogs: rows,
+  busy: () => session.busy.value,
+});
+/** A planned row under its key; null for one without its quest or daily. */
+function callOf(item: HistoryPlannedItem): RowCall | null {
+  const row = historyRow(item, today());
+  return row && { key: item.key, row };
 }
 /*
  * A Daily run can be ticked where it is due: today (the server refuses
@@ -360,15 +307,18 @@ function completeRun(item: HistoryPlannedItem): void {
   if (habitId === null) return;
   void listFocus.around(item.key, async () => {
     let id = item.id;
-    const done = await writes.write(
+    const done = await session.write(
       async () => {
         id ??= await openRunToday(habitId, item.scheduledDate);
         if (id === null)
           throw new Error("Dieses Daily ist heute nicht mehr fällig.");
-        await writeDone({ kind: "occurrence", id, title: item.title }, true);
+        await writeDone(
+          { kind: "occurrence", targetId: id, title: item.title },
+          true,
+        );
       },
       {
-        key: busyKey(item),
+        key: item.key,
         fallbackError: "Das Daily konnte nicht erledigt werden.",
       },
     );
@@ -376,7 +326,7 @@ function completeRun(item: HistoryPlannedItem): void {
       ticks.offerUndo(
         {
           kind: "tick",
-          target: { kind: "occurrence", id, title: item.title },
+          target: { kind: "occurrence", targetId: id, title: item.title },
         },
         tickLabel(item.title),
       );
@@ -389,94 +339,26 @@ const plannedActions: PlannedActions = {
       : item.habitId !== null && item.date === result.value?.today,
   complete: (item) => {
     if (item.type === "habit") return completeRun(item);
-    if (item.id === null) return;
-    const id = item.id;
-    // The calendar's rows do not ask about a campaign (todo-hierarchy.md).
-    void listFocus.around(item.key, () =>
-      ticks.complete(
-        { kind: "todo", id, title: item.title },
-        { key: busyKey(item) },
-      ),
-    );
+    const call = callOf(item);
+    if (call) rowActions.of(call).complete?.();
   },
-  editable: (item) =>
-    item.type === "todo" ? item.id !== null : item.habitId !== null,
+  editable: (item) => callOf(item) !== null,
   edit: (item) => {
-    const id = item.type === "todo" ? item.id : item.habitId;
-    if (id === null || writes.busy.value) return;
-    listFocus.remember(item.key);
-    editing.value = {
-      kind: item.type,
-      id,
-      occurrenceId:
-        item.type === "habit" && item.id !== null ? item.id : undefined,
-    };
+    const call = callOf(item);
+    if (call) rowActions.edit(call);
   },
   menu: (item) => {
-    const today = result.value?.today;
-    if (!today) return [];
-    const disabled = writes.busy.value;
-    const movable = !!moveTarget(item);
-    return rowMenu(
-      item.title,
-      {
-        quickMoves: movable
-          ? quickMoveEntries(
-              item.title,
-              quickMoves(today, {
-                date: item.scheduledDate,
-                timeOfDay: item.timeOfDay,
-                moveUntil: item.type === "habit" ? item.moveUntil : undefined,
-              }),
-              (move) => quickMove(item, move.date),
-              { disabled },
-            )
-          : [],
-        otherDay: movable
-          ? {
-              run: () => startMoving(item),
-              appointment: item.type === "todo" && !!item.timeOfDay,
-            }
-          : undefined,
-        edit: plannedActions.editable(item)
-          ? () => plannedActions.edit(item)
-          : undefined,
-        reparent:
-          item.type === "todo" && item.id !== null
-            ? () => {
-                listFocus.remember(item.key);
-                campaignMoving.value = { todoId: item.id!, title: item.title };
-              }
-            : undefined,
-        remove: plannedActions.editable(item)
-          ? {
-              run: () => {
-                const id = item.type === "todo" ? item.id : item.habitId;
-                if (id === null || writes.busy.value) return;
-                listFocus.remember(item.key);
-                deleting.value = { kind: item.type, id, title: item.title };
-              },
-              ariaLabel:
-                item.type === "habit"
-                  ? `Daily ${item.title} ganz löschen`
-                  : undefined,
-            }
-          : undefined,
-      },
-      disabled,
-    );
+    const call = callOf(item);
+    return call ? rowActions.menu(call) : [];
   },
+  /* ▶ where the stopwatch may start: an open quest, a stored run due by today. */
   measure: (item) => {
-    if (item.id === null) return null;
-    if (item.type === "todo")
-      return { kind: "todo", targetId: item.id, eligible: true };
-    const today = result.value?.today;
-    // A stored run can be measured once it is due.
-    return today && item.date <= today
-      ? { kind: "occurrence", targetId: item.id, eligible: true }
+    const row = callOf(item)?.row;
+    return (row?.type === "quest" || row?.type === "run") && row.timerEligible
+      ? measureOf(row)
       : null;
   },
-  busy: (item) => writes.isWriting(busyKey(item)),
+  busy: (item) => session.isWriting(item.key),
 };
 </script>
 
@@ -663,43 +545,7 @@ const plannedActions: PlannedActions = {
         @remove-log="removeLog"
       />
 
-      <MoveItemDialog
-        v-if="moving"
-        :item="moving"
-        :today="result.today"
-        :return-focus="listFocus.returnFocus"
-        @busy="editorBusy = $event"
-        @moved="onDialogDone"
-        @close="closeDialogs"
-      />
-      <CampaignMoveDialog
-        v-if="campaignMoving"
-        :todo-id="campaignMoving.todoId"
-        :title="campaignMoving.title"
-        :return-focus="listFocus.returnFocus"
-        @busy="editorBusy = $event"
-        @moved="onDialogDone"
-        @close="closeDialogs"
-      />
-      <DeleteItemDialog
-        v-if="deleting"
-        :target="deleting"
-        :return-focus="listFocus.returnFocus"
-        @busy="editorBusy = $event"
-        @deleted="onDialogDone"
-        @close="closeDialogs"
-      />
-      <EditItemDialog
-        v-if="editing"
-        :key="`${editing.kind}-${editing.id}`"
-        :kind="editing.kind"
-        :entity-id="editing.id"
-        :occurrence-id="editing.occurrenceId"
-        :return-focus="listFocus.returnFocus"
-        @busy="editorBusy = $event"
-        @changed="onDialogDone"
-        @close="closeDialogs"
-      />
+      <RowDialogs :dialogs="rows" />
     </template>
     <UndoToast :label="undo?.label ?? null" @undo="undoLast" />
   </main>

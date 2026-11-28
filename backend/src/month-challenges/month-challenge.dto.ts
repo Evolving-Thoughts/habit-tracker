@@ -6,11 +6,11 @@ import {
   Min,
   ValidateIf,
 } from 'class-validator';
+import {
+  IsTimeOfDay,
+  TIME_OF_DAY_MESSAGE,
+} from '../common/validation/field-rules';
 import type { ChallengeStatus } from './challenge-rules';
-
-/** "HH:MM", 00:00 to 23:59. */
-const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
-const TIME_MESSAGE = 'Die Uhrzeit muss als HH:MM kommen.';
 
 /**
  * POST /month-challenges: a Daily for this month or the next. Without
@@ -29,7 +29,7 @@ export class CreateMonthChallengeDto {
   // Null passes too: no reminder.
   @IsOptional()
   @IsString()
-  @Matches(TIME_PATTERN, { message: TIME_MESSAGE })
+  @IsTimeOfDay({ message: TIME_OF_DAY_MESSAGE })
   readonly reminderTime?: string | null;
 }
 
@@ -37,7 +37,7 @@ export class CreateMonthChallengeDto {
 export class UpdateMonthChallengeDto {
   @ValidateIf((_, value) => value !== null)
   @IsString()
-  @Matches(TIME_PATTERN, { message: TIME_MESSAGE })
+  @IsTimeOfDay({ message: TIME_OF_DAY_MESSAGE })
   readonly reminderTime!: string | null;
 }
 

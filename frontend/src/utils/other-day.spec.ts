@@ -57,15 +57,18 @@ describe("tallyOfEntries", () => {
 });
 
 describe("asPlannerItem", () => {
-  it("shows a quest on Heute's card, without the stopwatch", () => {
+  it("shows a quest on Heute's card, measurable while open like everywhere", () => {
     expect(asPlannerItem(quest, "2026-11-26")).toMatchObject({
       type: "todo",
       todoId: 7,
       title: "Steuer",
       plannedDurationMinutes: 30,
-      timerEligible: false,
+      timerEligible: true,
       workedMinutes: 0,
     });
+    expect(
+      asPlannerItem({ ...quest, status: "completed" }, "2026-11-26"),
+    ).toMatchObject({ timerEligible: false });
   });
 
   it("gives a forecast run its day and nothing to measure", () => {

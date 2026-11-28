@@ -10,9 +10,11 @@ import { configureApp } from '../src/configure-app';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
 import {
   authenticatedRequest as request,
+  SEEDED_AUTH_TABLES,
   seedAuth,
   TEST_USER,
 } from './auth-fixture';
+import { resetDatabase } from './reset-database';
 
 const OTHER_USER = '22222222-2222-4222-8222-222222222222';
 type Named = { id: number; name: string };
@@ -48,7 +50,7 @@ describe('Categories and why (e2e)', () => {
       verifiedAt: new Date(),
     });
   });
-  beforeEach(() => db.query('TRUNCATE categories CASCADE'));
+  beforeEach(() => resetDatabase(db, { keep: SEEDED_AUTH_TABLES }));
   afterAll(() => app.close());
 
   it('creates, lists and renames, refusing duplicate names', async () => {
@@ -229,6 +231,17 @@ describe('Categories and why (e2e)', () => {
       .send({ why: '' })
       .expect(200);
     expect((await read(leaf.id)).inheritedWhy?.fromId).toBe(root.id);
+
+    // The tree of the Questlog names the same reasons.
+    const tree = (await request(server).get('/todos/hierarchy').expect(200))
+      .body as WithWhy[];
+    expect(
+      tree.map(({ id, why, inheritedWhy }) => [id, why, inheritedWhy?.fromId]),
+    ).toEqual([
+      [root.id, 'Marathon laufen', undefined],
+      [middle.id, null, root.id],
+      [leaf.id, null, root.id],
+    ]);
   });
 
   it('keeps entries when a category is deleted and frees its name', async () => {

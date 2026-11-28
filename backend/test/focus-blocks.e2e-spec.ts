@@ -13,7 +13,9 @@ import type { HabitResponseDto } from '../src/habits/dto/habit-response.dto';
 import type { DayPlannerResponseDto } from '../src/day-planner/dto/day-planner-response.dto';
 import type { StartTimerDto } from '../src/timers/timer.dto';
 import type { TimerResponse } from '../src/timers/timers.service';
-import { authenticatedRequest, seedAuth } from './auth-fixture';
+import { authenticatedRequest, seedAuth, TEST_USER } from './auth-fixture';
+import { resetDatabase } from './reset-database';
+import { holdUserLock, stillPending, within } from './user-lock';
 
 describe('Fokus-Sperre (e2e)', () => {
   let app: INestApplication;
@@ -64,21 +66,14 @@ describe('Fokus-Sperre (e2e)', () => {
     await app.init();
     db = app.get(DataSource);
     server = app.getHttpServer() as Server;
-    if (db.options.database !== 'habit_tracker_test')
-      throw new Error('Test DB required');
   });
-  async function clear() {
-    await db.query(
-      'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos, categories, reflections, week_reviews, day_bests, day_best_settings, month_challenges, focus_blocks, focus_block_entries, focus_block_settings, work_logs, goal_snapshots, auth_tokens, auth_sessions, auth_rate_limits, weekly_quest_targets, users RESTART IDENTITY',
-    );
-  }
   beforeEach(async () => {
-    await clear();
+    await resetDatabase(db);
     await seedAuth(app);
     now = new Date();
   });
   afterAll(async () => {
-    if (db?.isInitialized) await clear();
+    if (db?.isInitialized) await resetDatabase(db);
     await app?.close();
   });
 
@@ -117,6 +112,26 @@ describe('Fokus-Sperre (e2e)', () => {
     );
   });
 
+  it('answers the state without waiting for a change in progress, and closes a lapsed block under the lock', async () => {
+    const id = await todo();
+    await start({ kind: 'todo', targetId: id });
+    const release = await holdUserLock(db, TEST_USER);
+    let lapsed: Promise<FocusBlockStateResponse>;
+    try {
+      expect((await within(state(), 2_000)).block).toMatchObject({
+        todoId: id,
+        mode: 'soft',
+      });
+      // Past its twelve hours the block has to be closed: that waits.
+      later(13 * 60 * MINUTE);
+      lapsed = state();
+      expect(await stillPending(lapsed, 300)).toBe(true);
+    } finally {
+      await release();
+    }
+    expect((await lapsed).block).toBeNull();
+    expect((await blocks())[0].endReason).toBe('expired');
+  });
   it('keeps the settings and both lists, with websites reduced to their host', async () => {
     const saved = (
       await settings({

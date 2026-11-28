@@ -5,6 +5,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Server } from 'node:http';
 import {
   authenticatedRequest as request,
+  SEEDED_AUTH_TABLES,
   seedAuth,
   TEST_USER,
 } from './auth-fixture';
@@ -13,6 +14,7 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
 import { addDays, dayOf } from '../src/common/date/local-day';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
+import { resetDatabase } from './reset-database';
 
 type TodoResponseBody = {
   id: number;
@@ -22,6 +24,7 @@ type TodoResponseBody = {
   scheduledDate: string | null;
   timeOfDay: string | null;
   plannedDurationMinutes: number | null;
+  timerEligible: boolean;
 };
 
 type ErrorResponseBody = {
@@ -54,10 +57,7 @@ describe('Todos API (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await app.get(DataSource).query(
-      // Dailies may name a todo as their campaign, so they go along.
-      'TRUNCATE TABLE push_deliveries, push_subscriptions, timers, todos RESTART IDENTITY CASCADE',
-    );
+    await resetDatabase(app.get(DataSource), { keep: SEEDED_AUTH_TABLES });
   });
 
   afterAll(async () => {
@@ -282,9 +282,11 @@ describe('Todos API (e2e)', () => {
       expect(completedTodo.scheduledDate).toBe('2026-09-21');
       expect(completedTodo.plannedDurationMinutes).toBe(60);
 
-      expect(Number.isNaN(Date.parse(completedTodo.completedAt ?? ''))).toBe(
-        false,
+      expect(completedTodo.completedAt).toBe(
+        new Date(completedTodo.completedAt!).toISOString(),
       );
+      // A completed todo offers no stopwatch.
+      expect(completedTodo.timerEligible).toBe(false);
 
       const originalCompletedAt = completedTodo.completedAt;
 
@@ -311,6 +313,7 @@ describe('Todos API (e2e)', () => {
 
       expect(reopenedTodo.completed).toBe(false);
       expect(reopenedTodo.completedAt).toBeNull();
+      expect(reopenedTodo.timerEligible).toBe(true);
 
       await request(httpServer).delete(`/todos/${createdTodo.id}`).expect(400);
       const preview = await request(httpServer)
@@ -397,6 +400,42 @@ describe('Todos API (e2e)', () => {
       expect(body.completedAt).toBeNull();
       expect(body.scheduledDate).toBeNull();
       expect(body.plannedDurationMinutes).toBeNull();
+    });
+
+    it('refuses null for the title or completed, like a Daily', async () => {
+      const saved = await todoRepository.save(
+        todoRepository.create({ userId: TEST_USER, title: 'Learn NestJS' }),
+      );
+      for (const body of [{ title: null }, { completed: null }])
+        await request(httpServer)
+          .patch(`/todos/${saved.id}`)
+          .send(body)
+          .expect(400);
+      expect(
+        await todoRepository.findOneByOrFail({ id: saved.id }),
+      ).toMatchObject({ title: 'Learn NestJS', completed: false });
+    });
+
+    it('caps planned minutes at a week, as the stopwatch does', async () => {
+      const tooLong = 'plannedDurationMinutes must not be greater than 10080';
+      const created = await request(httpServer)
+        .post('/todos')
+        .send({ title: 'Lang', plannedDurationMinutes: 10081 })
+        .expect(400);
+      expect((created.body as ErrorResponseBody).message).toEqual([tooLong]);
+
+      const saved = await todoRepository.save(
+        todoRepository.create({ userId: TEST_USER, title: 'Lang' }),
+      );
+      const patched = await request(httpServer)
+        .patch(`/todos/${saved.id}`)
+        .send({ plannedDurationMinutes: 10081 })
+        .expect(400);
+      expect((patched.body as ErrorResponseBody).message).toEqual([tooLong]);
+      await request(httpServer)
+        .patch(`/todos/${saved.id}`)
+        .send({ plannedDurationMinutes: 10080 })
+        .expect(200);
     });
 
     it('puts an appointment back into the backlog without its time', async () => {
@@ -593,6 +632,18 @@ describe('Todos API (e2e)', () => {
       await create({ title: 'Oben', backlogPlace: 'top' });
       await create({ title: 'Unten', backlogPlace: 'bottom' });
       expect(await backlog()).toEqual(['Oben', 'Erstes', 'Zweites', 'Unten']);
+      // A quest with a day takes no place in the order, wherever asked.
+      for (const backlogPlace of ['top', 'bottom']) {
+        const planned = await create({
+          title: 'Geplant',
+          scheduledDate: dayOf(new Date()),
+          backlogPlace,
+        });
+        expect(
+          (await todoRepository.findOneByOrFail({ id: planned }))
+            .backlogPosition,
+        ).toBeNull();
+      }
       await request(httpServer)
         .post('/todos')
         .send({ title: 'Seitwärts', backlogPlace: 'middle' })

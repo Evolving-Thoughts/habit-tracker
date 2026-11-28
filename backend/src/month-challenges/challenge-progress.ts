@@ -4,10 +4,7 @@ import {
   startOfDay,
   weekRange,
 } from '../common/date/local-day';
-import {
-  HabitOccurrenceEntity,
-  occurrenceDueDate,
-} from '../habit-occurrences/entities/habit-occurrence.entity';
+import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitOccurrenceStatus as Status } from '../habit-occurrences/enums/habit-occurrence-status.enum';
 import { HabitScheduleVersionEntity } from '../habits/entities/habit-schedule-version.entity';
 import { HabitScheduleType } from '../habits/enums/habit-schedule-type.enum';
@@ -16,6 +13,7 @@ import {
   isScheduledOn,
   slotStartsAt,
 } from '../habits/scheduling/schedule-rules';
+import { runRefusal } from '../habits/scheduling/run-actionability';
 
 /**
  * The counting rule of a Monats-Challenge (docs/challenges.md), without a
@@ -272,30 +270,32 @@ export function challengeTally(
 }
 
 /**
- * Today's run, while today is a day of the challenge: the open run that can
- * be done today (also one carried over into today), else whether a run was
- * done today, else none (nothing due today, or skipped).
+ * Today's run, while today is a day of the challenge: the open run of the
+ * window that can be done today (`runRefusal`; also one carried over into
+ * today), else whether a run was done today, else none (nothing due today,
+ * skipped, or the Daily is paused). The Daily may be read without bringing
+ * its runs up to now (the reminder's last check), so this leaves out the
+ * version in force: an open run of any version not cancelled counts while
+ * its window is open.
  */
 export function challengeToday(
   versions: HabitScheduleVersionEntity[],
   runs: ChallengeRun[],
   window: ChallengeWindow,
   now: Date,
+  habit: { isActive: boolean },
 ): ChallengeToday {
   const today = dayOf(now);
   if (today < window.first || today > window.last) return { state: 'none' };
   const byId = new Map(versions.map((version) => [version.id, version]));
-  const open = runs.find((run) => {
-    const version = byId.get(run.scheduleVersionId);
-    return (
-      version !== undefined &&
-      version.cancelledAt === null &&
-      run.status === Status.PENDING &&
+  const open = runs.find(
+    (run) =>
       run.scheduledDate >= window.first &&
-      occurrenceDueDate(run) <= today &&
-      expiresAt(version, run.scheduledDate) > now
-    );
-  });
+      runRefusal(
+        { run, version: byId.get(run.scheduleVersionId), habit, now },
+        { anyVersion: true },
+      ) === null,
+  );
   if (open) return { state: 'open', occurrenceId: open.id };
   return runs.some(
     (run) => run.status === Status.COMPLETED && run.resolvedDate === today,

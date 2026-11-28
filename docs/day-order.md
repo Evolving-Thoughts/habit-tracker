@@ -50,9 +50,11 @@ The time-based replanner ("Neu planen"), the day-end setting and the per-calenda
   `backend/src/todos/quest-commands.ts` (day, time, completion; it ends the
   stopwatch of a completed quest in the same transaction). `TodosService`
   and the Google sync both go through it. Daily runs move and change status
-  through `HabitSchedulingService.moveRun` / `setRunStatus`, which lock the
-  habit, reconcile its runs and end a resolved run's stopwatch; the Google
-  sync moves runs through `moveRun` too.
+  through `HabitSchedulingService.moveRun` / `changeStatus`, which open the
+  run (`openRun`: the user lock, its habit's runs brought up to now), ask
+  `runRefusal` (`habits/scheduling/run-actionability.ts`) whether it may be
+  acted on and end a resolved run's stopwatch; the Google sync moves runs
+  through `moveRun` too.
 
 ## API
 
@@ -65,8 +67,8 @@ The time-based replanner ("Neu planen"), the day-end setting and the per-calenda
   `day-planner/agenda-context.ts`.
 - `PUT /day-planner/order` with `{ items: [{ type: "todo" | "habit", id }] }`
   stores an order: each item takes its index as position. A habit's `id` is its
-  occurrence id. All items must be the caller's own, otherwise 404 and nothing
-  is written. It runs in the per-user unit of work. It orders any day, not only
+  occurrence id. All items must be the caller's own (Google events too, see
+  below), otherwise 404 and nothing is written. It runs in the per-user unit of work. It orders any day, not only
   today: a position only counts among the items of the day an item is on. The
   Plan (`week-plan.md`) sorts every day of its board through it.
 - `GET /day-planner/plan?from=<day>&days=<1–31>` answers the Plan's days in
@@ -121,6 +123,24 @@ its window, no open stopwatch); otherwise the run stays and the next sync
 writes the event back to it. Finished work also goes out,
 export only, as Logbuch events (see `logbook.md`).
 
+These decisions (what an event asks for here, who wins a conflict, which
+quests, runs and stretches get, keep or lose an event, the 60 days synced,
+how the copy of the read calendars follows Google) are pure functions in
+`backend/src/calendar/calendar-sync-rules.ts`; `CalendarSyncService` loads,
+locks, calls Google and stores the links. Every write of a sync runs under
+the user lock (`UserUnitOfWork.run`): the incoming phase in one
+transaction, and after each request to Google a short one that stores what
+came back; no lock is held while Google answers.
+
+Events of the person's other calendars are kept as one row per event in
+`external_events`, keyed by user, calendar and the event's Google id
+(unique index `UQ_external_events_event`). A sync updates a row in place
+while its event exists (title, start, end), adds a row for a new event and
+deletes the rows whose event it no longer reads: deleted or cancelled in
+Google, past the 31 days back it reads, or in a calendar no longer read
+(`externalChanges`). So an event keeps its id across syncs, and its place
+and its tick live on the row; a sync never writes them.
+
 ## Frontend
 
 - `PlanFields.vue`: the day (with "Heute" / "Morgen"); `AppointmentFields.vue`:
@@ -143,7 +163,7 @@ export only, as Logbuch events (see `logbook.md`).
   offen." and names the next appointment. One that is over and
   still open (`past`) asks quietly "Vorbei – erledigt?" in one line below
   its meta; the ring answers it, and "Anderer Tag …" leads its menu
-  (`rowMenu` with `otherDay.lead`). A row with its time in the time column
+  (`rowMenu` with `past`). A row with its time in the time column
   leaves "Termin" out of its meta line; the column says it. `nextChangeAt` names the next minute at which this can
   change (a start, an end), and `composables/useDayClock.ts` sets one
   timeout for exactly that minute instead of polling; it catches up when a
@@ -186,7 +206,8 @@ export only, as Logbuch events (see `logbook.md`).
 - Moving a single entry sits in its menu "Aktionen für …" (Morgen, Nächste
   Woche, "Anderer Tag …"; an appointment only "Termin verschieben …", where
   the move is confirmed; a past, still open one "Anderer Tag …" first). The quick days run the same step as D and W
-  (`utils/row-actions.ts` `quickMoves` decides which days apply).
+  (`utils/row-actions.ts` `movesOf` decides which days apply; `useRowActions`
+  performs the step and says "„X“ steht jetzt bei morgen." in the status line).
 - `QuickAddQuest.vue`: type a title, press Enter, the quest is planned for
   today, at the end or at the head of the order. Two small toggles beside the
   field, ↑ "Oben einfügen" and ↓ "Unten einfügen" (`aria-pressed`), choose
@@ -245,11 +266,19 @@ with the runs the schedule forecasts. Its entries wear Heute's cards
 counts one.
 
 - A later day takes quests in its quick add, sorts its open quests and
-  stored runs by dragging (the Plan's `dropOnDay` / `dropRunOnDay`) and
-  moves them with the quick moves of their menu. Quests tick; runs only
-  tick on their own day.
+  stored runs by dragging (the Plan's `planMove`, sent by `usePlanMove`)
+  and moves them with the quick moves of their menu.
+- A card's menu is Heute's where it means something on another day
+  (`rowMenu`, performed by `useRowActions` the same way, status line
+  included): quick moves, "Anderer Tag …", Überspringen for a due run,
+  Bearbeiten, "In Kampagne verschieben …", Löschen; not the order's steps,
+  the Fokus-Modus or the stopwatch. Its dialogs are Heute's
+  (`useRowDialogs`, handed down as `dialogs`), so Heute holds its reload
+  while one is open, like the other day. Quests tick as on
+  today (`useTicks`: the sound, the undo toast, the campaign question);
+  runs only tick on their own day.
 - Its Google events are entries of the Plan's day, at their places; on a
-  later day they drag like on today (the Plan's `dropEventOnDay`).
+  later day they drag like on today (the Plan's `planMove`).
 - A run the schedule only forecasts (`isForecast`: no occurrence stored
   yet) shows as planned, not there: no ring, no fill, a dashed edge, here
   and in the Plan. See "Vorhergesagte Läufe" below.
@@ -267,7 +296,7 @@ daily's run on a later day is not stored before its day; the Plan forecasts
 it from the schedule. It still takes a place in that day's order:
 
 - It drags within its day like a card (`data-forecast-id`, `boardDrop`
-  kind `forecast`, `dropForecastOnDay`) and is written as
+  kind `forecast`, `planMove`) and is written as
   `{ type: "forecast", id: habitId, date }` among the day's items
   (`PUT /day-planner/order`).
 - `habit_forecast_places` (habit, day, position) keeps the place; the Plan
@@ -306,13 +335,13 @@ opens it again there. Only by hand: an event that is over is only shown
 quieter.
 
 - `external_events.doneAt` holds the tick, only the app's: nothing is
-  written to Google. A sync carries it over by `eventId` like the place
-  (`replaceExternal`).
+  written to Google. The row keeps it across syncs. The tick runs under the
+  user lock, so a sync running meanwhile comes before or after it.
 - `GET /day-planner/today` sends `done` per event; the Plan's entries say
   `status: "completed"` and stand among the day's done entries.
 - The frontend shows the tick at once and writes it after
   (`useEventTick`, the same in Heute and on its other days); a failure
-  takes it back. An id a sync has replaced meanwhile answers 404, and the
+  takes it back. An event deleted in Google meanwhile answers 404, and the
   view loads the day again.
 
 ### Google-Termine in der Reihenfolge
@@ -326,9 +355,9 @@ around them. Their time and day never change.
 
 - `external_events.dayPosition` holds the place, counted like the items'
   (`PUT /day-planner/order` takes `{ type: "event", id }` among the
-  items). A sync replaces the rows, so `eventId` (the event's id in its
-  calendar) carries the place over (`replaceExternal`). An event id a sync
-  has replaced meanwhile is skipped; its place stays a gap.
+  items). The row keeps it across syncs, also when the event moves in
+  Google. An event deleted in Google meanwhile is not found: the write
+  answers 404 like for any other item, and nothing is written.
 - `GET /day-planner/plan` puts them among each day's entries
   (`type: "event"`, `eventCandidates`), sorted by the one rule
   (`sortInDay`); one that began the day before stands at 00:00 there.
@@ -340,7 +369,7 @@ around them. Their time and day never change.
 - An event counts as a row: a card dropped right after it stays after it,
   and the event itself drags among the untimed cards, stopping at the
   appointments and events before and after it on the clock
-  (`clockBoundIndex`, in `dropInDay` on Heute and `dropEventOnDay` on the
+  (`clockBoundIndex`, in `dropInDay` on Heute and `planMove` on the
   Plan's days). It opens no editor and counts in no tally. The keyboard's
   "Nach oben" / "Nach unten" step over events; they have no menu.
 
@@ -354,3 +383,11 @@ test starts from the baseline schema with data and checks the conversion.
 
 `1796700000000-EventPlaces` adds `external_events.eventId` and
 `dayPosition`; rows from before get their id at the next sync.
+
+`1797200000000-ExternalEventIdentity` makes the event's id the row's
+identity: of rows with the same user, calendar and event id (possible while
+every sync replaced the rows) the one with a tick, else with a place, else
+the oldest stays and the others are deleted; then the unique index
+`UQ_external_events_event` is created. Rows without an event id stay out of
+the index and untouched; the next sync of their user deletes them. `down`
+drops the index (deleted duplicates do not come back).

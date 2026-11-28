@@ -67,8 +67,8 @@ and other calendars are only read.
 - `CalendarLinkEntity` has a third target, `workLogId`; a check constraint
   (`CHK_calendar_link_target`) keeps exactly one of `todoId`, `occurrenceId`,
   `workLogId` (migration `1795200000000-LogbookEvents`).
-- `logChanges` in `calendar-sync.service.ts` follows the outgoing pattern of
-  todos and runs: every stretch of **at least five minutes** becomes an event
+- `logSteps` and `logPushes` in `calendar-sync-rules.ts` follow the outgoing
+  pattern of todos and runs: every stretch of **at least five minutes** becomes an event
   at its real start and end; a correction, or a stopwatch block extended after a
   short pause (same row, later `updatedAt`), patches it; deleting the stretch removes its event. A correction queues a sync after the
   database commit, even when the exported stretch is shortened below five minutes. New stretches are exported back
@@ -117,7 +117,10 @@ and other calendars are only read.
   past the other edge (a stretch keeps 5 minutes), never before midnight and
   never after now on today. Releasing saves through `PATCH /work-logs/:id`
   with only the moved edge changed; the block keeps its new place until the
-  reload brings it, and a status line says the new times. Escape or a
+  reload brings it, and a status line says the new times. The calendar and
+  its dialog write inside the session of the view they are drawn in
+  (`useParentSession`): a save reloads that view once, and while the dialog
+  is open a change from elsewhere waits until it closes. Escape or a
   cancelled pointer drops the drag. Only an edge on the shown day drags (a
   stretch from the evening before keeps its start). The dialog is the
   keyboard's way to the same; appointments are edited in their editor, Google

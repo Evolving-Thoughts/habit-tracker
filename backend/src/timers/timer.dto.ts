@@ -4,12 +4,11 @@ import {
   IsInt,
   IsOptional,
   IsUUID,
-  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
+import { IsPlannedMinutes } from '../common/validation/field-rules';
 import { FocusBlockRequestDto } from '../focus-blocks/focus-block.dto';
-import { TIMER_MAX_MINUTES, TIMER_MIN_MINUTES } from './timer-target';
 export class StartTimerDto {
   @IsIn(['todo', 'occurrence'])
   kind!: 'todo' | 'occurrence';
@@ -37,8 +36,6 @@ export class ResumeTimerDto {
   focusBlock?: FocusBlockRequestDto;
 }
 export class ChangeTimerDurationDto {
-  @IsInt()
-  @Min(TIMER_MIN_MINUTES)
-  @Max(TIMER_MAX_MINUTES)
+  @IsPlannedMinutes()
   durationMinutes!: number;
 }

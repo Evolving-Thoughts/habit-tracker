@@ -1,4 +1,9 @@
-import { elapsedAt, MAX_SEGMENT_MS } from './timer-math';
+import {
+  elapsedAt,
+  hasReachedTarget,
+  MAX_SEGMENT_MS,
+  targetReachesAt,
+} from './timer-math';
 
 /**
  * How a stopwatch and the Logbuch move together, as one pure function: the
@@ -16,6 +21,10 @@ import { elapsedAt, MAX_SEGMENT_MS } from './timer-math';
  *   stopwatch is ended right away;
  * - what the stopwatch shows is only the time it ran (`elapsedAt`), so the
  *   time neither jumps back on a pause nor ahead on resume.
+ *
+ * It also keeps the Soll's bookkeeping: when a running stopwatch reaches
+ * its target (`targetReachesAt`), when it did (`targetReachedAt`) and
+ * whether the push worker has looked at it (`pushHandledAt`).
  */
 
 /**
@@ -45,6 +54,14 @@ export type StopwatchState = {
   pausedAt: Date | null;
   /** The work log of the current block, once it is long enough to be one. */
   workLogId: number | null;
+  /** The Soll in minutes, if the target has one. */
+  targetMinutes: number | null;
+  /** While running towards the Soll: the moment it is reached. */
+  targetReachesAt: Date | null;
+  /** When the Soll was reached; the notification hangs on this. */
+  targetReachedAt: Date | null;
+  /** When the push worker looked at the reached Soll, or set as handled. */
+  pushHandledAt: Date | null;
 };
 
 export type StopwatchEvent =
@@ -56,7 +73,13 @@ export type StopwatchEvent =
    */
   | { type: 'pause' | 'stop'; blockLog?: { startedAt: Date } | null }
   /** Starts the next stretch of a paused stopwatch. */
-  | { type: 'resume' };
+  | { type: 'resume' }
+  /** The running stopwatch reached its Soll at the event's moment. */
+  | { type: 'reach' }
+  /** The Soll is now `minutes`; the time worked stays. */
+  | { type: 'changeTarget'; minutes: number }
+  /** The push worker looked at the reached Soll; it does not look again. */
+  | { type: 'markPushHandled' };
 
 export type LogOperation =
   /** Moves the end of the existing log `id`. */
@@ -73,20 +96,99 @@ export type Transition = { state: StopwatchState; logOps: LogOperation[] };
  * The next state of the stopwatch and the log writes for `event` at `now`.
  * An event that does not apply to the state (resuming a running stopwatch,
  * pausing a paused one) changes only `state`, as the callers never send it.
+ * The Soll is due only while the stopwatch runs: a pause or stop clears its
+ * moment, a resume computes it again unless it was reached already.
  */
 export function transition(
   current: StopwatchState,
   event: StopwatchEvent,
   now: Date,
 ): Transition {
-  if (event.type === 'resume') return resume(current, now);
-  const closed = closeStretch(current, now, event.blockLog ?? null);
-  return {
-    state: {
-      ...closed.state,
-      state: event.type === 'pause' ? 'paused' : 'stopped',
+  switch (event.type) {
+    case 'resume': {
+      const resumed = resume(current, now);
+      const { state } = resumed;
+      // A block continued past its Soll stays reached; nothing is due again.
+      state.targetReachesAt = state.targetReachedAt
+        ? null
+        : targetReachesAt(state);
+      return resumed;
+    }
+    case 'pause':
+    case 'stop': {
+      const closed = closeStretch(current, now, event.blockLog ?? null);
+      return {
+        state: {
+          ...closed.state,
+          state: event.type === 'pause' ? 'paused' : 'stopped',
+          targetReachesAt: null,
+        },
+        logOps: closed.logOps,
+      };
+    }
+    case 'reach':
+      return {
+        state: { ...current, targetReachedAt: now, targetReachesAt: null },
+        logOps: [],
+      };
+    case 'changeTarget':
+      return {
+        state: settleTarget({ ...current, targetMinutes: event.minutes }, now),
+        logOps: [],
+      };
+    case 'markPushHandled':
+      return { state: { ...current, pushHandledAt: now }, logOps: [] };
+  }
+}
+
+/**
+ * A new stopwatch, running from `now` on the time already logged for its
+ * target. A Soll that this time already passed is reached silently.
+ */
+export function startedStopwatch(
+  loggedMilliseconds: number,
+  targetMinutes: number | null,
+  now: Date,
+): StopwatchState {
+  return settleTarget(
+    {
+      state: 'running',
+      elapsedMilliseconds: loggedMilliseconds,
+      idleMilliseconds: 0,
+      segmentStartedAt: now,
+      blockStartedAt: null,
+      pausedAt: null,
+      workLogId: null,
+      targetMinutes,
+      targetReachesAt: null,
+      targetReachedAt: null,
+      pushHandledAt: null,
     },
-    logOps: closed.logOps,
+    now,
+  );
+}
+
+/**
+ * The Soll after it or the time worked was set rather than counted (a
+ * start, a new target). Already passed, it is reached without a
+ * notification: marked reached and handled at `now`, nobody needs to hear
+ * of it, and an earlier reach stays as it was. Otherwise it is due at its
+ * moment (none while paused), with nothing reached or handled.
+ */
+function settleTarget(state: StopwatchState, now: Date): StopwatchState {
+  if (!hasReachedTarget(state, now))
+    return {
+      ...state,
+      targetReachesAt: targetReachesAt(state),
+      targetReachedAt: null,
+      pushHandledAt: null,
+    };
+  if (state.targetReachedAt) return { ...state, targetReachesAt: null };
+  return {
+    ...state,
+    targetReachesAt: null,
+    targetReachedAt: now,
+    pushHandledAt: now,
   };
 }
 

@@ -91,11 +91,7 @@ function openFromCard(event: MouseEvent): void {
 
 /* The row whose stopwatch runs says so in words, not only by its button. */
 const controller = useTimer();
-const timerState = computed(() =>
-  props.measure
-    ? timerStateOf(controller, props.measure.kind, props.measure.targetId)
-    : null,
-);
+const timerState = computed(() => timerStateOf(controller, props.measure));
 </script>
 
 <template>

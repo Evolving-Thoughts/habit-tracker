@@ -8,6 +8,14 @@ import {
   type TimerResponse,
 } from "../api/timers.api";
 import { updateTodoCompletion } from "../api/day-planner.api";
+import { getFocusBlock } from "../api/focus-block.api";
+import { getQuestHours } from "../api/quest-hours.api";
+import { getWeekReview } from "../api/week-review.api";
+import { getMonthChallenges } from "../api/month-challenges.api";
+import { resetActionSounds } from "../composables/action-sounds";
+import { updateSoundEffects } from "../composables/useSoundEffects";
+import type { FocusBlockState } from "../types/focus-block";
+import type { QuestHoursResponse } from "../types/quest-hours";
 vi.mock("../api/timers.api", () => ({
   getCurrentTimer: vi.fn(),
   startTimer: vi.fn(),
@@ -18,6 +26,17 @@ vi.mock("../api/day-planner.api", () => ({
   updateTodoCompletion: vi.fn(),
   updateOccurrenceStatus: vi.fn(),
 }));
+vi.mock("../api/focus-block.api", () => ({
+  getFocusBlock: vi.fn(),
+  saveFocusSettings: vi.fn(),
+  addFocusEntry: vi.fn(),
+  removeFocusEntry: vi.fn(),
+  startFocusBlock: vi.fn(),
+  endFocusBlock: vi.fn(),
+}));
+vi.mock("../api/quest-hours.api", () => ({ getQuestHours: vi.fn() }));
+vi.mock("../api/week-review.api", () => ({ getWeekReview: vi.fn() }));
+vi.mock("../api/month-challenges.api", () => ({ getMonthChallenges: vi.fn() }));
 enableAutoUnmount(afterEach);
 const response = (
   state: "running" | "paused" = "running",
@@ -286,6 +305,52 @@ describe("global Timer bar", () => {
       document.documentElement.style.getPropertyValue("--timer-bar-height"),
     ).toBe("0px");
     vi.unstubAllGlobals();
+  });
+  it("reads the quest hours and the Fokus-Sperre once at app start with a running stopwatch", async () => {
+    updateSoundEffects({ enabled: true });
+    resetActionSounds();
+    localStorage.clear();
+    // Both answers take their time, so the stopwatch's answer arrives first.
+    const held: (() => void)[] = [];
+    const later = <T>(value: T) =>
+      new Promise<T>((resolve) => held.push(() => resolve(value)));
+    vi.mocked(getFocusBlock).mockImplementation(() =>
+      later({
+        version: "v1",
+        serverNow: response().serverNow,
+        settings: {
+          enabled: false,
+          trigger: "stopwatch",
+          thresholdMinutes: 15,
+          mode: "soft",
+          listMode: "blocklist",
+        },
+        block: null,
+        lists: { block: [], allow: [] },
+        fixedDomains: [],
+      } satisfies FocusBlockState),
+    );
+    vi.mocked(getQuestHours).mockImplementation(() =>
+      later({
+        startDate: "",
+        weeklyTargetMinutes: null,
+        questMinutes: 0,
+      } as QuestHoursResponse),
+    );
+    vi.mocked(getWeekReview).mockImplementation(() => new Promise(() => {}));
+    vi.mocked(getMonthChallenges).mockImplementation(
+      () => new Promise(() => {}),
+    );
+    const w = mount(TimerProvider);
+    await flushPromises();
+    expect(w.text()).toContain("Stoppuhr läuft");
+    for (const release of held.splice(0)) release();
+    await flushPromises();
+    expect(getCurrentTimer).toHaveBeenCalledTimes(1);
+    expect(getQuestHours).toHaveBeenCalledTimes(1);
+    expect(getFocusBlock).toHaveBeenCalledTimes(1);
+    updateSoundEffects({ enabled: false });
+    resetActionSounds();
   });
   it("polls and removes intervals/listeners after unmount", async () => {
     vi.useFakeTimers();

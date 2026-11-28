@@ -330,9 +330,31 @@ describe("CampaignsView", () => {
         .trigger("click");
       await flushPromises();
       await choose(w, "#campaign-move-parent", "Keine");
+      const loads = vi.mocked(getTodoHierarchy).mock.calls.length;
       await w.get("[role=dialog] form").trigger("submit");
       await flushPromises();
       expect(updateTodo).toHaveBeenCalledWith(2, { parentId: null });
+      // Saved: the tree loads again, the dialog closes and the line says so.
+      expect(getTodoHierarchy).toHaveBeenCalledTimes(loads + 1);
+      expect(w.find("[role=dialog]").exists()).toBe(false);
+      expect(w.get(".status-line").text()).toBe("Quest verschoben.");
+    });
+
+    it("names the opened campaign's editor a campaign's from the start", async () => {
+      const w = view();
+      await flushPromises();
+      await w
+        .get('[aria-label="Kampagne Kampagne 9 bearbeiten"]')
+        .trigger("click");
+      await flushPromises();
+      expect(w.get("[role=dialog]").attributes("title")).toBe(
+        "Kampagne bearbeiten",
+      );
+      w.findComponent({ name: "PlannerItemEditor" }).vm.$emit("changed");
+      await flushPromises();
+      expect(getTodoHierarchy).toHaveBeenCalledTimes(2);
+      expect(w.find("[role=dialog]").exists()).toBe(false);
+      expect(w.get(".status-line").text()).toBe("Änderungen gespeichert.");
     });
 
     it("does not delete when preview is cancelled and shows active/paused timers", async () => {

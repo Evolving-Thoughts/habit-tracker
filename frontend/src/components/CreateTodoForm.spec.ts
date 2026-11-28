@@ -366,6 +366,8 @@ describe("CreateTodoForm", () => {
     );
   });
 
+  // What the text fills over the form's own values is told in
+  // useQuestFromText.spec.ts (`fieldsFromText`); these prove the wiring.
   describe("day and duration from the title", () => {
     // Tuesday, 24 Nov 2026, in Berlin: "morgen" is Wednesday the 25th.
     beforeEach(() => {
@@ -447,24 +449,6 @@ describe("CreateTodoForm", () => {
       await wrapper.get('input[name="duration"]').setValue("45");
       await wrapper.get('input[name="title"]').setValue("Laufen 30 Minuten");
       expect(value(wrapper, "duration")).toBe("45");
-    });
-
-    it("empties a filled field again when its chip is discarded", async () => {
-      const wrapper = mountForm();
-      await dictate(wrapper, "Wäsche morgen");
-      expect(value(wrapper, "scheduledDate")).toBe("2026-11-25");
-      await wrapper
-        .get('[aria-label="Tag: morgen, entfernen"]')
-        .trigger("click");
-      expect(value(wrapper, "scheduledDate")).toBe("");
-      await wrapper.get("form").trigger("submit");
-      await flushPromises();
-      expect(createTodoMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "Wäsche morgen",
-          scheduledDate: null,
-        }),
-      );
     });
 
     it("reads nothing out of a campaign's title", async () => {
@@ -549,21 +533,6 @@ describe("CreateTodoForm", () => {
         scheduledDate: "2026-11-25",
         parentId: 1,
         categoryId: 11,
-      });
-    });
-
-    it("takes a named category over the campaign's", async () => {
-      const wrapper = await mountForm();
-      await dictate(
-        wrapper,
-        "Kapitel 4 gliedern morgen 30 Minuten Kampagne Buch schreiben Kategorie Sport",
-      );
-      expect(value(wrapper, "#todo-category")).toBe("Sport");
-      expect(await submit(wrapper)).toMatchObject({
-        title: "Kapitel 4 gliedern",
-        plannedDurationMinutes: 30,
-        parentId: 1,
-        categoryId: 10,
       });
     });
 

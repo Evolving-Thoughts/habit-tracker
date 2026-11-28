@@ -10,6 +10,8 @@ const props = defineProps<{
   returnFocus: () => HTMLElement | null;
   /** Where the focus starts; the title unless a view asks for its day. */
   focus?: string;
+  /** Known to be a campaign before the editor has loaded it. */
+  campaign?: boolean;
 }>();
 const emit = defineEmits<{ close: []; changed: []; busy: [value: boolean] }>();
 // The editor reports only its writes; while it loads, Escape still closes.
@@ -25,7 +27,7 @@ function onMode(next: "todo" | "habit"): void {
   mode.value = next;
 }
 /** The quest is a campaign (known once the editor has loaded it). */
-const campaign = ref(false);
+const campaign = ref(props.campaign);
 const title = computed(() =>
   props.kind === "habit"
     ? "Daily bearbeiten"

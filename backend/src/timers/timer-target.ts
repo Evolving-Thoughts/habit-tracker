@@ -1,64 +1,122 @@
-import { Brackets, EntityManager } from 'typeorm';
-import { occurrenceDueDate } from '../habit-occurrences/entities/habit-occurrence.entity';
+import { Brackets, EntityManager, In } from 'typeorm';
 import { WorkLogEntity } from '../work-logs/work-log.entity';
 import { coveredMilliseconds } from '../work-logs/work-time';
+import { TodoEntity } from '../todos/entities/todo.entity';
+import { HabitOccurrenceEntity } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { TimerEntity } from './timer.entity';
+import { elapsedAt } from './timer-math';
 import { StopwatchEvent, StopwatchState, transition } from './timer-transition';
-import { focusBlockFollowsStopwatch } from '../focus-blocks/focus-block-store';
+import {
+  focusBlockFollowsStopwatch,
+  startFocusBlock,
+} from '../focus-blocks/focus-block-store';
+import type {
+  FocusBlockMode,
+  FocusBlockOverride,
+} from '../focus-blocks/focus-block-rules';
 
 /**
- * Timer targets: which todo or habit occurrence may carry a stopwatch, the
- * adapter that stores a stopwatch event with its Logbuch writes
- * (`recordTransition`, the rules are in `timer-transition.ts`), and what
- * happens to a stopwatch when its target stops being eligible. No Nest
- * dependencies, so todos, habits, the calendar sync and the timers service
- * can all use it without module cycles.
+ * Timer targets: which todo may carry a stopwatch (a habit run may while
+ * `runRefusal` in `habits/scheduling/run-actionability.ts` allows it), the
+ * user's open stopwatch (`findOpenTimer`), the adapter that stores a
+ * stopwatch event with its Logbuch writes (`recordTransition`, the rules
+ * are in `timer-transition.ts`), the Fokus-Sperre that starts with it
+ * (`startFocusFor`), and what happens to a stopwatch when its target stops
+ * being eligible. No Nest dependencies, so todos, habits, the Fokus-Sperre,
+ * the calendar sync and the timers service can all use it without module
+ * cycles.
  */
-export const TIMER_MIN_MINUTES = 1;
-export const TIMER_MAX_MINUTES = 10080;
 
 /** A todo can carry a timer while it is open. */
 export function isTodoTimerEligible(todo: { completed: boolean }): boolean {
   return !todo.completed;
 }
 
-/** An occurrence can carry a timer while pending, due and its habit active. */
-export function isOccurrenceTimerEligible(
-  occurrence: {
-    status: string;
-    scheduledDate: string;
-    movedToDate?: string | null;
-  },
-  habit: { isActive: boolean },
-  today: string,
-): boolean {
-  return (
-    habit.isActive &&
-    occurrence.status === 'pending' &&
-    occurrenceDueDate(occurrence) <= today
+/** The user's one running or paused stopwatch, or null. */
+export function findOpenTimer(
+  manager: EntityManager,
+  userId: string,
+): Promise<TimerEntity | null> {
+  return manager.findOne(TimerEntity, {
+    where: { userId, state: In(['running', 'paused']) },
+  });
+}
+
+/**
+ * This stopwatch started or resumed running, or "Sperre starten" was
+ * pressed for it: a Fokus-Sperre for its quest or run starts when the rule
+ * calls for one (`startFocusBlock`; `force` skips the rule, an open block
+ * stays as it is). `override` is the quest's or daily's own choice, `mode`
+ * Soft or Hardcore as picked in the Fokus-Modus. Runs in the caller's
+ * locked transaction.
+ */
+export async function startFocusFor(
+  manager: EntityManager,
+  timer: TimerEntity,
+  override: FocusBlockOverride | null | undefined,
+  request: { mode?: FocusBlockMode; force?: boolean },
+  now: Date,
+): Promise<void> {
+  await startFocusBlock(
+    manager,
+    timer.userId,
+    {
+      target:
+        timer.todoId !== null
+          ? { todoId: timer.todoId }
+          : { occurrenceId: timer.occurrenceId! },
+      title: timer.title,
+      override: override ?? 'default',
+      targetMinutes: timer.targetMinutes,
+      elapsedMilliseconds: elapsedAt(timer, now),
+      mode: request.mode,
+      force: request.force,
+    },
+    now,
   );
+}
+
+/** The Fokus-Sperre choice of the stopwatch's quest or daily, as stored. */
+export async function focusOverrideOf(
+  manager: EntityManager,
+  timer: TimerEntity,
+): Promise<FocusBlockOverride | undefined> {
+  if (timer.todoId !== null)
+    return (
+      await manager.findOneBy(TodoEntity, {
+        id: timer.todoId,
+        userId: timer.userId,
+      })
+    )?.focusBlock;
+  const occurrence = await manager.findOne(HabitOccurrenceEntity, {
+    where: { id: timer.occurrenceId! },
+    relations: { habit: true },
+  });
+  return occurrence?.habit?.focusBlock;
 }
 
 /**
  * Runs one stopwatch event through `transition` (`timer-transition.ts`):
- * loads what it needs, writes its log operations and puts the next state on
- * the timer; the caller saves the timer. The block's log is read locked, so
- * a correction or deletion of it either happened before or waits until this
- * transaction ends. A pause or stop also ends the Fokus-Sperre that ends
- * with it (`focusBlockFollowsStopwatch`); a start or resume starts one in
+ * loads what it needs, writes its log operations and puts the next state,
+ * the Soll's bookkeeping included, on the timer; the caller saves the
+ * timer. The block's log is read locked, so a correction or deletion of it
+ * either happened before or waits until this transaction ends. A pause or
+ * stop also ends the Fokus-Sperre that ends with it
+ * (`focusBlockFollowsStopwatch`); a start or resume starts one in
  * `TimersService`, which knows the quest or daily.
  */
 export async function recordTransition(
   manager: EntityManager,
   timer: TimerEntity,
-  type: 'pause' | 'stop' | 'resume',
+  event: StopwatchEvent,
   at: Date,
 ): Promise<void> {
-  const event: StopwatchEvent =
-    type === 'resume'
-      ? { type }
-      : {
-          type,
+  const closes = event.type === 'pause' || event.type === 'stop';
+  const { state, logOps } = transition(
+    stopwatchState(timer),
+    closes
+      ? {
+          type: event.type,
           blockLog:
             timer.workLogId !== null && timer.segmentStartedAt
               ? await manager.findOne(WorkLogEntity, {
@@ -67,8 +125,10 @@ export async function recordTransition(
                   lock: { mode: 'pessimistic_write' },
                 })
               : null,
-        };
-  const { state, logOps } = transition(stopwatchState(timer), event, at);
+        }
+      : event,
+    at,
+  );
   for (const operation of logOps) {
     if (operation.type === 'extend') {
       await manager.update(
@@ -91,8 +151,8 @@ export async function recordTransition(
       state.workLogId = (identifiers[0] as { id: number }).id;
   }
   Object.assign(timer, state);
-  if (type !== 'resume')
-    await focusBlockFollowsStopwatch(manager, timer.userId, type, at);
+  if (closes)
+    await focusBlockFollowsStopwatch(manager, timer.userId, event.type, at);
 }
 
 function stopwatchState(timer: TimerEntity): StopwatchState {
@@ -104,6 +164,10 @@ function stopwatchState(timer: TimerEntity): StopwatchState {
     blockStartedAt: timer.blockStartedAt,
     pausedAt: timer.pausedAt,
     workLogId: timer.workLogId,
+    targetMinutes: timer.targetMinutes,
+    targetReachesAt: timer.targetReachesAt,
+    targetReachedAt: timer.targetReachedAt,
+    pushHandledAt: timer.pushHandledAt,
   };
 }
 
@@ -132,8 +196,7 @@ export async function stopTimer(
   timer: TimerEntity,
   at: Date,
 ): Promise<TimerEntity> {
-  await recordTransition(manager, timer, 'stop', at);
-  timer.targetReachesAt = null;
+  await recordTransition(manager, timer, { type: 'stop' }, at);
   return manager.save(TimerEntity, timer);
 }
 

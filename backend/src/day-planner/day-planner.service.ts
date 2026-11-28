@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   Between,
-  DataSource,
+  EntityManager,
   In,
   LessThanOrEqual,
   MoreThanOrEqual,
@@ -14,11 +14,9 @@ import { dayOf, weekRange } from '../common/date/local-day';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { ownedOccurrences } from '../habit-occurrences/owned-occurrences';
-import {
-  isOccurrenceTimerEligible,
-  isTodoTimerEligible,
-} from '../timers/timer-target';
+import { isTodoTimerEligible } from '../timers/timer-target';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
+import { runRefusal } from '../habits/scheduling/run-actionability';
 import {
   effectiveDuration,
   HabitOccurrenceEntity,
@@ -81,44 +79,55 @@ type ContextField =
 @Injectable()
 export class DayPlannerService {
   constructor(
-    private readonly db: DataSource,
     private readonly scheduling: HabitSchedulingService,
     private readonly clock: Clock,
     private readonly unitOfWork: UserUnitOfWork,
   ) {}
 
-  async getToday(userId: string): Promise<DayPlannerResponseDto> {
-    const today = this.clock.today();
+  /**
+   * Heute: one response from one snapshot with one `now`, so every part
+   * speaks of the same moment and the same stored state
+   * (`answerAsOfNow`).
+   */
+  getToday(userId: string): Promise<DayPlannerResponseDto> {
+    return this.scheduling.answerAsOfNow(userId, (manager, now) =>
+      this.todayIn(manager, userId, now),
+    );
+  }
+
+  private async todayIn(
+    manager: EntityManager,
+    userId: string,
+    now: Date,
+  ): Promise<DayPlannerResponseDto> {
+    const today = dayOf(now);
 
     const [todos, occurrences, context] = await Promise.all([
-      this.findTodosForToday(userId, today),
-      this.scheduling.getToday(userId),
-      loadAgendaContext(this.db.manager, userId, today),
+      this.findTodosForToday(manager, userId, today),
+      this.scheduling.todayRuns(manager, userId, now),
+      loadAgendaContext(manager, userId, today),
     ]);
     const { ancestry } = context;
-    // Runs are reconciled now: the challenge counts today's as stored.
-    const monthChallenge = await runningChallengeResponse(
-      this.db.manager,
-      userId,
-      this.clock.now(),
-    );
+    // Runs are as of now: the challenge counts today's as stored.
+    const monthChallenge = await runningChallengeResponse(manager, userId, now);
 
     // The week's stretches: today's work and the week's quest hours.
     const { startDate, endDate } = weekRange(today);
     const [parents, habitGoalsByHabit, logs, questTarget, streaks] =
       await Promise.all([
-        this.parentsOf(userId, todos),
+        this.parentsOf(manager, userId, todos),
         this.habitGoalsFor(
+          manager,
           userId,
           occurrences.map((occurrence) => occurrence.habitId),
           today,
         ),
-        logsOfDays(this.db.manager, userId, startDate, endDate),
-        weeklyQuestTarget(this.db.manager, userId, startDate),
+        logsOfDays(manager, userId, startDate, endDate),
+        weeklyQuestTarget(manager, userId, startDate),
         loadStreaks(
-          this.db.manager,
+          manager,
           occurrences.map((occurrence) => occurrence.habitId),
-          this.clock.now(),
+          now,
         ),
       ]);
     const workedOn = (key: 'todoId' | 'occurrenceId', id: number): number =>
@@ -143,7 +152,7 @@ export class DayPlannerService {
       }),
       ...occurrences.map((occurrence) => {
         const item: DayPlannerItemDto = {
-          ...this.mapOccurrence(occurrence, today),
+          ...this.mapOccurrence(occurrence, today, now),
           ...context.habit(occurrence.habit),
           goal: habitGoalsByHabit.get(occurrence.habitId) ?? null,
           workedMinutes: workedOn('occurrenceId', occurrence.id),
@@ -158,11 +167,7 @@ export class DayPlannerService {
       ...entry.item,
     })).map(({ item, dayPosition }) => ({ ...item, dayPosition }));
 
-    const externalEvents = await eventsOfDays(
-      this.db.manager,
-      { userId },
-      today,
-    );
+    const externalEvents = await eventsOfDays(manager, { userId }, today);
     return new DayPlannerResponseDto({
       date: today,
       items,
@@ -179,7 +184,7 @@ export class DayPlannerService {
       workedMinutes: workedMinutes(logs, today),
       questHours: {
         ...questSoFar(
-          await withCampaigns(this.db.manager, userId, logs, ancestry),
+          await withCampaigns(manager, userId, logs, ancestry),
           today,
         ),
         weeklyTargetMinutes: questTarget,
@@ -190,10 +195,11 @@ export class DayPlannerService {
 
   /**
    * `days` days from `from` as a board of columns, and what is overdue,
-   * from one consistent read. Todos follow the todo agenda, habits the
-   * forecast history uses; past days only show what was done. Today's runs
-   * are stored first, as Heute does, so the board can sort, move and open
-   * them like Heute; later days keep their forecast.
+   * from one snapshot with one `now` (`answerAsOfNow`). Todos follow the
+   * todo agenda, habits the forecast history uses; past days only show what
+   * was done. Today's runs are stored before the read, as for Heute, so the
+   * board can sort, move and open them like Heute; later days keep their
+   * forecast.
    */
   async getPlan(
     userId: string,
@@ -203,14 +209,12 @@ export class DayPlannerService {
     const dates = planDates(from, days);
     const firstDay = dates[0];
     const lastDay = dates[dates.length - 1];
-    const now = this.clock.now();
-    const today = dayOf(now);
-    // Open items only exist from today on; earlier ones are overdue.
-    const ahead = dates.filter((date) => date >= today);
-    // Today is always forecast: its carried-over runs are overdue.
-    const forecastDates = [today, ...ahead.filter((date) => date !== today)];
-    await this.scheduling.reconcileAll(userId);
-    return this.db.transaction('REPEATABLE READ', async (manager) => {
+    return this.scheduling.answerAsOfNow(userId, async (manager, now) => {
+      const today = dayOf(now);
+      // Open items only exist from today on; earlier ones are overdue.
+      const ahead = dates.filter((date) => date >= today);
+      // Today is always forecast: its carried-over runs are overdue.
+      const forecastDates = [today, ...ahead.filter((date) => date !== today)];
       const ancestry = await loadTodoAncestry(manager, userId, today);
       const open = ahead.length
         ? await openScheduledTodos(manager, userId, {
@@ -336,8 +340,8 @@ export class DayPlannerService {
    * Stores the order the user sorted a day into: every item takes its index
    * as position. It works for any day, because a position only counts among
    * the items of the day an item is on. Nothing is written unless all items
-   * are the user's own. A Google event takes its place too; one that a sync
-   * has replaced meanwhile is skipped, its place stays a gap.
+   * are the user's own, Google events included (one deleted in Google is
+   * not found either).
    */
   reorder(
     userId: string,
@@ -354,6 +358,7 @@ export class DayPlannerService {
     ];
     const todoIds = idsOf('todo');
     const occurrenceIds = idsOf('habit');
+    const eventIds = idsOf('event');
     const forecastHabitIds = idsOf('forecast');
     return this.unitOfWork.run(userId, async (manager) => {
       if (
@@ -364,7 +369,7 @@ export class DayPlannerService {
           forecastHabitIds.length
       )
         throw new NotFoundException('An item to sort was not found');
-      const [todos, occurrences] = await Promise.all([
+      const [todos, occurrences, events] = await Promise.all([
         todoIds.length
           ? manager
               .getRepository(TodoEntity)
@@ -377,8 +382,17 @@ export class DayPlannerService {
               })
               .getCount()
           : 0,
+        eventIds.length
+          ? manager
+              .getRepository(ExternalEventEntity)
+              .countBy({ userId, id: In(eventIds) })
+          : 0,
       ]);
-      if (todos !== todoIds.length || occurrences !== occurrenceIds.length)
+      if (
+        todos !== todoIds.length ||
+        occurrences !== occurrenceIds.length ||
+        events !== eventIds.length
+      )
         throw new NotFoundException('An item to sort was not found');
       for (const [dayPosition, { type, id, date }] of items.entries()) {
         if (type === 'forecast') {
@@ -402,18 +416,22 @@ export class DayPlannerService {
   }
 
   /**
-   * Ticks a Google event off or opens it again. Only the app's copy
-   * changes; the sync keeps the tick (see `replaceExternal`).
+   * Ticks a Google event off or opens it again, under the user lock like
+   * every change, so a sync running meanwhile comes before or after it.
+   * Only the app's copy changes, and a sync never writes the tick.
    */
-  async setEventDone(userId: string, id: number, done: boolean): Promise<void> {
-    const result = await this.db
-      .getRepository(ExternalEventEntity)
-      .update({ id, userId }, { doneAt: done ? new Date() : null });
-    if (!result.affected) throw new NotFoundException('Event not found');
+  setEventDone(userId: string, id: number, done: boolean): Promise<void> {
+    return this.unitOfWork.run(userId, async (manager) => {
+      const result = await manager
+        .getRepository(ExternalEventEntity)
+        .update({ id, userId }, { doneAt: done ? this.clock.now() : null });
+      if (!result.affected) throw new NotFoundException('Event not found');
+    });
   }
 
   /** Titles of the direct parents: the goal a todo is a step towards. */
   private async parentsOf(
+    manager: EntityManager,
     userId: string,
     todos: TodoEntity[],
   ): Promise<Map<number, string>> {
@@ -425,7 +443,7 @@ export class DayPlannerService {
       ),
     ];
     if (!ids.length) return new Map();
-    const parents = await this.db.getRepository(TodoEntity).find({
+    const parents = await manager.getRepository(TodoEntity).find({
       select: { id: true, title: true },
       where: { userId, id: In(ids) },
     });
@@ -434,12 +452,13 @@ export class DayPlannerService {
 
   /** The goal each habit counts towards in a period covering today. */
   private async habitGoalsFor(
+    manager: EntityManager,
     userId: string,
     habitIds: number[],
     today: string,
   ): Promise<Map<number, DayPlannerGoalDto>> {
     if (!habitIds.length) return new Map();
-    const goals = await this.db.getRepository(TodoEntity).find({
+    const goals = await manager.getRepository(TodoEntity).find({
       where: {
         userId,
         goalHabitId: In([...new Set(habitIds)]),
@@ -447,7 +466,7 @@ export class DayPlannerService {
         periodEnd: MoreThanOrEqual(today),
       },
     });
-    const progress = await habitGoals(this.db.manager, goals);
+    const progress = await habitGoals(manager, goals);
     const result = new Map<number, DayPlannerGoalDto>();
     for (const goal of goals) {
       const counted = progress.get(goal.id);
@@ -463,16 +482,17 @@ export class DayPlannerService {
   }
 
   private async findTodosForToday(
+    manager: EntityManager,
     userId: string,
     today: string,
   ): Promise<TodoEntity[]> {
     const day = { firstDay: today, lastDay: today };
     const [open, completed] = await Promise.all([
-      openScheduledTodos(this.db.manager, userId, {
+      openScheduledTodos(manager, userId, {
         ...day,
         includeOverdue: true,
       }),
-      completedTodos(this.db.manager, userId, day),
+      completedTodos(manager, userId, day),
     ]);
     return [...open, ...completed];
   }
@@ -507,6 +527,7 @@ export class DayPlannerService {
   private mapOccurrence(
     occurrence: HabitOccurrenceEntity,
     today: string,
+    now: Date,
   ): Omit<DayPlannerHabitItemDto, ContextField> {
     if (!occurrence.habit || !occurrence.scheduleVersion) {
       throw new Error('Missing occurrence relations');
@@ -529,11 +550,13 @@ export class DayPlannerService {
         : null,
       scheduleType: occurrence.scheduleVersion.type,
       isOverdue: pending && dueDate < today,
-      timerEligible: isOccurrenceTimerEligible(
-        occurrence,
-        occurrence.habit,
-        today,
-      ),
+      timerEligible:
+        runRefusal({
+          run: occurrence,
+          version: occurrence.scheduleVersion,
+          habit: occurrence.habit,
+          now,
+        }) === null,
       focusBlock: occurrence.habit.focusBlock ?? 'default',
     };
   }

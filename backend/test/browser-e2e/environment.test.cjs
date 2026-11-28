@@ -83,3 +83,21 @@ test('serves the silent fixture sounds instead of an inherited sounds folder', (
   for (const file of ['rain.ogg', 'chime-done.ogg'])
     assert.ok(existsSync(join(env.SOUNDS_DIR, file)), file);
 });
+
+test('reset empties every table but the migrations table in one statement', () => {
+  const { truncateStatement } = require('./reset.cjs');
+  assert.equal(
+    truncateStatement(['habits', 'migrations', 'push_deliveries', 'users']),
+    'TRUNCATE TABLE "habits", "push_deliveries", "users" RESTART IDENTITY',
+  );
+  assert.doesNotMatch(truncateStatement(['todos']), /CASCADE/);
+});
+
+test('reset quotes table names and refuses an unmigrated database', () => {
+  const { truncateStatement } = require('./reset.cjs');
+  assert.equal(
+    truncateStatement(['odd"name']),
+    'TRUNCATE TABLE "odd""name" RESTART IDENTITY',
+  );
+  assert.throws(() => truncateStatement(['migrations']), /No tables to reset/);
+});

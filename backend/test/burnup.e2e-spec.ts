@@ -6,7 +6,14 @@ import { AppModule } from '../src/app.module';
 import { Clock } from '../src/common/clock';
 import { dayOf } from '../src/common/date/local-day';
 import { configureApp } from '../src/configure-app';
-import { authenticatedRequest as request, seedAuth } from './auth-fixture';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  SEEDED_AUTH_TABLES,
+  TEST_USER,
+} from './auth-fixture';
+import { resetDatabase } from './reset-database';
+import { holdUserLock, stillPending, within } from './user-lock';
 
 type Point = { date: string; doneCount: number; totalCount: number };
 
@@ -42,9 +49,47 @@ describe('Burnup (e2e)', () => {
   });
   beforeEach(async () => {
     now = new Date('2026-10-30T09:00:00.000Z');
-    await db.query('TRUNCATE goal_snapshots, timers, todos CASCADE');
+    await resetDatabase(db, { keep: SEEDED_AUTH_TABLES });
   });
   afterAll(() => app.close());
+
+  it('answers without the user lock when today is stored as it is', async () => {
+    const root = await todo('Projekt');
+    await todo('Teil 1', root);
+    await burnup(root);
+
+    const release = await holdUserLock(db, TEST_USER);
+    try {
+      const points = await within(burnup(root), 2000);
+      expect(points).toEqual([
+        expect.objectContaining({
+          date: '2026-10-30',
+          doneCount: 0,
+          totalCount: 1,
+        }),
+      ]);
+    } finally {
+      await release();
+    }
+  });
+
+  it('stores a changed day under the user lock before it answers', async () => {
+    const root = await todo('Projekt');
+    const first = await todo('Teil 1', root);
+    await burnup(root);
+    await complete(first);
+
+    const release = await holdUserLock(db, TEST_USER);
+    const answer = burnup(root);
+    try {
+      expect(await stillPending(answer, 300)).toBe(true);
+    } finally {
+      await release();
+    }
+    expect(await answer).toEqual([
+      expect.objectContaining({ date: '2026-10-30', doneCount: 1 }),
+    ]);
+  });
 
   it('keeps scope growth and a reopen visible across days', async () => {
     const root = await todo('Projekt');

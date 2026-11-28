@@ -8,16 +8,16 @@ import {
 } from "../api/day-planner.api";
 import { whileActive } from "../composables/useActive";
 import { useListFocus } from "../composables/useListFocus";
+import { useRowDialogs } from "../composables/useRowDialogs";
+import { useRowActions, type RowCall } from "../composables/useRowActions";
 import { DAY_DROP, useSortable } from "../composables/useSortable";
-import { useLoader } from "../composables/useLoader";
-import { useWrites } from "../composables/useWrites";
-import { useTicks, type TickTarget } from "../composables/useTicks";
+import { useViewSession } from "../composables/useViewSession";
+import { useTicks } from "../composables/useTicks";
 import { useLogRemoval } from "../composables/useLogRemoval";
 import { useMediaQuery } from "../composables/useMediaQuery";
 import {
   timedItemKey,
   timerStateOf,
-  toggleTimer,
   useTimer,
 } from "../composables/useTimer";
 import {
@@ -42,12 +42,7 @@ import TodayWelcome, {
   type TodayStarter,
 } from "../components/TodayWelcome.vue";
 import { relationLabel } from "../utils/other-day";
-import EditItemDialog from "../components/EditItemDialog.vue";
-import MoveItemDialog from "../components/MoveItemDialog.vue";
-import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
-import DeleteItemDialog, {
-  type DeleteTarget,
-} from "../components/DeleteItemDialog.vue";
+import RowDialogs from "../components/RowDialogs.vue";
 import ModalDialog from "../components/ModalDialog.vue";
 import UndoToast from "../components/UndoToast.vue";
 import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
@@ -60,9 +55,8 @@ import {
   addDays,
   formatDateForGermanDisplay,
   getCurrentDateInTimeZone,
-  weekStart,
 } from "../utils/date";
-import { dayLabel, fullStop } from "../utils/history";
+import { fullStop } from "../utils/history";
 import {
   arrangeToday,
   eventTime,
@@ -92,9 +86,10 @@ import { useRoute, useRouter } from "vue-router";
 import { DAY_QUERY, hrefOf } from "../routes";
 import { onCardClick } from "../utils/card-click";
 import {
-  quickMoveEntries,
-  quickMoves,
-  rowMenu as cardMenu,
+  plannerRow,
+  rowControl,
+  targetOf,
+  whereLabel,
   type MenuEntry,
 } from "../utils/row-actions";
 
@@ -107,22 +102,9 @@ import {
  */
 defineOptions({ name: "TodayView" });
 
-type EditingTarget = {
-  kind: "todo" | "habit";
-  entityId: number;
-  /** The run a daily was opened from, for its notes. */
-  occurrenceId?: number;
-};
-
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
 
-const editingTarget = ref<EditingTarget | null>(null);
-const editorBusy = ref(false);
-const movingItem = ref<DayPlannerItem | null>(null);
-/** "In Kampagne verschieben …" and "Löschen" from a card's menu. */
-const campaignMoving = ref<{ todoId: number; title: string } | null>(null);
-const deleting = ref<DeleteTarget | null>(null);
 const postponeOpen = ref(false);
 const creationOpen = ref(false);
 /** Opened by a long press on Plus: the title is dictated at once. */
@@ -133,26 +115,25 @@ const creationMessage = ref<string | null>(null);
 const catchUpOpen = ref(false);
 const resolvedOpen = ref(false);
 
+// A dialog or the campaign question holds the refresh until it is answered.
+const session = useViewSession({
+  holding: () =>
+    rows.holding() ||
+    postponeOpen.value ||
+    creationOpen.value ||
+    !!ticks.campaignQuestion.value,
+});
+/* A card's editor, "Anderer Tag …", campaign move and delete; another day's too. */
+const rows = useRowDialogs({ root: page, session, today: () => today.value });
 const {
   data: planner,
   isLoading,
   errorMessage,
   reload: loadToday,
-} = useLoader<DayPlannerResponse | null>(getToday, {
+} = session.resource<DayPlannerResponse | null>(getToday, {
   initial: null,
   fallbackError: "Heute konnte nicht geladen werden.",
-  refreshOnChange: () =>
-    !editorBusy.value &&
-    !editingTarget.value &&
-    !movingItem.value &&
-    !campaignMoving.value &&
-    !deleting.value &&
-    !postponeOpen.value &&
-    !creationOpen.value &&
-    !ticks.campaignQuestion.value &&
-    !writes.busy.value,
 });
-const writes = useWrites(loadToday, errorMessage);
 
 /*
  * The clock moves the focus and the "now" line along through the day: it
@@ -202,11 +183,6 @@ function showDay(date: string): void {
 function stepDay(by: -1 | 1): void {
   showDay(addDays(shownDate.value, by));
 }
-function editOtherDay(target: EditingTarget): void {
-  if (editorBusy.value || writes.busy.value) return;
-  editingTarget.value = target;
-}
-
 const heading = computed(() =>
   otherDay.value || planner.value
     ? formatDayHeading(shownDate.value)
@@ -373,7 +349,7 @@ const focusMeta = computed(() => {
  * Ticks, skips and quick moves go through `useTicks`; its toast also holds
  * back a Logbuch delete (`useLogRemoval`).
  */
-const ticks = useTicks(writes.write, {
+const ticks = useTicks(session.write, {
   onOtherUndo: (held) => restoreLog(held.id),
 });
 const { undo, undoLast, flushUndo } = ticks;
@@ -384,39 +360,33 @@ whileActive(
 );
 const { hiddenLogs, removeLog, restoreLog } = useLogRemoval(
   ticks.offerUndo,
-  writes.write,
+  session.write,
 );
 
 const getItemKey = itemKey;
 
+/*
+ * A card's steps, its ring, menu and keys: `useRowActions` performs them
+ * (the campaign question, the focus wrap, the status line). What only
+ * Heute has goes with each card (`callOf`).
+ */
+const rowActions = useRowActions({
+  today: () => today.value,
+  session,
+  ticks,
+  focus: listFocus,
+  dialogs: rows,
+  timer,
+  said: (line) => (orderMessage.value = line),
+});
+
 function isUpdating(item: DayPlannerItem): boolean {
-  return editorBusy.value || writes.isWriting(getItemKey(item));
+  return rowActions.busy(getItemKey(item));
 }
 
-function tickTarget(item: DayPlannerItem): TickTarget {
-  return item.type === "todo"
-    ? { kind: "todo", id: item.todoId, title: item.title }
-    : { kind: "occurrence", id: item.occurrenceId, title: item.title };
-}
-
-async function toggleItem(item: DayPlannerItem): Promise<void> {
-  if (isUpdating(item)) {
-    return;
-  }
-  const options = {
-    key: getItemKey(item),
-    fallbackError: "Der Eintrag konnte nicht aktualisiert werden.",
-  };
-  if (item.status !== "pending") {
-    await ticks.reopen(tickTarget(item), options);
-    return;
-  }
-  // A campaign planned for today with open quests asks first.
-  const campaign =
-    item.type === "todo" && item.campaign?.id === item.todoId
-      ? ("lookup" as const)
-      : undefined;
-  await ticks.complete(tickTarget(item), { ...options, campaign });
+/** The ring: done (a campaign with open quests asks first), or open again. */
+function toggleItem(item: DayPlannerItem): void {
+  void rowActions.tick(callOf(item));
 }
 
 /**
@@ -446,24 +416,15 @@ function challengeLine(item: DayPlannerItem): string | null {
   return challenge && item === challengeRun.value ? runLine(challenge) : null;
 }
 
-async function skipHabit(item: DayPlannerHabitItem): Promise<void> {
-  if (isUpdating(item)) {
-    return;
-  }
-  await ticks.skip(tickTarget(item), getItemKey(item));
-}
-
 /** Movable to `date` without a dialog; appointments and habit limits ask. */
 function quickMovable(item: DayPlannerItem, date: string): boolean {
   if (item.type === "todo") return item.timeOfDay === null;
   return item.moveUntil !== null && date <= item.moveUntil;
 }
 
-function moveTo(item: DayPlannerItem, date: string): Promise<boolean> {
-  return ticks.move(tickTarget(item), date, {
-    key: getItemKey(item),
-    fallbackError: "Der Eintrag konnte nicht verschoben werden.",
-  });
+/** A card's steps, for the chips of what was carried over. */
+function stepsOf(item: DayPlannerItem) {
+  return rowActions.of(callOf(item));
 }
 
 const quickToday = computed(() => {
@@ -479,77 +440,16 @@ async function catchUpAll(): Promise<void> {
   const today = planner.value?.date;
   if (!today) return;
   for (const item of quickToday.value) {
-    if (!(await moveTo(item, today))) return;
+    const moved = await ticks.move(targetOf(plannerRow(item)), today, {
+      key: getItemKey(item),
+    });
+    if (!moved) return;
   }
 }
 
+/** A card asked for its editor; a daily opens with the notes of this run. */
 function openEditing(item: DayPlannerItem): void {
-  if (editorBusy.value || writes.busy.value) {
-    return;
-  }
-
-  listFocus.remember(getItemKey(item));
-  editingTarget.value =
-    item.type === "todo"
-      ? {
-          kind: "todo",
-          entityId: item.todoId,
-        }
-      : {
-          kind: "habit",
-          entityId: item.habitId,
-          occurrenceId: item.occurrenceId,
-        };
-}
-
-function openMenuDialog(item: DayPlannerItem, kind: "move" | "delete"): void {
-  if (editorBusy.value || writes.busy.value) return;
-  listFocus.remember(getItemKey(item));
-  if (kind === "move" && item.type === "todo")
-    campaignMoving.value = { todoId: item.todoId, title: item.title };
-  else if (kind === "delete")
-    deleting.value =
-      item.type === "todo"
-        ? { kind: "todo", id: item.todoId, title: item.title }
-        : { kind: "habit", id: item.habitId, title: item.title };
-}
-function closeMenuDialog(): void {
-  campaignMoving.value = null;
-  deleting.value = null;
-  editorBusy.value = false;
-}
-async function onMenuDialogDone(): Promise<void> {
-  await writes.applied();
-  closeMenuDialog();
-}
-
-function closeEditing(): void {
-  editingTarget.value = null;
-  editorBusy.value = false;
-}
-
-async function onEditorChanged(): Promise<void> {
-  await writes.applied();
-  closeEditing();
-}
-
-function openMoving(item: DayPlannerItem): void {
-  if (editorBusy.value || writes.busy.value) {
-    return;
-  }
-
-  listFocus.remember(getItemKey(item));
-  movingItem.value = item;
-}
-
-function closeMoving(): void {
-  movingItem.value = null;
-  editorBusy.value = false;
-}
-
-async function onMoved(): Promise<void> {
-  await writes.applied();
-  closeMoving();
+  rowActions.edit(callOf(item));
 }
 
 /* The order of the day: the focus card is its head, the rows follow. */
@@ -561,12 +461,12 @@ const sortables = computed(() =>
 const orderRefs = computed(() => (agenda.value?.dayOrder ?? []).map(orderRef));
 
 async function moveInOrder(from: number, to: number): Promise<void> {
-  if (!planner.value || !agenda.value || writes.isWriting("order")) return;
+  if (!planner.value || !agenda.value || session.isWriting("order")) return;
   const move = dropInDay(planner.value, agenda.value, from, to);
   if (!move) return;
   // Shown at once; a failure takes it back to the stored order.
   const before = planner.value;
-  await writes.writeShown(
+  await session.writeShown(
     () => {
       planner.value = move.planner;
       orderMessage.value = move.message;
@@ -602,11 +502,7 @@ async function shiftInOrder(
   if (to === null) return;
   await moveInOrder(sortables.value.indexOf(item), to);
   await nextTick();
-  page.value
-    ?.querySelector<HTMLElement>(
-      `[data-focus-key="${getItemKey(item)}"] [aria-haspopup="menu"]`,
-    )
-    ?.focus();
+  rowControl(page.value, getItemKey(item))?.focus();
 }
 
 /* The whole card drags: the focus card and every row of the order. */
@@ -646,13 +542,15 @@ function droppable(card: HTMLElement, date: string): DayPlannerItem | null {
 
 /** A drop needs no question: the day it lands on is the answer. */
 async function dropOnDay(item: DayPlannerItem, date: string): Promise<void> {
-  if (writes.busy.value) return;
-  const moved = await ticks.move(tickTarget(item), date, {
+  if (session.busy.value) return;
+  const moved = await ticks.move(targetOf(plannerRow(item)), date, {
     key: getItemKey(item),
-    fallbackError: "Der Eintrag konnte nicht verschoben werden.",
     confirmFixed: true,
   });
-  if (moved) notice(fullStop(`„${item.title}“ steht jetzt ${whereLabel(date)}`));
+  if (moved)
+    notice(
+      fullStop(`„${item.title}“ steht jetzt ${whereLabel(date, today.value)}`),
+    );
 }
 
 /** A short line above the list: what a drop did or why it did not. */
@@ -665,7 +563,7 @@ watch(shownDate, () => (creationMessage.value = null));
 /* A Google event ticked off in the list: only the app keeps the tick. */
 const tickEvent = useEventTick(
   planner,
-  writes,
+  session,
   withEventDone,
   (line) => (orderMessage.value = line),
 );
@@ -687,12 +585,7 @@ const postponing = computed(() =>
     ? postponePlan(
         [...agenda.value.sequence, ...agenda.value.carriedOver],
         tomorrow.value,
-        (item) =>
-          timerStateOf(
-            timer,
-            item.type === "todo" ? "todo" : "occurrence",
-            item.type === "todo" ? item.todoId : item.occurrenceId,
-          ) !== null,
+        (item) => timerStateOf(timer, targetOf(plannerRow(item))) !== null,
       )
     : { moving: [], staying: [] },
 );
@@ -701,9 +594,8 @@ async function postponeAll(): Promise<void> {
   const items = postponable.value;
   postponeOpen.value = false;
   for (const item of items) {
-    const moved = await ticks.move(tickTarget(item), tomorrow.value, {
+    const moved = await ticks.move(targetOf(plannerRow(item)), tomorrow.value, {
       key: getItemKey(item),
-      fallbackError: "Der Eintrag konnte nicht verschoben werden.",
       confirmFixed: true,
     });
     if (!moved) return;
@@ -717,9 +609,8 @@ async function postponeAll(): Promise<void> {
 const creationBlocked = computed(
   () =>
     isLoading.value ||
-    editorBusy.value ||
-    writes.busy.value ||
-    editingTarget.value !== null,
+    session.busy.value ||
+    rows.holding(),
 );
 function openCreation(
   dictate = false,
@@ -752,111 +643,43 @@ async function onCreated(kind: "todo" | "habit"): Promise<void> {
     kind === "todo"
       ? "Quest erstellt. Ohne Tag findest du sie im Questlog."
       : "Daily erstellt. Es erscheint ab seinem Startdatum an fälligen Tagen.";
-  await writes.applied();
+  await session.applied();
   creationOpen.value = false;
 }
 
-/*
- * Keyboard shortcuts on a row run what its buttons run. Done rows and items
- * whose buttons would not offer the step ignore the key; an appointment opens
- * "Verschieben", where its move is confirmed.
- */
+/** An open card by its key, unless it is busy: what a drop may move. */
 function pendingItem(key: string | null): DayPlannerItem | null {
   const item = planner.value?.items.find((entry) => getItemKey(entry) === key);
   return item && item.status === "pending" && !isUpdating(item) ? item : null;
 }
-function whereLabel(date: string): string {
-  if (date === planner.value?.date) return "bei heute";
-  if (date === tomorrow.value) return "bei morgen";
-  return `am ${dayLabel(date)}`;
-}
-function moveByKey(key: string | null, date: string): boolean {
-  const item = pendingItem(key);
-  if (!item || !date || item.scheduledDate === date) return false;
-  if (item.type === "todo" && item.timeOfDay !== null) {
-    openMoving(item);
-    return true;
-  }
-  if (!quickMovable(item, date)) return false;
-  void listFocus.around(getItemKey(item), async () => {
-    if (await moveTo(item, date))
-      orderMessage.value = fullStop(
-        `„${item.title}“ steht jetzt ${whereLabel(date)}`,
-      );
-  });
-  return true;
-}
-/*
- * "Aktionen für …" of a row and of the focus card. The quick moves run the
- * same step as T, D and W; "Verschieben" opens the dialog the row had.
- */
-function canMoveByDialog(item: DayPlannerItem): boolean {
-  if (item.status !== "pending") return false;
-  if (item.type === "todo") return true;
-  return (item.moveUntil ?? "") > item.scheduledDate;
-}
 const router = useRouter();
-/** `past`: an appointment that is over but open leads with "Anderer Tag …". */
-function rowMenu(item: DayPlannerItem, past = false): MenuEntry[] {
-  const today = planner.value?.date;
-  if (!today || item.status !== "pending") return [];
-  const busy = isUpdating(item);
-  const moves = quickMoves(today, {
-    date: item.scheduledDate,
-    timeOfDay: item.type === "todo" ? item.timeOfDay : null,
-    moveUntil: item.type === "habit" ? item.moveUntil : undefined,
-  });
+/**
+ * A card with what only Heute has: the order of the day, the focus card's
+ * way into the Fokus-Modus and the challenge's page.
+ */
+function callOf(item: DayPlannerItem): RowCall {
   const isFocus = item === agenda.value?.focus;
-  return cardMenu(
-    item.title,
-    {
-      quickMoves: quickMoveEntries(
-        item.title,
-        moves,
-        (move) => void moveByKey(getItemKey(item), move.date),
-        { disabled: busy },
-      ),
-      otherDay: canMoveByDialog(item)
-        ? {
-            run: () => openMoving(item),
-            appointment: item.type === "todo" && !!item.timeOfDay,
-            lead: past,
-          }
+  return {
+    key: getItemKey(item),
+    row: plannerRow(item),
+    // The Fokus-Modus has no Später or Überspringen for an appointment.
+    focusMode:
+      isFocus && !focusSlot.value
+        ? () => void router.push({ name: "focus" })
         : undefined,
-      skip: item.type === "habit" ? () => void skipHabit(item) : undefined,
-      edit: () => openEditing(item),
-      // The Fokus-Modus has no Später or Überspringen for an appointment.
-      focusMode:
-        isFocus && !focusSlot.value
-          ? () => void router.push({ name: "focus" })
-          : undefined,
-      reparent:
-        item.type === "todo"
-          ? () => openMenuDialog(item, "move")
-          : undefined,
-      // The challenge's own place is in the Dailies.
-      challenge:
-        item.type === "habit" && item.monthChallenge
-          ? () => void router.push(CHALLENGE_HREF.slice(1))
-          : undefined,
-      up:
-        stepFrom(item, -1) !== null
-          ? () => void shiftInOrder(item, -1)
-          : undefined,
-      down:
-        stepFrom(item, 1) !== null
-          ? () => void shiftInOrder(item, 1)
-          : undefined,
-      remove: {
-        run: () => openMenuDialog(item, "delete"),
-        ariaLabel:
-          item.type === "habit"
-            ? `Daily ${item.title} ganz löschen`
-            : undefined,
-      },
+    // The challenge's own place is in the Dailies.
+    openChallenge: () => void router.push(CHALLENGE_HREF.slice(1)),
+    step: (direction) => {
+      const by = direction === "up" ? -1 : 1;
+      return stepFrom(item, by) !== null
+        ? () => void shiftInOrder(item, by)
+        : undefined;
     },
-    busy,
-  );
+  };
+}
+/** `past`: an appointment that is over but open leads with "Anderer Tag …". */
+function menuOf(item: DayPlannerItem, past = false): MenuEntry[] {
+  return planner.value ? rowActions.menu(callOf(item), { past }) : [];
 }
 /** A tap anywhere on the focus card but its controls opens the editor. */
 function openFocusFromCard(event: MouseEvent, item: DayPlannerItem): void {
@@ -865,12 +688,7 @@ function openFocusFromCard(event: MouseEvent, item: DayPlannerItem): void {
 /** The focus card says in words when its stopwatch runs. */
 const focusTimer = computed(() => {
   const focus = agenda.value?.focus;
-  if (!focus) return null;
-  return timerStateOf(
-    timer,
-    focus.type === "todo" ? "todo" : "occurrence",
-    focus.type === "todo" ? focus.todoId : focus.occurrenceId,
-  );
+  return focus ? timerStateOf(timer, targetOf(plannerRow(focus))) : null;
 });
 
 /*
@@ -879,9 +697,7 @@ const focusTimer = computed(() => {
  * question says no, a held undo goes through and old notices go.
  */
 onDeactivated(() => {
-  closeEditing();
-  closeMoving();
-  closeMenuDialog();
+  rows.close();
   postponeOpen.value = false;
   creationOpen.value = false;
   creationMessage.value = null;
@@ -898,38 +714,17 @@ useShortcutHandlers(
         page.value?.querySelector<HTMLElement>('input[name="quickTitle"]'),
       );
     },
-    "row.timer": ({ key }) => {
-      const item = pendingItem(key);
-      if (!item) return false;
-      return toggleTimer(
-        timer,
-        item.type === "todo"
-          ? { kind: "todo", targetId: item.todoId, title: item.title }
-          : {
-              kind: "occurrence",
-              targetId: item.occurrenceId,
-              title: item.title,
-            },
-        item.timerEligible,
+    ...rowActions.shortcuts((key) => {
+      const item = planner.value?.items.find(
+        (entry) => getItemKey(entry) === key,
       );
-    },
-    "row.done": ({ key }) => {
-      const item = pendingItem(key);
-      if (!item) return false;
-      void listFocus.around(getItemKey(item), () => toggleItem(item));
-    },
-    "row.today": ({ key }) => moveByKey(key, planner.value?.date ?? ""),
-    "row.tomorrow": ({ key }) => moveByKey(key, tomorrow.value),
-    "row.nextWeek": ({ key }) =>
-      moveByKey(
-        key,
-        planner.value ? addDays(weekStart(planner.value.date), 7) : "",
-      ),
+      return item ? callOf(item) : null;
+    }),
   },
   {
     // The same offer as "Alles Offene auf morgen" in the head's "…".
     commands: () =>
-      postponable.value.length && !writes.busy.value && !editorBusy.value
+      postponable.value.length && !session.busy.value && !rows.busy.value
         ? [
             {
               id: "today.postpone",
@@ -1023,7 +818,7 @@ useShortcutHandlers(
               data-day-drop
               :data-date="tomorrow"
               aria-label="Offenes auf morgen verschieben"
-              :disabled="isLoading || editorBusy || writes.busy.value"
+              :disabled="isLoading || rows.busy.value || session.busy.value"
               @click="postponeOpen = true"
             >
               Auf morgen
@@ -1079,17 +874,7 @@ useShortcutHandlers(
         {{ creationMessage }}
       </p>
 
-      <EditItemDialog
-        v-if="editingTarget"
-        :key="`${editingTarget.kind}-${editingTarget.entityId}`"
-        :kind="editingTarget.kind"
-        :entity-id="editingTarget.entityId"
-        :occurrence-id="editingTarget.occurrenceId"
-        :return-focus="listFocus.returnFocus"
-        @busy="editorBusy = $event"
-        @changed="onEditorChanged"
-        @close="closeEditing"
-      />
+      <RowDialogs :dialogs="rows" />
 
       <ModalDialog
         v-if="postponeOpen"
@@ -1124,42 +909,13 @@ useShortcutHandlers(
         </div>
       </ModalDialog>
 
-      <CampaignMoveDialog
-        v-if="campaignMoving"
-        :todo-id="campaignMoving.todoId"
-        :title="campaignMoving.title"
-        :return-focus="listFocus.returnFocus"
-        @busy="editorBusy = $event"
-        @moved="onMenuDialogDone"
-        @close="closeMenuDialog"
-      />
-      <DeleteItemDialog
-        v-if="deleting"
-        :target="deleting"
-        :return-focus="listFocus.returnFocus"
-        @busy="editorBusy = $event"
-        @deleted="onMenuDialogDone"
-        @close="closeMenuDialog"
-      />
-
-      <MoveItemDialog
-        v-if="movingItem && planner"
-        :item="movingItem"
-        :today="planner.date"
-        :offer-today="movingItem.isOverdue"
-        :return-focus="listFocus.returnFocus"
-        @busy="editorBusy = $event"
-        @moved="onMoved"
-        @close="closeMoving"
-      />
-
       <TodayOtherDay
         v-if="otherDay"
         v-show="showsList"
         :date="otherDay"
         :today="today"
-        :held="editingTarget !== null || editorBusy || creationOpen"
-        @edit="editOtherDay"
+        :dialogs="rows"
+        :held="rows.holding() || creationOpen"
         @notice="notice"
       />
 
@@ -1168,7 +924,7 @@ useShortcutHandlers(
         <button
           class="btn btn--ground"
           type="button"
-          :disabled="isLoading || writes.busy.value"
+          :disabled="isLoading || session.busy.value"
           @click="loadToday()"
         >
           <AppIcon name="refresh" />Erneut versuchen
@@ -1181,7 +937,7 @@ useShortcutHandlers(
           ref="quickAdd"
           :date="planner.date"
           :order="orderRefs"
-          @created="writes.applied()"
+          @created="session.applied()"
         />
 
         <div
@@ -1327,9 +1083,9 @@ useShortcutHandlers(
                   <AppIcon name="focus" />
                 </a>
                 <ActionMenu
-                  v-if="rowMenu(agenda.focus).length"
+                  v-if="menuOf(agenda.focus).length"
                   :title="agenda.focus.title"
-                  :entries="rowMenu(agenda.focus)"
+                  :entries="menuOf(agenda.focus)"
                   :disabled="isUpdating(agenda.focus)"
                 />
               </div>
@@ -1380,7 +1136,7 @@ useShortcutHandlers(
                 :item="entry.item"
                 :time="entry.time"
                 :is-updating="isUpdating(entry.item)"
-                :menu="rowMenu(entry.item, entry.past)"
+                :menu="menuOf(entry.item, entry.past)"
                 :past="entry.past"
                 :challenge="challengeLine(entry.item)"
                 why-wide-only
@@ -1396,7 +1152,7 @@ useShortcutHandlers(
                 :time="entry.time"
                 :title="entry.event.title"
                 :past="entry.past"
-                :busy="writes.isWriting(`event-${entry.event.id}`)"
+                :busy="session.isWriting(`event-${entry.event.id}`)"
                 @toggle="tickEvent(entry.event, true)"
               />
               <PlannerItem
@@ -1405,7 +1161,7 @@ useShortcutHandlers(
                 :data-sort-key="getItemKey(entry.item)"
                 :item="entry.item"
                 :is-updating="isUpdating(entry.item)"
-                :menu="rowMenu(entry.item)"
+                :menu="menuOf(entry.item)"
                 :challenge="challengeLine(entry.item)"
                 :why-wide-only="index >= 2"
                 sortable
@@ -1442,7 +1198,7 @@ useShortcutHandlers(
                 v-if="quickToday.length > 1"
                 class="catch-up__all"
                 type="button"
-                :disabled="writes.busy.value"
+                :disabled="session.busy.value"
                 @click="catchUpAll"
               >
                 Alle {{ quickToday.length }} heute einplanen
@@ -1467,7 +1223,7 @@ useShortcutHandlers(
                   type="button"
                   :disabled="isUpdating(item)"
                   :aria-label="`${item.title} heute einplanen`"
-                  @click="moveTo(item, planner.date)"
+                  @click="stepsOf(item).move?.(planner.date)"
                 >
                   Heute
                 </button>
@@ -1477,7 +1233,7 @@ useShortcutHandlers(
                   type="button"
                   :disabled="isUpdating(item)"
                   :aria-label="`${item.title} auf morgen`"
-                  @click="moveTo(item, tomorrow)"
+                  @click="stepsOf(item).move?.(tomorrow)"
                 >
                   Morgen
                 </button>
@@ -1490,7 +1246,7 @@ useShortcutHandlers(
                   data-move-button
                   :disabled="isUpdating(item)"
                   :aria-label="`${item.title} auf einen anderen Tag`"
-                  @click="openMoving(item)"
+                  @click="stepsOf(item).pickDay?.()"
                 >
                   Anderer Tag
                 </button>
@@ -1500,7 +1256,7 @@ useShortcutHandlers(
                   type="button"
                   :disabled="isUpdating(item)"
                   :aria-label="`${item.title} überspringen`"
-                  @click="skipHabit(item)"
+                  @click="stepsOf(item).skip?.()"
                 >
                   Überspringen
                 </button>
@@ -1537,7 +1293,7 @@ useShortcutHandlers(
                 done
                 :time="eventTime(event)"
                 :title="event.title"
-                :busy="writes.isWriting(`event-${event.id}`)"
+                :busy="session.isWriting(`event-${event.id}`)"
                 @toggle="tickEvent(event, false)"
               />
             </div>

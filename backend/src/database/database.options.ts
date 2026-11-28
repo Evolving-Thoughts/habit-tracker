@@ -24,6 +24,7 @@ import { FocusBlockWhileRunning1796800000000 } from './migrations/1796800000000-
 import { EventDone1796900000000 } from './migrations/1796900000000-EventDone';
 import { ForecastPlaces1797000000000 } from './migrations/1797000000000-ForecastPlaces';
 import { KanbanSetAside1797100000000 } from './migrations/1797100000000-KanbanSetAside';
+import { ExternalEventIdentity1797200000000 } from './migrations/1797200000000-ExternalEventIdentity';
 
 type PostgresOptions = Extract<DataSourceOptions, { type: 'postgres' }>;
 
@@ -70,6 +71,7 @@ export function databaseOptions(
       EventDone1796900000000,
       ForecastPlaces1797000000000,
       KanbanSetAside1797100000000,
+      ExternalEventIdentity1797200000000,
     ],
   };
 }

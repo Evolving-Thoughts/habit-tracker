@@ -57,19 +57,27 @@ export async function readFocusSettings(
 }
 
 /**
+ * The person's block not ended yet as stored, possibly past its moment
+ * (`lapsedReason`). Changes nothing, so a lock-free read may ask it.
+ */
+export function storedOpenFocusBlock(
+  manager: EntityManager,
+  userId: string,
+): Promise<FocusBlockEntity | null> {
+  return manager.findOneBy(FocusBlockEntity, { userId, endedAt: IsNull() });
+}
+
+/**
  * The person's open block, or null. A block past its moment (Hardcore at
  * its Soll moment, any other after 12 hours) is closed here with that moment, so every
- * reader sees it over as soon as the clock passes it.
+ * reader sees it over as soon as the clock passes it. Under the user lock.
  */
 export async function openFocusBlock(
   manager: EntityManager,
   userId: string,
   now: Date,
 ): Promise<FocusBlockEntity | null> {
-  const block = await manager.findOneBy(FocusBlockEntity, {
-    userId,
-    endedAt: IsNull(),
-  });
+  const block = await storedOpenFocusBlock(manager, userId);
   if (!block) return null;
   const reason = lapsedReason(block, now);
   if (!reason) return block;

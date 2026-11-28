@@ -1,6 +1,19 @@
 const { assertBrowserEnvironment, DATABASE } = require('./environment.cjs');
 const DEADLOCK_DETECTED = '40P01';
 const ATTEMPTS = 5;
+// TypeORM's default; src/database sets no other name.
+const MIGRATIONS_TABLE = 'migrations';
+/**
+ * One statement that empties every given table except the migrations table,
+ * so a new table needs no list here. All FK-related tables go together;
+ * deliberately no CASCADE and no public reset endpoint.
+ */
+function truncateStatement(tables) {
+  const names = tables.filter(name => name !== MIGRATIONS_TABLE);
+  if (!names.length) throw new Error('No tables to reset; is the schema migrated?');
+  const quoted = names.map(name => `"${name.replace(/"/g, '""')}"`);
+  return `TRUNCATE TABLE ${quoted.join(', ')} RESTART IDENTITY`;
+}
 async function reset() {
   assertBrowserEnvironment(process.env);
   const { Client } = require('pg');
@@ -13,8 +26,10 @@ async function reset() {
     await client.connect();
     const { rows } = await client.query('SELECT current_database() AS name');
     if (rows[0]?.name !== DATABASE) throw new Error('Refusing to reset an unexpected database');
-    // All FK-related tables together; deliberately no CASCADE and no public reset endpoint.
-    const truncate = 'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, "habit_forecast_places", "habit_occurrences", "habit_schedule_versions", "habits", "todos", "categories", "reflections", "week_reviews", "day_bests", "day_best_settings", "month_challenges", "focus_blocks", "focus_block_entries", "focus_block_settings", "work_logs", "goal_snapshots", "auth_tokens", "auth_sessions", "auth_rate_limits", "weekly_quest_targets", "users" RESTART IDENTITY';
+    const tables = await client.query(
+      "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename",
+    );
+    const truncate = truncateStatement(tables.rows.map(row => row.tablename));
     // A request of the test before may still read these tables in another
     // order. Postgres then ends one side; when it is the reset, it tries again.
     for (let attempt = 1; ; attempt += 1) {
@@ -27,4 +42,6 @@ async function reset() {
     }
   } finally { await client.end(); }
 }
-reset().catch(error => { console.error(error.message); process.exitCode = 1; });
+if (require.main === module)
+  reset().catch(error => { console.error(error.message); process.exitCode = 1; });
+module.exports = { truncateStatement };

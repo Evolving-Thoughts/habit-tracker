@@ -5,13 +5,12 @@ import PlanEntry from "./PlanEntry.vue";
 import { useSortable } from "../composables/useSortable";
 import type { WeekPlanEntry } from "../types/week-plan";
 import type { MenuEntry } from "../utils/row-actions";
+import { boardDrop, type BoardDrop } from "../utils/plan-move";
 import {
-  boardDrop,
   DRAGGABLE,
   entryKey,
   isMovable,
   isMovableRun,
-  type BoardDrop,
 } from "../utils/week-plan";
 
 /**

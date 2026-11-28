@@ -68,6 +68,18 @@ describe("useWrites", () => {
     expect(steps).toEqual(["reload"]);
   });
 
+  it("reads another source beside the reload when asked", async () => {
+    const { steps, write, stop } = harness();
+    cleanup = stop;
+    await write(() => Promise.resolve(), {
+      fallbackError: "x",
+      alongside: async () => {
+        steps.push("alongside");
+      },
+    });
+    expect(steps).toEqual(["notify", "reload", "alongside"]);
+  });
+
   it("shows a write at once and keeps it when it went through", async () => {
     const { steps, writeShown, stop } = harness();
     cleanup = stop;

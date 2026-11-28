@@ -7,7 +7,12 @@ import { UserEntity } from '../src/auth/auth.entities';
 import { dayOf } from '../src/common/date/local-day';
 import { configureApp } from '../src/configure-app';
 import { TodoEntity } from '../src/todos/entities/todo.entity';
-import { authenticatedRequest as request, seedAuth } from './auth-fixture';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  SEEDED_AUTH_TABLES,
+} from './auth-fixture';
+import { resetDatabase } from './reset-database';
 
 const OTHER_USER = '22222222-2222-4222-8222-222222222222';
 
@@ -61,7 +66,7 @@ describe('Order of a day (e2e)', () => {
       verifiedAt: new Date(),
     });
   });
-  beforeEach(() => db.query('TRUNCATE timers, todos, habits CASCADE'));
+  beforeEach(() => resetDatabase(db, { keep: SEEDED_AUTH_TABLES }));
   afterAll(() => app.close());
 
   it('keeps the sorted order and lets new items join at the end', async () => {

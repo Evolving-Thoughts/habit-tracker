@@ -1,4 +1,5 @@
-import { IsString, Matches } from 'class-validator';
+import { IsString } from 'class-validator';
+import { IsDay } from './validation/field-rules';
 
 /**
  * `?week=YYYY-MM-DD` of the weekly reads; the services check with
@@ -6,6 +7,6 @@ import { IsString, Matches } from 'class-validator';
  */
 export class WeekQueryDto {
   @IsString()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsDay()
   readonly week!: string;
 }

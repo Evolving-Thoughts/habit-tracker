@@ -59,7 +59,8 @@ a name that does not exist offers "Neue Kampagne „…“ anlegen", which creat
 top-level todo in the colour its title picks (so it is a campaign at once) and
 chooses it. Choosing a place shows its reason as the inherited Warum (live,
 never copied) and, while the quest has no category, preselects the place's
-category or else its campaign's.
+category or else its campaign's (`placeBrings` in `utils/editor-form.ts`, the
+one rule for the editor, "Neue Quest" and "Neues Daily").
 
 ### Atomic mutation and concurrency
 
@@ -87,8 +88,8 @@ once all its quests are done, else "Kampagne abschließen" in the tile's "…";
 "Abschließen" on its detail card, and "Kampagne abschließen" in the card's "…"), Heute
 and the Plan's X (they read `GET /todos/hierarchy` once, only for a row that
 is itself a campaign; a failed read asks nothing). The Questlog lists no
-campaigns (see below) and never asks. The calendar's rows do not name their
-campaign and do not ask. Every completion by ring, including the Kampagnen
+campaigns (see below) and never asks. The calendar's planned rows ask like
+Heute's (`useRowActions`: a quest that is its own campaign asks first). Every completion by ring, including the Kampagnen
 view, offers the undo toast.
 
 ### The Questlog: what one can work on
@@ -140,8 +141,9 @@ Wochenziel hat").
 progress from that list bottom-up in O(n) time and space. Campaign, inherited
 why, habit goals and `inProgress` come from separate queries afterwards
 (`TodoAncestry`, `habitGoals`, `inProgressTodoIds` in `campaign-board.ts`,
-see `campaign-board.md`), without a shared transaction, so a concurrent change can show
-up in one part and not yet in another. A Todo whose parent is missing counts as a root,
+see `campaign-board.md`), all in one read-only snapshot with the todos
+(`UserUnitOfWork.read`, without the user lock), so a concurrent change shows
+up in every part or in none. A Todo whose parent is missing counts as a root,
 so one bad row cannot hide the whole tree; a stored cycle is reported as a 500.
 Create, move and delete do not load the whole tree: they read only the parent's
 ancestor chain or the affected subtree with recursive queries on the parent index.
@@ -177,7 +179,8 @@ whole user's tree; pagination/virtualization would require further load testing.
 
 1. `GET /todos/:id/deletion-preview` returns all affected live Todos and their
    attached timers, including running/paused states, plus a SHA-256 snapshot token.
-   Reading a preview makes no persistent change.
+   Reading a preview makes no persistent change: it is one read-only snapshot
+   without the user lock (`UserUnitOfWork.read`).
 2. The user reviews the list and explicitly confirms.
 3. `DELETE /todos/:id` accepts `{ "confirmationToken": "..." }`.
 4. Under the same per-user lock, the server computes the current snapshot again.

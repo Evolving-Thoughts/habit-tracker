@@ -3,6 +3,7 @@ import { getCategories } from "../api/categories.api";
 import type { CreatedPlaces } from "../api/new-places.api";
 import { getTodoHierarchy } from "../api/todo-hierarchy.api";
 import type { CategoryResponse } from "../types/category";
+import type { HierarchyTodo } from "../types/todo-hierarchy";
 import { categoryMark } from "../utils/category-mark";
 import { isCampaignIcon } from "../utils/campaign-style";
 import {
@@ -26,9 +27,13 @@ import { listenDataChanged } from "./data-sync";
  * A campaign or category a quick add just created joins the copy at once
  * (`remember`), so the next quest naming it matches it instead of
  * offering it as new again while the copy reloads.
+ *
+ * "Neue Quest" takes its names from here too, but never loads them: the
+ * lists its two pickers load anyway replace those in the copy (`supply`).
  */
 
-type Loaded = { campaigns: ParentChoice[]; categories: CategoryResponse[] };
+/** A list missing is not known: nothing in it is named, nor offered as new. */
+type Loaded = { campaigns?: ParentChoice[]; categories?: CategoryResponse[] };
 
 const loaded = shallowRef<Loaded | null>(null);
 let loadedAt = 0;
@@ -85,12 +90,12 @@ const options = computed<
   const lists = loaded.value;
   if (!lists) return {};
   return {
-    campaigns: lists.campaigns.map(({ todo }) => ({
+    campaigns: lists.campaigns?.map(({ todo }) => ({
       id: todo.id,
       title: todo.title,
       icon: isCampaignIcon(todo.icon) ? todo.icon : null,
     })),
-    categories: lists.categories.map((category) => ({
+    categories: lists.categories?.map((category) => ({
       id: category.id,
       name: category.name,
       mark: categoryMark(category.name, category.color),
@@ -104,11 +109,14 @@ export function useQuestParseContext() {
     return MAY_NAME.test(text) ? load() : Promise.resolve();
   }
 
+  /** An open campaign in the copy. */
+  function campaign(campaignId: number): ParentChoice | undefined {
+    return loaded.value?.campaigns?.find(({ todo }) => todo.id === campaignId);
+  }
+
   /** The category a quest in this campaign starts with, as the editor suggests. */
   function campaignCategory(campaignId: number): number | null {
-    const choice = loaded.value?.campaigns.find(
-      ({ todo }) => todo.id === campaignId,
-    );
+    const choice = campaign(campaignId);
     return choice ? categoryOfChoice(choice) : null;
   }
 
@@ -118,14 +126,30 @@ export function useQuestParseContext() {
     if (!lists || (!category && !campaign)) return;
     const todo = campaign && asHierarchyTodo(campaign);
     loaded.value = {
-      campaigns: todo
-        ? [...lists.campaigns, { todo, path: [todo.title], campaign: todo }]
-        : lists.campaigns,
-      categories: category
-        ? [...lists.categories, category]
-        : lists.categories,
+      campaigns:
+        todo && lists.campaigns
+          ? [...lists.campaigns, { todo, path: [todo.title], campaign: todo }]
+          : lists.campaigns,
+      categories:
+        category && lists.categories
+          ? [...lists.categories, category]
+          : lists.categories,
     };
   }
 
-  return { need, options, campaignCategory, remember };
+  /** Lists loaded elsewhere (a form's pickers) replace those in the copy. */
+  function supply(lists: {
+    todos?: HierarchyTodo[];
+    categories?: CategoryResponse[];
+  }): void {
+    loaded.value = {
+      ...loaded.value,
+      ...(lists.todos && {
+        campaigns: parentChoices(lists.todos, { campaignsOnly: true }),
+      }),
+      ...(lists.categories && { categories: lists.categories }),
+    };
+  }
+
+  return { need, options, campaign, campaignCategory, remember, supply };
 }

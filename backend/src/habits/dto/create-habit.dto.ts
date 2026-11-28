@@ -4,32 +4,32 @@ import {
 } from '../../focus-blocks/focus-block-rules';
 import { Type } from 'class-transformer';
 import {
-  IsDateString,
   IsDefined,
-  IsNotEmpty,
   IsString,
   IsOptional,
   IsInt,
   Min,
-  Max,
-  Matches,
-  MaxLength,
-  ValidateIf,
   ValidateNested,
   IsIn,
 } from 'class-validator';
+import {
+  IsCalendarDay,
+  IsPlannedMinutes,
+  IsTimeOfDay,
+  IsHabitTitle,
+  IsWhy,
+  OptionalNotNull,
+} from '../../common/validation/field-rules';
 import { ScheduleDto } from './schedule.dto';
 
 export class CreateHabitDto {
   @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(10080)
+  @IsPlannedMinutes()
   readonly plannedDurationMinutes?: number | null;
 
   @IsOptional()
   @IsString()
-  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  @IsTimeOfDay()
   readonly timeOfDay?: string | null;
 
   @IsOptional()
@@ -42,19 +42,14 @@ export class CreateHabitDto {
   @Min(1)
   readonly campaignId?: number | null;
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(1000)
+  @IsWhy()
   readonly why?: string | null;
 
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(200)
+  @IsHabitTitle()
   readonly title!: string;
 
-  @ValidateIf((_object, value: unknown) => value !== undefined)
-  @IsDateString({ strict: true })
-  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @OptionalNotNull()
+  @IsCalendarDay()
   readonly startDate?: string;
 
   @IsDefined()
@@ -63,7 +58,7 @@ export class CreateHabitDto {
   readonly schedule!: ScheduleDto;
 
   /** Fokus-Sperre for this entry: the default rule, always or never. */
-  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @OptionalNotNull()
   @IsIn(FOCUS_BLOCK_OVERRIDES)
   readonly focusBlock?: FocusBlockOverride;
 }

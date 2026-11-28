@@ -3,33 +3,32 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EntityManager, In } from 'typeorm';
+import { EntityManager } from 'typeorm';
 import { TodoEntity } from '../todos/entities/todo.entity';
+import { resumeQuestWork } from '../todos/quest-commands';
 import {
   effectiveDuration,
   HabitOccurrenceEntity,
 } from '../habit-occurrences/entities/habit-occurrence.entity';
 import { HabitSchedulingService } from '../habits/scheduling/habit-scheduling.service';
-import { dayOf } from '../common/date/local-day';
+import { runRefusal } from '../habits/scheduling/run-actionability';
+import { ownedOccurrences } from '../habit-occurrences/owned-occurrences';
 import { TimerEntity } from './timer.entity';
 import { StartTimerDto } from './timer.dto';
 import type { FocusBlockRequestDto } from '../focus-blocks/focus-block.dto';
-import { startFocusBlock } from '../focus-blocks/focus-block-store';
 import {
-  isOccurrenceTimerEligible,
+  findOpenTimer,
   isTodoTimerEligible,
   loggedMilliseconds,
   recordTransition,
+  startFocusFor,
   stopTimer,
 } from './timer-target';
 import { Clock } from '../common/clock';
 import { UserUnitOfWork } from '../common/user-unit-of-work';
-import {
-  elapsedAt,
-  forgottenSince,
-  hasReachedTarget,
-  targetReachesAt,
-} from './timer-math';
+import { elapsedAt } from './timer-math';
+import { startedStopwatch } from './timer-transition';
+import { stopwatchCatchUp, type TargetAtHand } from './stopwatch-catch-up';
 
 export interface TimerResponse {
   serverNow: string;
@@ -97,14 +96,14 @@ export class TimersService {
         throw new ConflictException('Erledigte Quests zuerst wieder öffnen.');
       return todo;
     }
-    const { habit, occurrence } = await this.scheduling
+    const { habit, occurrence, version } = await this.scheduling
       .openRun(manager, userId, id, now)
       .catch((error: unknown) => {
         if (error instanceof NotFoundException)
           throw new NotFoundException('Daily-Ausführung nicht gefunden.');
         throw error;
       });
-    if (!isOccurrenceTimerEligible(occurrence, habit, dayOf(now)))
+    if (runRefusal({ run: occurrence, version, habit, now }) !== null)
       throw new ConflictException('Keine offene fällige Daily-Ausführung.');
     occurrence.habit = habit;
     return occurrence;
@@ -123,18 +122,69 @@ export class TimersService {
       now,
     );
   }
-  /** Ends the running stretch at `at` and leaves the stopwatch paused. */
-  private async pause(
+  /**
+   * The target as `stopwatchCatchUp` needs it, read under the lock the way
+   * a start reads it: a Daily's runs are brought up to `now` first
+   * (`openRun`), so a run that ran out is resolved and its stopwatch freed.
+   */
+  private async targetUnderLock(
     manager: EntityManager,
+    userId: string,
     timer: TimerEntity,
-    at: Date,
-  ): Promise<void> {
-    await recordTransition(manager, timer, 'pause', at);
-    timer.targetReachesAt = null;
+    now: Date,
+  ): Promise<TargetAtHand> {
+    try {
+      const target = await this.targetOf(manager, userId, timer, now);
+      return {
+        eligible: true,
+        title: target instanceof TodoEntity ? target.title : target.habit.title,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) return null;
+      if (error instanceof ConflictException)
+        return { eligible: false, title: timer.title };
+      throw error;
+    }
   }
   /**
-   * Brings a stored stopwatch up to `now`: stops it if its target is gone,
-   * marks a target that was reached meanwhile, and cuts a stretch nobody ended.
+   * The target as stored, for the lock-free read: nothing is brought up to
+   * date. A run that only a reconcile would settle (ran out, other version)
+   * counts as not eligible, so the read leaves it to the locked path.
+   */
+  private async targetAsStored(
+    manager: EntityManager,
+    userId: string,
+    timer: TimerEntity,
+    now: Date,
+  ): Promise<TargetAtHand> {
+    if (timer.todoId !== null) {
+      const todo = await manager.findOne(TodoEntity, {
+        select: { id: true, title: true, completed: true },
+        where: { id: timer.todoId, userId },
+      });
+      return todo
+        ? { eligible: isTodoTimerEligible(todo), title: todo.title }
+        : null;
+    }
+    const run = await ownedOccurrences(manager, userId, { select: true })
+      .innerJoinAndSelect('occurrence.scheduleVersion', 'version')
+      .andWhere('occurrence.id = :id', { id: timer.occurrenceId })
+      .getOne();
+    if (!run) return null;
+    return {
+      eligible:
+        runRefusal({
+          run,
+          version: run.scheduleVersion,
+          habit: run.habit,
+          now,
+        }) === null,
+      title: run.habit.title,
+    };
+  }
+  /**
+   * Brings a stored stopwatch up to `now` under the user lock: decides with
+   * `stopwatchCatchUp` on the target as it is now and stores the outcome.
    */
   private async reconcile(
     manager: EntityManager,
@@ -143,46 +193,39 @@ export class TimersService {
     now: Date,
   ): Promise<TimerEntity | null> {
     if (!timer || timer.state === 'stopped') return timer;
-    let changed = false;
-    try {
-      const target = await this.targetOf(manager, userId, timer, now);
-      const title =
-        target instanceof TodoEntity ? target.title : target.habit.title;
-      if (title !== timer.title) {
-        timer.title = title;
-        changed = true;
-      }
-    } catch (error) {
-      if (!(
-        error instanceof NotFoundException || error instanceof ConflictException
-      ))
-        throw error;
-      // Reconciling the target may have released this timer in the meantime.
+    const target = await this.targetUnderLock(manager, userId, timer, now);
+    const decision = stopwatchCatchUp(timer, target, now);
+    if (decision.outcome === 'keep') return timer;
+    if (decision.outcome === 'stop')
+      // Reading the target may have released this timer in the meantime.
       return stopTimer(
         manager,
         await manager.findOneByOrFail(TimerEntity, { id: timer.id }),
         now,
       );
-    }
-    const cut = forgottenSince(timer, now);
-    if (timer.targetReachesAt && timer.targetReachesAt <= (cut ?? now)) {
-      timer.targetReachedAt = timer.targetReachesAt;
-      timer.targetReachesAt = null;
-      changed = true;
-    }
-    if (cut) {
-      await this.pause(manager, timer, cut);
-      changed = true;
-    }
-    return changed ? manager.save(timer) : timer;
+    if (decision.title !== undefined) timer.title = decision.title;
+    if (decision.reachedAt)
+      await recordTransition(
+        manager,
+        timer,
+        { type: 'reach' },
+        decision.reachedAt,
+      );
+    if (decision.cutAt)
+      await recordTransition(manager, timer, { type: 'pause' }, decision.cutAt);
+    return manager.save(timer);
   }
-  private findCurrent(
+  /**
+   * The push worker looked at this stopwatch's reached Soll and does not
+   * look again. Caller holds the user lock and passes the row as it is now.
+   */
+  async markPushHandled(
     manager: EntityManager,
-    userId: string,
-  ): Promise<TimerEntity | null> {
-    return manager.findOne(TimerEntity, {
-      where: { userId, state: In(['running', 'paused']) },
-    });
+    timer: TimerEntity,
+    now: Date,
+  ): Promise<void> {
+    await recordTransition(manager, timer, { type: 'markPushHandled' }, now);
+    await manager.save(TimerEntity, timer);
   }
   // Internal worker/receipt hook. Caller MUST hold the same user write lock as timer transitions.
   async notificationTimer(
@@ -191,16 +234,15 @@ export class TimersService {
     id: string,
     now: Date,
   ): Promise<TimerEntity | null> {
-    const current = await this.findCurrent(manager, userId);
+    const current = await findOpenTimer(manager, userId);
     if (current?.id !== id) return null;
     return this.reconcile(manager, userId, current, now);
   }
   /**
    * This stopwatch started or resumed running, from wherever: a
-   * Fokus-Sperre starts with it when the rule calls for one (an open block
-   * stays as it is). `request` carries Soft or Hardcore as picked in the
-   * Fokus-Modus; without it the default from Einstellungen applies. Runs in
-   * the stopwatch's own transaction.
+   * Fokus-Sperre starts with it when the rule calls for one
+   * (`startFocusFor`). `request` carries Soft or Hardcore as picked in the
+   * Fokus-Modus; without it the default from Einstellungen applies.
    */
   private async startFocus(
     manager: EntityManager,
@@ -210,42 +252,43 @@ export class TimersService {
     now: Date,
   ): Promise<void> {
     if (timer.state !== 'running') return;
-    await startFocusBlock(
+    await startFocusFor(
       manager,
-      timer.userId,
-      {
-        target:
-          timer.todoId !== null
-            ? { todoId: timer.todoId }
-            : { occurrenceId: timer.occurrenceId! },
-        title: timer.title,
-        override:
-          (target instanceof TodoEntity
-            ? target.focusBlock
-            : target.habit.focusBlock) ?? 'default',
-        targetMinutes: timer.targetMinutes,
-        elapsedMilliseconds: elapsedAt(timer, now),
-        mode: request?.mode,
-      },
+      timer,
+      target instanceof TodoEntity
+        ? target.focusBlock
+        : target.habit.focusBlock,
+      { mode: request?.mode },
       now,
     );
   }
-  /** Working on a quest again lifts its "Geblockt" marker (campaign-board.md). */
-  private async unblock(
+  /** A quest worked on again leaves the board's "Geblockt" (`resumeQuestWork`). */
+  private async workResumed(
     manager: EntityManager,
     target: TodoEntity | HabitOccurrenceEntity,
   ): Promise<void> {
-    if (!(target instanceof TodoEntity) || !target.blocked) return;
-    target.blocked = false;
-    await manager.update(
-      TodoEntity,
-      { id: target.id, userId: target.userId },
-      { blocked: false },
-    );
+    if (target instanceof TodoEntity) await resumeQuestWork(manager, target);
   }
+  /**
+   * The stopwatch as of now. Polled every few seconds, so it reads without
+   * the user lock: when `stopwatchCatchUp` finds nothing to store, the
+   * stored stopwatch is the answer. Otherwise it is read and decided again
+   * under the lock, and the outcome stored there.
+   */
   async current(userId: string): Promise<TimerResponse> {
+    const asStored = await this.unitOfWork.read(async (manager) => {
+      const timer = await findOpenTimer(manager, userId);
+      // After the snapshot, as after the lock: nothing it shows lies ahead.
+      const now = this.clock.now();
+      if (!timer) return this.response(null, now);
+      const target = await this.targetAsStored(manager, userId, timer, now);
+      return stopwatchCatchUp(timer, target, now).outcome === 'keep'
+        ? this.response(timer, now)
+        : null;
+    });
+    if (asStored) return asStored;
     return this.transaction(userId, async (manager) => {
-      const timer = await this.findCurrent(manager, userId);
+      const timer = await findOpenTimer(manager, userId);
       const now = this.clock.now();
       return this.response(
         await this.reconcile(manager, userId, timer, now),
@@ -274,7 +317,7 @@ export class TimersService {
       const active = await this.reconcile(
         manager,
         userId,
-        await this.findCurrent(manager, userId),
+        await findOpenTimer(manager, userId),
         now,
       );
       const target = await this.target(
@@ -284,7 +327,7 @@ export class TimersService {
         dto.targetId,
         now,
       );
-      await this.unblock(manager, target);
+      await this.workResumed(manager, target);
       if (active && active.state !== 'stopped') {
         const same =
           (dto.kind === 'todo' ? active.todoId : active.occurrenceId) ===
@@ -315,25 +358,14 @@ export class TimersService {
         todoId,
         occurrenceId,
         title: target instanceof TodoEntity ? target.title : target.habit.title,
-        state: 'running',
-        targetMinutes:
+        ...startedStopwatch(
+          logged,
           target instanceof HabitOccurrenceEntity
             ? effectiveDuration(target, target.habit)
             : target.plannedDurationMinutes,
-        elapsedMilliseconds: logged,
-        segmentStartedAt: now,
-        blockStartedAt: null,
-        pausedAt: null,
-        workLogId: null,
-        targetReachedAt: null,
-        pushHandledAt: null,
+          now,
+        ),
       });
-      timer.targetReachesAt = targetReachesAt(timer);
-      if (hasReachedTarget(timer, now)) {
-        // Worked past the target before: reached, but nothing to announce.
-        timer.targetReachedAt = now;
-        timer.pushHandledAt = now;
-      }
       const saved = await manager.save(TimerEntity, timer);
       await this.startFocus(manager, saved, target, dto.focusBlock, now);
       return this.response(saved, now);
@@ -356,7 +388,7 @@ export class TimersService {
           await this.reconcile(
             manager,
             userId,
-            await this.findCurrent(manager, userId),
+            await findOpenTimer(manager, userId),
             now,
           ),
           now,
@@ -364,18 +396,13 @@ export class TimersService {
       }
       const timer = await this.active(manager, userId, stored, now);
       if (action === 'pause' && timer.state === 'running')
-        await this.pause(manager, timer, now);
-      else if (action === 'resume' && timer.state === 'paused') {
-        await recordTransition(manager, timer, 'resume', now);
-        // A block continued past its target stays reached; nothing is due again.
-        timer.targetReachesAt = timer.targetReachedAt
-          ? null
-          : targetReachesAt(timer);
-      }
+        await recordTransition(manager, timer, { type: 'pause' }, now);
+      else if (action === 'resume' && timer.state === 'paused')
+        await recordTransition(manager, timer, { type: 'resume' }, now);
       const saved = await manager.save(timer);
       if (action === 'resume') {
         const target = await this.targetOf(manager, userId, saved, now);
-        await this.unblock(manager, target);
+        await this.workResumed(manager, target);
         await this.startFocus(manager, saved, target, focusBlock, now);
       }
       return this.response(saved, now);
@@ -400,19 +427,12 @@ export class TimersService {
         await this.targetOf(manager, userId, timer, now),
         minutes,
       );
-      timer.targetMinutes = minutes;
-      if (hasReachedTarget(timer, now)) {
-        timer.targetReachesAt = null;
-        if (!timer.targetReachedAt) {
-          timer.targetReachedAt = now;
-          // Whoever just set this target needs no notification about it.
-          timer.pushHandledAt = now;
-        }
-      } else {
-        timer.targetReachedAt = null;
-        timer.pushHandledAt = null;
-        timer.targetReachesAt = targetReachesAt(timer);
-      }
+      await recordTransition(
+        manager,
+        timer,
+        { type: 'changeTarget', minutes },
+        now,
+      );
       return this.response(await manager.save(timer), now);
     });
   }

@@ -5,7 +5,10 @@ import { DataSource } from 'typeorm';
 import { SessionEntity, UserEntity } from '../src/auth/auth.entities';
 import { hashPassword, tokenHash } from '../src/auth/auth.crypto';
 export const TEST_USER = '11111111-1111-4111-8111-111111111111';
-const TOKEN = 'a'.repeat(43);
+/** What seedAuth fills, for suites that seed once and reset per test. */
+export const SEEDED_AUTH_TABLES = ['users', 'auth_sessions'];
+/** The session `seedAuth` stores; `authenticatedRequest` sends it. */
+export const TEST_SESSION_TOKEN = 'a'.repeat(43);
 export async function seedAuth(app: INestApplication): Promise<void> {
   const db = app.get(DataSource);
   if (db.options.database !== 'habit_tracker_test')
@@ -17,7 +20,7 @@ export async function seedAuth(app: INestApplication): Promise<void> {
     verifiedAt: new Date(),
   });
   await db.getRepository(SessionEntity).save({
-    hash: tokenHash(TOKEN),
+    hash: tokenHash(TEST_SESSION_TOKEN),
     userId: TEST_USER,
     expiresAt: new Date(Date.now() + 3600_000),
   });
@@ -28,7 +31,7 @@ export function authenticatedRequest(server: Server) {
     test
       .set('Origin', process.env.FRONTEND_URL!)
       .set('Content-Type', 'application/json')
-      .set('Cookie', `habit_session=${TOKEN}`);
+      .set('Cookie', `habit_session=${TEST_SESSION_TOKEN}`);
   return {
     get: (p: string) => headers(client.get(p)),
     post: (p: string) => headers(client.post(p)),

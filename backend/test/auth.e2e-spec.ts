@@ -13,6 +13,8 @@ import {
 } from '../src/auth/auth.entities';
 import { tokenHash } from '../src/auth/auth.crypto';
 import { dayOf } from '../src/common/date/local-day';
+import { resetDatabase } from './reset-database';
+import { stillPending, within } from './user-lock';
 
 const PASSWORD = 'test-password-at-least-12';
 type Mail = { email: string; kind: 'verify' | 'reset'; token: string };
@@ -83,21 +85,14 @@ describe('Authentication and ownership (e2e)', () => {
     await app.init();
     db = app.get(DataSource);
     server = app.getHttpServer() as Server;
-    if (db.options.database !== 'habit_tracker_test')
-      throw new Error('Test DB required');
   });
   beforeEach(async () => {
-    await db.query(
-      'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos, categories, reflections, week_reviews, day_bests, day_best_settings, month_challenges, focus_blocks, focus_block_entries, focus_block_settings, work_logs, goal_snapshots, auth_tokens, auth_sessions, auth_rate_limits, weekly_quest_targets, users RESTART IDENTITY',
-    );
+    await resetDatabase(db);
     messages.length = 0;
     mailer.send.mockClear();
   });
   afterAll(async () => {
-    if (db?.isInitialized)
-      await db.query(
-        'TRUNCATE TABLE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos, categories, reflections, week_reviews, day_bests, day_best_settings, month_challenges, focus_blocks, focus_block_entries, focus_block_settings, work_logs, goal_snapshots, auth_tokens, auth_sessions, auth_rate_limits, weekly_quest_targets, users RESTART IDENTITY',
-      );
+    if (db?.isInitialized) await resetDatabase(db);
     await app?.close();
   });
   it('uses matching Secure cookies for login and logout at an HTTPS tunnel origin', async () => {
@@ -294,11 +289,39 @@ describe('Authentication and ownership (e2e)', () => {
       email: 'missing@example.test',
     }).expect(202);
     expect(known.body).toEqual(unknown.body);
+    // The unsent link was never stored; the previous one is still the link.
     expect(
-      await db
-        .getRepository(AuthTokenEntity)
-        .findOneBy({ hash: tokenHash(old) }),
-    ).not.toBeNull();
+      await db.getRepository(AuthTokenEntity).findBy({ kind: 'reset' }),
+    ).toEqual([expect.objectContaining({ hash: tokenHash(old) })]);
+  });
+  it('holds no user lock while the reset mail is on its way', async () => {
+    await verified();
+    let deliver!: () => void;
+    let sending!: () => void;
+    const started = new Promise<void>((resolve) => (sending = resolve));
+    mailer.send.mockImplementationOnce(
+      async (email: string, kind: 'verify' | 'reset', token: string) => {
+        sending();
+        await new Promise<void>((resolve) => (deliver = resolve));
+        messages.push({ email, kind, token });
+      },
+    );
+    const forgot = post('/auth/forgot-password', {
+      email: 'a@example.test',
+    }).then((response) => response.status);
+    await within(started, 5000);
+    try {
+      // A login takes the same user lock; it does not wait for the mail.
+      await within(login(), 5000);
+      expect(await stillPending(forgot, 100)).toBe(true);
+    } finally {
+      deliver();
+    }
+    expect(await forgot).toBe(202);
+    await post('/auth/reset-password', {
+      token: latest('a@example.test', 'reset'),
+      password: 'after-slow-mail-password',
+    }).expect(204);
   });
   it('allows only one concurrent reset with the same token', async () => {
     const cookie = await verified();

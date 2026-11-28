@@ -7,6 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { DataSource, EntityManager, MoreThan } from 'typeorm';
+import { lockUser } from '../common/user-unit-of-work';
 import { AuthTokenEntity, SessionEntity, UserEntity } from './auth.entities';
 import { AuthMailer } from './auth.mailer';
 import { AuthUser, CredentialsDto } from './auth.dto';
@@ -43,23 +44,34 @@ export class AuthService {
         );
     }
   }
-  private async issue(
+  /**
+   * Stores `token` as the user's link of this kind; it replaces the one
+   * before (one link per kind).
+   */
+  private async storeLink(
     manager: EntityManager,
-    user: UserEntity,
+    userId: string,
     kind: 'verify' | 'reset',
+    token: string,
   ): Promise<void> {
-    const token = randomToken();
-    await manager.delete(AuthTokenEntity, { userId: user.id, kind });
+    await manager.delete(AuthTokenEntity, { userId, kind });
     await manager.save(AuthTokenEntity, {
       hash: tokenHash(token),
-      userId: user.id,
+      userId,
       kind,
       expiresAt: new Date(
         Date.now() + (kind === 'verify' ? 24 * 60 : 30) * 60_000,
       ),
     });
+  }
+  /** Sends the link; a failed send answers 503. */
+  private async send(
+    email: string,
+    kind: 'verify' | 'reset',
+    token: string,
+  ): Promise<void> {
     try {
-      await this.mailer.send(user.email, kind, token);
+      await this.mailer.send(email, kind, token);
     } catch {
       throw new ServiceUnavailableException(
         'E-Mail-Versand momentan nicht verfügbar. Bitte später erneut versuchen.',
@@ -83,26 +95,38 @@ export class AuthService {
           verifiedAt: null,
         }),
       );
-      await this.issue(manager, user, 'verify');
+      // The new row is seen by no one before commit, so no user lock waits
+      // on the send; a failed send rolls the account back (503).
+      const token = randomToken();
+      await this.storeLink(manager, user.id, 'verify', token);
+      await this.send(user.email, 'verify', token);
     });
   }
+  /**
+   * Resend and forgot. No lock is held while the mail goes out: the link is
+   * stored only once the mail server took it, in a short transaction under
+   * the user lock that checks again whether the account still wants it.
+   * A failed send stores nothing, so the previous link stays valid, and the
+   * answer is the same generic one as for an unknown address.
+   */
   async requestMail(email: string, kind: 'verify' | 'reset'): Promise<void> {
+    const wants = (user: UserEntity) =>
+      kind === 'verify' ? !user.verifiedAt : !!user.verifiedAt;
+    const user = await this.db.getRepository(UserEntity).findOneBy({ email });
+    if (!user || !wants(user)) return;
+    const token = randomToken();
     try {
-      await this.db.transaction(async (manager) => {
-        const user = await manager.findOne(UserEntity, {
-          where: { email },
-          lock: { mode: 'pessimistic_write' },
-        });
-        if (!user || (kind === 'verify' ? !!user.verifiedAt : !user.verifiedAt))
-          return;
-        await this.issue(manager, user, kind);
-      });
+      await this.send(user.email, kind, token);
     } catch (error) {
-      // Preserve generic responses even during SMTP outages; the transaction rolled back.
-      // The existing link remains valid. Retry/resend after restoring SMTP.
+      // Retry/resend after restoring SMTP.
       if (!(error instanceof ServiceUnavailableException)) throw error;
       new Logger('AuthMail').warn('Authentication email delivery unavailable');
+      return;
     }
+    await this.db.transaction(async (manager) => {
+      if (wants(await lockUser(manager, user.id)))
+        await this.storeLink(manager, user.id, kind, token);
+    });
   }
   private async consume(
     raw: string,
@@ -118,10 +142,7 @@ export class AuthService {
         throw new BadRequestException(
           'Link ungültig oder abgelaufen. Bitte einen neuen Link anfordern.',
         );
-      const user = await manager.findOneOrFail(UserEntity, {
-        where: { id: first.userId },
-        lock: { mode: 'pessimistic_write' },
-      });
+      const user = await lockUser(manager, first.userId);
       const token = await manager.findOneBy(AuthTokenEntity, {
         hash: first.hash,
         kind,
@@ -161,10 +182,10 @@ export class AuthService {
     if (!(await checkPassword(dto.password, stored)) || !candidate)
       throw new UnauthorizedException('E-Mail oder Passwort ist falsch.');
     return this.db.transaction(async (manager) => {
+      await lockUser(manager, candidate.id);
       const user = await manager.findOne(UserEntity, {
         where: { id: candidate.id },
         select: { id: true, email: true, passwordHash: true, verifiedAt: true },
-        lock: { mode: 'pessimistic_write' },
       });
       // Reset and login serialize on the user, preventing an old-password login race.
       if (!user || user.passwordHash !== candidate.passwordHash)
@@ -204,10 +225,7 @@ export class AuthService {
     // Serialize revocation with Push dispatch and timer transitions; the session FK
     // removes this device's subscriptions/deliveries in the same transaction.
     await this.db.transaction(async (manager) => {
-      await manager.findOne(UserEntity, {
-        where: { id: session.userId },
-        lock: { mode: 'pessimistic_write' },
-      });
+      await lockUser(manager, session.userId);
       await manager.delete(SessionEntity, { hash });
     });
   }

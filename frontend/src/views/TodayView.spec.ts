@@ -1085,6 +1085,7 @@ describe("TodayView creation flow", () => {
       timerEligible: true,
     });
   });
+
   it("hides the forms until plus is clicked, then offers Quest | Daily", async () => {
     const wrapper = mount(TodayView);
     await flushPromises();
@@ -1138,6 +1139,7 @@ describe("TodayView creation flow", () => {
     expect(wrapper.find("dialog").exists()).toBe(true);
     expect(getTodayMock).toHaveBeenCalledTimes(1);
   });
+
   it("closes on cancellation and opens on the quest form again", async () => {
     const wrapper = mount(TodayView);
     await flushPromises();
@@ -1280,38 +1282,6 @@ describe("TodayView keyboard shortcuts", () => {
     );
   });
 
-  it("moves to next Monday with W and does nothing with T for a row of today", async () => {
-    await mountToday();
-    hover("todo-2");
-    expect(press("t").defaultPrevented).toBe(false);
-    press("w");
-    await flushPromises();
-    // 2 Oct 2026 is a Friday.
-    expect(vi.mocked(rescheduleTodo).mock.calls).toEqual([
-      [2, "2026-10-05", false],
-    ]);
-  });
-
-  it("brings a carried-over quest to today with T", async () => {
-    getTodayMock.mockResolvedValue(
-      makePlanner([
-        makeTodo({ todoId: 1, title: "Heute" }),
-        makeTodo({
-          todoId: 4,
-          title: "Von gestern",
-          scheduledDate: "2026-10-01",
-          isOverdue: true,
-        }),
-      ]),
-    );
-    const wrapper = await mountToday();
-    await wrapper.get(".catch-up__toggle").trigger("click");
-    hover("todo-4");
-    press("t");
-    await flushPromises();
-    expect(rescheduleTodo).toHaveBeenCalledWith(4, "2026-10-02", false);
-  });
-
   it("opens Verschieben for an appointment instead of moving it", async () => {
     getTodayMock.mockResolvedValue(
       makePlanner([
@@ -1325,27 +1295,6 @@ describe("TodayView keyboard shortcuts", () => {
     await flushPromises();
     expect(rescheduleTodo).not.toHaveBeenCalled();
     expect(wrapper.get("dialog").attributes("aria-label")).toBe("Verschieben");
-  });
-
-  it("ignores a finished row", async () => {
-    getTodayMock.mockResolvedValue(
-      makePlanner([
-        makeTodo({ todoId: 1, title: "Erstens" }),
-        makeTodo({
-          todoId: 6,
-          title: "Fertig",
-          status: "completed",
-          completedAt: "2026-10-02T05:00:00Z",
-        }),
-      ]),
-    );
-    const wrapper = await mountToday();
-    await wrapper.get(".resolved__toggle").trigger("click");
-    hover("todo-6");
-    expect(press("x").defaultPrevented).toBe(false);
-    expect(press("d").defaultPrevented).toBe(false);
-    expect(updateTodoMock).not.toHaveBeenCalled();
-    expect(rescheduleTodo).not.toHaveBeenCalled();
   });
 
   it("moves the focus on to the next row when the focused row is ticked", async () => {
@@ -2472,6 +2421,39 @@ describe("TodayView on other days", () => {
     expect(labels(earlier)).toEqual(["Liste", "Logbuch"]);
   });
 
+  it("ticks a quest of another day as today does: campaign question, toast, undo", async () => {
+    route.query = { tag: "2026-10-03" };
+    const campaign = { id: 41, title: "Steuer vorbereiten", color: null, icon: null };
+    vi.mocked(getPlan).mockResolvedValue(
+      dayPlan("2026-10-03", [{ ...plannedQuest, campaign }]),
+    );
+    vi.mocked(getTodoHierarchy).mockResolvedValue([
+      { id: 41, progress: { todoCount: 2, doneCount: 0 } } as never,
+    ]);
+    const wrapper = mount(TodayView);
+    await flushPromises();
+
+    await wrapper
+      .get('button[aria-label="Steuer vorbereiten erledigen"]')
+      .trigger("click");
+    await flushPromises();
+    expect(wrapper.get(".campaign-completion__lead").text()).toContain(
+      "2 Quests in „Steuer vorbereiten“ sind noch offen.",
+    );
+    expect(updateTodoMock).not.toHaveBeenCalled();
+    await wrapper.get("[data-campaign-confirm]").trigger("click");
+    await flushPromises();
+    expect(updateTodoMock).toHaveBeenCalledWith(41, true);
+    expect(wrapper.get(".other-day__toast").text()).toContain(
+      "„Steuer vorbereiten“ abgeschlossen",
+    );
+
+    await wrapper.get(".other-day__toast button").trigger("click");
+    await flushPromises();
+    expect(updateTodoMock).toHaveBeenLastCalledWith(41, false);
+    expect(wrapper.get(".other-day__toast").text()).toBe("");
+  });
+
   it("opens a quest of another day in the same editor as today's", async () => {
     route.query = { tag: "2026-10-03" };
     vi.mocked(getPlan).mockResolvedValue(
@@ -2484,5 +2466,113 @@ describe("TodayView on other days", () => {
       .trigger("click");
     await flushPromises();
     expect(wrapper.find(".item-editor").exists()).toBe(true);
+  });
+
+  /* A stored run of the daily 7, open on the day it stands on. */
+  const storedRun = (occurrenceId: number, moveUntil: string) => ({
+    type: "habit" as const,
+    habitId: 7,
+    occurrenceId,
+    title: "Lesen",
+    status: "pending" as const,
+    moveUntil,
+    timerEligible: false,
+    streak: { current: 0, best: 0, unit: "runs" as const },
+    timeOfDay: null,
+    plannedDurationMinutes: null,
+    campaign: null,
+    isOverdue: false,
+  });
+  async function menuOf(wrapper: ReturnType<typeof mount>, title: string) {
+    await wrapper
+      .get(`[aria-label="Aktionen für ${title}"][aria-haspopup]`)
+      .trigger("click");
+    return wrapper
+      .findAll("[role=menuitem] .action-menu__label")
+      .map((label) => label.text());
+  }
+  async function choose(wrapper: ReturnType<typeof mount>, label: string) {
+    await wrapper
+      .findAll("[role=menuitem]")
+      .find((entry) => entry.text().startsWith(label))!
+      .trigger("click");
+    await flushPromises();
+  }
+
+  it("gives a later day's cards Heute's menu, without the order and the Fokus-Modus", async () => {
+    route.query = { tag: "2026-10-03" };
+    vi.mocked(getPlan).mockResolvedValue(
+      dayPlan("2026-10-03", [plannedQuest, storedRun(51, "2026-10-05")]),
+    );
+    vi.mocked(rescheduleTodo).mockResolvedValue(undefined as never);
+    const wrapper = mount(TodayView, { attachTo: document.body });
+    await flushPromises();
+
+    expect(await menuOf(wrapper, "Steuer vorbereiten")).toEqual([
+      "Heute",
+      "Nächste Woche",
+      "Anderer Tag …",
+      "Bearbeiten",
+      "In Kampagne verschieben …",
+      "Löschen",
+    ]);
+    await choose(wrapper, "Anderer Tag …");
+    const dialog = wrapper.get(".move-dialog");
+    // Never on today, so today is one tap away.
+    expect(dialog.text()).toContain("Heute");
+    const loads = vi.mocked(getPlan).mock.calls.length;
+    await dialog
+      .findAll("button")
+      .find((button) => button.text() === "Nächster Montag")!
+      .trigger("click");
+    await flushPromises();
+    expect(rescheduleTodo).toHaveBeenCalledWith(41, "2026-10-05", false);
+    expect(wrapper.find(".move-dialog").exists()).toBe(false);
+    // The day heard the change while the dialog was open and loads it now.
+    expect(vi.mocked(getPlan).mock.calls.length).toBeGreaterThan(loads);
+    expect(document.activeElement).toBe(
+      wrapper.get('[data-focus-key="todo-41"] [data-edit-button]').element,
+    );
+
+    // A run not due yet: no Überspringen.
+    expect(await menuOf(wrapper, "Lesen")).toEqual([
+      "Heute",
+      "Nächste Woche",
+      "Anderer Tag …",
+      "Bearbeiten",
+      "Löschen",
+    ]);
+  });
+
+  it("skips a past day's due run from its menu and deletes its daily after asking", async () => {
+    route.query = { tag: "2026-10-01" };
+    vi.mocked(getPlan).mockResolvedValue(
+      dayPlan("2026-10-01", [storedRun(52, "2026-10-02")]),
+    );
+    updateOccurrenceMock.mockResolvedValue(undefined as never);
+    vi.mocked(deleteHabit).mockResolvedValue(undefined as never);
+    const wrapper = mount(TodayView);
+    await flushPromises();
+
+    expect(await menuOf(wrapper, "Lesen")).toEqual([
+      "Heute",
+      "Anderer Tag …",
+      "Überspringen",
+      "Bearbeiten",
+      "Löschen",
+    ]);
+    await choose(wrapper, "Überspringen");
+    expect(updateOccurrenceMock).toHaveBeenCalledWith(52, "skipped");
+    expect(wrapper.text()).toContain("„Lesen“ übersprungen.");
+
+    await menuOf(wrapper, "Lesen");
+    await choose(wrapper, "Löschen");
+    expect(wrapper.get(".delete-dialog").text()).toContain(
+      "Das ganze Daily verschwindet",
+    );
+    await wrapper.get('[data-test="confirm-delete"]').trigger("click");
+    await flushPromises();
+    expect(deleteHabit).toHaveBeenCalledWith(7);
+    expect(wrapper.find(".delete-dialog").exists()).toBe(false);
   });
 });

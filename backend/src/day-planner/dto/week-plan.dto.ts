@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsString, Matches, Max, Min } from 'class-validator';
+import { IsInt, IsString, Max, Min } from 'class-validator';
+import { IsDay } from '../../common/validation/field-rules';
 import type { Streak } from '../../habits/streaks';
 import type { Campaign } from '../../todos/todo-ancestry';
 import { MAX_PLAN_DAYS } from '../week-plan';
@@ -7,7 +8,7 @@ import { MAX_PLAN_DAYS } from '../week-plan';
 /** GET /day-planner/plan?from=YYYY-MM-DD&days=N: `days` columns from `from`. */
 export class PlanQueryDto {
   @IsString()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsDay()
   readonly from!: string;
 
   @Type(() => Number)
@@ -60,7 +61,7 @@ export type WeekPlanHabitEntryDto = {
  */
 export type WeekPlanEventEntryDto = {
   type: 'event';
-  /** `externalEvents[].id` of Heute: the row of this sync. */
+  /** `externalEvents[].id` of Heute: the event's row, kept across syncs. */
   eventId: number;
   /** Ticked off in a day's list (only in the app, never in Google). */
   status: 'pending' | 'completed';

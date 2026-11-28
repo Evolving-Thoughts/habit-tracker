@@ -1,6 +1,9 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
+import type { Ref } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWorkLog, updateWorkLog } from "../api/work-logs.api";
+import { VIEW_SESSION, type ViewSession } from "../composables/useViewSession";
+import { useWrites } from "../composables/useWrites";
 import type { HistoryWorkLog } from "../types/history";
 import WorkLogDialog from "./WorkLogDialog.vue";
 
@@ -24,6 +27,11 @@ const log: HistoryWorkLog = {
   campaign: { id: 9, title: "Buch", color: null, icon: null },
 };
 const reload = vi.fn(() => Promise.resolve());
+/* The view's session as far as the component uses it; reloads count in `reload`. */
+const session = {
+  childWrites: (error: Ref<string | null>) => useWrites(reload, error),
+  holdWhile: vi.fn(),
+} as unknown as ViewSession;
 const targets = [
   { kind: "todo" as const, targetId: 1, title: "Schreiben" },
   { kind: "occurrence" as const, targetId: 7, title: "Lesen" },
@@ -32,8 +40,11 @@ const targets = [
 function render(props: Record<string, unknown> = {}) {
   return mount(WorkLogDialog, {
     attachTo: document.body,
-    props: { date: "2026-10-30", reload, ...props },
-    global: { stubs: { ModalDialog: { template: "<div><slot /></div>" } } },
+    props: { date: "2026-10-30", ...props },
+    global: {
+      stubs: { ModalDialog: { template: "<div><slot /></div>" } },
+      provide: { [VIEW_SESSION as symbol]: session },
+    },
   });
 }
 type Wrapper = ReturnType<typeof render>;

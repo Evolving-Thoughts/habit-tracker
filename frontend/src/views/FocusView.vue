@@ -17,15 +17,20 @@ import { useFocusBlock } from "../composables/useFocusBlock";
 import type { FocusBlockMode } from "../types/focus-block";
 import { blockApplies, blockStatusLine } from "../utils/focus-block";
 import QuestNotes from "../components/QuestNotes.vue";
-import { notifyDataChanged } from "../composables/data-sync";
 import { useDayClock } from "../composables/useDayClock";
-import { useLoader } from "../composables/useLoader";
-import { toggleTimer, useTimer } from "../composables/useTimer";
+import { useViewSession } from "../composables/useViewSession";
+import {
+  timerFreeFor,
+  timerStateOf,
+  toggleTimer,
+  useTimer,
+} from "../composables/useTimer";
 import { useShortcutHandlers } from "../composables/useShortcuts";
 import { hrefOf } from "../routes";
 import type { DayPlannerItem, DayPlannerResponse } from "../types/day-planner";
 import CampaignChip from "../components/CampaignChip.vue";
 import ChallengeMark from "../components/ChallengeMark.vue";
+import { plannerRow, targetOf } from "../utils/row-actions";
 import { formatStopwatch } from "../utils/stopwatch";
 import { streakLine } from "../utils/streak";
 import {
@@ -46,18 +51,16 @@ import {
  * Finishing it brings up the next one in the order of the day.
  */
 const timer = useTimer();
-const busy = ref(false);
 const actionError = ref<string | null>(null);
+const { resource, write, busy } = useViewSession({ writeError: actionError });
 
 const {
   data: planner,
   isLoading,
   errorMessage,
-  reload,
-} = useLoader<DayPlannerResponse | null>(getToday, {
+} = resource<DayPlannerResponse | null>(getToday, {
   initial: null,
   fallbackError: "Der Tag konnte nicht geladen werden.",
-  refreshOnChange: () => !busy.value,
 });
 
 /*
@@ -75,11 +78,7 @@ const agenda = computed(() =>
 );
 
 function isTimed(item: DayPlannerItem): boolean {
-  const running = timer?.timer.value;
-  if (!running) return false;
-  return item.type === "todo"
-    ? running.kind === "todo" && running.targetId === item.todoId
-    : running.kind === "occurrence" && running.targetId === item.occurrenceId;
+  return timerStateOf(timer, targetOf(plannerRow(item))) !== null;
 }
 
 /**
@@ -165,19 +164,6 @@ const canPostpone = computed(
     !current.value.timeOfDay &&
     (agenda.value?.queue.length ?? 0) > 1,
 );
-
-async function act(work: () => Promise<unknown>, fallback: string) {
-  if (busy.value) return;
-  busy.value = true;
-  actionError.value = null;
-  try {
-    await work();
-  } catch (cause) {
-    actionError.value = cause instanceof Error ? cause.message : fallback;
-  } finally {
-    busy.value = false;
-  }
-}
 
 /*
  * Fokus-Sperre: a stopwatch that starts or resumes running, here or
@@ -267,75 +253,56 @@ function toggleStopwatch(): boolean {
   // Starting or resuming here lets the chosen sound start with it. When no
   // other stopwatch has to end first (that asks), the sound follows the
   // press at once instead of waiting for the server's answer.
-  const other = timer?.timer.value;
-  const ownOrNone =
-    !other ||
-    (item.type === "todo"
-      ? other.kind === "todo" && other.targetId === item.todoId
-      : other.kind === "occurrence" && other.targetId === item.occurrenceId);
-  if (!ownOrNone) sound.gesture();
+  const target = targetOf(plannerRow(item));
+  if (!timerFreeFor(timer, target)) sound.gesture();
   else if (running.value) sound.gesture("pause");
-  else if (other || item.timerEligible) sound.gesture("start");
+  else if (timer?.timer.value || item.timerEligible) sound.gesture("start");
   // Without the Fokus-Sperre (no provider) the stopwatch starts as anywhere.
   const focus =
     !focusBlock || activeBlock.value ? undefined : { mode: blockMode.value };
   return toggleTimer(
     timer,
-    item.type === "todo"
-      ? {
-          kind: "todo",
-          targetId: item.todoId,
-          title: item.title,
-          focusBlock: focus,
-        }
-      : {
-          kind: "occurrence",
-          targetId: item.occurrenceId,
-          title: item.title,
-          focusBlock: focus,
-        },
+    { ...target, focusBlock: focus },
     item.timerEligible,
   );
 }
 
 /** Done: the server ends its stopwatch, and the next quest comes into view. */
-function complete(): Promise<void> {
+async function complete(): Promise<void> {
   const item = current.value;
-  if (!item) return Promise.resolve();
-  return act(async () => {
-    await writeDone(
-      item.type === "todo"
-        ? { kind: "todo", id: item.todoId, title: item.title }
-        : { kind: "occurrence", id: item.occurrenceId, title: item.title },
-      true,
-    );
-    notifyDataChanged();
-    await Promise.all([reload(false), timer?.refresh()]);
-  }, "Das Erledigen hat nicht geklappt.");
+  if (!item) return;
+  await write(
+    () =>
+      writeDone(targetOf(plannerRow(item)), true),
+    {
+      fallbackError: "Das Erledigen hat nicht geklappt.",
+      alongside: () => timer?.refresh(),
+    },
+  );
 }
 
-function skip(): Promise<void> {
+async function skip(): Promise<void> {
   const item = current.value;
-  if (!item || item.type !== "habit") return Promise.resolve();
-  return act(async () => {
-    await updateOccurrenceStatus(item.occurrenceId, "skipped");
-    notifyDataChanged();
-    await Promise.all([reload(false), timer?.refresh()]);
-  }, "Das Überspringen hat nicht geklappt.");
+  if (!item || item.type !== "habit") return;
+  await write(() => updateOccurrenceStatus(item.occurrenceId, "skipped"), {
+    fallbackError: "Das Überspringen hat nicht geklappt.",
+    alongside: () => timer?.refresh(),
+  });
 }
 
 /** Not now: it goes to the end of the order, and its stopwatch ends. */
-function postpone(): Promise<void> {
+async function postpone(): Promise<void> {
   const item = current.value;
   const sequence = agenda.value?.sequence;
-  if (!item || !sequence || !canPostpone.value) return Promise.resolve();
-  return act(async () => {
-    if (timed.value) await timer?.action("stop");
-    // Appointments keep their place; only this one goes to the end.
-    await reorderDay(postponedToEnd(sequence, item));
-    notifyDataChanged();
-    await reload(false);
-  }, "Das Verschieben hat nicht geklappt.");
+  if (!item || !sequence || !canPostpone.value) return;
+  await write(
+    async () => {
+      if (timed.value) await timer?.action("stop");
+      // Appointments keep their place; only this one goes to the end.
+      await reorderDay(postponedToEnd(sequence, item));
+    },
+    { fallbackError: "Das Verschieben hat nicht geklappt." },
+  );
 }
 
 /*

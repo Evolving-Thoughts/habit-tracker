@@ -1,7 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import {
   assertRange,
-  assertWritableDay,
   MAX_RANGE_DAYS,
   minutesOfTime,
   normalizeDayBestText,
@@ -17,17 +16,6 @@ describe('Das Beste des Tages: the line', () => {
       'Sonne am See',
     );
     expect(normalizeDayBestText(' \n ')).toBe('');
-  });
-
-  it('takes today and past days, never tomorrow or a broken date', () => {
-    expect(() => assertWritableDay('2026-11-23', '2026-11-23')).not.toThrow();
-    expect(() => assertWritableDay('2025-02-01', '2026-11-23')).not.toThrow();
-    expect(() => assertWritableDay('2026-11-24', '2026-11-23')).toThrow(
-      BadRequestException,
-    );
-    expect(() => assertWritableDay('2026-02-30', '2026-11-23')).toThrow(
-      BadRequestException,
-    );
   });
 
   it('reads ranges in order and of bounded length', () => {

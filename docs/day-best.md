@@ -42,6 +42,11 @@ All routes need a session and only touch the signed-in person's rows.
 
 A future day (after Berlin's today) answers 400 "Das Beste des Tages gibt
 es nur für heute und vergangene Tage."; past days can be written any time.
+The rule "one text per day, empty removes it, not for days ahead" is
+shared with the reflections (`saveDayText` in
+`backend/src/common/day-text.ts`, each with its own message). Every write
+(line, delete, settings) runs under the user lock
+(`UserUnitOfWork.run`).
 A bad date, a line over 280 characters after trimming, an unknown field or
 a time other than `00:00`–`23:59` answer 400 as well.
 `backend/test/day-bests.e2e-spec.ts` covers the routes.

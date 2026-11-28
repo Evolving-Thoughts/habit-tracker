@@ -15,7 +15,12 @@ import type {
   MonthChallengesResponse,
 } from '../src/month-challenges/month-challenge.dto';
 import { MonthChallengeEntity } from '../src/month-challenges/month-challenge.entity';
-import { authenticatedRequest as request, seedAuth } from './auth-fixture';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  SEEDED_AUTH_TABLES,
+} from './auth-fixture';
+import { resetDatabase } from './reset-database';
 
 const OTHER_USER = '77777777-7777-4777-8777-777777777777';
 
@@ -77,13 +82,11 @@ describe('Monats-Challenge (e2e)', () => {
   beforeEach(async () => {
     // Thursday, 12 November 2026: the challenge counts from today.
     setNow('2026-11-12');
-    await db.query(
-      'TRUNCATE month_challenges, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits CASCADE',
-    );
+    await resetDatabase(db, { keep: SEEDED_AUTH_TABLES });
   });
   afterAll(async () => {
     // Leaves no challenge behind for the suites after this one.
-    await db.query('TRUNCATE month_challenges');
+    await resetDatabase(db);
     await app.close();
   });
 
@@ -169,6 +172,39 @@ describe('Monats-Challenge (e2e)', () => {
       missed: 1,
       remaining: 17,
       todayRun: 'none',
+    });
+  });
+
+  it('keeps counting a paused Daily but offers no run to act on today', async () => {
+    const sport = await daily('Sport');
+    const created = await start({ habitId: sport.id, month: '2026-11' });
+    const pause = (isActive: boolean) =>
+      request(server)
+        .patch(`/habits/${sport.id}`)
+        .send({ isActive })
+        .expect(200);
+
+    await pause(false);
+    const paused = { done: 0, missed: 0, remaining: 19, total: 19 };
+    expect((await overview()).current).toMatchObject({
+      status: 'running',
+      ...paused,
+      todayRun: 'none',
+      todayOccurrenceId: null,
+    });
+    const today = (await request(server).get('/day-planner/today').expect(200))
+      .body as DayPlannerResponseDto;
+    expect(today.monthChallenge).toMatchObject({
+      ...paused,
+      todayRun: 'none',
+      todayOccurrenceId: null,
+    });
+
+    // Active again: today's run is there to act on.
+    await pause(true);
+    expect((await overview()).current).toMatchObject({
+      todayRun: 'open',
+      todayOccurrenceId: created.todayOccurrenceId,
     });
   });
 

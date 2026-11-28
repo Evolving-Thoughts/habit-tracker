@@ -110,6 +110,15 @@ constants `BLOCK_GAP_MS` and `MIN_BLOCK_MS`, both 60 seconds), tested in
 adapter: it reads the block's log (locked), runs the log operations
 (`extend` or `insert`) and puts the next state on the timer row.
 
+The same function keeps the Soll's bookkeeping, so no caller sets these
+fields by hand: `targetReachesAt` (when a running stopwatch reaches its
+Soll), `targetReachedAt` (when it did) and `pushHandledAt` (the push worker
+looked at it). A pause or stop clears the moment it is due, a resume
+computes it again unless the Soll was reached already. Further events:
+`reach` (stored by the catch-up on a read, see "Backend"), `changeTarget`
+(new minutes) and `markPushHandled` (the push worker). A new stopwatch
+starts from `startedStopwatch`.
+
 - **Resumed within 60 seconds** of a pause, the stretch continues the block
   before it: `segmentStartedAt` becomes the block's start, so the log counts
   the pause as worked. When it ends, the block's work log (`timers.workLogId`) gets the
@@ -152,10 +161,14 @@ under a minute, this can differ slightly from what an earlier stopwatch on
 the target showed. The Soll
 compares against this total. When it is already passed at the start, the
 stopwatch is marked reached right away (`targetReachedAt` and `pushHandledAt`
-set to the start), so nothing announces it.
+set to the start, by `startedStopwatch`), so nothing announces it. A Soll
+lowered below the time worked is reached the same way (`changeTarget`).
 
 Foreground devices poll every **3 seconds**, and refresh on focus/visibility
-return. This is eventual synchronization, not a real-time guarantee.
+return and after a target changed (`startSync` in `useTimer.ts`, started by
+`TimerProvider.vue`); a hidden page reads nothing, and a read on its way
+takes no second one beside it. This is eventual synchronization, not a
+real-time guarantee.
 
 ## Backend
 
@@ -171,11 +184,25 @@ Protected endpoints, ownership taken exclusively from the session:
   same transaction when the target calls for one (`focus-block.md`).
 - `POST /timers/:id/pause`, `/resume`, `/stop` with JSON `{}`; `/resume` also
   takes `focusBlock`. Stopping ends a Soft Fokus-Sperre.
-- `PATCH /timers/:id/duration` with `{ durationMinutes }` sets the target.
+- `PATCH /timers/:id/duration` with `{ durationMinutes }` sets the target:
+  whole minutes from 1 to 10080, the bound of every planned duration
+  (`IsPlannedMinutes` in `common/validation/field-rules.ts`).
+
+A daily run can carry a stopwatch while `runRefusal`
+(`habits/scheduling/run-actionability.ts`, the rule status changes and moves
+ask too) allows it: an open run of an active habit, of the schedule version
+in force, due by today and its window still open; `timerEligible` on Heute
+and `timerOccurrenceId` on a habit say the same.
 
 Foreign target/timer IDs return 404. Per-user row locks serialize transitions
 across devices and server processes; a partial unique index enforces at most one
-running/paused row. Database checks enforce exactly one target, a valid state and
+running/paused row. `GET /timers/current`, polled every few seconds, takes no
+lock: it reads the stopwatch and its target in one read-only snapshot and asks
+one pure decision, `stopwatchCatchUp` (`stopwatch-catch-up.ts`), whether
+anything has to be stored (target gone or no longer eligible, a new title, the
+Soll reached, a forgotten stretch to cut). Only then does it take the lock,
+read and decide again and store the outcome; a Daily's run is opened
+(`openRun`) on that path only. Database checks enforce exactly one target, a valid state and
 that exactly a running stopwatch has a running stretch. Old stopped rows are
 retained.
 

@@ -12,7 +12,14 @@ import type {
   DayBestRangeResponse,
 } from '../src/day-bests/day-best.dto';
 import { DayBestEntity } from '../src/day-bests/day-best.entities';
-import { authenticatedRequest as request, seedAuth } from './auth-fixture';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  SEEDED_AUTH_TABLES,
+  TEST_USER,
+} from './auth-fixture';
+import { resetDatabase } from './reset-database';
+import { holdUserLock, stillPending } from './user-lock';
 
 const OTHER_USER = '55555555-5555-4555-8555-555555555555';
 
@@ -39,7 +46,7 @@ describe('Das Beste des Tages (e2e)', () => {
       verifiedAt: new Date(),
     });
   });
-  beforeEach(() => db.query('TRUNCATE day_bests, day_best_settings'));
+  beforeEach(() => resetDatabase(db, { keep: SEEDED_AUTH_TABLES }));
   afterAll(() => app.close());
 
   it('needs a session', async () => {
@@ -58,6 +65,37 @@ describe('Das Beste des Tages (e2e)', () => {
     const reread = await request(server).get(`/day-bests/${today}`).expect(200);
     expect(reread.body).toEqual({ date: today, text: 'Sonnenuntergang' });
     expect(await db.getRepository(DayBestEntity).count()).toBe(1);
+  });
+
+  it('writes lines and settings in the user unit of work, after a change in progress', async () => {
+    await save(addDays(today, -1), 'Gestern').expect(200);
+    const release = await holdUserLock(db, TEST_USER);
+    const writes = Promise.all([
+      save(today, 'Nach der Sperre').expect(200),
+      request(server)
+        .delete(`/day-bests/${addDays(today, -1)}`)
+        .expect(204),
+      request(server)
+        .put('/day-best-settings')
+        .send({ reminderEnabled: false })
+        .expect(200),
+    ]).then(() => undefined);
+    try {
+      expect(await stillPending(writes, 300)).toBe(true);
+      expect(
+        (await db.getRepository(DayBestEntity).find()).map(({ text }) => text),
+      ).toEqual(['Gestern']);
+    } finally {
+      await release();
+    }
+    await writes;
+    expect(
+      (await db.getRepository(DayBestEntity).find()).map(({ text }) => text),
+    ).toEqual(['Nach der Sperre']);
+    const settings = await request(server)
+      .get('/day-best-settings')
+      .expect(200);
+    expect(settings.body).toMatchObject({ reminderEnabled: false });
   });
 
   it('removes the line when emptied or deleted', async () => {

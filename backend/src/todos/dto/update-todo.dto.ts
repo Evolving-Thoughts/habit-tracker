@@ -7,15 +7,18 @@ import {
   IsDateString,
   IsIn,
   IsInt,
-  IsNotEmpty,
   IsOptional,
-  IsString,
-  Matches,
   Max,
-  MaxLength,
   Min,
-  ValidateIf,
 } from 'class-validator';
+import {
+  IsDay,
+  IsPlannedMinutes,
+  IsTimeOfDay,
+  IsTitle,
+  IsWhy,
+  OptionalNotNull,
+} from '../../common/validation/field-rules';
 import {
   CAMPAIGN_COLORS,
   CAMPAIGN_ICONS,
@@ -53,34 +56,29 @@ export class UpdateTodoDto {
   @Min(1)
   readonly categoryId?: number | null;
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(1000)
+  @IsWhy()
   readonly why?: string | null;
 
-  @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(200)
+  @OptionalNotNull()
+  @IsTitle()
   readonly title?: string;
 
-  @IsOptional()
+  @OptionalNotNull()
   @IsBoolean()
   readonly completed?: boolean;
 
   /** The day as YYYY-MM-DD; null puts the todo back into the backlog. */
   @IsOptional()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsDay()
   readonly scheduledDate?: string | null;
 
   /** HH:mm makes it an appointment fixed to that time; needs a day. */
   @IsOptional()
-  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  @IsTimeOfDay()
   readonly timeOfDay?: string | null;
 
   @IsOptional()
-  @IsInt()
-  @Min(1)
+  @IsPlannedMinutes()
   readonly plannedDurationMinutes?: number | null;
 
   /** Campaign only (no parent): weekly goal of quest minutes. */
@@ -99,12 +97,12 @@ export class UpdateTodoDto {
   readonly icon?: CampaignIcon | null;
 
   /** Fokus-Sperre for this entry: the default rule, always or never. */
-  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @OptionalNotNull()
   @IsIn(FOCUS_BLOCK_OVERRIDES)
   readonly focusBlock?: FocusBlockOverride;
 
   /** Marks or unmarks it as "Geblockt"; only an open todo can be blocked. */
-  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @OptionalNotNull()
   @IsBoolean()
   readonly blocked?: boolean;
 }

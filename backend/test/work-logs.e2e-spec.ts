@@ -9,7 +9,14 @@ import { dayOf } from '../src/common/date/local-day';
 import { configureApp } from '../src/configure-app';
 import { HistoryResponse } from '../src/history/history.dto';
 import { WorkLogEntity } from '../src/work-logs/work-log.entity';
-import { authenticatedRequest as request, seedAuth } from './auth-fixture';
+import {
+  authenticatedRequest as request,
+  seedAuth,
+  SEEDED_AUTH_TABLES,
+  TEST_USER,
+} from './auth-fixture';
+import { resetDatabase } from './reset-database';
+import { holdUserLock, stillPending } from './user-lock';
 
 const OTHER_USER = '44444444-4444-4444-8444-444444444444';
 type Log = { id: number; title: string; minutes: number; source: string };
@@ -82,9 +89,7 @@ describe('Work logs (e2e)', () => {
   });
   beforeEach(async () => {
     now = new Date('2026-10-30T09:00:00.000Z');
-    await db.query(
-      'TRUNCATE work_logs, push_deliveries, timers, todos CASCADE',
-    );
+    await resetDatabase(db, { keep: SEEDED_AUTH_TABLES });
   });
   afterAll(() => app.close());
 
@@ -129,6 +134,27 @@ describe('Work logs (e2e)', () => {
 
     await request(server).delete(`/work-logs/${log.id}`).expect(204);
     expect((await day()).logs).toEqual([]);
+  });
+
+  it('deletes an entry in the user unit of work, after a change in progress', async () => {
+    const log = (await add(await todo(), 60, 30).expect(201)).body as Log;
+    const release = await holdUserLock(db, TEST_USER);
+    const deleting = request(server)
+      .delete(`/work-logs/${log.id}`)
+      .expect(204)
+      .then(() => undefined);
+    try {
+      expect(await stillPending(deleting, 300)).toBe(true);
+      expect(
+        await db.getRepository(WorkLogEntity).countBy({ id: log.id }),
+      ).toBe(1);
+    } finally {
+      await release();
+    }
+    await deleting;
+    expect(await db.getRepository(WorkLogEntity).countBy({ id: log.id })).toBe(
+      0,
+    );
   });
 
   it('counts overlapping entries once in the total', async () => {

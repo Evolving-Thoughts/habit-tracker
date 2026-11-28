@@ -10,7 +10,7 @@ import {
   type BoardCard,
   type BoardColumn,
 } from "../utils/campaign-board";
-import type { MenuEntry } from "../utils/row-actions";
+import { measureOf, questRow, type MenuEntry } from "../utils/row-actions";
 import { formatDuration } from "../utils/today-agenda";
 import { CARD_CONTROLS, justDragged } from "../utils/card-click";
 
@@ -143,15 +143,7 @@ function meta(card: BoardCard): string[] {
           :ring-pressed="card.todo.completed"
           :busy="busy"
           draggable
-          :measure="
-            card.todo.completed
-              ? null
-              : {
-                  kind: 'todo',
-                  targetId: card.todo.id,
-                  eligible: card.todo.timerEligible,
-                }
-          "
+          :measure="card.todo.completed ? null : measureOf(questRow(card.todo))"
           :menu="menu(card)"
           :menu-key="card.todo.id"
           @toggle="emit('toggle', card)"

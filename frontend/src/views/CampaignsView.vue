@@ -21,9 +21,7 @@ import CheckRing from "../components/CheckRing.vue";
 import CreateButton from "../components/CreateButton.vue";
 import ModalDialog from "../components/ModalDialog.vue";
 import CreateTodoForm from "../components/CreateTodoForm.vue";
-import PlannerItemEditor from "../components/PlannerItemEditor.vue";
-import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
-import DeleteItemDialog from "../components/DeleteItemDialog.vue";
+import RowDialogs from "../components/RowDialogs.vue";
 import GoalBurnup from "../components/GoalBurnup.vue";
 import CampaignTiles from "../components/CampaignTiles.vue";
 import CampaignStats from "../components/CampaignStats.vue";
@@ -32,8 +30,9 @@ import UndoToast from "../components/UndoToast.vue";
 import QuestTrend from "../components/QuestTrend.vue";
 import CampaignBoard from "../components/CampaignBoard.vue";
 import { useListFocus } from "../composables/useListFocus";
-import { useLoader } from "../composables/useLoader";
-import { useWrites } from "../composables/useWrites";
+import { useRowDialogs, type RowDialog } from "../composables/useRowDialogs";
+import { useRowActions, type RowCall } from "../composables/useRowActions";
+import { useViewSession } from "../composables/useViewSession";
 import { useTicks } from "../composables/useTicks";
 import { useTimer } from "../composables/useTimer";
 import { useShortcutHandlers } from "../composables/useShortcuts";
@@ -50,57 +49,90 @@ import { formatDuration } from "../utils/today-agenda";
 import { againstTargetParts, campaignTiles } from "../utils/quest-hours";
 import { readyToComplete } from "../utils/campaign-next";
 import type { QuestHoursResponse } from "../types/quest-hours";
-import {
-  rowMenu as cardMenu,
-  timerStep,
-  type MenuEntry,
-} from "../utils/row-actions";
+import { questRow, targetOf, type MenuEntry } from "../utils/row-actions";
 const page = ref<HTMLElement | null>(null),
   listFocus = useListFocus(page);
 const collapsed = ref(new Set<number>());
 const error = ref<string | null>(""),
   success = ref("");
-const action = ref<"create" | "move" | "edit" | "delete" | null>(null),
-  selected = ref<HierarchyTodo | null>(null);
+/** The create dialog: a new campaign, or a quest below `parent`. */
+const creating = ref<{ parent: HierarchyTodo | null } | null>(null);
 const formBusy = ref(false);
 /** The create dialog was opened by a long press on Plus: dictate the title. */
 const dictating = ref(false);
 const timer = useTimer();
 const dragged = ref<number | null>(null),
   dropTarget = ref<number | null | undefined>(undefined);
-const busy = computed(() => formBusy.value || writing.value);
+const busy = computed(
+  () => formBusy.value || rows.busy.value || writing.value,
+);
 /* Rings, the campaign question and the undo toast: `useTicks`. */
 const ticks = useTicks((action, { fallbackError }) =>
   run(action, "", { fallbackError }),
 );
 const { undo, undoLast } = ticks;
-const quiet = () =>
-  !busy.value && action.value === null && ticks.campaignQuestion.value === null;
 // Refreshes after timer and other views' changes, unless a dialog is open.
+const session = useViewSession({
+  holding: () =>
+    formBusy.value ||
+    creating.value !== null ||
+    rows.holding() ||
+    ticks.campaignQuestion.value !== null,
+  writeError: error,
+});
 const {
   data: todos,
   isLoading: loading,
   errorMessage: loadError,
   reload: load,
-} = useLoader(getTodoHierarchy, {
+} = session.resource(getTodoHierarchy, {
   initial: [] as HierarchyTodo[],
   fallbackError: "Quests konnten nicht geladen werden.",
-  refreshOnChange: quiet,
 });
 // The tiles' numbers; without them the tiles still open their campaign.
-const { data: questHours, reload: loadQuestHours } =
-  useLoader<QuestHoursResponse | null>(
-    (signal) => getQuestHours(weekStart(getCurrentDateInTimeZone()), signal),
-    {
-      initial: null,
-      fallbackError: "Kampagnen-Stunden konnten nicht geladen werden.",
-      refreshOnChange: quiet,
-    },
-  );
-const writes = useWrites(async (showPageLoading) => {
-  await Promise.all([load(showPageLoading), loadQuestHours(false)]);
-}, error);
-const { write, applied, busy: writing } = writes;
+const { data: questHours } = session.resource<QuestHoursResponse | null>(
+  (signal) => getQuestHours(weekStart(getCurrentDateInTimeZone()), signal),
+  {
+    initial: null,
+    fallbackError: "Kampagnen-Stunden konnten nicht geladen werden.",
+  },
+);
+const { write, applied, busy: writing } = session;
+/*
+ * A quest's editor, "In Kampagne verschieben …" and "Löschen", for the
+ * tree, the tiles, the opened campaign and the board's cards alike; each
+ * says what it did in the status line.
+ */
+const SAVED: Partial<Record<RowDialog["kind"], string>> = {
+  edit: "Änderungen gespeichert.",
+  reparent: "Quest verschoben.",
+  delete: "Gelöscht. Das Logbuch bleibt erhalten.",
+};
+const rows = useRowDialogs({
+  root: page,
+  session,
+  today: getCurrentDateInTimeZone,
+  blocked: () => formBusy.value,
+  opened: () => (error.value = ""),
+  saved: (dialog) => (success.value = SAVED[dialog.kind] ?? ""),
+});
+/** A quest's editor; a campaign's dialog says so from the start. */
+function edit(todo: HierarchyTodo): void {
+  rows.edit(`todo-${todo.id}`, {
+    kind: "todo",
+    id: todo.id,
+    campaign: campaignIds.value.has(todo.id),
+  });
+}
+/** "Löschen": the quest with everything below it. */
+function remove(todo: HierarchyTodo): void {
+  rows.remove(`todo-${todo.id}`, {
+    kind: "todo",
+    id: todo.id,
+    title: todo.title,
+    campaign: campaignIds.value.has(todo.id),
+  });
+}
 const shownError = computed(() => error.value || loadError.value || "");
 const tiles = computed(() => campaignTiles(todos.value, questHours.value));
 const doneCount = computed(
@@ -260,21 +292,28 @@ function details(todo: HierarchyTodo): string[] {
     );
   return parts;
 }
+/*
+ * What a quest of the tree can do: its editor, an Unter-Quest, the
+ * campaign move and Löschen, which takes the quests below along
+ * (`useRowActions`; the tree knows which of its quests are campaigns).
+ */
+const rowActions = useRowActions({
+  today: getCurrentDateInTimeZone,
+  dialogs: rows,
+  timer,
+  busy: () => busy.value,
+});
+function callOf(todo: HierarchyTodo, menuTimer = false): RowCall {
+  return {
+    key: `todo-${todo.id}`,
+    row: questRow(todo, { tree: true, campaign: campaignIds.value.has(todo.id) }),
+    addChild: () => openCreate(todo),
+    menuTimer,
+  };
+}
 /** "Aktionen für …" of a row; its ▶ measures, so the menu needs no stopwatch. */
 function rowMenu(todo: HierarchyTodo): MenuEntry[] {
-  return cardMenu(
-    todo.title,
-    {
-      edit: () => open("edit", todo),
-      child: () => open("create", todo),
-      reparent: () => open("move", todo),
-      remove: {
-        run: () => open("delete", todo),
-        ariaLabel: `${todo.title} mit allen Unter-Quests löschen`,
-      },
-    },
-    busy.value,
-  );
+  return rowActions.menu(callOf(todo));
 }
 
 /*
@@ -295,36 +334,18 @@ function campaignMenu(todo: HierarchyTodo): MenuEntry[] {
       disabled: busy.value,
       run: () => void toggleCompletion(todo),
     },
-    ...cardMenu(
-      todo.title,
-      {
-        edit: () => open("edit", todo),
-        timer: timerStep(
-          timer,
-          { kind: "todo", targetId: todo.id, title: todo.title },
-          todo.timerEligible,
-        ),
-        child: () => open("create", todo),
-        reparent: () => open("move", todo),
-        remove: {
-          run: () => open("delete", todo),
-          ariaLabel: `${todo.title} mit allen Unter-Quests löschen`,
-        },
-      },
-      busy.value,
-    ),
+    ...rowActions.menu(callOf(todo, true)),
   ];
 }
 
 /** The card contract: a tap anywhere on a row but its controls edits it. */
 function openFromCard(event: MouseEvent, todo: HierarchyTodo): void {
-  if (!busy.value) onCardClick(event, () => open("edit", todo));
+  if (!busy.value) onCardClick(event, () => edit(todo));
 }
 
 function close() {
   if (!busy.value) {
-    action.value = null;
-    selected.value = null;
+    creating.value = null;
     formBusy.value = false;
   }
 }
@@ -336,7 +357,7 @@ async function run(
 ): Promise<boolean> {
   if (busy.value) return false;
   const activeLabel = document.activeElement?.getAttribute("aria-label");
-  const hadDialog = action.value !== null;
+  const hadDialog = creating.value !== null || rows.dialog.value !== null;
   success.value = "";
   const done = await write(fn, {
     fallbackError,
@@ -344,8 +365,7 @@ async function run(
   });
   if (done && !loadError.value) {
     success.value = text;
-    action.value = null;
-    selected.value = null;
+    creating.value = null;
   }
   await nextTick();
   if (!hadDialog && activeLabel)
@@ -363,7 +383,7 @@ function checked(todo: HierarchyTodo) {
 async function toggleCompletion(todo: HierarchyTodo) {
   if (busy.value) return;
   const next = !checked(todo);
-  const target = { kind: "todo", id: todo.id, title: todo.title } as const;
+  const target = targetOf(questRow(todo));
   const fallbackError = "Die Quest konnte nicht aktualisiert werden.";
   const fill = () =>
     (pendingCompletion.value = new Map(pendingCompletion.value).set(
@@ -393,27 +413,23 @@ function toggleCollapse(id: number) {
   next.has(id) ? next.delete(id) : next.add(id);
   collapsed.value = next;
 }
-function open(
-  kind: "create" | "move" | "edit" | "delete",
-  todo: HierarchyTodo | null = null,
-) {
+function openCreate(parent: HierarchyTodo | null) {
   if (busy.value) return;
-  if (todo) listFocus.remember(`todo-${todo.id}`);
-  selected.value = todo;
-  action.value = kind;
+  if (parent) listFocus.remember(`todo-${parent.id}`);
+  creating.value = { parent };
   error.value = "";
   formBusy.value = false;
 }
 async function created(todo: TodoResponse) {
   formBusy.value = false;
-  if (selected.value) {
+  const parent = creating.value?.parent;
+  if (parent) {
     const next = new Set(collapsed.value);
-    next.delete(selected.value.id);
+    next.delete(parent.id);
     collapsed.value = next;
   }
   await applied();
-  action.value = null;
-  selected.value = null;
+  creating.value = null;
   // A plain top-level quest is no campaign yet, so it does not show here.
   success.value =
     todo.parentId === null && !campaignIds.value.has(todo.id)
@@ -424,15 +440,6 @@ async function created(todo: TodoResponse) {
 const becomesCampaign = (id: number | null) =>
   id !== null &&
   (campaignIds.value.has(id) || Boolean(children.value.get(id)?.length));
-/** A dialog wrote on its own: reload, close it and say what happened. */
-async function done(text: string) {
-  formBusy.value = false;
-  await applied();
-  action.value = null;
-  selected.value = null;
-  success.value = text;
-}
-const changed = () => done("Änderungen gespeichert.");
 function move(todo: HierarchyTodo, target: number | null) {
   return run(
     () => updateTodo(todo.id, { parentId: target }),
@@ -460,12 +467,12 @@ function startDrag(event: DragEvent, id: number) {
  * new quest below it, with its Warum and category taken over.
  */
 function create(dictate = false): void {
-  open("create", openTile.value?.todo ?? null);
-  dictating.value = dictate && action.value === "create";
+  openCreate(openTile.value?.todo ?? null);
+  dictating.value = dictate && creating.value !== null;
 }
 useShortcutHandlers({
   "quest.new": () => {
-    if (!busy.value && !action.value) create();
+    if (!busy.value && !creating.value && !rows.dialog.value) create();
   },
 });
 </script>
@@ -482,7 +489,7 @@ useShortcutHandlers({
     <div v-if="shownError" class="alert" role="alert">
       <p>{{ shownError }}</p>
       <button
-        v-if="!action"
+        v-if="!creating && !rows.dialog.value"
         class="btn btn--ground"
         type="button"
         :disabled="busy"
@@ -619,7 +626,7 @@ useShortcutHandlers({
               data-edit-button
               :disabled="busy"
               :aria-label="`Kampagne ${openTile.todo.title} bearbeiten`"
-              @click="open('edit', openTile.todo)"
+              @click="edit(openTile.todo)"
             >
               <AppIcon name="edit" />Bearbeiten
             </button>
@@ -673,12 +680,10 @@ useShortcutHandlers({
         :todos="todos"
         :campaign="openTile.todo"
         :busy="busy"
-        :writes="writes"
+        :writes="session"
         :ticks="ticks"
-        @edit="(todo) => open('edit', todo)"
-        @reparent="(todo) => open('move', todo)"
-        @remove="(todo) => open('delete', todo)"
-        @created="applied()"
+        :dialogs="rows"
+        @changed="applied()"
       />
       <template v-else>
       <template v-for="list in lists" :key="list.key">
@@ -755,7 +760,7 @@ useShortcutHandlers({
                 data-edit-button
                 :disabled="busy"
                 :aria-label="`${todo.title} bearbeiten`"
-                @click="open('edit', todo)"
+                @click="edit(todo)"
               >
                 {{ todo.title }}
               </button>
@@ -848,23 +853,19 @@ useShortcutHandlers({
         :completed="(tile) => checked(tile.todo)"
         @open="openCampaign"
         @complete="(tile) => toggleCompletion(tile.todo)"
-        @edit="(tile) => open('edit', tile.todo)"
-        @remove="(tile) => open('delete', tile.todo)"
+        @edit="(tile) => edit(tile.todo)"
+        @remove="(tile) => remove(tile.todo)"
         @create="create()"
       />
     </template>
     <ModalDialog
-      v-if="action === 'create' || action === 'edit'"
+      v-if="creating"
       :title="
-        action === 'create'
-          ? selected
-            ? selected.id === openTile?.todo.id
-              ? 'Neue Quest'
-              : 'Unter-Quest hinzufügen'
-            : 'Neue Kampagne'
-          : selected && campaignIds.has(selected.id)
-            ? 'Kampagne bearbeiten'
-            : 'Quest bearbeiten'
+        creating.parent
+          ? creating.parent.id === openTile?.todo.id
+            ? 'Neue Quest'
+            : 'Unter-Quest hinzufügen'
+          : 'Neue Kampagne'
       "
       :busy="busy"
       :return-focus="listFocus.returnFocus"
@@ -872,48 +873,19 @@ useShortcutHandlers({
       @close="close"
     >
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-      <template v-if="action === 'create'"
-        ><p v-if="selected" class="dialog-lead">Unter „{{ selected.title }}“</p>
-        <CreateTodoForm
-          :parent="selected"
-          :campaign="!selected"
-          :dictate="dictating"
-          @busy="formBusy = $event"
-          @created="created"
-          @cancel="close"
-      /></template>
-      <PlannerItemEditor
-        v-else-if="selected"
-        kind="todo"
-        :entity-id="selected.id"
-        embedded
+      <p v-if="creating.parent" class="dialog-lead">
+        Unter „{{ creating.parent.title }}“
+      </p>
+      <CreateTodoForm
+        :parent="creating.parent"
+        :campaign="!creating.parent"
+        :dictate="dictating"
         @busy="formBusy = $event"
-        @changed="changed"
-        @close="close"
+        @created="created"
+        @cancel="close"
       />
     </ModalDialog>
-    <CampaignMoveDialog
-      v-if="action === 'move' && selected"
-      :todo-id="selected.id"
-      :title="selected.title"
-      :return-focus="listFocus.returnFocus"
-      @busy="formBusy = $event"
-      @moved="done('Quest verschoben.')"
-      @close="close"
-    />
-    <DeleteItemDialog
-      v-if="action === 'delete' && selected"
-      :target="{
-        kind: 'todo',
-        id: selected.id,
-        title: selected.title,
-        campaign: campaignIds.has(selected.id),
-      }"
-      :return-focus="listFocus.returnFocus"
-      @busy="formBusy = $event"
-      @deleted="done('Gelöscht. Das Logbuch bleibt erhalten.')"
-      @close="close"
-    />
+    <RowDialogs :dialogs="rows" />
     <CampaignCompletionDialog
       v-if="ticks.campaignQuestion.value"
       :title="ticks.campaignQuestion.value.title"

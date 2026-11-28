@@ -8,10 +8,9 @@ import WhyField from "./WhyField.vue";
 import TodoGoalFields from "./TodoGoalFields.vue";
 import CampaignFields from "./CampaignFields.vue";
 import CategoryPicker from "./CategoryPicker.vue";
-import CreateHabitForm, { type HabitDraft } from "./CreateHabitForm.vue";
+import CreateHabitForm from "./CreateHabitForm.vue";
 import FormDisclosure from "./FormDisclosure.vue";
 import FocusBlockOverride from "./FocusBlockOverride.vue";
-import type { FocusBlockOverride as FocusBlockChoice } from "../types/focus-block";
 import { OVERRIDE_LABELS } from "../utils/focus-block";
 import KindSwitch from "./KindSwitch.vue";
 import ParentPicker from "./ParentPicker.vue";
@@ -29,39 +28,30 @@ import {
   updateHabit,
   updateTodo,
 } from "../api/day-planner.api";
-import type {
-  ChangeHabitScheduleInput,
-  HabitResponse,
-  HabitScheduleRule,
-  ScheduleVersionResponse,
-} from "../types/habit";
+import type { HabitResponse, ScheduleVersionResponse } from "../types/habit";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
 import { formatHabitSchedule, WEEKDAY_OPTIONS } from "../utils/habit";
 import type { InheritedWhy, TodoResponse } from "../types/todo";
+import { todoChanges } from "../utils/editor-changes";
 import {
-  habitChanges,
-  todoChanges,
-  type HabitFields,
-  type TodoFields,
-} from "../utils/editor-changes";
-import type { CampaignColor, CampaignIcon } from "../types/campaign";
-import {
-  campaignChoices,
-  isCampaignColor,
-  isCampaignIcon,
-} from "../utils/campaign-style";
-import { minutesToHours } from "../utils/quest-hours";
-import { categoryOfChoice, type ParentChoice } from "../utils/parent-choice";
-import { whyBelow } from "../utils/why";
-import {
-  emptyScheduleDraft,
-  scheduleDraftOf,
-  scheduleRuleOf,
-} from "../utils/habit-schedule";
+  canBecomeDaily,
+  chosenCampaignId,
+  emptyEditorForm,
+  habitDraft,
+  habitForm,
+  habitSave,
+  isCampaignTodo,
+  placeBringsInEditor,
+  questSections,
+  scheduleFailure,
+  todoForm,
+} from "../utils/editor-form";
+import { campaignChoices } from "../utils/campaign-style";
+import type { ParentChoice } from "../utils/parent-choice";
+import { emptyScheduleDraft, scheduleDraftOf } from "../utils/habit-schedule";
 import {
   formatDateForGermanDisplay,
   getCurrentDateInTimeZone,
-  isValidIsoDate,
 } from "../utils/date";
 
 const props = defineProps<{
@@ -131,51 +121,24 @@ function keep(): void {
   cancelDeletion();
 }
 
-const title = ref("");
+/** The form as it stands; `editor-form` holds its rules. */
+const fields = ref(emptyEditorForm());
 const categories = ref<CategoryResponse[]>([]);
-const categoryId = ref<number | null>(null);
-const why = ref("");
 const inheritedWhy = ref<InheritedWhy | null>(null);
 /** What the server said is inherited, before another place was chosen. */
 const loadedInheritedWhy = ref<InheritedWhy | null>(null);
-
-// Todo-Felder
-const periodStart = ref("");
-const periodEnd = ref("");
-const goalHabitId = ref<number | null>(null);
-const goalTarget = ref<string | number>("");
 const loadedTodo = ref<TodoResponse | null>(null);
-const todoDate = ref("");
-const todoTime = ref("");
-const duration = ref<string | number>("");
-const timeOfDay = ref("");
-/** Fokus-Sperre: Standard, Immer or Nie; quests and dailies alike. */
-const focusBlockChoice = ref<FocusBlockChoice>("default");
+const loadedHabit = ref<HabitResponse | null>(null);
 const focusBlockSummary = computed(() =>
-  focusBlockChoice.value === "default"
+  fields.value.focusBlock === "default"
     ? ""
-    : OVERRIDE_LABELS[focusBlockChoice.value],
+    : OVERRIDE_LABELS[fields.value.focusBlock],
 );
-/** "Gehört zu": the quest it sits below; null at the top. */
-const parentId = ref<number | null>(null);
 /** The places "Gehört zu" offers, once loaded. */
 const parentChoicesLoaded = ref<ParentChoice[]>([]);
 /** Known once "Gehört zu" has read the tree; until then no switch to Daily. */
 const hasChildren = ref<boolean | null>(null);
-// Only a quest without parent is a campaign and offers these.
-const campaignColor = ref<CampaignColor | null>(null);
-const campaignIcon = ref<CampaignIcon | null>(null);
-const weeklyTarget = ref<string | number>("");
-/**
- * A campaign as it was opened (a top-level quest with quests below or a
- * colour, icon or goal): its form leaves out what a campaign is not planned
- * by, unless a value is already set there.
- */
-const isCampaign = computed(
-  () =>
-    !!loadedTodo.value &&
-    loadedTodo.value.campaign?.id === loadedTodo.value.id,
-);
+const isCampaign = computed(() => isCampaignTodo(loadedTodo.value));
 /** The way to deletion names what goes. */
 const deleteLabel = computed(() =>
   props.kind === "habit"
@@ -186,68 +149,43 @@ const deleteLabel = computed(() =>
 );
 watch(isCampaign, (value) => emit("campaign", value));
 /** At the top now (as chosen): colour, icon and goal are on offer. */
-const isTopLevel = computed(() => parentId.value === null);
-const showPlan = computed(
-  () => !isCampaign.value || !!loadedTodo.value?.scheduledDate,
-);
-const showDuration = computed(
-  () => !isCampaign.value || loadedTodo.value?.plannedDurationMinutes != null,
-);
-const showAppointment = computed(
-  () => !isCampaign.value || !!loadedTodo.value?.timeOfDay,
-);
-const showGoal = computed(
-  () =>
-    !isCampaign.value ||
-    loadedTodo.value?.goalHabitId != null ||
-    !!loadedTodo.value?.periodStart ||
-    !!loadedTodo.value?.periodEnd,
-);
+const isTopLevel = computed(() => fields.value.parentId === null);
+const sections = computed(() => questSections(loadedTodo.value));
 const campaignSummary = computed(() =>
-  campaignChoices(campaignColor.value, campaignIcon.value, weeklyTarget.value),
+  campaignChoices(
+    fields.value.color,
+    fields.value.icon,
+    fields.value.weeklyTarget,
+  ),
 );
 const categoryName = computed(
   () =>
-    categories.value.find((category) => category.id === categoryId.value)
+    categories.value.find((category) => category.id === fields.value.categoryId)
       ?.name ?? "",
 );
 
 /*
- * Quest or Daily: an open quest with nothing below it can become a daily.
- * The daily takes over title, reason, category and campaign; once it is
- * saved, the quest is deleted (see CreateHabitForm). Nothing changes before.
+ * Quest or Daily: the daily takes over title, reason, category and
+ * campaign; once it is saved, the quest is deleted (see CreateHabitForm).
+ * Nothing changes before.
  */
 const form = ref<"todo" | "habit">("todo");
 watch(form, (value) => emit("mode", value));
-const canBecomeDaily = computed(
-  () =>
-    props.kind === "todo" &&
-    !!loadedTodo.value &&
-    !loadedTodo.value.completed &&
-    !isCampaign.value &&
-    hasChildren.value === false,
+const offersDaily = computed(() =>
+  canBecomeDaily(loadedTodo.value, hasChildren.value),
 );
-/** The campaign the chosen place belongs to. */
-const chosenCampaignId = computed(() => {
-  if (parentId.value === null) return null;
-  const choice = parentChoicesLoaded.value.find(
-    (entry) => entry.todo.id === parentId.value,
-  );
-  if (choice) return choice.campaign.id;
-  const campaign = loadedTodo.value?.campaign;
-  return campaign && campaign.id !== loadedTodo.value?.id ? campaign.id : null;
-});
-const habitDraft = computed<HabitDraft>(() => ({
-  title: title.value.trim(),
-  why: why.value.trim(),
-  categoryId: categoryId.value,
-  campaignId: chosenCampaignId.value,
-}));
+const draft = computed(() =>
+  habitDraft(
+    fields.value,
+    chosenCampaignId(
+      fields.value.parentId,
+      parentChoicesLoaded.value,
+      loadedTodo.value,
+    ),
+  ),
+);
 
-// Habit-Felder
-const isActive = ref(true);
-const loadedHabit = ref<HabitResponse | null>(null);
-const campaignId = ref<number | null>(null);
+// A daily's rhythm change
 const changeSchedule = ref(false);
 const effectiveFrom = ref(getCurrentDateInTimeZone());
 const today = computed(() => getCurrentDateInTimeZone());
@@ -257,31 +195,14 @@ const isBusy = computed(() => {
   return isLoading.value || isSaving.value;
 });
 
-function fillAssignment(entity: {
-  categoryId?: number | null;
-  why?: string | null;
-  inheritedWhy?: InheritedWhy | null;
-}): void {
-  categoryId.value = entity.categoryId ?? null;
-  why.value = entity.why ?? "";
-  inheritedWhy.value = loadedInheritedWhy.value = entity.inheritedWhy ?? null;
-}
-
-/** The category a new place brings, unless the entry has one already. */
-function takeCategory(choice: ParentChoice | null): void {
-  if (choice && categoryId.value === null)
-    categoryId.value = categoryOfChoice(choice);
-}
-
 /** "Gehört zu" changed: the reason now comes from there, live as ever. */
 function chooseParent(choice: ParentChoice | null): void {
-  inheritedWhy.value =
-    parentId.value === loadedTodo.value?.parentId
-      ? loadedInheritedWhy.value
-      : choice
-        ? whyBelow(choice.todo)
-        : null;
-  takeCategory(choice);
+  const next = placeBringsInEditor(choice, fields.value.categoryId, {
+    returned: fields.value.parentId === loadedTodo.value?.parentId,
+    loadedWhy: loadedInheritedWhy.value,
+  });
+  fields.value.categoryId = next.categoryId;
+  inheritedWhy.value = next.inheritedWhy;
 }
 function readParents(choices: ParentChoice[], todos: HierarchyTodo[]): void {
   parentChoicesLoaded.value = choices;
@@ -294,7 +215,7 @@ function readParents(choices: ParentChoice[], todos: HierarchyTodo[]): void {
  * server's `campaign` falls back to it); otherwise nothing.
  */
 const campaignHint = computed(() => {
-  if (campaignId.value !== null)
+  if (fields.value.campaignId !== null)
     return "Seine gemessene Zeit zählt dort als Kampagnen-Stunden.";
   const counting = loadedHabit.value?.campaign;
   return loadedHabit.value?.campaignId === null && counting
@@ -309,13 +230,13 @@ const campaignHint = computed(() => {
  */
 function chooseCampaign(choice: ParentChoice | null): void {
   const originalCampaignId = loadedHabit.value?.campaignId ?? null;
-  const fallback =
-    originalCampaignId === null ? loadedInheritedWhy.value : null;
-  inheritedWhy.value =
-    campaignId.value === originalCampaignId
-      ? loadedInheritedWhy.value
-      : ((choice ? whyBelow(choice.todo) : null) ?? fallback);
-  takeCategory(choice);
+  const next = placeBringsInEditor(choice, fields.value.categoryId, {
+    returned: fields.value.campaignId === originalCampaignId,
+    loadedWhy: loadedInheritedWhy.value,
+    keepLoadedWhy: originalCampaignId === null,
+  });
+  fields.value.categoryId = next.categoryId;
+  inheritedWhy.value = next.inheritedWhy;
 }
 
 /*
@@ -327,35 +248,16 @@ async function loadEntity(): Promise<void> {
   try {
     if (props.kind === "todo") {
       const todo = await getTodo(props.entityId);
-
-      fillAssignment(todo);
+      fields.value = todoForm(todo);
+      inheritedWhy.value = loadedInheritedWhy.value = todo.inheritedWhy ?? null;
       loadedTodo.value = todo;
-      parentId.value = todo.parentId;
-      periodStart.value = todo.periodStart ?? "";
-      periodEnd.value = todo.periodEnd ?? "";
-      goalHabitId.value = todo.goalHabitId ?? null;
-      goalTarget.value = todo.goalTarget ?? "";
-      title.value = todo.title;
-      duration.value = todo.plannedDurationMinutes ?? "";
-      focusBlockChoice.value = todo.focusBlock ?? "default";
-      todoDate.value = todo.scheduledDate ?? "";
-      todoTime.value = todo.timeOfDay ?? "";
-      campaignColor.value = isCampaignColor(todo.color) ? todo.color : null;
-      campaignIcon.value = isCampaignIcon(todo.icon) ? todo.icon : null;
-      weeklyTarget.value = minutesToHours(todo.weeklyTargetMinutes);
     } else {
       const habit = await getHabit(props.entityId);
-
-      fillAssignment(habit);
-      title.value = habit.title;
-      isActive.value = habit.isActive;
+      fields.value = habitForm(habit);
+      inheritedWhy.value = loadedInheritedWhy.value = habit.inheritedWhy ?? null;
       loadedHabit.value = habit;
-      campaignId.value = habit.campaignId ?? null;
-      duration.value = habit.plannedDurationMinutes ?? "";
-      timeOfDay.value = habit.timeOfDay ?? "";
-      focusBlockChoice.value = habit.focusBlock ?? "default";
       const version = habit.currentSchedule ?? habit.upcomingSchedule;
-      if (version) fillSchedule(version.schedule);
+      if (version) schedule.value = scheduleDraftOf(version.schedule);
     }
 
     hasLoaded.value = true;
@@ -369,45 +271,6 @@ async function loadEntity(): Promise<void> {
   }
 }
 
-/** The form as it stands, for `todoChanges`. */
-function todoFields(): TodoFields {
-  return {
-    title: title.value,
-    date: todoDate.value,
-    time: todoTime.value,
-    duration: duration.value,
-    parentId: parentId.value,
-    categoryId: categoryId.value,
-    why: why.value,
-    periodStart: periodStart.value,
-    periodEnd: periodEnd.value,
-    goalHabitId: goalHabitId.value,
-    goalTarget: goalTarget.value,
-    weeklyTarget: weeklyTarget.value,
-    color: campaignColor.value,
-    icon: campaignIcon.value,
-    focusBlock: focusBlockChoice.value,
-  };
-}
-
-/** The form as it stands, for `habitChanges`. */
-function habitFields(): HabitFields {
-  return {
-    title: title.value,
-    isActive: isActive.value,
-    campaignId: campaignId.value,
-    duration: duration.value,
-    timeOfDay: timeOfDay.value,
-    categoryId: categoryId.value,
-    why: why.value,
-    focusBlock: focusBlockChoice.value,
-  };
-}
-
-function fillSchedule(rule: HabitScheduleRule): void {
-  schedule.value = scheduleDraftOf(rule);
-}
-
 function describeSchedule(version: ScheduleVersionResponse): string {
   return formatHabitSchedule(version.schedule);
 }
@@ -415,22 +278,38 @@ function describeSchedule(version: ScheduleVersionResponse): string {
 function editUpcomingSchedule(): void {
   const version = loadedHabit.value?.upcomingSchedule;
   if (!version || isBusy.value) return;
-  fillSchedule(version.schedule);
+  schedule.value = scheduleDraftOf(version.schedule);
   effectiveFrom.value = version.effectiveFrom;
   changeSchedule.value = true;
 }
 
-function buildScheduleChange(): ChangeHabitScheduleInput {
-  if (
-    !isValidIsoDate(effectiveFrom.value) ||
-    effectiveFrom.value < getCurrentDateInTimeZone()
-  ) {
-    throw new Error("Bitte wähle heute oder ein zukünftiges gültiges Datum.");
+/** A daily's two requests, as `habitSave` plans them. */
+async function saveHabit(loaded: HabitResponse): Promise<void> {
+  const plan = habitSave(
+    fields.value,
+    loaded,
+    {
+      change: changeSchedule.value,
+      effectiveFrom: effectiveFrom.value,
+      draft: schedule.value,
+    },
+    getCurrentDateInTimeZone(),
+  );
+  let metadataSaved = false;
+  if (plan.metadata) {
+    loadedHabit.value = await updateHabit(props.entityId, plan.metadata);
+    metadataSaved = true;
   }
-  return {
-    effectiveFrom: effectiveFrom.value,
-    schedule: scheduleRuleOf(schedule.value),
-  };
+  if (plan.schedule) {
+    try {
+      loadedHabit.value = await changeHabitSchedule(
+        props.entityId,
+        plan.schedule,
+      );
+    } catch (error: unknown) {
+      throw new Error(scheduleFailure(error, metadataSaved));
+    }
+  }
 }
 
 async function save(): Promise<void> {
@@ -446,33 +325,10 @@ async function save(): Promise<void> {
     if (props.kind === "todo") {
       await updateTodo(
         props.entityId,
-        todoChanges(todoFields(), loadedTodo.value!),
+        todoChanges(fields.value, loadedTodo.value!),
       );
     } else {
-      // Validate both requests before persisting either of them.
-      const metadata = habitChanges(habitFields(), loadedHabit.value!);
-      const scheduleInput = changeSchedule.value ? buildScheduleChange() : null;
-      let metadataSaved = false;
-      if (Object.keys(metadata).length > 0) {
-        loadedHabit.value = await updateHabit(props.entityId, metadata);
-        metadataSaved = true;
-      }
-      if (scheduleInput) {
-        try {
-          loadedHabit.value = await changeHabitSchedule(
-            props.entityId,
-            scheduleInput,
-          );
-        } catch (error: unknown) {
-          const detail =
-            error instanceof Error ? error.message : "Unbekannter Fehler";
-          throw new Error(
-            metadataSaved
-              ? `Stammdaten gespeichert, Zeitplanänderung fehlgeschlagen: ${detail}. Du kannst die Zeitplanänderung erneut speichern.`
-              : detail,
-          );
-        }
-      }
+      await saveHabit(loadedHabit.value!);
     }
 
     emit("changed");
@@ -521,6 +377,7 @@ function retryLoad(): void {
 onMounted(loadEntity);
 </script>
 
+
 <template>
   <section
     class="item-editor"
@@ -556,7 +413,7 @@ onMounted(loadEntity);
     </div>
 
     <KindSwitch
-      v-if="hasLoaded && canBecomeDaily"
+      v-if="hasLoaded && offersDaily"
       v-model="form"
       class="item-editor__kind"
     />
@@ -564,8 +421,8 @@ onMounted(loadEntity);
     <!-- The quest as a daily: a new daily that replaces it once saved. -->
     <CreateHabitForm
       v-if="hasLoaded && form === 'habit'"
-      :initial="habitDraft"
-      :replaces="{ id: entityId, title: loadedTodo?.title ?? title }"
+      :initial="draft"
+      :replaces="{ id: entityId, title: loadedTodo?.title ?? fields.title }"
       @busy="emit('busy', $event)"
       @created="emit('changed')"
       @cancel="emit('close')"
@@ -575,7 +432,7 @@ onMounted(loadEntity);
       <fieldset :disabled="isBusy">
         <label class="field">
           Titel
-          <input v-model="title" name="title" maxlength="200" required />
+          <input v-model="fields.title" name="title" maxlength="200" required />
         </label>
 
         <!--
@@ -594,7 +451,7 @@ onMounted(loadEntity);
             <label for="planner-edit-parent">Gehört zu · optional</label>
             <ParentPicker
               id="planner-edit-parent"
-              v-model="parentId"
+              v-model="fields.parentId"
               :exclude="entityId"
               :none-label="
                 hasChildren ? 'Keine (eigene Kampagne)' : 'Keine (lose Quest)'
@@ -613,16 +470,16 @@ onMounted(loadEntity);
           </div>
 
           <PlanFields
-            v-if="showPlan"
-            v-model:date="todoDate"
+            v-if="sections.plan"
+            v-model:date="fields.date"
             id-prefix="planner-edit"
           />
 
-          <div v-if="showDuration" class="item-editor__row">
+          <div v-if="sections.duration" class="item-editor__row">
             <label class="field">
               Dauer in Minuten · optional
               <input
-                v-model="duration"
+                v-model="fields.duration"
                 name="duration"
                 type="number"
                 min="1"
@@ -633,7 +490,7 @@ onMounted(loadEntity);
 
           <WhyField
             id="planner-edit-why"
-            v-model="why"
+            v-model="fields.why"
             :inherited="inheritedWhy"
           />
 
@@ -642,16 +499,16 @@ onMounted(loadEntity);
               <label for="planner-edit-category">Kategorie · optional</label>
               <CategoryPicker
                 id="planner-edit-category"
-                v-model="categoryId"
+                v-model="fields.categoryId"
                 @loaded="categories = $event"
               />
             </div>
             <CampaignFields
-              v-model:color="campaignColor"
-              v-model:icon="campaignIcon"
-              v-model:target="weeklyTarget"
+              v-model:color="fields.color"
+              v-model:icon="fields.icon"
+              v-model:target="fields.weeklyTarget"
               id-prefix="planner-edit-campaign"
-              :title="title"
+              :title="fields.title"
             />
           </template>
 
@@ -664,40 +521,40 @@ onMounted(loadEntity);
               :start-open="!!campaignSummary"
             >
               <CampaignFields
-                v-model:color="campaignColor"
-                v-model:icon="campaignIcon"
-                v-model:target="weeklyTarget"
+                v-model:color="fields.color"
+                v-model:icon="fields.icon"
+                v-model:target="fields.weeklyTarget"
                 id-prefix="planner-edit-campaign"
-                :title="title"
+                :title="fields.title"
               />
             </FormDisclosure>
 
             <AppointmentFields
-              v-if="showAppointment"
-              v-model:time="todoTime"
-              :date="todoDate"
+              v-if="sections.appointment"
+              v-model:time="fields.time"
+              :date="fields.date"
               id-prefix="planner-edit"
             />
 
             <TodoGoalFields
-              v-if="showGoal"
-              v-model:period-start="periodStart"
-              v-model:period-end="periodEnd"
-              v-model:habit-id="goalHabitId"
-              v-model:target="goalTarget"
+              v-if="sections.goal"
+              v-model:period-start="fields.periodStart"
+              v-model:period-end="fields.periodEnd"
+              v-model:habit-id="fields.goalHabitId"
+              v-model:target="fields.goalTarget"
             />
 
             <FormDisclosure
               v-if="!isCampaign"
               label="Kategorie"
               :summary="categoryName"
-              :start-open="categoryId !== null"
+              :start-open="fields.categoryId !== null"
             >
               <div class="field">
                 <label for="planner-edit-category">Kategorie</label>
                 <CategoryPicker
                   id="planner-edit-category"
-                  v-model="categoryId"
+                  v-model="fields.categoryId"
                   @loaded="categories = $event"
                 />
               </div>
@@ -707,9 +564,9 @@ onMounted(loadEntity);
               v-if="!isCampaign"
               label="Fokus-Sperre"
               :summary="focusBlockSummary"
-              :start-open="focusBlockChoice !== 'default'"
+              :start-open="fields.focusBlock !== 'default'"
             >
-              <FocusBlockOverride v-model="focusBlockChoice" kind="todo" />
+              <FocusBlockOverride v-model="fields.focusBlock" kind="todo" />
             </FormDisclosure>
           </div>
 
@@ -863,7 +720,7 @@ onMounted(loadEntity);
               <label for="planner-edit-category">Kategorie · optional</label>
               <CategoryPicker
                 id="planner-edit-category"
-                v-model="categoryId"
+                v-model="fields.categoryId"
                 @loaded="categories = $event"
               />
             </div>
@@ -871,7 +728,7 @@ onMounted(loadEntity);
               <label for="planner-edit-campaign">Kampagne · optional</label>
               <ParentPicker
                 id="planner-edit-campaign"
-                v-model="campaignId"
+                v-model="fields.campaignId"
                 campaigns-only
                 :described-by="campaignHint ? 'planner-edit-campaign-hint' : undefined"
                 @chosen="chooseCampaign"
@@ -887,14 +744,14 @@ onMounted(loadEntity);
 
           <WhyField
             id="planner-edit-why"
-            v-model="why"
+            v-model="fields.why"
             :inherited="inheritedWhy"
           />
 
           <div class="item-editor__row">
             <label class="field">
               Uhrzeit · optional
-              <input v-model="timeOfDay" name="timeOfDay" type="time" />
+              <input v-model="fields.timeOfDay" name="timeOfDay" type="time" />
             </label>
             <div class="field">
               <label for="habit-edit-duration"
@@ -902,7 +759,7 @@ onMounted(loadEntity);
               >
               <input
                 id="habit-edit-duration"
-                v-model="duration"
+                v-model="fields.duration"
                 name="duration"
                 type="number"
                 min="1"
@@ -919,13 +776,13 @@ onMounted(loadEntity);
           <FormDisclosure
             label="Fokus-Sperre"
             :summary="focusBlockSummary"
-            :start-open="focusBlockChoice !== 'default'"
+            :start-open="fields.focusBlock !== 'default'"
           >
-            <FocusBlockOverride v-model="focusBlockChoice" kind="habit" />
+            <FocusBlockOverride v-model="fields.focusBlock" kind="habit" />
           </FormDisclosure>
 
           <label class="item-editor__checkbox">
-            <input v-model="isActive" name="isActive" type="checkbox" />
+            <input v-model="fields.isActive" name="isActive" type="checkbox" />
             Aktiv: erscheint an fälligen Tagen in Heute
           </label>
 
@@ -961,7 +818,7 @@ onMounted(loadEntity);
             :preview="deletionPreview"
             :campaign="isCampaign"
           />
-          <p>„{{ title }}“ wirklich löschen?</p>
+          <p>„{{ fields.title }}“ wirklich löschen?</p>
 
           <p v-if="kind === 'habit'" class="item-editor__hint">
             Es verschwindet aus Heute. Das Logbuch bleibt erhalten.

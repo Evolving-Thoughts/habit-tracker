@@ -14,9 +14,11 @@ import type { WeekReviewResponse } from '../src/week-review/week-review.dto';
 import { WeekReviewEntity } from '../src/week-review/week-review.entity';
 import {
   authenticatedRequest as request,
+  SEEDED_AUTH_TABLES,
   seedAuth,
   TEST_USER,
 } from './auth-fixture';
+import { resetDatabase } from './reset-database';
 
 const OTHER_USER = '66666666-6666-4666-8666-666666666666';
 // A Wednesday; its week runs from Monday 16 to Sunday 22 November.
@@ -69,11 +71,7 @@ describe('Week review (e2e)', () => {
       verifiedAt: new Date(),
     });
   });
-  beforeEach(() =>
-    db.query(
-      'TRUNCATE week_reviews, goal_snapshots, work_logs, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos, categories CASCADE',
-    ),
-  );
+  beforeEach(() => resetDatabase(db, { keep: SEEDED_AUTH_TABLES }));
   afterAll(() => app.close());
 
   it('requires authentication', async () => {

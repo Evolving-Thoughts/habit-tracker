@@ -7,7 +7,7 @@ import ChallengeMark from "./ChallengeMark.vue";
 import ItemRow from "./ItemRow.vue";
 import { campaignMark as markOf, categoryMark } from "../utils/category-mark";
 import { formatDateForGermanDisplay } from "../utils/date";
-import type { MenuEntry } from "../utils/row-actions";
+import { measureOf, plannerRow, type MenuEntry } from "../utils/row-actions";
 import type { DayPlannerItem } from "../types/day-planner";
 import { streakLine } from "../utils/streak";
 
@@ -112,17 +112,7 @@ const leading = computed(() =>
 const measure = computed(() =>
   props.compact || !props.measurable
     ? null
-    : {
-        kind:
-          props.item.type === "todo"
-            ? ("todo" as const)
-            : ("occurrence" as const),
-        targetId:
-          props.item.type === "todo"
-            ? props.item.todoId
-            : props.item.occurrenceId,
-        eligible: props.item.timerEligible,
-      },
+    : measureOf(plannerRow(props.item)),
 );
 </script>
 

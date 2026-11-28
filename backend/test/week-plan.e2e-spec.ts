@@ -18,11 +18,14 @@ import { MissedOccurrencePolicy } from '../src/habits/enums/missed-occurrence-po
 import { TodoEntity } from '../src/todos/entities/todo.entity';
 import {
   authenticatedRequest as request,
+  SEEDED_AUTH_TABLES,
   seedAuth,
   TEST_USER,
 } from './auth-fixture';
 import { HabitForecastPlaceEntity } from '../src/habits/entities/habit-forecast-place.entity';
 import { HabitOccurrenceEntity } from '../src/habit-occurrences/entities/habit-occurrence.entity';
+import { resetDatabase } from './reset-database';
+import { holdUserLock, within } from './user-lock';
 
 const OTHER_USER = '22222222-2222-4222-8222-222222222222';
 
@@ -80,7 +83,7 @@ describe('Plan board (e2e)', () => {
       verifiedAt: new Date(),
     });
   });
-  beforeEach(() => db.query('TRUNCATE timers, todos, habits CASCADE'));
+  beforeEach(() => resetDatabase(db, { keep: SEEDED_AUTH_TABLES }));
   afterAll(() => app.close());
 
   it('requires authentication', async () => {
@@ -217,7 +220,10 @@ describe('Plan board (e2e)', () => {
       (
         await request(server)
           .post('/habits')
-          .send({ title: 'Laufen', schedule: { type: 'interval', intervalDays: 1 } })
+          .send({
+            title: 'Laufen',
+            schedule: { type: 'interval', intervalDays: 1 },
+          })
           .expect(201)
       ).body as { id: number }
     ).id;
@@ -274,13 +280,17 @@ describe('Plan board (e2e)', () => {
       dayPosition: 3,
     });
     await request(server).get('/day-planner/today').expect(200);
-    const stored = await db.getRepository(HabitOccurrenceEntity).findOneByOrFail({
-      habitId,
-      scheduledDate: today,
-    });
+    const stored = await db
+      .getRepository(HabitOccurrenceEntity)
+      .findOneByOrFail({
+        habitId,
+        scheduledDate: today,
+      });
     expect(stored.dayPosition).toBe(3);
     expect(
-      await db.getRepository(HabitForecastPlaceEntity).countBy({ habitId, date: today }),
+      await db
+        .getRepository(HabitForecastPlaceEntity)
+        .countBy({ habitId, date: today }),
     ).toBe(0);
   });
 
@@ -303,6 +313,37 @@ describe('Plan board (e2e)', () => {
       streak: { current: 0, best: 0, unit: 'runs' },
     });
   });
+
+  // Room for a slow machine: a test cut off mid-way keeps the lock.
+  const LOCK_TEST_MS = 20_000;
+  it(
+    'answers from a snapshot while a change holds the user lock',
+    async () => {
+      await request(server)
+        .post('/habits')
+        .send({
+          title: 'Lesen',
+          schedule: { type: 'interval', intervalDays: 1 },
+        })
+        .expect(201);
+      await todo('Zahnarzt', { scheduledDate: today, timeOfDay: '09:30' });
+      // Today's run is stored, so nothing is left to store.
+      await week(today, 3);
+
+      const release = await holdUserLock(db, TEST_USER);
+      try {
+        const plan = await within(week(today, 3), 2_000);
+        expect(
+          plan.days[0].entries
+            .map(({ type, title }) => `${type} ${title}`)
+            .sort(),
+        ).toEqual(['habit Lesen', 'todo Zahnarzt']);
+      } finally {
+        await release();
+      }
+    },
+    LOCK_TEST_MS,
+  );
 
   it('orders any day and keeps the order after a move from another day', async () => {
     const first = await todo('Erstes');

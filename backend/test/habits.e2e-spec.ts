@@ -3,12 +3,16 @@ import { Test } from '@nestjs/testing';
 import type { Server } from 'node:http';
 import {
   authenticatedRequest as request,
+  SEEDED_AUTH_TABLES,
   seedAuth,
   TEST_USER,
 } from './auth-fixture';
+import { resetDatabase } from './reset-database';
+import { holdUserLock, within } from './user-lock';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { UserEntity } from '../src/auth/auth.entities';
+import { UserUnitOfWork } from '../src/common/user-unit-of-work';
 import { configureApp } from '../src/configure-app';
 import {
   getCurrentDateInTimeZone,
@@ -47,45 +51,6 @@ describe('Habit domain and day planner (e2e)', () => {
   const date = (): string => getCurrentDateInTimeZone();
 
   const relativeDate = (days: number): string => addDays(date(), days);
-
-  async function clear(): Promise<void> {
-    if (dataSource.options.database !== 'habit_tracker_test') {
-      throw new Error('Refusing to delete non-test data');
-    }
-
-    // Work logs do not hang on a todo, so a log another suite left behind
-    // would count as time worked today.
-    await dataSource.query('DELETE FROM work_logs');
-    await dataSource.query('DELETE FROM timers');
-    // A weekly Quest target another suite left behind would show in the
-    // planner's quest hours.
-    await dataSource.query('DELETE FROM weekly_quest_targets');
-    await dataSource.transaction(async (manager) => {
-      await manager
-        .getRepository(HabitOccurrenceEntity)
-        .createQueryBuilder()
-        .delete()
-        .execute();
-
-      await manager
-        .getRepository(HabitScheduleVersionEntity)
-        .createQueryBuilder()
-        .delete()
-        .execute();
-
-      await manager
-        .getRepository(HabitEntity)
-        .createQueryBuilder()
-        .delete()
-        .execute();
-
-      await manager
-        .getRepository(TodoEntity)
-        .createQueryBuilder()
-        .delete()
-        .execute();
-    });
-  }
 
   async function create(
     overrides: Partial<CreateHabitDto> = {},
@@ -234,6 +199,14 @@ describe('Habit domain and day planner (e2e)', () => {
     });
   });
 
+  /** Brings one habit's runs up to `at`, as opening it then would. */
+  const openHabitAt = (habitId: number, at: Date) =>
+    app
+      .get(UserUnitOfWork)
+      .run(TEST_USER, (manager) =>
+        scheduling.openHabit(manager, TEST_USER, habitId, at),
+      );
+
   async function planner(): Promise<DayPlannerResponseDto> {
     const response = await request(server)
       .get('/day-planner/today')
@@ -264,9 +237,7 @@ describe('Habit domain and day planner (e2e)', () => {
     habitService = app.get(HabitsService);
   });
 
-  beforeEach(async () => {
-    await clear();
-  });
+  beforeEach(() => resetDatabase(dataSource, { keep: SEEDED_AUTH_TABLES }));
 
   afterAll(async () => {
     if (!app) {
@@ -274,15 +245,71 @@ describe('Habit domain and day planner (e2e)', () => {
     }
 
     try {
-      if (
-        dataSource?.isInitialized &&
-        dataSource.options.database === 'habit_tracker_test'
-      ) {
-        await clear();
-      }
+      if (dataSource?.isInitialized) await resetDatabase(dataSource);
     } finally {
       await app.close();
     }
+  });
+
+  describe('reading while a change holds the user lock', () => {
+    // Room for a slow machine: a test cut off mid-way keeps the lock.
+    const LOCK_TEST_MS = 20_000;
+
+    it(
+      'answers Heute from a snapshot',
+      async () => {
+        const habit = await create({ schedule: interval(1) });
+        await request(server)
+          .post('/todos')
+          .send({ title: 'Einkaufen', scheduledDate: date() })
+          .expect(201);
+        // Today's run is stored, so nothing is left to store.
+        await planner();
+
+        const release = await holdUserLock(dataSource, TEST_USER);
+        try {
+          const heute = await within(planner(), 2_000);
+          expect(heute.items).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ type: 'todo', title: 'Einkaufen' }),
+              expect.objectContaining({
+                type: 'habit',
+                habitId: habit.id,
+                status: HabitOccurrenceStatus.PENDING,
+              }),
+            ]),
+          );
+        } finally {
+          await release();
+        }
+      },
+      LOCK_TEST_MS,
+    );
+
+    it(
+      'answers the Daily list from a snapshot',
+      async () => {
+        const habit = await create({ schedule: interval(1) });
+        const [run] = await today();
+
+        const release = await holdUserLock(dataSource, TEST_USER);
+        try {
+          const list = await within(
+            request(server).get('/habits').expect(200),
+            2_000,
+          );
+          expect(list.body).toEqual([
+            expect.objectContaining({
+              id: habit.id,
+              timerOccurrenceId: run.id,
+            }),
+          ]);
+        } finally {
+          await release();
+        }
+      },
+      LOCK_TEST_MS,
+    );
   });
 
   describe('habit API', () => {
@@ -340,6 +367,28 @@ describe('Habit domain and day planner (e2e)', () => {
       expect(
         await dataSource.getRepository(HabitScheduleVersionEntity).count(),
       ).toBe(1);
+    });
+
+    it('stores a title trimmed and refuses one of only spaces', async () => {
+      const habit = await create({ title: '  Joggen  ' });
+      expect(habit.title).toBe('Joggen');
+
+      const blank = await request(server)
+        .post('/habits')
+        .send({ title: '   ', schedule: interval() })
+        .expect(400);
+      expect((blank.body as { message: string[] }).message).toEqual([
+        'Invalid habit title',
+      ]);
+      await request(server)
+        .patch(`/habits/${habit.id}`)
+        .send({ title: '   ' })
+        .expect(400);
+      const renamed = await request(server)
+        .patch(`/habits/${habit.id}`)
+        .send({ title: ' Laufen ' })
+        .expect(200);
+      expect((renamed.body as HabitResponseDto).title).toBe('Laufen');
     });
 
     it('keeps a future initial schedule upcoming', async () => {
@@ -452,8 +501,7 @@ describe('Habit domain and day planner (e2e)', () => {
         await create({ title: 'Other B' }),
       ];
       const sweep = jest.spyOn(scheduling, 'getToday');
-      const lock = jest.spyOn(scheduling, 'lockHabit');
-      const reconcile = jest.spyOn(scheduling, 'reconcile');
+      const open = jest.spyOn(scheduling, 'openHabit');
       try {
         const response = await request(server)
           .get(`/habits/${target.id}`)
@@ -462,18 +510,15 @@ describe('Habit domain and day planner (e2e)', () => {
         expect(body.timerOccurrenceId).toEqual(expect.any(Number));
         expect(body.timerDurationMinutes).toBe(15);
         expect(sweep).not.toHaveBeenCalled();
-        expect(lock).toHaveBeenCalledTimes(1);
-        expect(lock.mock.calls[0]?.[0]).toBe(TEST_USER);
-        expect(lock.mock.calls[0]?.[2]).toBe(target.id);
-        expect(reconcile).toHaveBeenCalledTimes(1);
-        expect(reconcile.mock.calls[0]?.[1].id).toBe(target.id);
+        expect(open).toHaveBeenCalledTimes(1);
+        expect(open.mock.calls[0]?.[1]).toBe(TEST_USER);
+        expect(open.mock.calls[0]?.[2]).toBe(target.id);
         expect(await pendingCount(target.id)).toBe(1);
         for (const other of others)
           expect(await pendingCount(other.id)).toBe(0);
       } finally {
         sweep.mockRestore();
-        lock.mockRestore();
-        reconcile.mockRestore();
+        open.mockRestore();
       }
     });
 
@@ -481,9 +526,7 @@ describe('Habit domain and day planner (e2e)', () => {
       const target = await create();
       const other = await create({ title: 'Other' });
       const sweep = jest.spyOn(scheduling, 'getToday');
-      const generate = jest.spyOn(scheduling, 'generateForHabit');
-      const reconcile = jest.spyOn(scheduling, 'reconcile');
-      const lock = jest.spyOn(scheduling, 'lockHabit');
+      const open = jest.spyOn(scheduling, 'openHabit');
       const versions = jest.spyOn(scheduling, 'getVersions');
       try {
         const response = await request(server)
@@ -491,18 +534,14 @@ describe('Habit domain and day planner (e2e)', () => {
           .expect(200);
         expect(response.body as unknown[]).toHaveLength(1);
         expect(sweep).not.toHaveBeenCalled();
-        expect(generate).not.toHaveBeenCalled();
-        expect(reconcile).not.toHaveBeenCalled();
-        expect(lock).not.toHaveBeenCalled();
+        expect(open).not.toHaveBeenCalled();
         expect(versions).toHaveBeenCalledTimes(1);
         expect(versions.mock.calls[0]?.[1]).toBe(target.id);
         expect(await pendingCount(target.id)).toBe(0);
         expect(await pendingCount(other.id)).toBe(0);
       } finally {
         sweep.mockRestore();
-        generate.mockRestore();
-        reconcile.mockRestore();
-        lock.mockRestore();
+        open.mockRestore();
         versions.mockRestore();
       }
     });
@@ -543,7 +582,6 @@ describe('Habit domain and day planner (e2e)', () => {
       const foreign = await dataSource
         .getRepository(HabitEntity)
         .save({ userId: foreignUser.id, title: 'Private', isActive: true });
-      const reconcile = jest.spyOn(scheduling, 'reconcile');
       const sweep = jest.spyOn(scheduling, 'getToday');
       const versions = jest.spyOn(scheduling, 'getVersions');
       try {
@@ -553,11 +591,11 @@ describe('Habit domain and day planner (e2e)', () => {
             .get(`/habits/${id}/schedule-versions`)
             .expect(404);
         }
-        expect(reconcile).not.toHaveBeenCalled();
         expect(sweep).not.toHaveBeenCalled();
         expect(versions).not.toHaveBeenCalled();
+        expect(await pendingCount(hidden.id)).toBe(0);
+        expect(await pendingCount(foreign.id)).toBe(0);
       } finally {
-        reconcile.mockRestore();
         sweep.mockRestore();
         versions.mockRestore();
         await dataSource.getRepository(HabitEntity).delete({ id: foreign.id });
@@ -929,8 +967,7 @@ describe('Habit domain and day planner (e2e)', () => {
 
       expect(before.status).toBe(HabitOccurrenceStatus.PENDING);
 
-      await scheduling.generateForHabit(
-        TEST_USER,
+      await openHabitAt(
         habit.id,
         new Date(midnightInTimeZone(tomorrow).getTime() + 1000),
       );
@@ -960,8 +997,7 @@ describe('Habit domain and day planner (e2e)', () => {
 
       await change(habit.id, interval(3), changeDate);
 
-      await scheduling.generateForHabit(
-        '11111111-1111-4111-8111-111111111111',
+      await openHabitAt(
         habit.id,
         new Date(midnightInTimeZone(changeDate).getTime() + 1000),
       );

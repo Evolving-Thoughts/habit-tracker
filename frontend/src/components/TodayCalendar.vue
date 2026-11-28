@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import DayCalendar from "./DayCalendar.vue";
 import { getHistory } from "../api/history.api";
-import { useLoader } from "../composables/useLoader";
+import { useParentSession } from "../composables/useViewSession";
 import type { HistoryResponse, HistoryWorkLog } from "../types/history";
 
 /**
  * Heute's day calendar: today as the Kalender reads it (`GET /history`,
  * day), so appointments, Google events, completions and the Logbuch stand
  * on one hour axis, beside the list on wide screens and as the "Logbuch"
- * pane below. It loads again whenever data changes elsewhere, like every
- * view.
+ * pane below. The day is a resource of Heute's session: it reloads after
+ * Heute's writes and the calendar's own, and after a change elsewhere once
+ * no dialog holds the view.
  */
 const props = defineProps<{
   date: string;
@@ -20,13 +21,12 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ removeLog: [log: HistoryWorkLog] }>();
 
-const { data, errorMessage, reload } = useLoader<HistoryResponse | null>(
+const { data, errorMessage, reload } = useParentSession().resource<HistoryResponse | null>(
   (signal) => getHistory(props.date, "day", "all", signal),
   {
     initial: null,
     fallbackError: "Der Kalender des Tages konnte nicht geladen werden.",
     params: [() => props.date],
-    refreshOnChange: () => true,
   },
 );
 </script>
@@ -38,7 +38,6 @@ const { data, errorMessage, reload } = useLoader<HistoryResponse | null>(
       class="today-calendar__day"
       :day="data.days[0]"
       :today="data.today"
-      :reload="reload"
       :hidden-logs="hiddenLogs"
       :flow="flow"
       @remove-log="emit('removeLog', $event)"

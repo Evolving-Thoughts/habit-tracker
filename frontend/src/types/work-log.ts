@@ -1,3 +1,5 @@
+import type { ItemTarget } from "./item-target.js";
+
 export type WorkLog = {
   id: number;
   title: string;
@@ -7,8 +9,5 @@ export type WorkLog = {
   source: "timer" | "manual";
 };
 export type WorkLogTimes = { startedAt: string; endedAt: string };
-export type WorkTarget = {
-  kind: "todo" | "occurrence";
-  targetId: number;
-  title: string;
-};
+/** What a work log is written for. */
+export type WorkTarget = ItemTarget;

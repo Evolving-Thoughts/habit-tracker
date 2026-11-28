@@ -40,7 +40,9 @@ export function tallyOfEntries(entries: readonly WeekPlanEntry[]): DayTally {
  * A Plan entry in the shape of Heute's rows, so it shows on the same card.
  * What the Plan's read leaves out (Warum, category, worked minutes) stays
  * empty. A forecast run has no stored run yet: it carries 0, and nothing
- * measures or ticks it (`timerEligible` is false, the card has no ring).
+ * ticks it (the card has no ring). What can be measured is the row's one
+ * answer (`planRow`): an open quest, a run as the server says; the card
+ * shows no ▶ here, the stopwatch stays with today.
  */
 export function asPlannerItem(
   entry: WeekPlanOwnEntry,
@@ -66,8 +68,7 @@ export function asPlannerItem(
       status: entry.status,
       scheduledDate: entry.scheduledDate,
       completedAt: null,
-      // The stopwatch is for today: Heute starts it.
-      timerEligible: false,
+      timerEligible: entry.status === "pending",
     };
   return {
     ...shared,
@@ -78,7 +79,7 @@ export function asPlannerItem(
     scheduledDate: date,
     moveUntil: entry.moveUntil,
     scheduleType: "interval",
-    timerEligible: false,
+    timerEligible: entry.timerEligible,
     streak: entry.streak,
     monthChallenge: entry.monthChallenge,
   };

@@ -28,6 +28,7 @@ import {
   getCurrentDateInTimeZone,
   midnightInTimeZone,
 } from '../src/common/date/date-only.utils';
+import { resetDatabase } from './reset-database';
 const OTHER = '22222222-2222-4222-8222-222222222222';
 describe('History API (e2e)', () => {
   let app: INestApplication;
@@ -44,11 +45,7 @@ describe('History API (e2e)', () => {
     db = app.get(DataSource);
   });
   beforeEach(async () => {
-    if (db.options.database !== 'habit_tracker_test')
-      throw new Error('Refusing non-test DB');
-    await db.query(
-      'TRUNCATE external_calendars, calendar_links, calendar_connections, calendar_oauth_states, external_events, push_deliveries, push_subscriptions, timers, habit_forecast_places, habit_occurrences, habit_schedule_versions, habits, todos, auth_sessions, auth_tokens, users RESTART IDENTITY CASCADE',
-    );
+    await resetDatabase(db);
     await seedAuth(app);
     await db.getRepository(UserEntity).save({
       id: OTHER,

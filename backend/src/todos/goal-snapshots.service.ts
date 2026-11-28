@@ -7,10 +7,11 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { Clock } from '../common/clock';
+import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { TodoEntity } from './entities/todo.entity';
-import { scopesByRoot } from './goal-scope';
+import { GoalScope, scopesByRoot } from './goal-scope';
 import { GoalSnapshotEntity } from './goal-snapshot.entity';
 
 const HOUR_MS = 3_600_000;
@@ -29,11 +30,10 @@ export class GoalSnapshotsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('GoalSnapshots');
 
   constructor(
-    @InjectRepository(GoalSnapshotEntity)
-    private readonly snapshots: Repository<GoalSnapshotEntity>,
     @InjectRepository(TodoEntity)
     private readonly todos: Repository<TodoEntity>,
     private readonly clock: Clock,
+    private readonly unitOfWork: UserUnitOfWork,
   ) {}
 
   /** Keeps today's row current, so a day without a visit still has a value. */
@@ -60,24 +60,93 @@ export class GoalSnapshotsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Replaces today's value; earlier days are never rewritten. */
-  async record(userId: string): Promise<void> {
-    const date = this.clock.today();
-    const scopes = scopesByRoot(await this.todos.findBy({ userId }));
+  /** Today's value of every campaign of the user, from its todos. */
+  private async scopes(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<GoalScope[]> {
+    return scopesByRoot(
+      await manager.getRepository(TodoEntity).findBy({ userId }),
+    );
+  }
+
+  /** Replaces today's value under the user lock. */
+  record(userId: string): Promise<void> {
+    return this.unitOfWork.run(userId, (manager) =>
+      this.store(manager, userId, this.clock.today()),
+    );
+  }
+
+  /** Replaces the day's value; earlier days are never rewritten. */
+  private async store(
+    manager: EntityManager,
+    userId: string,
+    date: string,
+  ): Promise<void> {
+    const scopes = await this.scopes(manager, userId);
     if (!scopes.length) return;
-    await this.snapshots.upsert(
+    await manager.getRepository(GoalSnapshotEntity).upsert(
       scopes.map((scope) => ({ ...scope, userId, date })),
       ['rootTodoId', 'date'],
     );
   }
 
+  /** Whether the day's stored values already match the todos. */
+  private async recorded(
+    manager: EntityManager,
+    userId: string,
+    date: string,
+  ): Promise<boolean> {
+    const stored = new Map(
+      (
+        await manager.getRepository(GoalSnapshotEntity).findBy({ userId, date })
+      ).map((row) => [row.rootTodoId, row]),
+    );
+    return (await this.scopes(manager, userId)).every((scope) => {
+      const row = stored.get(scope.rootTodoId);
+      return (
+        row !== undefined &&
+        row.doneCount === scope.doneCount &&
+        row.totalCount === scope.totalCount &&
+        row.doneMinutes === scope.doneMinutes &&
+        row.totalMinutes === scope.totalMinutes
+      );
+    });
+  }
+
+  /**
+   * The campaign's history, today's value included. Decides in a lock-free
+   * read whether today's values are stored as they are; usually they are,
+   * and the answer comes from that snapshot without the user lock. Otherwise
+   * today's values are stored under the lock and the answer is read there.
+   */
   async burnup(userId: string, id: number): Promise<BurnupPoint[]> {
-    const todo = await this.todos.findOneBy({ id, userId });
+    const today = this.clock.today();
+    const asStored = await this.unitOfWork.read(async (manager) =>
+      (await this.recorded(manager, userId, today))
+        ? { points: await this.points(manager, userId, id) }
+        : null,
+    );
+    if (asStored) return asStored.points;
+    return this.unitOfWork.run(userId, async (manager) => {
+      await this.store(manager, userId, today);
+      return this.points(manager, userId, id);
+    });
+  }
+
+  /** The stored values of one campaign, oldest first. */
+  private async points(
+    manager: EntityManager,
+    userId: string,
+    id: number,
+  ): Promise<BurnupPoint[]> {
+    const todo = await manager
+      .getRepository(TodoEntity)
+      .findOneBy({ id, userId });
     if (!todo) throw new NotFoundException(`Todo with ID ${id} was not found`);
     if (todo.parentId !== null)
       throw new BadRequestException('Den Burn-up gibt es nur für Kampagnen.');
-    await this.record(userId);
-    const rows = await this.snapshots.find({
+    const rows = await manager.getRepository(GoalSnapshotEntity).find({
       where: { userId, rootTodoId: id },
       order: { date: 'ASC' },
     });

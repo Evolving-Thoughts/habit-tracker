@@ -1,17 +1,12 @@
 import { Transform } from 'class-transformer';
+import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 import {
-  IsBoolean,
-  IsOptional,
-  IsString,
-  Matches,
-  MaxLength,
-} from 'class-validator';
+  IsDay,
+  IsTimeOfDay,
+  TIME_OF_DAY_MESSAGE,
+} from '../common/validation/field-rules';
 import { DAY_BEST_MAX_LENGTH } from './day-best.entities';
 import { normalizeDayBestText } from './day-best-rules';
-
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-/** "HH:MM", 00:00 to 23:59. */
-export const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /**
  * PUT /day-bests/:date. The line is trimmed and its whitespace collapsed to
@@ -29,11 +24,11 @@ export class SaveDayBestDto {
 /** `?from=YYYY-MM-DD&to=YYYY-MM-DD` of GET /day-bests, both included. */
 export class DayBestRangeDto {
   @IsString()
-  @Matches(DATE_PATTERN)
+  @IsDay()
   readonly from!: string;
 
   @IsString()
-  @Matches(DATE_PATTERN)
+  @IsDay()
   readonly to!: string;
 }
 
@@ -41,7 +36,7 @@ export class DayBestRangeDto {
 export class SaveDayBestSettingsDto {
   @IsOptional()
   @IsString()
-  @Matches(TIME_PATTERN, { message: 'Die Uhrzeit muss als HH:MM kommen.' })
+  @IsTimeOfDay({ message: TIME_OF_DAY_MESSAGE })
   readonly cardTime?: string;
 
   @IsOptional()

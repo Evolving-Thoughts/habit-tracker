@@ -1,5 +1,11 @@
 import { elapsedAt, MAX_SEGMENT_MS, unloggedBlock } from './timer-math';
-import { LogOperation, StopwatchState, transition } from './timer-transition';
+import {
+  LogOperation,
+  startedStopwatch,
+  StopwatchEvent,
+  StopwatchState,
+  transition,
+} from './timer-transition';
 
 type Log = { id: number; startedAt: Date; endedAt: Date };
 
@@ -15,15 +21,7 @@ class Bench {
   ops: LogOperation[][] = [];
   state: StopwatchState;
   constructor(from: string, elapsed = 0) {
-    this.state = {
-      state: 'running',
-      elapsedMilliseconds: elapsed,
-      idleMilliseconds: 0,
-      segmentStartedAt: at(from),
-      blockStartedAt: null,
-      pausedAt: null,
-      workLogId: null,
-    };
+    this.state = startedStopwatch(elapsed, null, at(from));
   }
   private apply(type: 'pause' | 'stop' | 'resume', time: string): void {
     const log = this.logs.find((entry) => entry.id === this.state.workLogId);
@@ -240,5 +238,160 @@ describe('Work blocks of a stopwatch', () => {
     const frozen = { ...before };
     transition(before, { type: 'pause' }, at('10:05:00'));
     expect(before).toEqual(frozen);
+  });
+});
+
+type Soll = Pick<
+  StopwatchState,
+  'targetReachesAt' | 'targetReachedAt' | 'pushHandledAt'
+>;
+type Step = [StopwatchEvent, string];
+
+const instant = (time: string | null) => (time === null ? null : at(time));
+
+const soll = (
+  reachesAt: string | null,
+  reachedAt: string | null,
+  handledAt: string | null,
+): Soll => ({
+  targetReachesAt: instant(reachesAt),
+  targetReachedAt: instant(reachedAt),
+  pushHandledAt: instant(handledAt),
+});
+
+describe('The Soll of a stopwatch', () => {
+  // Started at 10:00 on nothing logged with a 30-minute Soll: due at 10:30.
+  const fresh = (logged = 0, minutes: number | null = 30) =>
+    startedStopwatch(logged, minutes, at('10:00:00'));
+  const reached: Step[] = [[{ type: 'reach' }, '10:30:00']];
+
+  it.each<[string, StopwatchState, Step[], Soll]>([
+    ['start: due at its moment', fresh(), [], soll('10:30:00', null, null)],
+    [
+      'start on logged time: due that much earlier',
+      fresh(10 * 60_000),
+      [],
+      soll('10:20:00', null, null),
+    ],
+    [
+      'start with logged time past the Soll: reached silently',
+      fresh(40 * 60_000),
+      [],
+      soll(null, '10:00:00', '10:00:00'),
+    ],
+    [
+      'start without a Soll: nothing',
+      fresh(0, null),
+      [],
+      soll(null, null, null),
+    ],
+    [
+      'pause clears due',
+      fresh(),
+      [[{ type: 'pause' }, '10:10:00']],
+      soll(null, null, null),
+    ],
+    [
+      'resume recomputes due',
+      fresh(),
+      [
+        [{ type: 'pause' }, '10:10:00'],
+        [{ type: 'resume' }, '10:20:00'],
+      ],
+      soll('10:40:00', null, null),
+    ],
+    [
+      'resume within the block: the short pause is not counted',
+      fresh(),
+      [
+        [{ type: 'pause' }, '10:10:00'],
+        [{ type: 'resume' }, '10:10:30'],
+      ],
+      soll('10:30:30', null, null),
+    ],
+    [
+      'reach: reached, nothing due',
+      fresh(),
+      reached,
+      soll(null, '10:30:00', null),
+    ],
+    [
+      'resume after reached stays reached with nothing due',
+      fresh(),
+      [
+        ...reached,
+        [{ type: 'pause' }, '10:40:00'],
+        [{ type: 'resume' }, '10:50:00'],
+      ],
+      soll(null, '10:30:00', null),
+    ],
+    [
+      'stop clears due',
+      fresh(),
+      [[{ type: 'stop' }, '10:10:00']],
+      soll(null, null, null),
+    ],
+    [
+      'push handled: marked',
+      fresh(),
+      [...reached, [{ type: 'markPushHandled' }, '10:30:01']],
+      soll(null, '10:30:00', '10:30:01'),
+    ],
+    [
+      'new target below elapsed is reached silently',
+      fresh(),
+      [[{ type: 'changeTarget', minutes: 5 }, '10:10:00']],
+      soll(null, '10:10:00', '10:10:00'),
+    ],
+    [
+      'new target below elapsed keeps an earlier reach',
+      fresh(),
+      [...reached, [{ type: 'changeTarget', minutes: 20 }, '10:40:00']],
+      soll(null, '10:30:00', null),
+    ],
+    [
+      'new target above elapsed clears reached and handled and computes due',
+      fresh(),
+      [
+        ...reached,
+        [{ type: 'markPushHandled' }, '10:30:01'],
+        [{ type: 'changeTarget', minutes: 60 }, '10:40:00'],
+      ],
+      soll('11:00:00', null, null),
+    ],
+    [
+      'new target above elapsed while paused: nothing due until resumed',
+      fresh(),
+      [
+        ...reached,
+        [{ type: 'pause' }, '10:40:00'],
+        [{ type: 'changeTarget', minutes: 60 }, '10:45:00'],
+      ],
+      soll(null, null, null),
+    ],
+  ])('%s', (_name, start, steps, expected) => {
+    // A block log gets an id, as `recordTransition` gives it.
+    const end = steps.reduce((state, [event, time]) => {
+      const next = transition(state, event, at(time));
+      if (next.logOps.some((op) => op.type === 'insert' && op.isBlockLog))
+        next.state.workLogId = 1;
+      return next.state;
+    }, start);
+    expect(end).toMatchObject(expected);
+  });
+
+  it('takes the new minutes and leaves the time worked alone', () => {
+    const before = fresh();
+    const { state, logOps } = transition(
+      before,
+      { type: 'changeTarget', minutes: 45 },
+      at('10:10:00'),
+    );
+    expect(logOps).toEqual([]);
+    expect(state).toEqual({
+      ...before,
+      targetMinutes: 45,
+      targetReachesAt: at('10:45:00'),
+    });
   });
 });
