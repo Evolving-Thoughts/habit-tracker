@@ -1,6 +1,9 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
+import type { Ref } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { updateWorkLog } from "../api/work-logs.api";
+import { VIEW_SESSION, type ViewSession } from "../composables/useViewSession";
+import { useWrites } from "../composables/useWrites";
 import { HISTORY_ITEM_FIELDS } from "../types/fixtures";
 import type { HistoryResponse, HistoryWorkLog } from "../types/history";
 import DayCalendar from "./DayCalendar.vue";
@@ -57,12 +60,20 @@ function day(overrides: Partial<Day> = {}): Day {
 }
 
 const reload = vi.fn(() => Promise.resolve());
+/* The view's session as far as the component uses it; reloads count in `reload`. */
+const session = {
+  childWrites: (error: Ref<string | null>) => useWrites(reload, error),
+  holdWhile: vi.fn(),
+} as unknown as ViewSession;
 
 function render(props: Partial<InstanceType<typeof DayCalendar>["$props"]> = {}) {
   return mount(DayCalendar, {
     attachTo: document.body,
-    props: { day: day(), today: DATE, reload, ...props },
-    global: { stubs: { ModalDialog: { template: "<div><slot /></div>" } } },
+    props: { day: day(), today: DATE, ...props },
+    global: {
+      stubs: { ModalDialog: { template: "<div><slot /></div>" } },
+      provide: { [VIEW_SESSION as symbol]: session },
+    },
   });
 }
 type Wrapper = ReturnType<typeof render>;

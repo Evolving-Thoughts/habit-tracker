@@ -143,7 +143,6 @@ const wide = useMediaQuery("(min-width: 56rem)");
       class="calendar-day__calendar"
       :day="day"
       :today="today"
-      :reload="reload"
       :hidden-logs="hiddenLogs"
       @remove-log="emit('removeLog', $event)"
     />

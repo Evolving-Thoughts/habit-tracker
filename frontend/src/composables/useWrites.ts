@@ -24,8 +24,8 @@ type ShownOptions = WriteOptions & {
  * The one order every write takes: guard against a double start, clear the
  * error, write, tell the others, reload quietly, then report the outcome.
  * A view writes through `useViewSession`, which also keeps its refresh on
- * the announcement off while `busy`; a child that writes for its parent
- * takes the parent's `reload`.
+ * the announcement off while `busy`; a component that writes for its view
+ * takes `childWrites` of the view's session.
  */
 export function useWrites(
   reload: (showPageLoading?: boolean) => Promise<void>,

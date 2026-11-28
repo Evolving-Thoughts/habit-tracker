@@ -8,7 +8,7 @@ import {
 } from "../api/work-logs.api";
 import { withWorkLogSound } from "../composables/action-sounds";
 import { notifyViewsChanged } from "../composables/data-sync";
-import { useWrites } from "../composables/useWrites";
+import { useParentSession } from "../composables/useViewSession";
 import type { HistoryWorkLog } from "../types/history";
 import { fromLocalInput, toLocalInput } from "../utils/date";
 import { formatDuration, logTimes } from "../utils/logbook";
@@ -23,8 +23,6 @@ import { formatDuration, logTimes } from "../utils/logbook";
 const props = defineProps<{
   /** The day the times are on. */
   date: string;
-  /** Loads the day again after a save. */
-  reload: (showPageLoading?: boolean) => Promise<void>;
   /** The stretch to correct; without it the dialog adds one. */
   log?: HistoryWorkLog | null;
   /** What a new stretch can be booked on. */
@@ -36,8 +34,11 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ close: []; remove: [log: HistoryWorkLog] }>();
 
+/* Saves inside the view's session; its refresh waits while this is open. */
 const error = ref<string | null>(null);
-const { write, busy } = useWrites(props.reload, error);
+const session = useParentSession();
+session.holdWhile(() => true);
+const { write, busy } = session.childWrites(error);
 
 const keyOf = (target: WorkTarget): string =>
   `${target.kind}-${target.targetId}`;
@@ -85,7 +86,7 @@ async function save(): Promise<void> {
       ),
     {
       fallbackError: "Die Arbeitszeit konnte nicht gespeichert werden.",
-      // Heute names the worked time too; the calendar reloads itself.
+      // Heute names the worked time too; no target changed for the stopwatch.
       notify: notifyViewsChanged,
     },
   );

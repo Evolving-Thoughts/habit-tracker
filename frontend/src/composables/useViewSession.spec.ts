@@ -1,8 +1,8 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { defineComponent, h, ref, type Ref } from "vue";
 import { describe, expect, it, vi } from "vitest";
-import { notifyDataChanged } from "./data-sync";
-import { useViewSession } from "./useViewSession";
+import { notifyDataChanged, notifyViewsChanged } from "./data-sync";
+import { useParentSession, useViewSession } from "./useViewSession";
 
 function harness(holding = ref(false), writeError?: Ref<string | null>) {
   const loadA = vi.fn(() => Promise.resolve("a"));
@@ -83,5 +83,104 @@ describe("useViewSession", () => {
     await session().write(() => Promise.reject("nope"), { fallbackError: "x" });
     expect(writeError.value).toBe("x");
     expect(errorA().value).toBeNull();
+  });
+
+  describe("a component inside the view", () => {
+    /* A view with one resource and a child that writes, holds or reads. */
+    function nested(child: () => void, shown = ref(true)) {
+      const load = vi.fn(() => Promise.resolve("a"));
+      const Child = defineComponent({
+        setup() {
+          child();
+          return () => h("i");
+        },
+      });
+      mount(
+        defineComponent({
+          setup() {
+            useViewSession().resource(load, {
+              initial: "",
+              fallbackError: "x",
+            });
+            return () => h("div", shown.value ? [h(Child)] : []);
+          },
+        }),
+      );
+      return load;
+    }
+
+    it("reloads the view once per write, reporting into its own error", async () => {
+      const error = ref<string | null>(null);
+      let writes!: ReturnType<
+        ReturnType<typeof useParentSession>["childWrites"]
+      >;
+      const load = nested(() => {
+        writes = useParentSession().childWrites(error);
+      });
+      await flushPromises();
+      expect(load).toHaveBeenCalledTimes(1);
+      expect(
+        await writes.write(() => Promise.resolve(), {
+          fallbackError: "x",
+          notify: notifyViewsChanged,
+        }),
+      ).toBe(true);
+      await flushPromises();
+      expect(load).toHaveBeenCalledTimes(2);
+      await writes.write(() => Promise.reject("nope"), {
+        fallbackError: "kaputt",
+      });
+      expect(error.value).toBe("kaputt");
+    });
+
+    it("holds the view's refresh while asked and while gone loads once", async () => {
+      const held = ref(true);
+      const shown = ref(true);
+      const load = nested(
+        () => useParentSession().holdWhile(() => held.value),
+        shown,
+      );
+      await flushPromises();
+      notifyDataChanged();
+      notifyDataChanged();
+      await flushPromises();
+      expect(load).toHaveBeenCalledTimes(1);
+      held.value = false;
+      await flushPromises();
+      expect(load).toHaveBeenCalledTimes(2);
+      // Leaving the page ends a hold as well.
+      held.value = true;
+      notifyDataChanged();
+      await flushPromises();
+      shown.value = false;
+      await flushPromises();
+      expect(load).toHaveBeenCalledTimes(3);
+    });
+
+    it("drops a child's resource from the view's reload when it leaves", async () => {
+      const shown = ref(true);
+      const childLoad = vi.fn(() => Promise.resolve("c"));
+      let session!: ReturnType<typeof useParentSession>;
+      nested(() => {
+        session = useParentSession();
+        session.resource(childLoad, { initial: "", fallbackError: "x" });
+      }, shown);
+      await flushPromises();
+      expect(childLoad).toHaveBeenCalledTimes(1);
+      shown.value = false;
+      await flushPromises();
+      await session.write(() => Promise.resolve(), { fallbackError: "x" });
+      expect(childLoad).toHaveBeenCalledTimes(1);
+    });
+
+    it("throws outside a view", () => {
+      const Lone = defineComponent({
+        setup() {
+          useParentSession();
+          return () => h("i");
+        },
+      });
+      expect(() => mount(Lone)).toThrow(/no view session/);
+    });
   });
 });

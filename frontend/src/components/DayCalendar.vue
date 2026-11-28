@@ -16,7 +16,7 @@ import { updateWorkLog, type WorkTarget } from "../api/work-logs.api";
 import { withWorkLogSound } from "../composables/action-sounds";
 import { notifyViewsChanged } from "../composables/data-sync";
 import { useDayClock } from "../composables/useDayClock";
-import { useWrites } from "../composables/useWrites";
+import { useParentSession } from "../composables/useViewSession";
 import type { HistoryResponse, HistoryWorkLog } from "../types/history";
 import { campaignMark } from "../utils/category-mark";
 import { APP_TIME_ZONE, getCurrentDateInTimeZone } from "../utils/date";
@@ -67,8 +67,6 @@ const props = withDefaults(
   defineProps<{
     day: Day;
     today: string;
-    /** Loads the day again after a change. */
-    reload: (showPageLoading?: boolean) => Promise<void>;
     /** A column of the week: no head, no own hour labels, no own scrolling. */
     compact?: boolean;
     /** The hours the week's columns share; a single day finds its own. */
@@ -158,10 +156,10 @@ const targets = computed<WorkTarget[]>(() => {
   );
 });
 
-/* Saving a dragged edge. */
+/* Saving a dragged edge, inside the view's session: it reloads the view. */
 const error = ref<string | null>(null);
 const announcement = ref("");
-const { write, isWriting } = useWrites(props.reload, error);
+const { writeShown, isWriting } = useParentSession().childWrites(error);
 
 /* The dialog: correct a stretch, or add time. */
 type Dialog =
@@ -310,18 +308,25 @@ async function saveResize(done: Drag): Promise<void> {
     error.value = "Diese Uhrzeit gibt es an diesem Tag nicht.";
     return;
   }
-  settled.value = { id: log.id, start: done.start, end: done.end };
-  const saved = await write(
+  // Shown at once; a single PATCH lands whole or not at all, so a refusal
+  // only takes it back.
+  const saved = await writeShown(
+    () => {
+      settled.value = { id: log.id, start: done.start, end: done.end };
+      return () => (settled.value = null);
+    },
     () => withWorkLogSound(() => updateWorkLog(log.id, { startedAt, endedAt })),
     {
       key: `log-${log.id}`,
       fallbackError: "Der Abschnitt konnte nicht geändert werden.",
       notify: notifyViewsChanged,
+      reloadOnFailure: false,
     },
   );
+  if (!saved) return;
+  // The reload has brought the new times.
   settled.value = null;
-  if (saved)
-    announcement.value = `„${log.title}“ geht jetzt von ${clockLabel(done.start)} bis ${clockLabel(done.end)}.`;
+  announcement.value = `„${log.title}“ geht jetzt von ${clockLabel(done.start)} bis ${clockLabel(done.end)}.`;
 }
 
 /** Where a block is drawn: dragged and just saved blocks at their new times. */
@@ -596,7 +601,6 @@ watch(
     <WorkLogDialog
       v-if="dialog"
       :date="day.date"
-      :reload="reload"
       :log="dialog.kind === 'edit' ? dialog.log : null"
       :targets="targets"
       :from="dialog.kind === 'add' ? dialog.from : undefined"

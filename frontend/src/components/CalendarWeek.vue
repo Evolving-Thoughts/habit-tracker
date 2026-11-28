@@ -219,7 +219,6 @@ watch(() => props.result.startDate, scrollToStart);
           :day="day"
           :today="today"
           :hours="hours"
-          :reload="reload"
           :hidden-logs="hiddenLogs"
           @remove-log="emit('removeLog', $event)"
         />
