@@ -16,17 +16,12 @@ import AppIcon from "../components/AppIcon.vue";
 import CalendarDay from "../components/CalendarDay.vue";
 import CalendarMonth from "../components/CalendarMonth.vue";
 import CalendarWeek from "../components/CalendarWeek.vue";
-import EditItemDialog from "../components/EditItemDialog.vue";
-import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
-import DeleteItemDialog, {
-  type DeleteTarget,
-} from "../components/DeleteItemDialog.vue";
 import type { PlannedActions } from "../components/HistoryPlannedItems.vue";
-import MoveItemDialog, {
-  type MoveTarget,
-} from "../components/MoveItemDialog.vue";
+import type { MoveTarget } from "../components/MoveItemDialog.vue";
+import RowDialogs from "../components/RowDialogs.vue";
 import UndoToast from "../components/UndoToast.vue";
 import { useListFocus } from "../composables/useListFocus";
+import { useRowDialogs } from "../composables/useRowDialogs";
 import { useViewSession } from "../composables/useViewSession";
 import { useLogRemoval } from "../composables/useLogRemoval";
 import { tickLabel, useTicks, writeDone } from "../composables/useTicks";
@@ -67,17 +62,6 @@ const FILTERS: { value: HistoryFilter; label: string }[] = [
 const mode = ref<Mode>("month");
 const date = ref(getCurrentDateInTimeZone());
 const filter = ref<HistoryFilter>("all");
-const moving = ref<MoveTarget | null>(null);
-const editing = ref<{
-  kind: "todo" | "habit";
-  id: number;
-  /** The stored run a daily was opened from, for its notes. */
-  occurrenceId?: number;
-} | null>(null);
-/** "In Kampagne verschieben …" and "Löschen" from a row's menu. */
-const campaignMoving = ref<{ todoId: number; title: string } | null>(null);
-const deleting = ref<DeleteTarget | null>(null);
-const editorBusy = ref(false);
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
 
@@ -91,13 +75,14 @@ const requestDate = computed(() =>
 /* Kept apart from the load error: a failed tick must not hide the calendar. */
 const writeError = ref<string | null>(null);
 const session = useViewSession({
-  holding: () =>
-    !!moving.value ||
-    !!editing.value ||
-    !!campaignMoving.value ||
-    !!deleting.value ||
-    editorBusy.value,
+  holding: () => rows.holding(),
   writeError,
+});
+/* A planned row's editor, "Anderer Tag …", campaign move and delete. */
+const rows = useRowDialogs({
+  root: page,
+  session,
+  today: () => result.value?.today ?? getCurrentDateInTimeZone(),
 });
 const {
   data: result,
@@ -299,21 +284,6 @@ function moveTarget(item: HistoryPlannedItem): MoveTarget | null {
     moveUntil: item.moveUntil,
   };
 }
-function startMoving(item: HistoryPlannedItem): void {
-  listFocus.remember(item.key);
-  moving.value = moveTarget(item);
-}
-async function onDialogDone(): Promise<void> {
-  await session.applied();
-  closeDialogs();
-}
-function closeDialogs(): void {
-  moving.value = null;
-  editing.value = null;
-  campaignMoving.value = null;
-  deleting.value = null;
-  editorBusy.value = false;
-}
 
 /*
  * The planned rows follow the row contract: open quests get the ring (with
@@ -407,24 +377,23 @@ const plannedActions: PlannedActions = {
     item.type === "todo" ? item.id !== null : item.habitId !== null,
   edit: (item) => {
     const id = item.type === "todo" ? item.id : item.habitId;
-    if (id === null || session.busy.value) return;
-    listFocus.remember(item.key);
-    editing.value = {
+    if (id === null) return;
+    rows.edit(item.key, {
       kind: item.type,
       id,
       occurrenceId:
         item.type === "habit" && item.id !== null ? item.id : undefined,
-    };
+    });
   },
   menu: (item) => {
     const today = result.value?.today;
     if (!today) return [];
     const disabled = session.busy.value;
-    const movable = !!moveTarget(item);
+    const target = moveTarget(item);
     return menuInOrder(
       item.title,
       {
-        quickMoves: movable
+        quickMoves: target
           ? quickMoveEntries(
               item.title,
               quickMoves(today, {
@@ -436,9 +405,9 @@ const plannedActions: PlannedActions = {
               { disabled },
             )
           : [],
-        otherDay: movable
+        otherDay: target
           ? {
-              run: () => startMoving(item),
+              run: () => rows.pickDay(item.key, target),
               appointment: item.type === "todo" && !!item.timeOfDay,
             }
           : undefined,
@@ -447,18 +416,19 @@ const plannedActions: PlannedActions = {
           : undefined,
         reparent:
           item.type === "todo" && item.id !== null
-            ? () => {
-                listFocus.remember(item.key);
-                campaignMoving.value = { todoId: item.id!, title: item.title };
-              }
+            ? () =>
+                rows.reparent(item.key, { todoId: item.id!, title: item.title })
             : undefined,
         remove: plannedActions.editable(item)
           ? {
               run: () => {
                 const id = item.type === "todo" ? item.id : item.habitId;
-                if (id === null || session.busy.value) return;
-                listFocus.remember(item.key);
-                deleting.value = { kind: item.type, id, title: item.title };
+                if (id === null) return;
+                rows.remove(item.key, {
+                  kind: item.type,
+                  id,
+                  title: item.title,
+                });
               },
               ariaLabel:
                 item.type === "habit"
@@ -667,43 +637,7 @@ const plannedActions: PlannedActions = {
         @remove-log="removeLog"
       />
 
-      <MoveItemDialog
-        v-if="moving"
-        :item="moving"
-        :today="result.today"
-        :return-focus="listFocus.returnFocus"
-        @busy="editorBusy = $event"
-        @moved="onDialogDone"
-        @close="closeDialogs"
-      />
-      <CampaignMoveDialog
-        v-if="campaignMoving"
-        :todo-id="campaignMoving.todoId"
-        :title="campaignMoving.title"
-        :return-focus="listFocus.returnFocus"
-        @busy="editorBusy = $event"
-        @moved="onDialogDone"
-        @close="closeDialogs"
-      />
-      <DeleteItemDialog
-        v-if="deleting"
-        :target="deleting"
-        :return-focus="listFocus.returnFocus"
-        @busy="editorBusy = $event"
-        @deleted="onDialogDone"
-        @close="closeDialogs"
-      />
-      <EditItemDialog
-        v-if="editing"
-        :key="`${editing.kind}-${editing.id}`"
-        :kind="editing.kind"
-        :entity-id="editing.id"
-        :occurrence-id="editing.occurrenceId"
-        :return-focus="listFocus.returnFocus"
-        @busy="editorBusy = $event"
-        @changed="onDialogDone"
-        @close="closeDialogs"
-      />
+      <RowDialogs :dialogs="rows" />
     </template>
     <UndoToast :label="undo?.label ?? null" @undo="undoLast" />
   </main>

@@ -3,6 +3,7 @@ import { computed, nextTick, ref } from "vue";
 import { getBacklogTodos, reorderBacklog } from "../api/day-planner.api";
 import { planQuest } from "../api/questlog.api";
 import { useListFocus } from "../composables/useListFocus";
+import { useRowDialogs, type RowDialog } from "../composables/useRowDialogs";
 import { useSortable } from "../composables/useSortable";
 import AppIcon from "../components/AppIcon.vue";
 import CampaignChip from "../components/CampaignChip.vue";
@@ -16,9 +17,7 @@ import { getCurrentDateInTimeZone } from "../utils/date";
 import CreateButton from "../components/CreateButton.vue";
 import QuickAddQuest from "../components/QuickAddQuest.vue";
 import CreateItemDialog from "../components/CreateItemDialog.vue";
-import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
-import DeleteItemDialog from "../components/DeleteItemDialog.vue";
-import EditItemDialog from "../components/EditItemDialog.vue";
+import RowDialogs from "../components/RowDialogs.vue";
 import UndoToast from "../components/UndoToast.vue";
 import type { TodoResponse } from "../types/todo";
 import { shownWhy } from "../utils/why";
@@ -40,20 +39,8 @@ const listFocus = useListFocus(page);
 
 const successMessage = ref<string | null>(null);
 
-/*
- * One dialog at a time for a quest of the list: the shared editor (at its
- * day for "Anderer Tag …"), "In Kampagne verschieben …" or "Löschen".
- */
-type Dialog = {
-  kind: "edit" | "move" | "delete";
-  todo: TodoResponse;
-  atDay?: boolean;
-};
-const dialog = ref<Dialog | null>(null);
 /** Where "Anderer Tag …" puts the focus in the editor. */
 const DAY_FIELD = 'input[name="scheduledDate"]';
-const dialogBusy = ref(false);
-const selectedTodo = computed(() => dialog.value?.todo ?? null);
 
 const creationOpen = ref(false);
 /** Opened by a long press on Plus: a quest, its title dictated at once. */
@@ -67,7 +54,7 @@ async function loadDump(): Promise<TodoResponse[]> {
 }
 
 const session = useViewSession({
-  holding: () => !!dialog.value || dialogBusy.value || creationOpen.value,
+  holding: () => rows.holding() || creationOpen.value,
 });
 const {
   data: todos,
@@ -79,6 +66,32 @@ const {
   fallbackError: "Die Quests konnten nicht geladen werden.",
 });
 const { write, applied, busy: isSaving } = session;
+
+/*
+ * A quest's dialogs: the shared editor (at its day for "Anderer Tag …"),
+ * "In Kampagne verschieben …" or "Löschen". Each says in the status line
+ * what it did; a deleted quest leaves the done list too.
+ */
+const SAVED: Partial<Record<RowDialog["kind"], string>> = {
+  edit: "Änderungen gespeichert.",
+  reparent: "Quest verschoben.",
+  delete: "Quest gelöscht.",
+};
+const rows = useRowDialogs({
+  root: page,
+  session,
+  today: getCurrentDateInTimeZone,
+  blocked: () => isLoading.value,
+  opened: () => {
+    errorMessage.value = null;
+    successMessage.value = null;
+  },
+  saved: (dialog) => {
+    if (dialog.kind === "delete") forgetDone(dialog.target.id);
+    successMessage.value = SAVED[dialog.kind] ?? null;
+  },
+});
+const dialogOpen = computed(() => rows.dialog.value !== null);
 
 const isBusy = computed(() => {
   return isLoading.value || isSaving.value;
@@ -141,34 +154,17 @@ async function toggleTodo(todo: TodoResponse): Promise<void> {
   doneHere.value = [{ ...todo, completed: true }, ...doneHere.value];
 }
 
-function openDialog(
-  kind: Dialog["kind"],
-  todo: TodoResponse,
-  { atDay = false } = {},
-): void {
-  if (isBusy.value || dialog.value) return;
-  listFocus.remember(`todo-${todo.id}`);
-  errorMessage.value = null;
-  successMessage.value = null;
-  dialog.value = { kind, todo, atDay };
-}
-function openEditing(todo: TodoResponse, options = {}): void {
-  openDialog("edit", todo, options);
-}
-function closeDialog(): void {
-  dialog.value = null;
-  dialogBusy.value = false;
-}
-async function onDialogDone(message: string): Promise<void> {
-  const done = dialog.value;
-  await applied();
-  if (done?.kind === "delete") forgetDone(done.todo.id);
-  successMessage.value = message;
-  closeDialog();
+/** The editor of a quest; `atDay` starts it at the day field. */
+function openEditing(todo: TodoResponse, { atDay = false } = {}): void {
+  rows.edit(`todo-${todo.id}`, {
+    kind: "todo",
+    id: todo.id,
+    focus: atDay ? DAY_FIELD : undefined,
+  });
 }
 
 function openCreation(dictate = false): void {
-  if (isBusy.value || selectedTodo.value) return;
+  if (isBusy.value || dialogOpen.value) return;
   successMessage.value = null;
   creationDictate.value = dictate;
   creationOpen.value = true;
@@ -191,7 +187,7 @@ function listRef(key: string) {
   };
 }
 async function moveInList(from: number, to: number): Promise<void> {
-  if (isBusy.value || selectedTodo.value) return;
+  if (isBusy.value || dialogOpen.value) return;
   const before = todos.value;
   const order = moved(before, from, to);
   const todo = order[to];
@@ -227,7 +223,7 @@ async function shiftInList(todo: TodoResponse, direction: -1 | 1): Promise<void>
  */
 const timer = useTimer();
 function openTodo(key: string | null): TodoResponse | null {
-  if (isBusy.value || selectedTodo.value) return null;
+  if (isBusy.value || dialogOpen.value) return null;
   return todos.value.find((todo) => `todo-${todo.id}` === key) ?? null;
 }
 function actionsOf(todo: TodoResponse): RowActions {
@@ -253,7 +249,8 @@ function actionsOf(todo: TodoResponse): RowActions {
     pickDay: () => openEditing(todo, { atDay: true }),
     complete: () => void listFocus.around(key, () => toggleTodo(todo)),
     edit: () => openEditing(todo),
-    reparent: () => openDialog("move", todo),
+    reparent: () =>
+      rows.reparent(key, { todoId: todo.id, title: todo.title }),
     step: (direction) =>
       direction === "up"
         ? place > 0
@@ -262,12 +259,13 @@ function actionsOf(todo: TodoResponse): RowActions {
         : place !== -1 && place < todos.value.length - 1
           ? () => void shiftInList(todo, 1)
           : undefined,
-    remove: () => openDialog("delete", todo),
+    remove: () =>
+      rows.remove(key, { kind: "todo", id: todo.id, title: todo.title }),
   };
 }
 useShortcutHandlers({
   "quest.new": () => {
-    if (isBusy.value || selectedTodo.value) return;
+    if (isBusy.value || dialogOpen.value) return;
     openCreation();
   },
   ...rowShortcuts((key) => {
@@ -292,36 +290,9 @@ useShortcutHandlers({
       @created="onCreated"
     />
 
-    <EditItemDialog
-      v-if="dialog?.kind === 'edit'"
-      :key="dialog.todo.id"
-      kind="todo"
-      :entity-id="dialog.todo.id"
-      :focus="dialog.atDay ? DAY_FIELD : undefined"
-      :return-focus="listFocus.returnFocus"
-      @busy="dialogBusy = $event"
-      @changed="onDialogDone('Änderungen gespeichert.')"
-      @close="closeDialog"
-    />
-    <CampaignMoveDialog
-      v-if="dialog?.kind === 'move'"
-      :todo-id="dialog.todo.id"
-      :title="dialog.todo.title"
-      :return-focus="listFocus.returnFocus"
-      @busy="dialogBusy = $event"
-      @moved="onDialogDone('Quest verschoben.')"
-      @close="closeDialog"
-    />
-    <DeleteItemDialog
-      v-if="dialog?.kind === 'delete'"
-      :target="{ kind: 'todo', id: dialog.todo.id, title: dialog.todo.title }"
-      :return-focus="listFocus.returnFocus"
-      @busy="dialogBusy = $event"
-      @deleted="onDialogDone('Quest gelöscht.')"
-      @close="closeDialog"
-    />
+    <RowDialogs :dialogs="rows" />
 
-    <div v-if="errorMessage && !selectedTodo" class="alert questlog__alert">
+    <div v-if="errorMessage && !dialogOpen" class="alert questlog__alert">
       <p role="alert">{{ errorMessage }}</p>
       <button
         class="btn btn--ground"
@@ -448,7 +419,7 @@ useShortcutHandlers({
     <!-- After the content in reading order; fixed in place, it looks the same. -->
     <CreateButton
       label="Quest erstellen"
-      :disabled="isBusy || selectedTodo !== null"
+      :disabled="isBusy || dialogOpen"
       @click="openCreation()"
       @dictate="openCreation(true)"
     />

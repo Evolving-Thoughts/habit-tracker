@@ -2518,4 +2518,112 @@ describe("TodayView on other days", () => {
     await flushPromises();
     expect(wrapper.find(".item-editor").exists()).toBe(true);
   });
+
+  /* A stored run of the daily 7, open on the day it stands on. */
+  const storedRun = (occurrenceId: number, moveUntil: string) => ({
+    type: "habit" as const,
+    habitId: 7,
+    occurrenceId,
+    title: "Lesen",
+    status: "pending" as const,
+    moveUntil,
+    timerEligible: false,
+    streak: { current: 0, best: 0, unit: "runs" as const },
+    timeOfDay: null,
+    plannedDurationMinutes: null,
+    campaign: null,
+    isOverdue: false,
+  });
+  async function menuOf(wrapper: ReturnType<typeof mount>, title: string) {
+    await wrapper
+      .get(`[aria-label="Aktionen für ${title}"][aria-haspopup]`)
+      .trigger("click");
+    return wrapper
+      .findAll("[role=menuitem] .action-menu__label")
+      .map((label) => label.text());
+  }
+  async function choose(wrapper: ReturnType<typeof mount>, label: string) {
+    await wrapper
+      .findAll("[role=menuitem]")
+      .find((entry) => entry.text().startsWith(label))!
+      .trigger("click");
+    await flushPromises();
+  }
+
+  it("gives a later day's cards Heute's menu, without the order and the Fokus-Modus", async () => {
+    route.query = { tag: "2026-10-03" };
+    vi.mocked(getPlan).mockResolvedValue(
+      dayPlan("2026-10-03", [plannedQuest, storedRun(51, "2026-10-05")]),
+    );
+    vi.mocked(rescheduleTodo).mockResolvedValue(undefined as never);
+    const wrapper = mount(TodayView, { attachTo: document.body });
+    await flushPromises();
+
+    expect(await menuOf(wrapper, "Steuer vorbereiten")).toEqual([
+      "Heute",
+      "Nächste Woche",
+      "Anderer Tag …",
+      "Bearbeiten",
+      "In Kampagne verschieben …",
+      "Löschen",
+    ]);
+    await choose(wrapper, "Anderer Tag …");
+    const dialog = wrapper.get(".move-dialog");
+    // Never on today, so today is one tap away.
+    expect(dialog.text()).toContain("Heute");
+    const loads = vi.mocked(getPlan).mock.calls.length;
+    await dialog
+      .findAll("button")
+      .find((button) => button.text() === "Nächster Montag")!
+      .trigger("click");
+    await flushPromises();
+    expect(rescheduleTodo).toHaveBeenCalledWith(41, "2026-10-05", false);
+    expect(wrapper.find(".move-dialog").exists()).toBe(false);
+    // The day heard the change while the dialog was open and loads it now.
+    expect(vi.mocked(getPlan).mock.calls.length).toBeGreaterThan(loads);
+    expect(document.activeElement).toBe(
+      wrapper.get('[data-focus-key="todo-41"] [data-edit-button]').element,
+    );
+
+    // A run not due yet: no Überspringen.
+    expect(await menuOf(wrapper, "Lesen")).toEqual([
+      "Heute",
+      "Nächste Woche",
+      "Anderer Tag …",
+      "Bearbeiten",
+      "Löschen",
+    ]);
+  });
+
+  it("skips a past day's due run from its menu and deletes its daily after asking", async () => {
+    route.query = { tag: "2026-10-01" };
+    vi.mocked(getPlan).mockResolvedValue(
+      dayPlan("2026-10-01", [storedRun(52, "2026-10-02")]),
+    );
+    updateOccurrenceMock.mockResolvedValue(undefined as never);
+    vi.mocked(deleteHabit).mockResolvedValue(undefined as never);
+    const wrapper = mount(TodayView);
+    await flushPromises();
+
+    expect(await menuOf(wrapper, "Lesen")).toEqual([
+      "Heute",
+      "Anderer Tag …",
+      "Überspringen",
+      "Bearbeiten",
+      "Löschen",
+    ]);
+    await choose(wrapper, "Überspringen");
+    expect(updateOccurrenceMock).toHaveBeenCalledWith(52, "skipped");
+    expect(wrapper.text()).toContain("„Lesen“ übersprungen.");
+
+    await menuOf(wrapper, "Lesen");
+    await choose(wrapper, "Löschen");
+    expect(wrapper.get(".delete-dialog").text()).toContain(
+      "Das ganze Daily verschwindet",
+    );
+    await wrapper.get('[data-test="confirm-delete"]').trigger("click");
+    await flushPromises();
+    expect(deleteHabit).toHaveBeenCalledWith(7);
+    expect(wrapper.find(".delete-dialog").exists()).toBe(false);
+  });
 });

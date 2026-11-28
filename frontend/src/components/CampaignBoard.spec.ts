@@ -77,6 +77,12 @@ const ticks = {
   complete: vi.fn(),
   reopen: vi.fn(),
 };
+/* The view's row dialogs: the board only asks for them. */
+const dialogs = {
+  edit: vi.fn(),
+  reparent: vi.fn(),
+  remove: vi.fn(),
+};
 const ModalStub = {
   name: "ModalDialog",
   props: ["title"],
@@ -100,7 +106,7 @@ function mountBoard(
     if (reloaded) await wrapper.setProps({ todos: reloaded() });
   }, ref<string | null>(null));
   const wrapper = mount(CampaignBoard, {
-    props: { todos, campaign, busy, writes, ticks },
+    props: { todos, campaign, busy, writes, ticks, dialogs },
     global: { stubs: { ModalDialog: ModalStub, QuickAddQuest: QuickAddStub } },
   });
   return wrapper;
@@ -161,7 +167,7 @@ describe("CampaignBoard", () => {
     const controller = createTimerController();
     const writes = useWrites(async () => {}, ref<string | null>(null));
     const w = mount(CampaignBoard, {
-      props: { todos: TODOS, campaign, busy: false, writes, ticks },
+      props: { todos: TODOS, campaign, busy: false, writes, ticks, dialogs },
       global: {
         stubs: { ModalDialog: ModalStub, QuickAddQuest: QuickAddStub },
         provide: { [timerKey as symbol]: controller },
@@ -391,7 +397,7 @@ describe("CampaignBoard", () => {
       ]);
     });
 
-    it("hands editing, moving and deleting to the view", async () => {
+    it("opens the view's editor, campaign move and delete dialogs", async () => {
       const w = mountBoard();
       await flushPromises();
       await openMenu(w, "Entwurf");
@@ -400,9 +406,16 @@ describe("CampaignBoard", () => {
       await choose(w, "In Kampagne verschieben …");
       await openMenu(w, "Entwurf");
       await choose(w, "Löschen");
-      expect(w.emitted("edit")![0]![0]).toMatchObject({ id: 3 });
-      expect(w.emitted("reparent")![0]![0]).toMatchObject({ id: 3 });
-      expect(w.emitted("remove")![0]![0]).toMatchObject({ id: 3 });
+      expect(dialogs.edit).toHaveBeenCalledWith("todo-3", { kind: "todo", id: 3 });
+      expect(dialogs.reparent).toHaveBeenCalledWith("todo-3", {
+        todoId: 3,
+        title: "Entwurf",
+      });
+      expect(dialogs.remove).toHaveBeenCalledWith("todo-3", {
+        kind: "todo",
+        id: 3,
+        title: "Entwurf",
+      });
     });
   });
 
@@ -545,7 +558,7 @@ describe("CampaignBoard", () => {
       const w = mountBoard();
       await flushPromises();
       await ctrlClick(w, 3);
-      expect(w.emitted("edit")).toBeUndefined();
+      expect(dialogs.edit).not.toHaveBeenCalled();
       expect(marked(w)).toEqual([3]);
       // Said in words and with a sign, never by the frame alone.
       const state = card(w, 3).get(".board-column__selected");
@@ -567,7 +580,7 @@ describe("CampaignBoard", () => {
       const w = mountBoard();
       await flushPromises();
       await card(w, 3).get(".item-row__content").trigger("click");
-      expect(w.emitted("edit")![0]![0]).toMatchObject({ id: 3 });
+      expect(dialogs.edit).toHaveBeenCalledWith("todo-3", { kind: "todo", id: 3 });
       expect(marked(w)).toEqual([]);
     });
 
@@ -576,12 +589,12 @@ describe("CampaignBoard", () => {
       await flushPromises();
       // Without marks a tap edits as always.
       await tap(w, 4);
-      expect(w.emitted("edit")).toHaveLength(1);
+      expect(dialogs.edit).toHaveBeenCalledTimes(1);
       await hold(w, "todo", 3);
       expect(marked(w)).toEqual([3]);
       await tap(w, 4);
       expect(marked(w)).toEqual([3, 4]);
-      expect(w.emitted("edit")).toHaveLength(1);
+      expect(dialogs.edit).toHaveBeenCalledTimes(1);
       // The card's own controls keep their tap.
       await openMenu(w, "Quest 4");
       expect(entries(w)).toContain("Bearbeiten");

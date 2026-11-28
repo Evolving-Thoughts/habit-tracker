@@ -28,6 +28,7 @@ import { useSnapColumns } from "../composables/useSnapColumns";
 import { writeDone, type useTicks } from "../composables/useTicks";
 import { timerStateOf, useTimer } from "../composables/useTimer";
 import type { useWrites } from "../composables/useWrites";
+import type { RowDialogs } from "../composables/useRowDialogs";
 import type { TodoResponse } from "../types/todo";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
 import {
@@ -70,8 +71,9 @@ import {
  * What leaves In Arbeit for To-Do or Geplant first answers "Als geblockt
  * markieren?". Marked cards (Ctrl-click, a long press, then taps) travel
  * together, with each question asked once. Every move shows at once and
- * the reload confirms it, or takes it back. The view keeps the editor, the move and delete dialogs,
- * the campaign question and the undo toast; the board asks for them.
+ * the reload confirms it, or takes it back. A card's editor, "In Kampagne
+ * verschieben …" and Löschen are the view's row dialogs (`dialogs`); the
+ * view also keeps the campaign question and the undo toast.
  */
 type Writes = Pick<ReturnType<typeof useWrites>, "writeShown">;
 type Ticks = Pick<ReturnType<typeof useTicks>, "complete" | "reopen">;
@@ -84,12 +86,11 @@ const props = defineProps<{
   busy: boolean;
   writes: Writes;
   ticks: Ticks;
+  /** The view's row dialogs: editor, campaign move, delete. */
+  dialogs: Pick<RowDialogs, "edit" | "reparent" | "remove">;
 }>();
 
 const emit = defineEmits<{
-  edit: [todo: HierarchyTodo];
-  reparent: [todo: HierarchyTodo];
-  remove: [todo: HierarchyTodo];
   /** The quests changed from outside the board's writes: a quick add, a stopwatch that ended. */
   changed: [];
 }>();
@@ -510,10 +511,23 @@ function actionsOf(card: BoardCard): RowActions {
     startWork: () => void startMove({ via: "menu", card, to: "working" }, true),
     setAside: () => void startMove({ via: "setAside", card }, true),
     toggleBlocked: () => void toggleBlocked(card),
-    edit: () => emit("edit", todo),
-    reparent: () => emit("reparent", todo),
-    remove: () => emit("remove", todo),
+    edit: () => edit(todo),
+    reparent: () =>
+      props.dialogs.reparent(`todo-${todo.id}`, {
+        todoId: todo.id,
+        title: todo.title,
+      }),
+    remove: () =>
+      props.dialogs.remove(`todo-${todo.id}`, {
+        kind: "todo",
+        id: todo.id,
+        title: todo.title,
+      }),
   };
+}
+/** A card's editor; the board's cards are quests below the campaign, never one. */
+function edit(todo: HierarchyTodo): void {
+  props.dialogs.edit(`todo-${todo.id}`, { kind: "todo", id: todo.id });
 }
 function menuOf(card: BoardCard): MenuEntry[] {
   return rowMenu(actionsOf(card));
@@ -610,7 +624,7 @@ const asked = computed(() => {
         @move="onDrop"
         @select="toggleSelected"
         @toggle="toggle"
-        @edit="(card) => emit('edit', card.todo)"
+        @edit="(card) => edit(card.todo)"
       >
         <template
           v-if="column.key === 'todo' || column.key === 'planned'"

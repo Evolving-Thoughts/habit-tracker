@@ -253,7 +253,13 @@ counts one.
 
 - A later day takes quests in its quick add, sorts its open quests and
   stored runs by dragging (the Plan's `planMove`, sent by `usePlanMove`)
-  and moves them with the quick moves of their menu. Quests tick as on
+  and moves them with the quick moves of their menu.
+- A card's menu is Heute's where it means something on another day
+  (`rowMenu`): quick moves, "Anderer Tag …", Überspringen for a due run,
+  Bearbeiten, "In Kampagne verschieben …", Löschen; not the order's steps,
+  the Fokus-Modus or the stopwatch. Its dialogs are Heute's
+  (`useRowDialogs`, handed down as `dialogs`), so Heute holds its reload
+  while one is open, like the other day. Quests tick as on
   today (`useTicks`: the sound, the undo toast, the campaign question);
   runs only tick on their own day.
 - Its Google events are entries of the Plan's day, at their places; on a

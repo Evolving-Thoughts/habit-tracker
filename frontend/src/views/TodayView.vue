@@ -8,6 +8,12 @@ import {
 } from "../api/day-planner.api";
 import { whileActive } from "../composables/useActive";
 import { useListFocus } from "../composables/useListFocus";
+import {
+  deleteTargetOf,
+  editTargetOf,
+  moveTargetOf,
+  useRowDialogs,
+} from "../composables/useRowDialogs";
 import { DAY_DROP, useSortable } from "../composables/useSortable";
 import { useViewSession } from "../composables/useViewSession";
 import { useTicks, type TickTarget } from "../composables/useTicks";
@@ -40,12 +46,7 @@ import TodayWelcome, {
   type TodayStarter,
 } from "../components/TodayWelcome.vue";
 import { relationLabel } from "../utils/other-day";
-import EditItemDialog from "../components/EditItemDialog.vue";
-import MoveItemDialog from "../components/MoveItemDialog.vue";
-import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
-import DeleteItemDialog, {
-  type DeleteTarget,
-} from "../components/DeleteItemDialog.vue";
+import RowDialogs from "../components/RowDialogs.vue";
 import ModalDialog from "../components/ModalDialog.vue";
 import UndoToast from "../components/UndoToast.vue";
 import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
@@ -108,22 +109,9 @@ import {
  */
 defineOptions({ name: "TodayView" });
 
-type EditingTarget = {
-  kind: "todo" | "habit";
-  entityId: number;
-  /** The run a daily was opened from, for its notes. */
-  occurrenceId?: number;
-};
-
 const page = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
 
-const editingTarget = ref<EditingTarget | null>(null);
-const editorBusy = ref(false);
-const movingItem = ref<DayPlannerItem | null>(null);
-/** "In Kampagne verschieben …" and "Löschen" from a card's menu. */
-const campaignMoving = ref<{ todoId: number; title: string } | null>(null);
-const deleting = ref<DeleteTarget | null>(null);
 const postponeOpen = ref(false);
 const creationOpen = ref(false);
 /** Opened by a long press on Plus: the title is dictated at once. */
@@ -137,15 +125,13 @@ const resolvedOpen = ref(false);
 // A dialog or the campaign question holds the refresh until it is answered.
 const session = useViewSession({
   holding: () =>
-    editorBusy.value ||
-    !!editingTarget.value ||
-    !!movingItem.value ||
-    !!campaignMoving.value ||
-    !!deleting.value ||
+    rows.holding() ||
     postponeOpen.value ||
     creationOpen.value ||
     !!ticks.campaignQuestion.value,
 });
+/* A card's editor, "Anderer Tag …", campaign move and delete; another day's too. */
+const rows = useRowDialogs({ root: page, session, today: () => today.value });
 const {
   data: planner,
   isLoading,
@@ -204,11 +190,6 @@ function showDay(date: string): void {
 function stepDay(by: -1 | 1): void {
   showDay(addDays(shownDate.value, by));
 }
-function editOtherDay(target: EditingTarget): void {
-  if (editorBusy.value || session.busy.value) return;
-  editingTarget.value = target;
-}
-
 const heading = computed(() =>
   otherDay.value || planner.value
     ? formatDayHeading(shownDate.value)
@@ -392,7 +373,7 @@ const { hiddenLogs, removeLog, restoreLog } = useLogRemoval(
 const getItemKey = itemKey;
 
 function isUpdating(item: DayPlannerItem): boolean {
-  return editorBusy.value || session.isWriting(getItemKey(item));
+  return rows.busy.value || session.isWriting(getItemKey(item));
 }
 
 function tickTarget(item: DayPlannerItem): TickTarget {
@@ -485,73 +466,16 @@ async function catchUpAll(): Promise<void> {
   }
 }
 
+/** A card asked for its editor; a daily opens with the notes of this run. */
 function openEditing(item: DayPlannerItem): void {
-  if (editorBusy.value || session.busy.value) {
-    return;
-  }
-
-  listFocus.remember(getItemKey(item));
-  editingTarget.value =
-    item.type === "todo"
-      ? {
-          kind: "todo",
-          entityId: item.todoId,
-        }
-      : {
-          kind: "habit",
-          entityId: item.habitId,
-          occurrenceId: item.occurrenceId,
-        };
+  rows.edit(getItemKey(item), editTargetOf(item));
 }
 
-function openMenuDialog(item: DayPlannerItem, kind: "move" | "delete"): void {
-  if (editorBusy.value || session.busy.value) return;
-  listFocus.remember(getItemKey(item));
-  if (kind === "move" && item.type === "todo")
-    campaignMoving.value = { todoId: item.todoId, title: item.title };
-  else if (kind === "delete")
-    deleting.value =
-      item.type === "todo"
-        ? { kind: "todo", id: item.todoId, title: item.title }
-        : { kind: "habit", id: item.habitId, title: item.title };
-}
-function closeMenuDialog(): void {
-  campaignMoving.value = null;
-  deleting.value = null;
-  editorBusy.value = false;
-}
-async function onMenuDialogDone(): Promise<void> {
-  await session.applied();
-  closeMenuDialog();
-}
-
-function closeEditing(): void {
-  editingTarget.value = null;
-  editorBusy.value = false;
-}
-
-async function onEditorChanged(): Promise<void> {
-  await session.applied();
-  closeEditing();
-}
-
+/** "Anderer Tag …"; one carried over may come back to today in one tap. */
 function openMoving(item: DayPlannerItem): void {
-  if (editorBusy.value || session.busy.value) {
-    return;
-  }
-
-  listFocus.remember(getItemKey(item));
-  movingItem.value = item;
-}
-
-function closeMoving(): void {
-  movingItem.value = null;
-  editorBusy.value = false;
-}
-
-async function onMoved(): Promise<void> {
-  await session.applied();
-  closeMoving();
+  rows.pickDay(getItemKey(item), moveTargetOf(item), {
+    offerToday: item.isOverdue,
+  });
 }
 
 /* The order of the day: the focus card is its head, the rows follow. */
@@ -713,9 +637,8 @@ async function postponeAll(): Promise<void> {
 const creationBlocked = computed(
   () =>
     isLoading.value ||
-    editorBusy.value ||
     session.busy.value ||
-    editingTarget.value !== null,
+    rows.holding(),
 );
 function openCreation(
   dictate = false,
@@ -786,7 +709,10 @@ function actionsOf(item: DayPlannerItem, today: string): RowActions {
       isFocus && !focusSlot.value
         ? () => void router.push({ name: "focus" })
         : undefined,
-    reparent: () => openMenuDialog(item, "move"),
+    reparent:
+      item.type === "todo"
+        ? () => rows.reparent(key, { todoId: item.todoId, title: item.title })
+        : undefined,
     // The challenge's own place is in the Dailies.
     openChallenge: () => void router.push(CHALLENGE_HREF.slice(1)),
     step: (direction) => {
@@ -795,7 +721,7 @@ function actionsOf(item: DayPlannerItem, today: string): RowActions {
         ? () => void shiftInOrder(item, by)
         : undefined;
     },
-    remove: () => openMenuDialog(item, "delete"),
+    remove: () => rows.remove(key, deleteTargetOf(item)),
   };
 }
 /** `past`: an appointment that is over but open leads with "Anderer Tag …". */
@@ -819,9 +745,7 @@ const focusTimer = computed(() => {
  * question says no, a held undo goes through and old notices go.
  */
 onDeactivated(() => {
-  closeEditing();
-  closeMoving();
-  closeMenuDialog();
+  rows.close();
   postponeOpen.value = false;
   creationOpen.value = false;
   creationMessage.value = null;
@@ -846,7 +770,7 @@ useShortcutHandlers(
   {
     // The same offer as "Alles Offene auf morgen" in the head's "…".
     commands: () =>
-      postponable.value.length && !session.busy.value && !editorBusy.value
+      postponable.value.length && !session.busy.value && !rows.busy.value
         ? [
             {
               id: "today.postpone",
@@ -940,7 +864,7 @@ useShortcutHandlers(
               data-day-drop
               :data-date="tomorrow"
               aria-label="Offenes auf morgen verschieben"
-              :disabled="isLoading || editorBusy || session.busy.value"
+              :disabled="isLoading || rows.busy.value || session.busy.value"
               @click="postponeOpen = true"
             >
               Auf morgen
@@ -996,17 +920,7 @@ useShortcutHandlers(
         {{ creationMessage }}
       </p>
 
-      <EditItemDialog
-        v-if="editingTarget"
-        :key="`${editingTarget.kind}-${editingTarget.entityId}`"
-        :kind="editingTarget.kind"
-        :entity-id="editingTarget.entityId"
-        :occurrence-id="editingTarget.occurrenceId"
-        :return-focus="listFocus.returnFocus"
-        @busy="editorBusy = $event"
-        @changed="onEditorChanged"
-        @close="closeEditing"
-      />
+      <RowDialogs :dialogs="rows" />
 
       <ModalDialog
         v-if="postponeOpen"
@@ -1041,42 +955,13 @@ useShortcutHandlers(
         </div>
       </ModalDialog>
 
-      <CampaignMoveDialog
-        v-if="campaignMoving"
-        :todo-id="campaignMoving.todoId"
-        :title="campaignMoving.title"
-        :return-focus="listFocus.returnFocus"
-        @busy="editorBusy = $event"
-        @moved="onMenuDialogDone"
-        @close="closeMenuDialog"
-      />
-      <DeleteItemDialog
-        v-if="deleting"
-        :target="deleting"
-        :return-focus="listFocus.returnFocus"
-        @busy="editorBusy = $event"
-        @deleted="onMenuDialogDone"
-        @close="closeMenuDialog"
-      />
-
-      <MoveItemDialog
-        v-if="movingItem && planner"
-        :item="movingItem"
-        :today="planner.date"
-        :offer-today="movingItem.isOverdue"
-        :return-focus="listFocus.returnFocus"
-        @busy="editorBusy = $event"
-        @moved="onMoved"
-        @close="closeMoving"
-      />
-
       <TodayOtherDay
         v-if="otherDay"
         v-show="showsList"
         :date="otherDay"
         :today="today"
-        :held="editingTarget !== null || editorBusy || creationOpen"
-        @edit="editOtherDay"
+        :dialogs="rows"
+        :held="rows.holding() || creationOpen"
         @notice="notice"
       />
 

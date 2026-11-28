@@ -12,14 +12,7 @@ import { getBacklogTodos, getPlan } from "../api/day-planner.api";
 import { planQuest } from "../api/questlog.api";
 import AppIcon from "../components/AppIcon.vue";
 import InsertPlaceToggle from "../components/InsertPlaceToggle.vue";
-import EditItemDialog from "../components/EditItemDialog.vue";
-import MoveItemDialog, {
-  type MoveTarget,
-} from "../components/MoveItemDialog.vue";
-import CampaignMoveDialog from "../components/CampaignMoveDialog.vue";
-import DeleteItemDialog, {
-  type DeleteTarget,
-} from "../components/DeleteItemDialog.vue";
+import RowDialogs from "../components/RowDialogs.vue";
 import PlanDay from "../components/PlanDay.vue";
 import PlanOverdue from "../components/PlanOverdue.vue";
 import PlanQuestlog from "../components/PlanQuestlog.vue";
@@ -27,6 +20,12 @@ import ColumnChips from "../components/ColumnChips.vue";
 import UndoToast from "../components/UndoToast.vue";
 import CampaignCompletionDialog from "../components/CampaignCompletionDialog.vue";
 import { useListFocus } from "../composables/useListFocus";
+import {
+  deleteTargetOf,
+  editTargetOf,
+  moveTargetOf,
+  useRowDialogs,
+} from "../composables/useRowDialogs";
 import { useSnapColumns } from "../composables/useSnapColumns";
 import { useViewSession } from "../composables/useViewSession";
 import { SHEET_QUERY, useMediaQuery } from "../composables/useMediaQuery";
@@ -96,27 +95,6 @@ const frame = ref<HTMLElement | null>(null);
 const board = ref<HTMLElement | null>(null);
 const heading = ref<HTMLElement | null>(null);
 const listFocus = useListFocus(page);
-
-/**
- * The editor that is open: a quest's (from the board or the Questlog
- * column) or a daily's, with the notes of the run it was opened from.
- */
-const editing = ref<
-  | { kind: "todo"; id: number }
-  | { kind: "habit"; id: number; occurrenceId: number | null }
-  | null
->(null);
-/** "Anderer Tag …" for a quest or a run, and the day it is on now. */
-const moving = ref<{ target: MoveTarget; date: string } | null>(null);
-/** "In Kampagne verschieben …" (quests) or "Löschen" for a card. */
-const menuDialog = ref<
-  | { kind: "move"; todoId: number; title: string }
-  | { kind: "delete"; target: DeleteTarget }
-  | null
->(null);
-const dialogBusy = ref(false);
-const dialogOpen = () =>
-  !!editing.value || !!moving.value || !!menuDialog.value || dialogBusy.value;
 
 /** Asked fresh each time: the app may stay open into the next day. */
 const today = (): string => getCurrentDateInTimeZone();
@@ -230,7 +208,13 @@ const loadedDays = computed(() =>
 
 /* Kept apart from the load error: the quiet reload after a write must not hide it. */
 const writeError = ref<string | null>(null);
-const session = useViewSession({ holding: dialogOpen, writeError });
+const session = useViewSession({ holding: () => rows.holding(), writeError });
+/* A card's editor, "Anderer Tag …", campaign move and delete. */
+const rows = useRowDialogs({
+  root: page,
+  session,
+  today: () => plan.value?.today ?? today(),
+});
 const {
   data: plan,
   isLoading,
@@ -332,7 +316,7 @@ async function stepEntry(
   direction: "up" | "down" | "left" | "right",
   focusOn: "menu" | "card" = "menu",
 ): Promise<void> {
-  if (!shownPlan.value || session.busy.value || dialogBusy.value) return;
+  if (!shownPlan.value || session.busy.value || rows.busy.value) return;
   if (!(await moves.step(entry, direction, shownPlan.value))) return;
   await nextTick();
   focusCard(entryKey(entry, ""), focusOn);
@@ -345,23 +329,12 @@ function focusCard(key: string, on: "menu" | "card"): void {
 /**
  * Opens the card's editor: a quest's, or a daily's with the notes of this
  * run (a run the schedule only forecasts has none yet). `date` is the
- * column the card stands in, for the focus to come back to.
+ * column the card stands in, for the focus to come back to; a Google event
+ * has no editor here, it is changed in Google.
  */
-function openEditing(entry: WeekPlanEntry | { todoId: number }, date = ""): void {
-  if (dialogBusy.value || session.busy.value) return;
-  // A Google event has no editor here: it is changed in Google.
-  if ("type" in entry && entry.type === "event") return;
-  if ("type" in entry && entry.type === "habit") {
-    listFocus.remember(entryKey(entry, date));
-    editing.value = {
-      kind: "habit",
-      id: entry.habitId,
-      occurrenceId: entry.occurrenceId,
-    };
-    return;
-  }
-  listFocus.remember(`todo-${entry.todoId}`);
-  editing.value = { kind: "todo", id: entry.todoId };
+function openEditing(entry: WeekPlanEntry, date = ""): void {
+  if (entry.type !== "event")
+    rows.edit(entryKey(entry, date), editTargetOf(entry));
 }
 
 /**
@@ -374,7 +347,7 @@ function onMove(move: BoardDrop): void {
 
 /** "Nach oben" / "Nach unten" in the column; the focus stays on the menu. */
 async function stepQuestlog(drop: ShelfDrop): Promise<void> {
-  if (dialogBusy.value) return;
+  if (rows.busy.value) return;
   await moves.move({ kind: "questlog", drop });
   await nextTick();
   focusCard(`todo-${drop.todoId}`, "menu");
@@ -395,65 +368,14 @@ function planFromQuestlog(todo: QuestlogQuest, date: string): void {
 /**
  * "Anderer Tag …": a quest to any day (an appointment's move is confirmed
  * there), a run to any day of its window, as on Heute. `date` is the
- * column a run stands in; null for one left behind.
+ * column a run stands in; null for one left behind. What is not on today
+ * may come back to today in one tap.
  */
 function openMoving(entry: WeekPlanTodoEntry | OpenRun, date: string | null): void {
-  if (dialogBusy.value || session.busy.value) return;
-  listFocus.remember(entryKey(entry, ""));
-  moving.value =
-    entry.type === "todo"
-      ? {
-          target: {
-            type: "todo",
-            todoId: entry.todoId,
-            title: entry.title,
-            timeOfDay: entry.timeOfDay,
-          },
-          date: entry.scheduledDate,
-        }
-      : {
-          target: {
-            type: "habit",
-            occurrenceId: entry.occurrenceId,
-            title: entry.title,
-            moveUntil: entry.moveUntil,
-          },
-          date: date ?? "",
-        };
-}
-
-function openMenuDialog(
-  kind: "move" | "delete",
-  todo: { todoId: number; title: string },
-): void {
-  if (dialogBusy.value || session.busy.value) return;
-  listFocus.remember(`todo-${todo.todoId}`);
-  menuDialog.value =
-    kind === "move"
-      ? { kind, todoId: todo.todoId, title: todo.title }
-      : { kind, target: { kind: "todo", id: todo.todoId, title: todo.title } };
-}
-
-/** "Löschen" of a daily, from any of its runs: the whole daily goes. */
-function openDeleteDaily(entry: WeekPlanEntry, date: string): void {
-  if (entry.type !== "habit" || dialogBusy.value || session.busy.value) return;
-  listFocus.remember(entryKey(entry, date));
-  menuDialog.value = {
-    kind: "delete",
-    target: { kind: "habit", id: entry.habitId, title: entry.title },
-  };
-}
-
-function closeDialogs(): void {
-  editing.value = null;
-  moving.value = null;
-  menuDialog.value = null;
-  dialogBusy.value = false;
-}
-
-async function onDialogDone(): Promise<void> {
-  await session.applied();
-  closeDialogs();
+  const on = entry.type === "todo" ? entry.scheduledDate : (date ?? "");
+  rows.pickDay(entryKey(entry, ""), moveTargetOf(entry), {
+    offerToday: on !== plan.value?.today,
+  });
 }
 
 /*
@@ -521,7 +443,7 @@ async function completeRun(run: OpenRun): Promise<void> {
 
 /** "Überspringen": this run is left out, the daily goes on. */
 async function skipRun(run: OpenRun): Promise<void> {
-  if (session.busy.value || dialogBusy.value) return;
+  if (session.busy.value || rows.busy.value) return;
   const key = entryKey(run, "");
   await listFocus.around(key, async () => {
     if (await ticks.skip(entryTarget(run), "plan"))
@@ -536,7 +458,7 @@ async function skipRun(run: OpenRun): Promise<void> {
  * window) is row-actions' rule.
  */
 function moveEntry(entry: WeekPlanTodoEntry | OpenRun, date: string): boolean {
-  if (session.busy.value || dialogBusy.value) return false;
+  if (session.busy.value || rows.busy.value) return false;
   const day = shownDays.value.find((item) => item.date === date);
   void listFocus.around(entryKey(entry, ""), async () => {
     if (day) {
@@ -562,7 +484,7 @@ function questlogQuest(key: string | null): QuestlogQuest | null {
  * the board, or, beyond the board, with the Questlog's own save.
  */
 function planQueued(todo: QuestlogQuest, date: string): boolean {
-  if (session.busy.value || dialogBusy.value) return false;
+  if (session.busy.value || rows.busy.value) return false;
   if (shownDays.value.some((day) => day.date === date)) {
     planFromQuestlog(todo, date);
     return true;
@@ -632,7 +554,7 @@ function entryActions(
   const base = {
     row: planRow(entry, date),
     today: current.today,
-    busy: session.busy.value || dialogBusy.value,
+    busy: session.busy.value || rows.busy.value,
   };
   const step: RowActions["step"] = (direction) =>
     stepDrop(current, entry, direction)
@@ -649,9 +571,13 @@ function entryActions(
         ),
       edit: () => openEditing(entry),
       menuTimer: timer,
-      reparent: () => openMenuDialog("move", entry),
+      reparent: () =>
+        rows.reparent(entryKey(entry, ""), {
+          todoId: entry.todoId,
+          title: entry.title,
+        }),
       step,
-      remove: () => openMenuDialog("delete", entry),
+      remove: () => rows.remove(entryKey(entry, ""), deleteTargetOf(entry)),
     };
   if (isMovableRun(entry))
     return {
@@ -664,12 +590,16 @@ function entryActions(
       edit: () => openEditing(entry, date ?? ""),
       menuTimer: timer,
       step,
-      remove: () => openDeleteDaily(entry, date ?? ""),
+      remove: () =>
+        rows.remove(entryKey(entry, date ?? ""), deleteTargetOf(entry)),
     };
   return {
     ...base,
     edit: () => openEditing(entry, date ?? ""),
-    remove: () => openDeleteDaily(entry, date ?? ""),
+    remove:
+      entry.type === "habit"
+        ? () => rows.remove(entryKey(entry, date ?? ""), deleteTargetOf(entry))
+        : undefined,
   };
 }
 
@@ -690,7 +620,7 @@ function queuedActions(
   return {
     row: questRow(todo),
     today: current?.today ?? today(),
-    busy: session.busy.value || dialogBusy.value,
+    busy: session.busy.value || rows.busy.value,
     move: current ? (date) => planQueued(todo, date) : undefined,
     complete: () =>
       void listFocus.around(`todo-${todo.id}`, () =>
@@ -772,45 +702,7 @@ useShortcutHandlers({
       ansteht.
     </p>
 
-    <EditItemDialog
-      v-if="editing"
-      :key="`${editing.kind}-${editing.id}`"
-      :kind="editing.kind"
-      :entity-id="editing.id"
-      :occurrence-id="editing.kind === 'habit' ? editing.occurrenceId : null"
-      :return-focus="listFocus.returnFocus"
-      @busy="dialogBusy = $event"
-      @changed="onDialogDone"
-      @close="closeDialogs"
-    />
-    <MoveItemDialog
-      v-if="moving && plan"
-      :item="moving.target"
-      :today="plan.today"
-      :offer-today="moving.date !== plan.today"
-      :return-focus="listFocus.returnFocus"
-      @busy="dialogBusy = $event"
-      @moved="onDialogDone"
-      @close="closeDialogs"
-    />
-
-    <CampaignMoveDialog
-      v-if="menuDialog?.kind === 'move'"
-      :todo-id="menuDialog.todoId"
-      :title="menuDialog.title"
-      :return-focus="listFocus.returnFocus"
-      @busy="dialogBusy = $event"
-      @moved="onDialogDone"
-      @close="closeDialogs"
-    />
-    <DeleteItemDialog
-      v-if="menuDialog?.kind === 'delete'"
-      :target="menuDialog.target"
-      :return-focus="listFocus.returnFocus"
-      @busy="dialogBusy = $event"
-      @deleted="onDialogDone"
-      @close="closeDialogs"
-    />
+    <RowDialogs :dialogs="rows" />
 
     <div v-if="writeError" class="alert plan-view__alert" role="alert">
       <p>{{ writeError }}</p>
@@ -868,20 +760,24 @@ useShortcutHandlers({
         <PlanQuestlog
           :todos="backlog"
           :open="questlogOpen"
-          :busy="session.busy.value || dialogBusy"
+          :busy="session.busy.value || rows.busy.value"
           :days="plannableDays"
           @toggle="toggleQuestlog"
           @move="onMove"
           @step="stepQuestlog"
           @plan="planFromQuestlog"
-          @edit="(todo) => openEditing({ todoId: todo.id })"
+          @edit="(todo) => rows.edit(`todo-${todo.id}`, { kind: 'todo', id: todo.id })"
           @reparent="
             (todo) =>
-              openMenuDialog('move', { todoId: todo.id, title: todo.title })
+              rows.reparent(`todo-${todo.id}`, { todoId: todo.id, title: todo.title })
           "
           @remove="
             (todo) =>
-              openMenuDialog('delete', { todoId: todo.id, title: todo.title })
+              rows.remove(`todo-${todo.id}`, {
+                kind: 'todo',
+                id: todo.id,
+                title: todo.title,
+              })
           "
           @created="session.applied()"
         />
@@ -890,7 +786,7 @@ useShortcutHandlers({
           :entries="plan.overdue"
           :open="overdueShown"
           @toggle="toggleOverdue"
-          :busy="session.busy.value || dialogBusy"
+          :busy="session.busy.value || rows.busy.value"
           :menu="(entry) => entryMenu(entry, null)"
           @edit="(entry) => openEditing(entry, 'overdue')"
           @move="onMove"
@@ -900,7 +796,7 @@ useShortcutHandlers({
           :key="day.date"
           :day="day"
           :today="plan.today"
-          :busy="session.busy.value || dialogBusy"
+          :busy="session.busy.value || rows.busy.value"
           :menu="(entry) => entryMenu(entry, day.date)"
           @edit="(entry) => openEditing(entry, day.date)"
           @arrow="(entry, key) => void stepEntry(entry, key, 'card')"

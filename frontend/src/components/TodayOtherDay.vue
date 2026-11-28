@@ -10,6 +10,12 @@ import CalendarEventRow from "./CalendarEventRow.vue";
 import UndoToast from "./UndoToast.vue";
 import { getPlan } from "../api/day-planner.api";
 import { useViewSession } from "../composables/useViewSession";
+import {
+  deleteTargetOf,
+  editTargetOf,
+  moveTargetOf,
+  type RowDialogs,
+} from "../composables/useRowDialogs";
 import { DAY_DROP, useSortable } from "../composables/useSortable";
 import { useEventTick } from "../composables/useEventTick";
 import {
@@ -47,23 +53,23 @@ import {
  * Heute on another day, reached with ‹ › in its head. The day comes from
  * the Plan's read, so a past day lists what was done and skipped, with the
  * day's reflection and its best; a later day lists what is planned, takes
- * new quests, sorts by dragging and moves a quest with its menu. A quest
+ * new quests, sorts by dragging and moves a card with its menu. A quest
  * ticks as on today (`useTicks`: sound, undo toast, the campaign question).
- * The focus card and the stopwatch stay with today. See docs/day-order.md ›
+ * The focus card and the stopwatch stay with today. A card's editor and the
+ * dialogs of its menu are Heute's (`dialogs`). See docs/day-order.md ›
  * Andere Tage.
  */
 const props = defineProps<{
   date: string;
   today: string;
+  /** Heute's row dialogs: editor, "Anderer Tag …", campaign move, delete. */
+  dialogs: RowDialogs;
   /** A dialog of the view is open: nothing here starts meanwhile. */
   held: boolean;
 }>();
 const emit = defineEmits<{
   /** A short line for above the list: what a drop did or why it did not. */
   notice: [line: string];
-  edit: [
-    target: { kind: "todo" | "habit"; entityId: number; occurrenceId?: number },
-  ];
 }>();
 
 const session = useViewSession({ holding: () => props.held });
@@ -201,15 +207,10 @@ const tickEvent = useEventTick(
   (line) => (status.value = line),
 );
 
+/** A tap on a card opens Heute's editor; a run with the notes of its own run. */
 function edit(entry: WeekPlanEntry): void {
   if (busy.value || isEvent(entry)) return;
-  if (entry.type === "todo") emit("edit", { kind: "todo", entityId: entry.todoId });
-  else
-    emit("edit", {
-      kind: "habit",
-      entityId: entry.habitId,
-      occurrenceId: entry.occurrenceId ?? undefined,
-    });
+  props.dialogs.edit(entryKey(entry, props.date), editTargetOf(entry));
 }
 
 /**
@@ -235,20 +236,49 @@ function toggle(entry: WeekPlanEntry): void {
 }
 
 /**
- * "Heute", "Morgen", "Nächste Woche": the quick moves Heute's cards have.
- * Only these: a tap on the card edits it; the rest of Heute's menu is not
- * offered on another day.
+ * A card's menu: Heute's, by the same rules (`rowMenu`), with what has
+ * a meaning on another day. Moves and Überspringen write here; the editor,
+ * "Anderer Tag …", "In Kampagne verschieben …" and Löschen open Heute's
+ * dialogs. The order of the day, the Fokus-Modus and the stopwatch belong
+ * to today, so their entries stay away.
  */
 function menu(entry: WeekPlanEntry): MenuEntry[] {
+  // A Google event changes in Google only: it has no menu.
+  if (isEvent(entry)) return [];
+  const key = entryKey(entry, props.date);
+  const own = isMovable(entry) || isMovableRun(entry) ? entry : null;
   return rowMenu({
     row: planRow(entry, props.date),
     today: props.today,
     busy: busy.value,
-    move: (date) => {
-      if (isMovable(entry) || isMovableRun(entry))
-        void ticks.move(entryTarget(entry), date, { key: writeKey(entry) });
-    },
+    move: own
+      ? (date) =>
+          void ticks.move(entryTarget(own), date, { key: writeKey(own) })
+      : undefined,
+    // Never on today, so today is always one tap away.
+    pickDay: own
+      ? () =>
+          props.dialogs.pickDay(key, moveTargetOf(own), { offerToday: true })
+      : undefined,
+    skip: own?.type === "habit" ? () => void skip(own) : undefined,
+    edit: () => edit(entry),
+    reparent:
+      entry.type === "todo"
+        ? () =>
+            props.dialogs.reparent(key, {
+              todoId: entry.todoId,
+              title: entry.title,
+            })
+        : undefined,
+    remove: () => props.dialogs.remove(key, deleteTargetOf(entry)),
   });
+}
+
+/** "Überspringen" of a run that is due: left out, the daily goes on. */
+async function skip(run: OpenRun): Promise<void> {
+  if (busy.value) return;
+  if (await ticks.skip(entryTarget(run), writeKey(run)))
+    status.value = `„${run.title}“ übersprungen.`;
 }
 
 </script>
@@ -324,6 +354,7 @@ function menu(entry: WeekPlanEntry): MenuEntry[] {
           />
           <PlannerItem
             v-else
+            :data-focus-key="entryKey(entry, date)"
             :data-todo-id="isMovable(entry) ? entry.todoId : undefined"
             :data-run-id="isMovableRun(entry) ? entry.occurrenceId : undefined"
             :data-forecast-id="ahead && isForecast(entry) && entry.type === 'habit' ? entry.habitId : undefined"
@@ -357,6 +388,7 @@ function menu(entry: WeekPlanEntry): MenuEntry[] {
           />
           <PlannerItem
             v-else
+            :data-focus-key="entryKey(entry, date)"
             :item="asPlannerItem(entry, date)"
             :is-updating="busy"
             :checkable="entry.type === 'todo'"
