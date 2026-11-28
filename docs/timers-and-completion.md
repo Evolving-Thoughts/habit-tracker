@@ -110,6 +110,15 @@ constants `BLOCK_GAP_MS` and `MIN_BLOCK_MS`, both 60 seconds), tested in
 adapter: it reads the block's log (locked), runs the log operations
 (`extend` or `insert`) and puts the next state on the timer row.
 
+The same function keeps the Soll's bookkeeping, so no caller sets these
+fields by hand: `targetReachesAt` (when a running stopwatch reaches its
+Soll), `targetReachedAt` (when it did) and `pushHandledAt` (the push worker
+looked at it). A pause or stop clears the moment it is due, a resume
+computes it again unless the Soll was reached already. Further events:
+`reach` (stored by the catch-up on a read, see "Backend"), `changeTarget`
+(new minutes) and `markPushHandled` (the push worker). A new stopwatch
+starts from `startedStopwatch`.
+
 - **Resumed within 60 seconds** of a pause, the stretch continues the block
   before it: `segmentStartedAt` becomes the block's start, so the log counts
   the pause as worked. When it ends, the block's work log (`timers.workLogId`) gets the
@@ -152,7 +161,8 @@ under a minute, this can differ slightly from what an earlier stopwatch on
 the target showed. The Soll
 compares against this total. When it is already passed at the start, the
 stopwatch is marked reached right away (`targetReachedAt` and `pushHandledAt`
-set to the start), so nothing announces it.
+set to the start, by `startedStopwatch`), so nothing announces it. A Soll
+lowered below the time worked is reached the same way (`changeTarget`).
 
 Foreground devices poll every **3 seconds**, and refresh on focus/visibility
 return and after a target changed (`startSync` in `useTimer.ts`, started by
@@ -174,7 +184,9 @@ Protected endpoints, ownership taken exclusively from the session:
   same transaction when the target calls for one (`focus-block.md`).
 - `POST /timers/:id/pause`, `/resume`, `/stop` with JSON `{}`; `/resume` also
   takes `focusBlock`. Stopping ends a Soft Fokus-Sperre.
-- `PATCH /timers/:id/duration` with `{ durationMinutes }` sets the target.
+- `PATCH /timers/:id/duration` with `{ durationMinutes }` sets the target:
+  whole minutes from 1 to 10080, the bound of every planned duration
+  (`IsPlannedMinutes` in `common/validation/field-rules.ts`).
 
 A daily run can carry a stopwatch while `runRefusal`
 (`habits/scheduling/run-actionability.ts`, the rule status changes and moves

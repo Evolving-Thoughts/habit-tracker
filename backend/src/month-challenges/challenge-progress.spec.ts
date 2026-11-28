@@ -20,6 +20,8 @@ const NOVEMBER: ChallengeWindow = { first: '2026-11-01', last: '2026-11-30' };
 /** Noon in Berlin on `day`. */
 const noon = (day: string) => atWallClockMinutes(day, 12 * 60);
 const AFTER = noon('2026-12-01');
+const ACTIVE = { isActive: true };
+const PAUSED = { isActive: false };
 
 const version = (
   schedule: ScheduleDto,
@@ -110,7 +112,7 @@ describe('Monats-Challenge: counting a fixed rhythm', () => {
       missed: 1,
       remaining: 19,
     });
-    expect(challengeToday([everyDay()], runs, NOVEMBER, now)).toEqual({
+    expect(challengeToday([everyDay()], runs, NOVEMBER, now, ACTIVE)).toEqual({
       state: 'open',
       occurrenceId: runs[11].id,
     });
@@ -121,9 +123,11 @@ describe('Monats-Challenge: counting a fixed rhythm', () => {
       missed: 1,
       remaining: 18,
     });
-    expect(challengeToday([everyDay()], ticked, NOVEMBER, now)).toEqual({
-      state: 'done',
-    });
+    expect(challengeToday([everyDay()], ticked, NOVEMBER, now, ACTIVE)).toEqual(
+      {
+        state: 'done',
+      },
+    );
   });
 
   it('counts a past slot without a stored run as missed', () => {
@@ -221,7 +225,7 @@ describe('Monats-Challenge: counting a fixed rhythm', () => {
       run('2026-11-05', Status.PENDING),
     ];
     const now = noon('2026-11-06');
-    expect(challengeToday([everySecond], runs, NOVEMBER, now)).toEqual({
+    expect(challengeToday([everySecond], runs, NOVEMBER, now, ACTIVE)).toEqual({
       state: 'open',
       occurrenceId: runs[2].id,
     });
@@ -232,8 +236,30 @@ describe('Monats-Challenge: counting a fixed rhythm', () => {
       remaining: 13,
     });
     expect(
-      challengeToday([everySecond], runs, NOVEMBER, noon('2026-11-07')),
+      challengeToday([everySecond], runs, NOVEMBER, noon('2026-11-07'), ACTIVE),
     ).toEqual({ state: 'none' });
+  });
+
+  it('offers no run to act on while the Daily is paused, but keeps counting', () => {
+    const now = noon('2026-11-12');
+    const runs = [
+      ...days('2026-11-01', '2026-11-11').map((day) => done(day)),
+      run('2026-11-12', Status.PENDING),
+    ];
+    expect(challengeToday([everyDay()], runs, NOVEMBER, now, PAUSED)).toEqual({
+      state: 'none',
+    });
+    // Pausing excuses nothing: today's run is still possible.
+    expect(challengeTally([everyDay()], runs, NOVEMBER, now)).toEqual({
+      done: 11,
+      missed: 0,
+      remaining: 19,
+    });
+    // A run done before the pause still shows as done.
+    const ticked = [...runs.slice(0, 11), done('2026-11-12')];
+    expect(challengeToday([everyDay()], ticked, NOVEMBER, now, PAUSED)).toEqual(
+      { state: 'done' },
+    );
   });
 
   it('follows a change of rhythm within the month', () => {
@@ -335,12 +361,20 @@ describe('Monats-Challenge: counting a weekly target', () => {
   it("names today's open run and today's done run", () => {
     const pending = run('2026-11-25', Status.PENDING);
     const now = noon('2026-11-25');
-    expect(challengeToday([threeAWeek()], [pending], NOVEMBER, now)).toEqual({
+    expect(
+      challengeToday([threeAWeek()], [pending], NOVEMBER, now, ACTIVE),
+    ).toEqual({
       state: 'open',
       occurrenceId: pending.id,
     });
     expect(
-      challengeToday([threeAWeek()], [done('2026-11-25')], NOVEMBER, now),
+      challengeToday(
+        [threeAWeek()],
+        [done('2026-11-25')],
+        NOVEMBER,
+        now,
+        ACTIVE,
+      ),
     ).toEqual({ state: 'done' });
     // Outside the challenge's days there is no run of it.
     expect(
@@ -349,6 +383,7 @@ describe('Monats-Challenge: counting a weekly target', () => {
         [pending],
         { first: '2026-12-01', last: '2026-12-31' },
         now,
+        ACTIVE,
       ),
     ).toEqual({ state: 'none' });
   });

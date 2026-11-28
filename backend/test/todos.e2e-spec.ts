@@ -398,6 +398,42 @@ describe('Todos API (e2e)', () => {
       expect(body.plannedDurationMinutes).toBeNull();
     });
 
+    it('refuses null for the title or completed, like a Daily', async () => {
+      const saved = await todoRepository.save(
+        todoRepository.create({ userId: TEST_USER, title: 'Learn NestJS' }),
+      );
+      for (const body of [{ title: null }, { completed: null }])
+        await request(httpServer)
+          .patch(`/todos/${saved.id}`)
+          .send(body)
+          .expect(400);
+      expect(
+        await todoRepository.findOneByOrFail({ id: saved.id }),
+      ).toMatchObject({ title: 'Learn NestJS', completed: false });
+    });
+
+    it('caps planned minutes at a week, as the stopwatch does', async () => {
+      const tooLong = 'plannedDurationMinutes must not be greater than 10080';
+      const created = await request(httpServer)
+        .post('/todos')
+        .send({ title: 'Lang', plannedDurationMinutes: 10081 })
+        .expect(400);
+      expect((created.body as ErrorResponseBody).message).toEqual([tooLong]);
+
+      const saved = await todoRepository.save(
+        todoRepository.create({ userId: TEST_USER, title: 'Lang' }),
+      );
+      const patched = await request(httpServer)
+        .patch(`/todos/${saved.id}`)
+        .send({ plannedDurationMinutes: 10081 })
+        .expect(400);
+      expect((patched.body as ErrorResponseBody).message).toEqual([tooLong]);
+      await request(httpServer)
+        .patch(`/todos/${saved.id}`)
+        .send({ plannedDurationMinutes: 10080 })
+        .expect(200);
+    });
+
     it('puts an appointment back into the backlog without its time', async () => {
       const savedTodo = await todoRepository.save(
         todoRepository.create({

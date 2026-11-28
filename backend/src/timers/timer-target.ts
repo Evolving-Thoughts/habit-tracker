@@ -26,8 +26,6 @@ import type {
  * the calendar sync and the timers service can all use it without module
  * cycles.
  */
-export const TIMER_MIN_MINUTES = 1;
-export const TIMER_MAX_MINUTES = 10080;
 
 /** A todo can carry a timer while it is open. */
 export function isTodoTimerEligible(todo: { completed: boolean }): boolean {

@@ -81,7 +81,6 @@ describe('runRefusal', () => {
       null,
     ],
     ['a run of a paused habit', { habit: PAUSED }, undefined, 'paused'],
-    ['a run without its habit', { habit: undefined }, undefined, 'paused'],
     [
       'a completed run',
       { run: run('2026-11-20', Status.COMPLETED) },
@@ -190,18 +189,6 @@ describe('runRefusal', () => {
       { run: run('2026-11-19') },
       { anyVersion: true },
       'ran_out',
-    ],
-    [
-      'a run of a paused habit, the pause not looked at',
-      { habit: PAUSED },
-      { ignorePause: true },
-      null,
-    ],
-    [
-      'a run without its habit, the pause not looked at',
-      { habit: undefined },
-      { ignorePause: true },
-      null,
     ],
   ])('%s', (_name, row, options, expected) => {
     expect(runRefusal(at(row), options)).toBe(expected);

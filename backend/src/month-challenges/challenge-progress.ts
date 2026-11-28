@@ -273,16 +273,17 @@ export function challengeTally(
  * Today's run, while today is a day of the challenge: the open run of the
  * window that can be done today (`runRefusal`; also one carried over into
  * today), else whether a run was done today, else none (nothing due today,
- * or skipped). The Daily may be read without bringing its runs up to now
- * (a paused one, the reminder's last check), so this leaves out the pause
- * and the version in force, as it always has: an open run of any version
- * not cancelled counts while its window is open.
+ * skipped, or the Daily is paused). The Daily may be read without bringing
+ * its runs up to now (the reminder's last check), so this leaves out the
+ * version in force: an open run of any version not cancelled counts while
+ * its window is open.
  */
 export function challengeToday(
   versions: HabitScheduleVersionEntity[],
   runs: ChallengeRun[],
   window: ChallengeWindow,
   now: Date,
+  habit: { isActive: boolean },
 ): ChallengeToday {
   const today = dayOf(now);
   if (today < window.first || today > window.last) return { state: 'none' };
@@ -291,8 +292,8 @@ export function challengeToday(
     (run) =>
       run.scheduledDate >= window.first &&
       runRefusal(
-        { run, version: byId.get(run.scheduleVersionId), now },
-        { anyVersion: true, ignorePause: true },
+        { run, version: byId.get(run.scheduleVersionId), habit, now },
+        { anyVersion: true },
       ) === null,
   );
   if (open) return { state: 'open', occurrenceId: open.id };

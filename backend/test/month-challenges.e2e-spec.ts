@@ -175,6 +175,39 @@ describe('Monats-Challenge (e2e)', () => {
     });
   });
 
+  it('keeps counting a paused Daily but offers no run to act on today', async () => {
+    const sport = await daily('Sport');
+    const created = await start({ habitId: sport.id, month: '2026-11' });
+    const pause = (isActive: boolean) =>
+      request(server)
+        .patch(`/habits/${sport.id}`)
+        .send({ isActive })
+        .expect(200);
+
+    await pause(false);
+    const paused = { done: 0, missed: 0, remaining: 19, total: 19 };
+    expect((await overview()).current).toMatchObject({
+      status: 'running',
+      ...paused,
+      todayRun: 'none',
+      todayOccurrenceId: null,
+    });
+    const today = (await request(server).get('/day-planner/today').expect(200))
+      .body as DayPlannerResponseDto;
+    expect(today.monthChallenge).toMatchObject({
+      ...paused,
+      todayRun: 'none',
+      todayOccurrenceId: null,
+    });
+
+    // Active again: today's run is there to act on.
+    await pause(true);
+    expect((await overview()).current).toMatchObject({
+      todayRun: 'open',
+      todayOccurrenceId: created.todayOccurrenceId,
+    });
+  });
+
   it('prepares next month, changes the reminder and freezes the month once over', async () => {
     const sport = await daily('Sport');
     const november = await start({

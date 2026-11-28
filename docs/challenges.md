@@ -97,9 +97,11 @@ counts neither way). Status:
 **Today's run** (`challengeToday`): the open run that can be done today
 (also one carried over into today, not one moved to a later day), else
 `done` when a run was done today, else `none`. It asks the scheduler's rule
-`runRefusal` but, as before, leaves out the Daily's pause and the version
-in force (a run of an earlier version still counts while its window is
-open), since the Daily is not always brought up to now first.
+`runRefusal`, pause included: while the Daily is paused no run is open, so
+`todayRun` is `none` (or `done`), `todayOccurrenceId` null and the reminder
+stays away, while the tally counts on as above. It leaves out only the
+version in force (a run of an earlier version still counts while its window
+is open), since the Daily is not always brought up to now first.
 
 ## Heute
 
@@ -186,8 +188,8 @@ is due and still open, only on devices with push switched on. The rule is
 - sendable for 60 minutes from then, never past midnight;
 - nothing when the reminder is off, the challenge does not run today
   (not begun, ended, Daily deleted) or `remindedOn` is today;
-- due while today's run is done, skipped or not due today: marked handled
-  without a push (`settled`);
+- due while today's run is done, skipped or not due today, or the Daily is
+  paused: marked handled without a push (`settled`);
 - a window that passed unsent (server down) is marked handled, not caught
   up.
 

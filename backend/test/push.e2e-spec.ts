@@ -708,6 +708,18 @@ describe('Session-scoped timer Push (e2e)', () => {
       expect(await reminders()).toHaveLength(0);
     });
 
+    it('stays away while the Daily is paused', async () => {
+      await sub();
+      const created = await challenge();
+      await client()
+        .patch(`/habits/${created.habitId}`)
+        .send({ isActive: false })
+        .expect(200);
+      at(19 * 60 + 5);
+      await push.enqueueChallengeReminders();
+      expect(await reminders()).toHaveLength(0);
+    });
+
     it('keeps its own delivery beside the reminder of Das Beste des Tages', async () => {
       await sub();
       await challenge('Sport', '21:00');

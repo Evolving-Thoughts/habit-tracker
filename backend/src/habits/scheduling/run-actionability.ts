@@ -27,8 +27,8 @@ export type RunAtHand = {
   };
   /** The run's own schedule version; undefined when it is unknown. */
   version: HabitScheduleVersionEntity | undefined;
-  /** The run's habit; may be left out only with `ignorePause`. */
-  habit?: { isActive: boolean };
+  /** The run's habit. */
+  habit: { isActive: boolean };
   now: Date;
 };
 
@@ -40,8 +40,6 @@ export type RunRuleOptions = {
   movedAhead?: boolean;
   /** A run of any schedule version not cancelled counts, not only of the one in force. */
   anyVersion?: boolean;
-  /** The habit's pause is not looked at. */
-  ignorePause?: boolean;
 };
 
 /**
@@ -56,7 +54,7 @@ export function runRefusal(
   { run, version, habit, now }: RunAtHand,
   options: RunRuleOptions = {},
 ): RunRefusal | null {
-  if (!options.ignorePause && !habit?.isActive) return 'paused';
+  if (!habit.isActive) return 'paused';
   const open =
     run.status === Status.PENDING ||
     (options.resolved === true &&

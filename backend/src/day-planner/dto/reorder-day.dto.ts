@@ -4,11 +4,11 @@ import {
   IsArray,
   IsIn,
   IsInt,
-  Matches,
   Min,
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import { IsDay } from '../../common/validation/field-rules';
 
 export class OrderedItemDto {
   @IsIn(['todo', 'habit', 'event', 'forecast'])
@@ -25,7 +25,7 @@ export class OrderedItemDto {
 
   /** Only for a forecast run: the day the schedule forecasts it for. */
   @ValidateIf((item: OrderedItemDto) => item.type === 'forecast')
-  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsDay()
   readonly date?: string;
 }
 

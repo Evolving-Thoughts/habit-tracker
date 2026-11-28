@@ -1,17 +1,14 @@
 import { Type } from 'class-transformer';
+import { IsDefined, ValidateNested } from 'class-validator';
 import {
-  IsDateString,
-  IsDefined,
-  Matches,
-  ValidateIf,
-  ValidateNested,
-} from 'class-validator';
+  IsCalendarDay,
+  OptionalNotNull,
+} from '../../common/validation/field-rules';
 import { ScheduleDto } from './schedule.dto';
 
 export class ChangeHabitScheduleDto {
-  @ValidateIf((_object, value: unknown) => value !== undefined)
-  @IsDateString({ strict: true })
-  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @OptionalNotNull()
+  @IsCalendarDay()
   readonly effectiveFrom?: string;
 
   @IsDefined()
