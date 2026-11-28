@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   Between,
-  DataSource,
   EntityManager,
   In,
   LessThanOrEqual,
@@ -80,7 +79,6 @@ type ContextField =
 @Injectable()
 export class DayPlannerService {
   constructor(
-    private readonly db: DataSource,
     private readonly scheduling: HabitSchedulingService,
     private readonly clock: Clock,
     private readonly unitOfWork: UserUnitOfWork,
@@ -342,8 +340,8 @@ export class DayPlannerService {
    * Stores the order the user sorted a day into: every item takes its index
    * as position. It works for any day, because a position only counts among
    * the items of the day an item is on. Nothing is written unless all items
-   * are the user's own. A Google event takes its place too; one that a sync
-   * has replaced meanwhile is skipped, its place stays a gap.
+   * are the user's own, Google events included (one deleted in Google is
+   * not found either).
    */
   reorder(
     userId: string,
@@ -360,6 +358,7 @@ export class DayPlannerService {
     ];
     const todoIds = idsOf('todo');
     const occurrenceIds = idsOf('habit');
+    const eventIds = idsOf('event');
     const forecastHabitIds = idsOf('forecast');
     return this.unitOfWork.run(userId, async (manager) => {
       if (
@@ -370,7 +369,7 @@ export class DayPlannerService {
           forecastHabitIds.length
       )
         throw new NotFoundException('An item to sort was not found');
-      const [todos, occurrences] = await Promise.all([
+      const [todos, occurrences, events] = await Promise.all([
         todoIds.length
           ? manager
               .getRepository(TodoEntity)
@@ -383,8 +382,17 @@ export class DayPlannerService {
               })
               .getCount()
           : 0,
+        eventIds.length
+          ? manager
+              .getRepository(ExternalEventEntity)
+              .countBy({ userId, id: In(eventIds) })
+          : 0,
       ]);
-      if (todos !== todoIds.length || occurrences !== occurrenceIds.length)
+      if (
+        todos !== todoIds.length ||
+        occurrences !== occurrenceIds.length ||
+        events !== eventIds.length
+      )
         throw new NotFoundException('An item to sort was not found');
       for (const [dayPosition, { type, id, date }] of items.entries()) {
         if (type === 'forecast') {
@@ -408,14 +416,17 @@ export class DayPlannerService {
   }
 
   /**
-   * Ticks a Google event off or opens it again. Only the app's copy
-   * changes; the sync keeps the tick (see `replaceExternal`).
+   * Ticks a Google event off or opens it again, under the user lock like
+   * every change, so a sync running meanwhile comes before or after it.
+   * Only the app's copy changes, and a sync never writes the tick.
    */
-  async setEventDone(userId: string, id: number, done: boolean): Promise<void> {
-    const result = await this.db
-      .getRepository(ExternalEventEntity)
-      .update({ id, userId }, { doneAt: done ? this.clock.now() : null });
-    if (!result.affected) throw new NotFoundException('Event not found');
+  setEventDone(userId: string, id: number, done: boolean): Promise<void> {
+    return this.unitOfWork.run(userId, async (manager) => {
+      const result = await manager
+        .getRepository(ExternalEventEntity)
+        .update({ id, userId }, { doneAt: done ? this.clock.now() : null });
+      if (!result.affected) throw new NotFoundException('Event not found');
+    });
   }
 
   /** Titles of the direct parents: the goal a todo is a step towards. */

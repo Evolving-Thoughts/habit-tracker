@@ -157,6 +157,76 @@ export function plannedTimes(
   return times;
 }
 
+/** What the copy of a read calendar's event holds of it. */
+export type ExternalFields = {
+  calendarId: string;
+  eventId: string;
+  title: string;
+  start: Date;
+  end: Date;
+};
+/** A stored copy as the rules read it. */
+export type StoredExternal = ExternalFields & { id: number };
+/** The fields of a stored copy that changed in Google. */
+export type ExternalUpdate = {
+  id: number;
+  fields: Pick<ExternalFields, 'title' | 'start' | 'end'>;
+};
+
+/**
+ * How the copy of the read calendars follows what one sync read: an event
+ * already stored (same calendar, same event id) keeps its row and only
+ * changed fields are written, so its id, its place and its tick stay; a new
+ * event gets a row; a row whose event this read did not return (deleted in
+ * Google, out of the read window, or of a calendar no longer read) goes.
+ * Events shown in no list (`plannedTimes`) count as not returned. An event
+ * listed twice counts once.
+ */
+export function externalChanges(
+  stored: readonly StoredExternal[],
+  read: readonly { calendarId: string; events: readonly GoogleEvent[] }[],
+): {
+  insert: ExternalFields[];
+  update: ExternalUpdate[];
+  remove: number[];
+} {
+  const key = (calendarId: string, eventId: string) =>
+    `${calendarId}\n${eventId}`;
+  const reported = new Map<string, ExternalFields>();
+  for (const { calendarId, events } of read)
+    for (const event of events) {
+      const times = plannedTimes(event);
+      if (!times || reported.has(key(calendarId, event.id))) continue;
+      reported.set(key(calendarId, event.id), {
+        calendarId,
+        eventId: event.id,
+        title: (event.summary?.trim() || 'Termin').slice(0, 500),
+        start: times.start,
+        end: times.end,
+      });
+    }
+  const update: ExternalUpdate[] = [];
+  const remove: number[] = [];
+  for (const row of stored) {
+    const event = reported.get(key(row.calendarId, row.eventId));
+    if (!event) {
+      remove.push(row.id);
+      continue;
+    }
+    reported.delete(key(row.calendarId, row.eventId));
+    if (
+      row.title !== event.title ||
+      row.start.getTime() !== event.start.getTime() ||
+      row.end.getTime() !== event.end.getTime()
+    )
+      update.push({
+        id: row.id,
+        fields: { title: event.title, start: event.start, end: event.end },
+      });
+  }
+  return { insert: [...reported.values()], update, remove };
+}
+
 /** What an event sets on its quest. */
 export type Appointment = {
   title: string;

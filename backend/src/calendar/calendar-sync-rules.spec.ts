@@ -9,6 +9,7 @@ import {
 import {
   DescribedLog,
   eventEdit,
+  externalChanges,
   IncomingStep,
   incomingStep,
   lastSyncedDay,
@@ -22,6 +23,7 @@ import {
   SyncLink,
   SyncLog,
   SyncRun,
+  StoredExternal,
   SyncTodo,
   todoPushes,
 } from './calendar-sync-rules';
@@ -107,6 +109,92 @@ describe('calendar sync: events planned in Google', () => {
       end: new Date('2026-11-20T14:15:00.000Z'),
       minutes: 45,
     });
+  });
+});
+
+describe('calendar sync: the copy of the read calendars', () => {
+  const stored = (
+    id: number,
+    eventId: string,
+    change: Partial<StoredExternal> = {},
+  ): StoredExternal => ({
+    id,
+    calendarId: 'primary',
+    eventId,
+    title: 'Zahnarzt',
+    start: new Date('2026-11-20T13:30:00.000Z'),
+    end: new Date('2026-11-20T14:15:00.000Z'),
+    ...change,
+  });
+
+  it('keeps the row of an unchanged event and writes nothing', () => {
+    expect(
+      externalChanges(
+        [stored(1, 'e1')],
+        [{ calendarId: 'primary', events: [event()] }],
+      ),
+    ).toEqual({ insert: [], update: [], remove: [] });
+  });
+
+  it('updates a moved or renamed event in place', () => {
+    const moved = event({
+      summary: ' Zahnarzt neu ',
+      start: { dateTime: '2026-11-21T08:00:00.000Z' },
+      end: { dateTime: '2026-11-21T09:00:00.000Z' },
+    });
+    expect(
+      externalChanges(
+        [stored(1, 'e1')],
+        [{ calendarId: 'primary', events: [moved] }],
+      ),
+    ).toEqual({
+      insert: [],
+      update: [
+        {
+          id: 1,
+          fields: {
+            title: 'Zahnarzt neu',
+            start: new Date('2026-11-21T08:00:00.000Z'),
+            end: new Date('2026-11-21T09:00:00.000Z'),
+          },
+        },
+      ],
+      remove: [],
+    });
+  });
+
+  it('adds new events once and removes what was not read', () => {
+    const { insert, update, remove } = externalChanges(
+      [
+        stored(1, 'gone'),
+        stored(2, 'cancelled'),
+        stored(3, 'e1', { calendarId: 'old-calendar' }),
+        stored(4, ''),
+        stored(5, 'twice'),
+        stored(6, 'twice'),
+      ],
+      [
+        {
+          calendarId: 'primary',
+          events: [
+            event({ id: 'new', summary: '' }),
+            event({ id: 'new' }),
+            event({ id: 'cancelled', status: 'cancelled' }),
+            event({ id: 'all-day', ...allDay }),
+            event({ id: 'twice' }),
+          ],
+        },
+      ],
+    );
+    expect(insert).toEqual([
+      expect.objectContaining({
+        calendarId: 'primary',
+        eventId: 'new',
+        title: 'Termin',
+      }),
+    ]);
+    expect(update).toEqual([]);
+    expect(remove).toEqual([1, 2, 3, 4, 6]);
   });
 });
 

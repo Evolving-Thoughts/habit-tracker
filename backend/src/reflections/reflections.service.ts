@@ -1,8 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Clock } from '../common/clock';
 import { assertDateOnly } from '../common/date/date-only.utils';
+import { saveDayText } from '../common/day-text';
+import { UserUnitOfWork } from '../common/user-unit-of-work';
 import { ReflectionResponse } from './reflection.dto';
 import { ReflectionEntity } from './reflection.entity';
 
@@ -12,6 +14,7 @@ export class ReflectionsService {
     @InjectRepository(ReflectionEntity)
     private readonly reflections: Repository<ReflectionEntity>,
     private readonly clock: Clock,
+    private readonly unitOfWork: UserUnitOfWork,
   ) {}
 
   /** The day's text; a day without a reflection reads as empty. */
@@ -21,21 +24,22 @@ export class ReflectionsService {
     return { date, text: found?.text ?? '' };
   }
 
-  /** One reflection per day: saving replaces it, empty text removes it. */
-  async save(
+  /**
+   * One reflection per day (`saveDayText`), trimmed: saving replaces it,
+   * empty text removes it, a day after today takes none.
+   */
+  save(
     userId: string,
     date: string,
     rawText: string,
   ): Promise<ReflectionResponse> {
-    assertDateOnly(date);
-    if (date > this.clock.today())
-      throw new BadRequestException(
+    return saveDayText(this.unitOfWork, ReflectionEntity, {
+      userId,
+      date,
+      text: rawText.trim(),
+      today: this.clock.today(),
+      futureMessage:
         'Reflexionen sind nur für vergangene Tage und heute möglich.',
-      );
-    const text = rawText.trim();
-    if (text)
-      await this.reflections.upsert({ userId, date, text }, ['userId', 'date']);
-    else await this.reflections.delete({ userId, date });
-    return { date, text };
+    });
   }
 }

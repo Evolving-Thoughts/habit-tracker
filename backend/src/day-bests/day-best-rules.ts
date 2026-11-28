@@ -21,14 +21,9 @@ export function normalizeDayBestText(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
-/** Past days and today take a line; tomorrow has not happened yet. */
-export function assertWritableDay(date: string, today: string): void {
-  assertDateOnly(date);
-  if (date > today)
-    throw new BadRequestException(
-      'Das Beste des Tages gibt es nur für heute und vergangene Tage.',
-    );
-}
+/** Past days and today take a line (`saveDayText`); tomorrow has not happened yet. */
+export const FUTURE_DAY_MESSAGE =
+  'Das Beste des Tages gibt es nur für heute und vergangene Tage.';
 
 /** A range to read: real days, in order, at most MAX_RANGE_DAYS long. */
 export function assertRange(from: string, to: string): void {

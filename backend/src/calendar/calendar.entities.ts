@@ -124,9 +124,20 @@ export class CalendarLinkEntity {
   suppressed!: boolean;
 }
 
-/** Copy of the read calendars' events, replaced on every sync. */
+/**
+ * Copy of the read calendars' events, one row per Google event (its
+ * calendar and its id there). A sync updates the row in place while the
+ * event exists, so its id, its place and its tick stay; it deletes the row
+ * once the sync no longer reads the event (see `externalChanges`). Rows from
+ * before event ids (empty `eventId`) stay out of the unique index; the next
+ * sync of their user deletes them.
+ */
 @Entity('external_events')
 @Index(['userId', 'start'])
+@Index('UQ_external_events_event', ['userId', 'calendarId', 'eventId'], {
+  unique: true,
+  where: `"eventId" <> ''`,
+})
 export class ExternalEventEntity {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -156,14 +167,14 @@ export class ExternalEventEntity {
 
   /**
    * Where the user sorted it among the day's quests and dailies; null until
-   * then. A sync keeps it (see `CalendarSyncService.replaceExternal`).
+   * then. A sync never writes it.
    */
   @Column({ type: 'integer', nullable: true })
   dayPosition!: number | null;
 
   /**
    * When the user ticked it off in a day's list; null while open. Only the
-   * app knows it, never Google; a sync keeps it like `dayPosition`.
+   * app knows it, never Google; a sync never writes it.
    */
   @Column({ type: 'timestamptz', nullable: true })
   doneAt!: Date | null;

@@ -75,11 +75,15 @@ export class CalendarService {
         'Die Google-Anbindung ist nicht eingerichtet.',
       );
     const state = randomToken();
-    await this.db.getRepository(CalendarOAuthStateEntity).save({
-      tokenHash: tokenHash(state),
-      userId,
-      expiresAt: new Date(this.clock.now().getTime() + STATE_MINUTES * 60_000),
-    });
+    await this.unitOfWork.run(userId, (manager) =>
+      manager.getRepository(CalendarOAuthStateEntity).save({
+        tokenHash: tokenHash(state),
+        userId,
+        expiresAt: new Date(
+          this.clock.now().getTime() + STATE_MINUTES * 60_000,
+        ),
+      }),
+    );
     return this.client.authUrl(state);
   }
 
@@ -101,14 +105,16 @@ export class CalendarService {
         await this.client.accessToken(refreshToken),
         CALENDAR_NAME,
       ));
-    await connections.save({
-      userId,
-      calendarId,
-      refreshToken: encryptToken(refreshToken),
-      revoked: false,
-      lastError: null,
-      needsConsent: false,
-    });
+    await this.unitOfWork.run(userId, (manager) =>
+      manager.getRepository(CalendarConnectionEntity).save({
+        userId,
+        calendarId,
+        refreshToken: encryptToken(refreshToken),
+        revoked: false,
+        lastError: null,
+        needsConsent: false,
+      }),
+    );
     await this.sync.syncUser(userId);
   }
 

@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Between, Repository } from 'typeorm';
 import { Clock } from '../common/clock';
 import { assertDateOnly } from '../common/date/date-only.utils';
+import { saveDayText } from '../common/day-text';
+import { UserUnitOfWork } from '../common/user-unit-of-work';
 import type {
   DayBestMonthsResponse,
   DayBestRangeResponse,
@@ -16,7 +18,7 @@ import {
 } from './day-best.entities';
 import {
   assertRange,
-  assertWritableDay,
+  FUTURE_DAY_MESSAGE,
   minutesOfTime,
   normalizeDayBestText,
   timeOfMinutes,
@@ -31,6 +33,7 @@ export class DayBestsService {
     @InjectRepository(DayBestSettingsEntity)
     private readonly settingsRows: Repository<DayBestSettingsEntity>,
     private readonly clock: Clock,
+    private readonly unitOfWork: UserUnitOfWork,
   ) {}
 
   /** One day; a day without a line reads as empty. */
@@ -70,46 +73,66 @@ export class DayBestsService {
     };
   }
 
-  /** One line per day: saving replaces it, an empty line removes it. */
-  async save(
+  /**
+   * One line per day (`saveDayText`): saving replaces it, an empty line
+   * removes it, a day after today takes none.
+   */
+  save(
     userId: string,
     date: string,
     rawText: string,
   ): Promise<DayBestResponse> {
-    assertWritableDay(date, this.clock.today());
-    const text = normalizeDayBestText(rawText);
-    if (text)
-      await this.entries.upsert({ userId, date, text }, ['userId', 'date']);
-    else await this.entries.delete({ userId, date });
-    return { date, text };
+    return saveDayText(this.unitOfWork, DayBestEntity, {
+      userId,
+      date,
+      text: normalizeDayBestText(rawText),
+      today: this.clock.today(),
+      futureMessage: FUTURE_DAY_MESSAGE,
+    });
   }
 
   /** Removes the day's line; a day without one stays as it is. */
   async remove(userId: string, date: string): Promise<void> {
     assertDateOnly(date);
-    await this.entries.delete({ userId, date });
+    await this.unitOfWork.run(userId, (manager) =>
+      manager.getRepository(DayBestEntity).delete({ userId, date }),
+    );
   }
 
-  async settings(userId: string): Promise<DayBestSettingsResponse> {
-    const row = await this.settingsRows.findOneBy({ userId });
+  settings(userId: string): Promise<DayBestSettingsResponse> {
+    return this.settingsOf(this.settingsRows, userId);
+  }
+
+  /**
+   * Changes what is given; the rest keeps its stored or default value. Read
+   * and write happen under the user lock, so two changes at once do not
+   * undo each other.
+   */
+  saveSettings(
+    userId: string,
+    change: { cardTime?: string; reminderEnabled?: boolean },
+  ): Promise<DayBestSettingsResponse> {
+    return this.unitOfWork.run(userId, async (manager) => {
+      const rows = manager.getRepository(DayBestSettingsEntity);
+      const current = await this.settingsOf(rows, userId);
+      const cardTime = change.cardTime ?? current.cardTime;
+      const reminderEnabled = change.reminderEnabled ?? current.reminderEnabled;
+      await rows.upsert(
+        { userId, cardMinutes: minutesOfTime(cardTime), reminderEnabled },
+        ['userId'],
+      );
+      return { cardTime, reminderEnabled };
+    });
+  }
+
+  private async settingsOf(
+    rows: Repository<DayBestSettingsEntity>,
+    userId: string,
+  ): Promise<DayBestSettingsResponse> {
+    const row = await rows.findOneBy({ userId });
     return {
       cardTime: timeOfMinutes(row?.cardMinutes ?? DEFAULT_CARD_MINUTES),
       reminderEnabled: row?.reminderEnabled ?? true,
     };
-  }
-
-  /** Changes what is given; the rest keeps its stored or default value. */
-  async saveSettings(
-    userId: string,
-    change: { cardTime?: string; reminderEnabled?: boolean },
-  ): Promise<DayBestSettingsResponse> {
-    const current = await this.settings(userId);
-    const cardTime = change.cardTime ?? current.cardTime;
-    const reminderEnabled = change.reminderEnabled ?? current.reminderEnabled;
-    await this.settingsRows.upsert(
-      { userId, cardMinutes: minutesOfTime(cardTime), reminderEnabled },
-      ['userId'],
-    );
-    return { cardTime, reminderEnabled };
   }
 }

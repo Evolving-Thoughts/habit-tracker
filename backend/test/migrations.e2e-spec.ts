@@ -3,6 +3,7 @@ import { ENTITY_FILES } from '../src/database/data-source';
 import { databaseOptions } from '../src/database/database.options';
 import { Baseline1793522450873 } from '../src/database/migrations/1793522450873-Baseline';
 import { WeeklyQuestTargets1796000000000 } from '../src/database/migrations/1796000000000-WeeklyQuestTargets';
+import { ExternalEventIdentity1797200000000 } from '../src/database/migrations/1797200000000-ExternalEventIdentity';
 
 const MIGRATION_DB = 'habit_tracker_migration_test';
 
@@ -77,6 +78,74 @@ describe('Migrations (e2e)', () => {
          FROM weekly_quest_targets`,
       ),
     ).toEqual([{ userId: withGoal, validFrom: '2000-01-03', minutes: 1200 }]);
+  });
+
+  it('keeps one row per Google event, the one with its tick or place', async () => {
+    // The schema just before: every sync replaced the rows.
+    const before = new DataSource({
+      ...options,
+      database: MIGRATION_DB,
+      migrations: allMigrations.slice(
+        0,
+        allMigrations.indexOf(ExternalEventIdentity1797200000000),
+      ),
+    });
+    await before.initialize();
+    await before.runMigrations();
+    const [{ id: userId }] = await before.query<{ id: string }[]>(
+      `INSERT INTO users (email, "passwordHash")
+       VALUES ('termine@example.test', 'x') RETURNING id`,
+    );
+    const insert = (
+      calendarId: string,
+      eventId: string,
+      title: string,
+      dayPosition: number | null,
+      doneAt: string | null,
+    ) =>
+      before.query(
+        `INSERT INTO external_events
+           ("userId", "calendarId", "eventId", title, start, "end",
+            "dayPosition", "doneAt")
+         VALUES ($1, $2, $3, $4, '2026-11-20T08:00:00Z',
+                 '2026-11-20T09:00:00Z', $5, $6)`,
+        [userId, calendarId, eventId, title, dayPosition, doneAt],
+      );
+    await insert('primary', 'a', 'a, plain', null, null);
+    await insert('primary', 'a', 'a, ticked', 3, '2026-11-20T10:00:00Z');
+    await insert('primary', 'a', 'a, placed', 2, null);
+    await insert('primary', 'b', 'b, first', null, null);
+    await insert('primary', 'b', 'b, second', null, null);
+    await insert('shared', 'a', 'a in another calendar', null, null);
+    await insert('primary', '', 'from before ids', null, null);
+    await insert('primary', '', 'also from before', null, null);
+    await before.destroy();
+
+    expect((await db.runMigrations()).map(({ name }) => name)).toContain(
+      'ExternalEventIdentity1797200000000',
+    );
+    expect(await remainingChanges()).toEqual([]);
+    expect(
+      (
+        await db.query<{ title: string }[]>(
+          `SELECT title FROM external_events ORDER BY id`,
+        )
+      ).map(({ title }) => title),
+    ).toEqual([
+      'a, ticked',
+      'b, first',
+      'a in another calendar',
+      'from before ids',
+      'also from before',
+    ]);
+    await expect(
+      db.query(
+        `INSERT INTO external_events
+           ("userId", "calendarId", "eventId", title, start, "end")
+         VALUES ($1, 'primary', 'b', 'again', now(), now())`,
+        [userId],
+      ),
+    ).rejects.toThrow();
   });
 
   it('adopts a database from before migrations and converts its data', async () => {

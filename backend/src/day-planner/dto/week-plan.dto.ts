@@ -61,7 +61,7 @@ export type WeekPlanHabitEntryDto = {
  */
 export type WeekPlanEventEntryDto = {
   type: 'event';
-  /** `externalEvents[].id` of Heute: the row of this sync. */
+  /** `externalEvents[].id` of Heute: the event's row, kept across syncs. */
   eventId: number;
   /** Ticked off in a day's list (only in the app, never in Google). */
   status: 'pending' | 'completed';

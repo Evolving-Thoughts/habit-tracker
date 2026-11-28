@@ -369,6 +369,28 @@ describe('Habit domain and day planner (e2e)', () => {
       ).toBe(1);
     });
 
+    it('stores a title trimmed and refuses one of only spaces', async () => {
+      const habit = await create({ title: '  Joggen  ' });
+      expect(habit.title).toBe('Joggen');
+
+      const blank = await request(server)
+        .post('/habits')
+        .send({ title: '   ', schedule: interval() })
+        .expect(400);
+      expect((blank.body as { message: string[] }).message).toEqual([
+        'Invalid habit title',
+      ]);
+      await request(server)
+        .patch(`/habits/${habit.id}`)
+        .send({ title: '   ' })
+        .expect(400);
+      const renamed = await request(server)
+        .patch(`/habits/${habit.id}`)
+        .send({ title: ' Laufen ' })
+        .expect(200);
+      expect((renamed.body as HabitResponseDto).title).toBe('Laufen');
+    });
+
     it('keeps a future initial schedule upcoming', async () => {
       const habit = await create({ startDate: relativeDate(1) });
 

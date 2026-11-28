@@ -16,7 +16,7 @@ import {
   IsCalendarDay,
   IsPlannedMinutes,
   IsTimeOfDay,
-  IsTitle,
+  IsHabitTitle,
   IsWhy,
   OptionalNotNull,
 } from '../../common/validation/field-rules';
@@ -45,7 +45,7 @@ export class CreateHabitDto {
   @IsWhy()
   readonly why?: string | null;
 
-  @IsTitle()
+  @IsHabitTitle()
   readonly title!: string;
 
   @OptionalNotNull()

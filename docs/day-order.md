@@ -67,8 +67,8 @@ The time-based replanner ("Neu planen"), the day-end setting and the per-calenda
   `day-planner/agenda-context.ts`.
 - `PUT /day-planner/order` with `{ items: [{ type: "todo" | "habit", id }] }`
   stores an order: each item takes its index as position. A habit's `id` is its
-  occurrence id. All items must be the caller's own, otherwise 404 and nothing
-  is written. It runs in the per-user unit of work. It orders any day, not only
+  occurrence id. All items must be the caller's own (Google events too, see
+  below), otherwise 404 and nothing is written. It runs in the per-user unit of work. It orders any day, not only
   today: a position only counts among the items of the day an item is on. The
   Plan (`week-plan.md`) sorts every day of its board through it.
 - `GET /day-planner/plan?from=<day>&days=<1–31>` answers the Plan's days in
@@ -124,9 +124,22 @@ writes the event back to it. Finished work also goes out,
 export only, as Logbuch events (see `logbook.md`).
 
 These decisions (what an event asks for here, who wins a conflict, which
-quests, runs and stretches get, keep or lose an event, the 60 days synced)
-are pure functions in `backend/src/calendar/calendar-sync-rules.ts`;
-`CalendarSyncService` loads, locks, calls Google and stores the links.
+quests, runs and stretches get, keep or lose an event, the 60 days synced,
+how the copy of the read calendars follows Google) are pure functions in
+`backend/src/calendar/calendar-sync-rules.ts`; `CalendarSyncService` loads,
+locks, calls Google and stores the links. Every write of a sync runs under
+the user lock (`UserUnitOfWork.run`): the incoming phase in one
+transaction, and after each request to Google a short one that stores what
+came back; no lock is held while Google answers.
+
+Events of the person's other calendars are kept as one row per event in
+`external_events`, keyed by user, calendar and the event's Google id
+(unique index `UQ_external_events_event`). A sync updates a row in place
+while its event exists (title, start, end), adds a row for a new event and
+deletes the rows whose event it no longer reads: deleted or cancelled in
+Google, past the 31 days back it reads, or in a calendar no longer read
+(`externalChanges`). So an event keeps its id across syncs, and its place
+and its tick live on the row; a sync never writes them.
 
 ## Frontend
 
@@ -320,13 +333,13 @@ opens it again there. Only by hand: an event that is over is only shown
 quieter.
 
 - `external_events.doneAt` holds the tick, only the app's: nothing is
-  written to Google. A sync carries it over by `eventId` like the place
-  (`replaceExternal`).
+  written to Google. The row keeps it across syncs. The tick runs under the
+  user lock, so a sync running meanwhile comes before or after it.
 - `GET /day-planner/today` sends `done` per event; the Plan's entries say
   `status: "completed"` and stand among the day's done entries.
 - The frontend shows the tick at once and writes it after
   (`useEventTick`, the same in Heute and on its other days); a failure
-  takes it back. An id a sync has replaced meanwhile answers 404, and the
+  takes it back. An event deleted in Google meanwhile answers 404, and the
   view loads the day again.
 
 ### Google-Termine in der Reihenfolge
@@ -340,9 +353,9 @@ around them. Their time and day never change.
 
 - `external_events.dayPosition` holds the place, counted like the items'
   (`PUT /day-planner/order` takes `{ type: "event", id }` among the
-  items). A sync replaces the rows, so `eventId` (the event's id in its
-  calendar) carries the place over (`replaceExternal`). An event id a sync
-  has replaced meanwhile is skipped; its place stays a gap.
+  items). The row keeps it across syncs, also when the event moves in
+  Google. An event deleted in Google meanwhile is not found: the write
+  answers 404 like for any other item, and nothing is written.
 - `GET /day-planner/plan` puts them among each day's entries
   (`type: "event"`, `eventCandidates`), sorted by the one rule
   (`sortInDay`); one that began the day before stands at 00:00 there.
@@ -368,3 +381,11 @@ test starts from the baseline schema with data and checks the conversion.
 
 `1796700000000-EventPlaces` adds `external_events.eventId` and
 `dayPosition`; rows from before get their id at the next sync.
+
+`1797200000000-ExternalEventIdentity` makes the event's id the row's
+identity: of rows with the same user, calendar and event id (possible while
+every sync replaced the rows) the one with a tick, else with a place, else
+the oldest stays and the others are deleted; then the unique index
+`UQ_external_events_event` is created. Rows without an event id stay out of
+the index and untouched; the next sync of their user deletes them. `down`
+drops the index (deleted duplicates do not come back).

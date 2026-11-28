@@ -13,7 +13,7 @@ import {
 import {
   IsPlannedMinutes,
   IsTimeOfDay,
-  IsTitle,
+  IsHabitTitle,
   IsWhy,
   OptionalNotNull,
 } from '../../common/validation/field-rules';
@@ -42,7 +42,7 @@ export class UpdateHabitDto {
   readonly why?: string | null;
 
   @OptionalNotNull()
-  @IsTitle()
+  @IsHabitTitle()
   readonly title?: string;
 
   @OptionalNotNull()

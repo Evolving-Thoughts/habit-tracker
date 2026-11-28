@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import type { Repository } from 'typeorm';
 import type { Clock } from '../common/clock';
+import type { UserUnitOfWork } from '../common/user-unit-of-work';
 import { DayBestEntity, DayBestSettingsEntity } from './day-best.entities';
 import { DayBestsService } from './day-bests.service';
 
@@ -30,10 +31,20 @@ describe('DayBestsService', () => {
       findOneBy: jest.fn().mockResolvedValue(null),
       upsert: jest.fn().mockResolvedValue(undefined),
     };
+    // Writes run in the unit of work, on the same repositories here.
+    const manager = {
+      getRepository: (target: unknown) =>
+        target === DayBestEntity ? entries : settings,
+    };
+    const unitOfWork = {
+      run: (_userId: string, work: (m: typeof manager) => Promise<unknown>) =>
+        work(manager),
+    };
     service = new DayBestsService(
       entries as unknown as Repository<DayBestEntity>,
       settings as unknown as Repository<DayBestSettingsEntity>,
       clock,
+      unitOfWork as unknown as UserUnitOfWork,
     );
   });
 

@@ -25,8 +25,10 @@ import {
   authenticatedRequest as request,
   seedAuth,
   SEEDED_AUTH_TABLES,
+  TEST_USER,
 } from './auth-fixture';
 import { resetDatabase } from './reset-database';
+import { holdUserLock, stillPending } from './user-lock';
 
 const OWN = 'own-calendar';
 const now = new Date('2026-10-30T06:00:00.000Z');
@@ -77,8 +79,31 @@ class FakeGoogle {
           { id: 'shared', summary: 'Gemeinsam', selected: true },
           { id: 'hidden', summary: 'Ausgeblendet' },
         ]);
-  listEvents = (_token: string, calendarId: string) =>
-    Promise.resolve(this.events(calendarId).map((event) => ({ ...event })));
+  /** While set, reading this calendar waits until the gate opens. */
+  gate: {
+    calendarId: string;
+    reached: () => void;
+    open: Promise<void>;
+  } | null = null;
+  /** Holds the next reads of a calendar; `reached` says one is waiting. */
+  holdReading(calendarId: string): {
+    reached: Promise<void>;
+    release: () => void;
+  } {
+    let reached!: () => void;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => (reached = resolve));
+    const open = new Promise<void>((resolve) => (release = resolve));
+    this.gate = { calendarId, reached, open };
+    return { reached: waiting, release };
+  }
+  listEvents = async (_token: string, calendarId: string) => {
+    if (this.gate?.calendarId === calendarId) {
+      this.gate.reached();
+      await this.gate.open;
+    }
+    return this.events(calendarId).map((event) => ({ ...event }));
+  };
   insertEvent = (
     _token: string,
     calendarId: string,
@@ -175,6 +200,7 @@ describe('Google calendar sync (e2e)', () => {
     google.calls = [];
     google.revoked = false;
     google.withoutList = false;
+    google.gate = null;
     shift = 0;
   });
   afterAll(() => app.close());
@@ -573,18 +599,21 @@ describe('Google calendar sync (e2e)', () => {
       ['event', 'Besprechung'],
     ]);
 
-    // A sync replaces the rows; the place stays, and an old id is skipped.
+    // A sync keeps the row: same id, same place.
     await sync();
-    const [again] = await read();
-    expect(again.dayPosition).toBe(1);
+    expect(await read()).toEqual([
+      expect.objectContaining({ id: event.id, dayPosition: 1 }),
+    ]);
+    // An id that is not the user's event is not found, and nothing is written.
     await request(server)
       .put('/day-planner/order')
       .send({
         items: [
-          { type: 'event', id: event.id === again.id ? 2147483647 : event.id },
+          { type: 'event', id: event.id },
+          { type: 'event', id: 2147483647 },
         ],
       })
-      .expect(204);
+      .expect(404);
     expect((await read())[0].dayPosition).toBe(1);
   });
 
@@ -623,10 +652,10 @@ describe('Google calendar sync (e2e)', () => {
     ).toEqual([['event', 'completed']]);
     expect(google.writes).toHaveLength(writesBefore);
 
-    // A sync replaces the rows; the tick stays.
+    // A sync keeps the row and its tick.
     await sync();
     const [again] = await read();
-    expect(again.done).toBe(true);
+    expect(again).toMatchObject({ id: event.id, done: true });
     await request(server)
       .put(`/day-planner/events/${again.id}/done`)
       .send({ done: false })
@@ -642,6 +671,153 @@ describe('Google calendar sync (e2e)', () => {
       .put('/day-planner/events/2147483647/done')
       .send({ done: true })
       .expect(404);
+  });
+
+  describe('external events keep their identity', () => {
+    type Event = {
+      id: number;
+      title: string;
+      start: string;
+      done: boolean;
+      dayPosition: number | null;
+    };
+    const read = async (): Promise<Event[]> =>
+      (
+        (await request(server).get('/day-planner/today').expect(200)).body as {
+          externalEvents: Event[];
+        }
+      ).externalEvents;
+    const tick = (id: number, done = true) =>
+      request(server).put(`/day-planner/events/${id}/done`).send({ done });
+    const meeting = (summary: string, start: string, end: string) =>
+      google.add('primary', { summary, ...timed(start, end) });
+
+    it('a ticked external event keeps its id and its tick across a sync', async () => {
+      await connect();
+      const renamed = meeting(
+        'Vermittlung',
+        '2026-10-30T07:00:00.000Z',
+        '2026-10-30T08:00:00.000Z',
+      );
+      await sync();
+      const [event] = await read();
+      await tick(event.id).expect(204);
+
+      renamed.summary = 'Vermittlung (Raum 2)';
+      renamed.updated = google.stamp();
+      await sync();
+      await sync();
+
+      expect(await read()).toEqual([
+        expect.objectContaining({
+          id: event.id,
+          title: 'Vermittlung (Raum 2)',
+          done: true,
+        }),
+      ]);
+    });
+
+    it('an event moved in Google keeps its id and place', async () => {
+      await connect();
+      const moving = meeting(
+        'Besprechung',
+        '2026-10-30T08:00:00.000Z',
+        '2026-10-30T09:00:00.000Z',
+      );
+      await sync();
+      const [event] = await read();
+      const todo = await request(server)
+        .post('/todos')
+        .send({ title: 'Bewerbung', scheduledDate: '2026-10-30' })
+        .expect(201);
+      await request(server)
+        .put('/day-planner/order')
+        .send({
+          items: [
+            { type: 'todo', id: (todo.body as { id: number }).id },
+            { type: 'event', id: event.id },
+          ],
+        })
+        .expect(204);
+
+      Object.assign(moving, {
+        ...timed('2026-10-30T12:00:00.000Z', '2026-10-30T13:30:00.000Z'),
+        updated: google.stamp(),
+      });
+      await sync();
+
+      expect(await read()).toEqual([
+        expect.objectContaining({
+          id: event.id,
+          start: '2026-10-30T12:00:00.000Z',
+          dayPosition: 1,
+        }),
+      ]);
+    });
+
+    it('an event deleted in Google is removed', async () => {
+      await connect();
+      const leaving = meeting(
+        'Abgesagt',
+        '2026-10-30T08:00:00.000Z',
+        '2026-10-30T09:00:00.000Z',
+      );
+      meeting('Bleibt', '2026-10-30T10:00:00.000Z', '2026-10-30T11:00:00.000Z');
+      await sync();
+      const before = await read();
+      const gone = before.find(({ title }) => title === 'Abgesagt')!;
+      const stays = before.find(({ title }) => title === 'Bleibt')!;
+
+      leaving.status = 'cancelled';
+      await sync();
+
+      expect(await read()).toEqual([
+        expect.objectContaining({ id: stays.id, title: 'Bleibt' }),
+      ]);
+      await tick(gone.id).expect(404);
+      // Gone from the listing entirely is the same.
+      google.calendars.set('primary', []);
+      await sync();
+      expect(await read()).toEqual([]);
+    });
+
+    it('a tick while a sync runs is not lost', async () => {
+      await connect();
+      meeting('Termin', '2026-10-30T08:00:00.000Z', '2026-10-30T09:00:00.000Z');
+      await sync();
+      const [event] = await read();
+
+      // The sync is reading Google; the tick comes in meanwhile.
+      const { reached, release } = google.holdReading('primary');
+      const syncing = sync().then(() => undefined);
+      await reached;
+      await tick(event.id).expect(204);
+      release();
+      await syncing;
+
+      expect(await read()).toEqual([
+        expect.objectContaining({ id: event.id, done: true }),
+      ]);
+    });
+
+    it('a tick waits for a change in progress', async () => {
+      await connect();
+      meeting('Termin', '2026-10-30T08:00:00.000Z', '2026-10-30T09:00:00.000Z');
+      await sync();
+      const [event] = await read();
+
+      const releaseLock = await holdUserLock(db, TEST_USER);
+      const ticking = tick(event.id)
+        .expect(204)
+        .then(() => undefined);
+      try {
+        expect(await stillPending(ticking, 300)).toBe(true);
+      } finally {
+        await releaseLock();
+      }
+      await ticking;
+      expect((await read())[0].done).toBe(true);
+    });
   });
 
   it('counts events by the time they occupy, not by their start', async () => {

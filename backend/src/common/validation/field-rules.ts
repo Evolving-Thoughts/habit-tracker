@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import {
   IsDateString,
   IsInt,
@@ -56,6 +57,24 @@ export const IsPlannedMinutes = (): PropertyDecorator =>
 /** A title: a non-empty string of at most 200 characters. */
 export const IsTitle = (): PropertyDecorator =>
   stacked(IsString(), IsNotEmpty(), MaxLength(MAX_TITLE_LENGTH));
+
+/** The answer to a Daily title that is empty once trimmed. */
+export const INVALID_HABIT_TITLE = 'Invalid habit title';
+
+/**
+ * A Daily's title: trimmed first, then `IsTitle`; one of only spaces
+ * answers `INVALID_HABIT_TITLE`. Quests keep `IsTitle`, which takes a
+ * title of spaces as it is.
+ */
+export const IsHabitTitle = (): PropertyDecorator =>
+  stacked(
+    Transform(({ value }: { value: unknown }) =>
+      typeof value === 'string' ? value.trim() : value,
+    ),
+    IsString(),
+    IsNotEmpty({ message: INVALID_HABIT_TITLE }),
+    MaxLength(MAX_TITLE_LENGTH),
+  );
 
 /** The "why" of a quest or Daily; null clears it. */
 export const IsWhy = (): PropertyDecorator =>

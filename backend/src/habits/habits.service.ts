@@ -37,16 +37,6 @@ export class HabitsService {
     private readonly unitOfWork: UserUnitOfWork,
   ) {}
 
-  private validTitle(title: string): string {
-    const trimmed = title.trim();
-
-    if (trimmed.length === 0 || trimmed.length > 200) {
-      throw new BadRequestException('Invalid habit title');
-    }
-
-    return trimmed;
-  }
-
   /**
    * The Daily list: every habit of the user, from one snapshot with one
    * `now` (`answerAsOfNow`), so the run a stopwatch can start on, the
@@ -154,7 +144,6 @@ export class HabitsService {
   }
 
   async create(userId: string, dto: CreateHabitDto): Promise<HabitResponseDto> {
-    const title = this.validTitle(dto.title);
     const definition = normalizeSchedule(dto.schedule);
 
     return this.unitOfWork.run(userId, async (manager) => {
@@ -180,7 +169,7 @@ export class HabitsService {
           timeOfDay: dto.timeOfDay ?? null,
           focusBlock: dto.focusBlock ?? 'default',
           userId,
-          title,
+          title: dto.title,
           isActive: true,
         }),
       );
@@ -270,7 +259,7 @@ export class HabitsService {
           { dayPosition: null },
         );
     if (dto.title !== undefined) {
-      habit.title = this.validTitle(dto.title);
+      habit.title = dto.title;
     }
 
     if (dto.isActive !== undefined) {

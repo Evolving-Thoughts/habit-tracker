@@ -11,8 +11,10 @@ import {
   authenticatedRequest as request,
   seedAuth,
   SEEDED_AUTH_TABLES,
+  TEST_USER,
 } from './auth-fixture';
 import { resetDatabase } from './reset-database';
+import { holdUserLock, stillPending } from './user-lock';
 
 const OTHER_USER = '33333333-3333-4333-8333-333333333333';
 
@@ -55,6 +57,21 @@ describe('Daily reflections (e2e)', () => {
       .get(`/reflections/${today}`)
       .expect(200);
     expect(reread.body).toEqual({ date: today, text: 'Noch besser' });
+    expect(await db.getRepository(ReflectionEntity).count()).toBe(1);
+  });
+
+  it('stores a text in the user unit of work, after a change in progress', async () => {
+    const release = await holdUserLock(db, TEST_USER);
+    const saving = save(today, 'Nach der Sperre')
+      .expect(200)
+      .then(() => undefined);
+    try {
+      expect(await stillPending(saving, 300)).toBe(true);
+      expect(await db.getRepository(ReflectionEntity).count()).toBe(0);
+    } finally {
+      await release();
+    }
+    await saving;
     expect(await db.getRepository(ReflectionEntity).count()).toBe(1);
   });
 

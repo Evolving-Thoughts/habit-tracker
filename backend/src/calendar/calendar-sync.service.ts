@@ -8,9 +8,8 @@ import {
   DataSource,
   EntityManager,
   In,
-  IsNull,
   MoreThanOrEqual,
-  Not,
+  Repository,
 } from 'typeorm';
 import { Clock } from '../common/clock';
 import { LiveService } from '../live/live.service';
@@ -34,13 +33,13 @@ import {
 import {
   Appointment,
   eventEdit,
+  externalChanges,
   incomingStep,
   lastSyncedDay,
   logbookSince,
   logPushes,
   logSteps,
   OutgoingPlan,
-  plannedTimes,
   PushOperation,
   runPushes,
   todoPushes,
@@ -56,11 +55,6 @@ import {
 
 /** The month view also shows the recent past of the read calendars. */
 const READ_PAST_DAYS = 31;
-
-/** One Google event across syncs: its calendar and its id there. */
-function placeKey(calendarId: string, eventId: string): string {
-  return `${calendarId}\n${eventId}`;
-}
 
 type Push = PushOperation<CalendarLinkEntity>;
 
@@ -113,8 +107,9 @@ export class CalendarSyncService {
   }
 
   private async exchange(userId: string): Promise<void> {
-    const repository = this.db.getRepository(CalendarConnectionEntity);
-    const connection = await repository.findOneBy({ userId, revoked: false });
+    const connection = await this.db
+      .getRepository(CalendarConnectionEntity)
+      .findOneBy({ userId, revoked: false });
     if (!connection) return;
     try {
       const token = await this.client.accessToken(
@@ -147,12 +142,12 @@ export class CalendarSyncService {
       );
       const operations = await this.unitOfWork.run(userId, async (manager) => {
         await this.applyIncoming(manager, userId, own);
-        await this.replaceExternal(manager, userId, read, needsConsent);
+        await this.storeExternal(manager, userId, read, needsConsent);
         return this.outgoing(manager, userId, today);
       });
       for (const operation of operations)
         await this.send(userId, token, connection.calendarId, operation);
-      await repository.update(userId, {
+      await this.recordOutcome(userId, {
         lastSyncedAt: this.clock.now(),
         lastError: null,
         needsConsent,
@@ -160,13 +155,23 @@ export class CalendarSyncService {
     } catch (error) {
       const revoked = error instanceof GoogleAccessRevokedError;
       if (!revoked) this.logger.warn('Kalender-Abgleich fehlgeschlagen.');
-      await repository.update(userId, {
+      await this.recordOutcome(userId, {
         revoked,
         lastError: revoked
           ? 'Google hat den Zugriff beendet. Bitte neu verbinden.'
           : 'Der letzte Abgleich ist fehlgeschlagen.',
       });
     }
+  }
+
+  /** The run's outcome on the connection, stored under the user lock. */
+  private recordOutcome(
+    userId: string,
+    outcome: Partial<CalendarConnectionEntity>,
+  ): Promise<unknown> {
+    return this.unitOfWork.run(userId, (manager) =>
+      manager.getRepository(CalendarConnectionEntity).update(userId, outcome),
+    );
   }
 
   /**
@@ -340,8 +345,13 @@ export class CalendarSyncService {
     await manager.getRepository(CalendarLinkEntity).save(link);
   }
 
-  /** New calendars block planning only if they are the main calendar. */
-  private async replaceExternal(
+  /**
+   * Stores the read calendars and brings the copy of their events to what
+   * this sync read (`externalChanges`). Place and tick live on the rows, and
+   * a sync never writes them. With an older token (`keepCalendars`) only the
+   * main calendar is read, and the calendars listed before stay.
+   */
+  private async storeExternal(
     manager: EntityManager,
     userId: string,
     read: { calendar: GoogleCalendar; events: GoogleEvent[] }[],
@@ -353,52 +363,33 @@ export class CalendarSyncService {
       const current = new Set(read.map(({ calendar }) => calendar.id));
       await calendars.remove(known.filter((c) => !current.has(c.calendarId)));
     }
-    const repository = manager.getRepository(ExternalEventEntity);
-    // The rows are replaced; the places the user sorted them into and the
-    // ticks they gave them stay.
-    const kept = new Map(
-      (
-        await repository.find({
-          select: {
-            calendarId: true,
-            eventId: true,
-            dayPosition: true,
-            doneAt: true,
-          },
-          where: [
-            { userId, dayPosition: Not(IsNull()) },
-            { userId, doneAt: Not(IsNull()) },
-          ],
-        })
-      ).map((row) => [placeKey(row.calendarId, row.eventId), row]),
-    );
-    await repository.delete({ userId });
-    for (const { calendar, events } of read) {
+    for (const { calendar } of read)
       await calendars.save({
         userId,
         calendarId: calendar.id,
         title: (calendar.summary?.trim() || 'Kalender').slice(0, 300),
         primary: calendar.primary ?? false,
       });
-      const rows = events.flatMap((event) => {
-        const times = plannedTimes(event);
-        if (!times) return [];
-        return [
-          repository.create({
-            userId,
-            calendarId: calendar.id,
-            title: (event.summary?.trim() || 'Termin').slice(0, 500),
-            start: times.start,
-            end: times.end,
-            eventId: event.id,
-            dayPosition:
-              kept.get(placeKey(calendar.id, event.id))?.dayPosition ?? null,
-            doneAt: kept.get(placeKey(calendar.id, event.id))?.doneAt ?? null,
-          }),
-        ];
-      });
-      await repository.save(rows);
-    }
+    const repository = manager.getRepository(ExternalEventEntity);
+    const { insert, update, remove } = externalChanges(
+      await repository.find({
+        select: {
+          id: true,
+          calendarId: true,
+          eventId: true,
+          title: true,
+          start: true,
+          end: true,
+        },
+        where: { userId },
+      }),
+      read.map(({ calendar, events }) => ({ calendarId: calendar.id, events })),
+    );
+    if (remove.length) await repository.delete({ userId, id: In(remove) });
+    for (const { id, fields } of update)
+      await repository.update({ id, userId }, fields);
+    if (insert.length)
+      await repository.insert(insert.map((fields) => ({ userId, ...fields })));
   }
 
   private async outgoing(
@@ -500,26 +491,39 @@ export class CalendarSyncService {
     return logPushes(steps, described);
   }
 
+  /**
+   * Sends one request to the app's own calendar, then stores what came back
+   * in a short transaction under the user lock, like every change; no lock
+   * is held while Google answers. A link removed meanwhile (disconnect) is
+   * not written again.
+   */
   private async send(
     userId: string,
     token: string,
     calendarId: string,
     operation: Push,
   ): Promise<void> {
-    const links = this.db.getRepository(CalendarLinkEntity);
+    const store = (
+      work: (links: Repository<CalendarLinkEntity>) => Promise<unknown>,
+    ) =>
+      this.unitOfWork.run(userId, (manager) =>
+        work(manager.getRepository(CalendarLinkEntity)),
+      );
     if (operation.type === 'insert') {
       const event = await this.client.insertEvent(
         token,
         calendarId,
         operation.input,
       );
-      await links.save({
-        userId,
-        ...operation.local,
-        eventId: event.id,
-        remoteUpdatedAt: new Date(event.updated),
-        syncedAt: operation.localUpdatedAt,
-      });
+      await store((links) =>
+        links.save({
+          userId,
+          ...operation.local,
+          eventId: event.id,
+          remoteUpdatedAt: new Date(event.updated),
+          syncedAt: operation.localUpdatedAt,
+        }),
+      );
       return;
     }
     const { link } = operation;
@@ -533,19 +537,22 @@ export class CalendarSyncService {
           link.eventId,
           operation.input,
         );
-        link.remoteUpdatedAt = new Date(event.updated);
-        link.syncedAt = operation.localUpdatedAt;
-        await links.save(link);
+        await store((links) =>
+          links.update(link.id, {
+            remoteUpdatedAt: new Date(event.updated),
+            syncedAt: operation.localUpdatedAt,
+          }),
+        );
         return;
       }
     } catch (error) {
       if (!(error instanceof GoogleEventMissingError)) throw error;
       // Deleted in Google: a Logbuch event stays deleted, a plan is written anew.
       if (operation.type === 'patch' && link.workLogId !== null) {
-        await links.update(link.id, { suppressed: true });
+        await store((links) => links.update(link.id, { suppressed: true }));
         return;
       }
     }
-    await links.delete({ id: link.id });
+    await store((links) => links.delete({ id: link.id }));
   }
 }

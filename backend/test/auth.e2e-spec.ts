@@ -14,6 +14,7 @@ import {
 import { tokenHash } from '../src/auth/auth.crypto';
 import { dayOf } from '../src/common/date/local-day';
 import { resetDatabase } from './reset-database';
+import { stillPending, within } from './user-lock';
 
 const PASSWORD = 'test-password-at-least-12';
 type Mail = { email: string; kind: 'verify' | 'reset'; token: string };
@@ -290,11 +291,39 @@ describe('Authentication and ownership (e2e)', () => {
       email: 'missing@example.test',
     }).expect(202);
     expect(known.body).toEqual(unknown.body);
+    // The unsent link was never stored; the previous one is still the link.
     expect(
-      await db
-        .getRepository(AuthTokenEntity)
-        .findOneBy({ hash: tokenHash(old) }),
-    ).not.toBeNull();
+      await db.getRepository(AuthTokenEntity).findBy({ kind: 'reset' }),
+    ).toEqual([expect.objectContaining({ hash: tokenHash(old) })]);
+  });
+  it('holds no user lock while the reset mail is on its way', async () => {
+    await verified();
+    let deliver!: () => void;
+    let sending!: () => void;
+    const started = new Promise<void>((resolve) => (sending = resolve));
+    mailer.send.mockImplementationOnce(
+      async (email: string, kind: 'verify' | 'reset', token: string) => {
+        sending();
+        await new Promise<void>((resolve) => (deliver = resolve));
+        messages.push({ email, kind, token });
+      },
+    );
+    const forgot = post('/auth/forgot-password', {
+      email: 'a@example.test',
+    }).then((response) => response.status);
+    await within(started, 5000);
+    try {
+      // A login takes the same user lock; it does not wait for the mail.
+      await within(login(), 5000);
+      expect(await stillPending(forgot, 100)).toBe(true);
+    } finally {
+      deliver();
+    }
+    expect(await forgot).toBe(202);
+    await post('/auth/reset-password', {
+      token: latest('a@example.test', 'reset'),
+      password: 'after-slow-mail-password',
+    }).expect(204);
   });
   it('allows only one concurrent reset with the same token', async () => {
     const cookie = await verified();
