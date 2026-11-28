@@ -11,8 +11,8 @@ import { reorderDay } from "../api/day-planner.api";
 import { useInsertPlace } from "../composables/useInsertPlace";
 import {
   newPlaces,
+  placeFromText,
   questDay,
-  textCategory,
   useQuestFromText,
 } from "../composables/useQuestFromText";
 import { useQuestParseContext } from "../composables/useQuestParseContext";
@@ -178,25 +178,23 @@ async function add(): Promise<void> {
       places: newPlaces(result),
       campaignCategoryId: result.categoryId ?? null,
       input: (places) => {
-        const named = places.campaign?.id ?? result.campaignId;
-        const campaignId = named ?? props.parent?.id;
-        // A new campaign has the category named, or none; the field's own
-        // campaign lends its category like a named one.
-        const fromText =
-          places.category?.id ?? textCategory(result, names.campaignCategory);
-        const categoryId =
-          fromText !== undefined
-            ? fromText
-            : named === undefined
-              ? (props.parent?.categoryId ?? undefined)
-              : undefined;
+        // The field's campaign lends its category like a named one.
+        const { parentId, categoryId } = placeFromText(
+          result,
+          {
+            parentId: props.parent?.id,
+            categoryId: props.parent?.categoryId ?? undefined,
+          },
+          names.campaignCategory,
+          places,
+        );
         // Into the Questlog the server places it at the head or the end itself.
         return {
           title: result.title.trim(),
           scheduledDate: date,
           timeOfDay: result.timeOfDay ?? null,
           plannedDurationMinutes: result.plannedDurationMinutes ?? null,
-          ...(campaignId === undefined ? {} : { parentId: campaignId }),
+          ...(parentId === undefined ? {} : { parentId }),
           ...(categoryId === undefined ? {} : { categoryId }),
           ...(date === null ? { backlogPlace: place.value } : {}),
         };

@@ -310,6 +310,7 @@ describe("PlannerItemEditor", () => {
       campaign: { id: 1, title: "NestJS lernen", color: "pine", icon: null },
     };
 
+    // Which groups a campaign keeps once set is told in editor-form.spec.ts.
     it("leaves out day, duration, appointment and Gehört zu, and says what makes a campaign", async () => {
       vi.mocked(getTodo).mockResolvedValue(campaign);
       const wrapper = mount(PlannerItemEditor, {
@@ -335,18 +336,6 @@ describe("PlannerItemEditor", () => {
       expect(wrapper.text()).toContain(
         "Eine oberste Quest wird zur Kampagne, sobald sie Unter-Quests hat oder eine Farbe, ein Symbol oder ein Wochenziel bekommt.",
       );
-    });
-
-    it("still shows a day a campaign already has, so it can be cleared", async () => {
-      vi.mocked(getTodo).mockResolvedValue({
-        ...campaign,
-        scheduledDate: "2026-10-02",
-      });
-      const wrapper = mount(PlannerItemEditor, {
-        props: { kind: "todo", entityId: 1 },
-      });
-      await flushPromises();
-      expect(wrapper.find('input[name="scheduledDate"]').exists()).toBe(true);
     });
   });
 
@@ -385,7 +374,8 @@ describe("PlannerItemEditor", () => {
       expect(wrapper.emitted("changed")).toEqual([[]]);
     });
 
-    it("is not offered for a quest with quests below it or a done one", async () => {
+    // Which quests may switch is told in editor-form.spec.ts.
+    it("is not offered once the tree shows quests below it", async () => {
       vi.mocked(getTodoHierarchy).mockResolvedValue([
         hierarchyTodo({ id: 1, title: "NestJS lernen" }),
         hierarchyTodo({ id: 2, title: "Module", parentId: 1 }),
@@ -393,12 +383,6 @@ describe("PlannerItemEditor", () => {
       const parent = mountQuest();
       await flushPromises();
       expect(parent.find('[data-test="kind-habit"]').exists()).toBe(false);
-
-      vi.mocked(getTodoHierarchy).mockResolvedValue([]);
-      vi.mocked(getTodo).mockResolvedValue({ ...todo, completed: true });
-      const done = mountQuest();
-      await flushPromises();
-      expect(done.find('[data-test="kind-habit"]').exists()).toBe(false);
     });
   });
 
@@ -738,21 +722,19 @@ describe("PlannerItemEditor", () => {
     expect(changeHabitSchedule).not.toHaveBeenCalled();
   });
 
-  it.each(["2026-10-01", ""])(
-    "rejects invalid or past effective date '%s' before any write",
-    async (date) => {
-      const wrapper = mountHabitEditor();
-      await editSchedule(wrapper);
-      await wrapper.get('input[name="title"]').setValue("Neuer Titel");
-      await wrapper.get('input[name="effectiveFrom"]').setValue(date);
-      await save(wrapper);
-      expect(updateHabit).not.toHaveBeenCalled();
-      expect(changeHabitSchedule).not.toHaveBeenCalled();
-      expect(wrapper.get('[role="alert"]').text()).toContain(
-        "heute oder ein zukünftiges gültiges Datum",
-      );
-    },
-  );
+  // Which days a rhythm may start on is told in editor-form.spec.ts.
+  it("rejects a past effective date before any write", async () => {
+    const wrapper = mountHabitEditor();
+    await editSchedule(wrapper);
+    await wrapper.get('input[name="title"]').setValue("Neuer Titel");
+    await wrapper.get('input[name="effectiveFrom"]').setValue("2026-10-01");
+    await save(wrapper);
+    expect(updateHabit).not.toHaveBeenCalled();
+    expect(changeHabitSchedule).not.toHaveBeenCalled();
+    expect(wrapper.get('[role="alert"]').text()).toContain(
+      "heute oder ein zukünftiges gültiges Datum",
+    );
+  });
 
   it("rejects weekdays without a selected day", async () => {
     const wrapper = mountHabitEditor();

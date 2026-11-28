@@ -1,23 +1,20 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, useId, watch } from "vue";
+import { computed, nextTick, onMounted, ref, useId } from "vue";
 import {
+  fieldsFromText,
   newPlaces,
-  questDay,
-  textCategory,
   useQuestFromText,
+  type QuestTextFields,
 } from "../composables/useQuestFromText";
 import { useQuestParseContext } from "../composables/useQuestParseContext";
 import type { CategoryResponse } from "../types/category";
-import type {
-  CreateTodoInput,
-  InheritedWhy,
-  TodoResponse,
-} from "../types/todo";
+import type { CreateTodoInput, TodoResponse } from "../types/todo";
 import type { HierarchyTodo } from "../types/todo-hierarchy";
 import { buildTodoInput } from "../utils/todo-input";
 import type { CampaignColor, CampaignIcon } from "../types/campaign";
+import { placeBrings } from "../utils/editor-form";
 import { hoursToMinutes } from "../utils/quest-hours";
-import { categoryOfChoice, type ParentChoice } from "../utils/parent-choice";
+import type { ParentChoice } from "../utils/parent-choice";
 import { parseQuest, type QuestParseKind } from "../utils/quest-parse";
 import { whyBelow } from "../utils/why";
 import CampaignFields from "./CampaignFields.vue";
@@ -49,22 +46,6 @@ const emit = defineEmits<{
 }>();
 
 const title = ref(props.initialTitle ?? "");
-const parentId = ref<number | null>(props.parent?.id ?? null);
-/** What the new quest inherits from the quest it goes below. */
-const inheritedWhy = ref<InheritedWhy | null>(
-  props.parent ? whyBelow(props.parent) : null,
-);
-const date = ref("");
-const time = ref("");
-const durationMinutes = ref<string | number>("");
-const categoryId = ref<number | null>(props.parent?.categoryId ?? null);
-/** The chosen category in words, for the closed disclosure. */
-const categoryName = computed(() =>
-  parsed.value?.newCategory
-    ? `${parsed.value.newCategory} (neu)`
-    : (known.value.categories?.find((entry) => entry.id === categoryId.value)
-        ?.name ?? ""),
-);
 const why = ref("");
 const color = ref<CampaignColor | null>(null);
 const icon = ref<CampaignIcon | null>(null);
@@ -119,12 +100,6 @@ const known = computed(() => ({
     ? names.options.value.categories
     : undefined,
 }));
-/**
- * While dictation sets the category, the one it replaced (none, the
- * campaign's preset or a chosen place's) comes back when its chip goes.
- */
-let categoryFromText = false;
-let categoryBefore: number | null = null;
 const ignored = ref<QuestParseKind[]>([]);
 /** Set once dictation has written into the title; reading starts then. */
 const dictated = ref(false);
@@ -142,39 +117,47 @@ const parsed = computed(() =>
         offerNew: true,
       }),
 );
-watch(parsed, (result) => {
-  if (!result) return;
-  if (!touched.value.date) date.value = questDay(result) ?? "";
-  if (!touched.value.time) time.value = result.timeOfDay ?? "";
-  if (!touched.value.duration)
-    durationMinutes.value = result.plannedDurationMinutes ?? "";
-  const campaign =
-    result.campaignId === undefined
-      ? undefined
-      : names.campaign(result.campaignId);
-  if (!touched.value.campaign) {
-    const id = campaign?.todo.id ?? null;
-    if (parentId.value !== id) {
-      parentId.value = id;
-      inheritedWhy.value = campaign ? whyBelow(campaign.todo) : null;
-    }
-  }
-  if (!touched.value.category) {
-    // A new category is none until saving; the picker shows it pending.
-    // A named campaign without a category leaves the field's as it is.
-    const wanted = textCategory(result, names.campaignCategory, {
-      campaignWithoutCategory: "keep",
-    });
-    if (wanted !== undefined) {
-      if (!categoryFromText) categoryBefore = categoryId.value;
-      categoryFromText = true;
-      categoryId.value = wanted;
-    } else if (categoryFromText) {
-      categoryFromText = false;
-      categoryId.value = categoryBefore;
-    }
-  }
+
+/**
+ * The form's own values: set by hand, preset, or brought by a chosen place.
+ * What it shows lays the text over them (`fieldsFromText`), so a discarded
+ * chip gives back the value it replaced.
+ */
+const own = ref<QuestTextFields>({
+  date: "",
+  time: "",
+  duration: "",
+  parentId: props.parent?.id ?? null,
+  inheritedWhy: props.parent ? whyBelow(props.parent) : null,
+  categoryId: props.parent?.categoryId ?? null,
 });
+const shown = computed(() =>
+  fieldsFromText(own.value, parsed.value, touched.value, names),
+);
+/** A field as shown; what is put into it becomes the form's own value. */
+function field<K extends keyof QuestTextFields>(key: K) {
+  return computed({
+    get: () => shown.value[key],
+    set: (value: QuestTextFields[K]) => {
+      own.value[key] = value;
+    },
+  });
+}
+const date = field("date");
+const time = field("time");
+const durationMinutes = field("duration");
+const parentId = field("parentId");
+const categoryId = field("categoryId");
+/** What the new quest inherits from the quest it goes below. */
+const inheritedWhy = computed(() => shown.value.inheritedWhy);
+/** The chosen category in words, for the closed disclosure. */
+const categoryName = computed(() =>
+  parsed.value?.newCategory
+    ? `${parsed.value.newCategory} (neu)`
+    : (known.value.categories?.find((entry) => entry.id === categoryId.value)
+        ?.name ?? ""),
+);
+
 function setDate(value: string): void {
   touched.value.date = true;
   date.value = value;
@@ -196,24 +179,20 @@ onMounted(async () => {
   void mic.value?.start();
 });
 
-/** A category the form would hold without dictation: none so far takes it. */
-function suggestCategory(choice: ParentChoice): void {
-  if (categoryFromText) categoryBefore ??= categoryOfChoice(choice);
-  else if (categoryId.value === null)
-    categoryId.value = categoryOfChoice(choice);
-}
 /** A chosen place brings its reason (live, never copied) and its category. */
 function choose(choice: ParentChoice | null): void {
   touched.value.campaign = true;
-  inheritedWhy.value = choice ? whyBelow(choice.todo) : null;
-  if (choice) suggestCategory(choice);
+  const brought = placeBrings(choice, own.value.categoryId);
+  own.value.inheritedWhy = brought.inheritedWhy;
+  own.value.categoryId = brought.categoryId;
 }
 /** Created inside a campaign: the campaign's category if the parent has none. */
 function preset(choices: ParentChoice[], todos: HierarchyTodo[]): void {
   names.supply({ todos });
   loadedHere.value.campaigns = true;
   const choice = choices.find((entry) => entry.todo.id === parentId.value);
-  if (choice) suggestCategory(choice);
+  if (choice)
+    own.value.categoryId = placeBrings(choice, own.value.categoryId).categoryId;
 }
 /** The category picker's list, loaded or grown. */
 function categoriesLoaded(categories: CategoryResponse[]): void {
@@ -223,7 +202,6 @@ function categoriesLoaded(categories: CategoryResponse[]): void {
 /** A category picked by hand stays, whatever the dictation names. */
 function pickCategory(): void {
   touched.value.category = true;
-  categoryFromText = false;
 }
 
 function buildInput(): CreateTodoInput {
@@ -236,18 +214,23 @@ function buildInput(): CreateTodoInput {
 }
 
 function resetForm(): void {
+  // Place, reason and category stay as shown, for the next quest.
+  own.value = {
+    date: "",
+    time: "",
+    duration: "",
+    parentId: shown.value.parentId,
+    inheritedWhy: shown.value.inheritedWhy,
+    categoryId: shown.value.categoryId,
+  };
   title.value = "";
   dictated.value = false;
-  date.value = "";
-  time.value = "";
-  durationMinutes.value = "";
   why.value = "";
   color.value = null;
   icon.value = null;
   weeklyTarget.value = "";
   touched.value = untouched();
   ignored.value = [];
-  categoryFromText = false;
 }
 
 /** Creates what the dictation named new first, then the quest. */

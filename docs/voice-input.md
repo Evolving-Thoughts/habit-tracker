@@ -12,7 +12,7 @@ Code:
 - `components/MicButton.vue`: der Knopf.
 - `utils/quest-parse.ts`: Tag und Dauer aus dem Text, mit `utils/quest-parse-names.ts` auch Kampagne und Kategorie; `components/QuestParseChips.vue` zeigt das Erkannte.
 - `composables/useQuestParseContext.ts`: die offenen Kampagnen und die Kategorien für das Schnell-Anlegen, einmal geladen für alle Felder; „Neue Quest“ reicht ihm die Listen seiner Auswahlfelder (`supply`).
-- `composables/useQuestFromText.ts`: was Schnell-Anlegen und „Neue Quest“ gleich aus dem Erkannten machen (Tag, Kategorie der Kampagne) und das Anlegen: erst das Neue, dann die Quest, ohne Doppeltes bei einem neuen Versuch.
+- `composables/useQuestFromText.ts`: was Schnell-Anlegen und „Neue Quest“ gleich aus dem Erkannten machen (Tag; Platz und Kategorie über denen des Formulars mit `placeFromText`; was „Neue Quest“ in seinen Feldern zeigt, mit `fieldsFromText`) und das Anlegen: erst das Neue, dann die Quest, ohne Doppeltes bei einem neuen Versuch. Was ein gewählter Platz mitbringt (Warum und Kategorie), steht einmal in `utils/editor-form.ts` (`placeBrings`).
 - `api/new-places.api.ts`: legt eine genannte, noch fehlende Kampagne oder Kategorie vor der Quest an (`createCampaign` nutzt auch „Gehört zu“).
 - `utils/insert-text.ts`: Diktat an der Schreibmarke in ein Textfeld.
 - `components/VoiceInputSettings.vue`: der Abschnitt in den Einstellungen.

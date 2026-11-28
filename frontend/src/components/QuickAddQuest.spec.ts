@@ -485,7 +485,8 @@ describe("QuickAddQuest", () => {
       });
     });
 
-    it("takes a named category over the campaign's", async () => {
+    // Which category wins is told in useQuestFromText.spec.ts (`placeFromText`).
+    it("shows a named category beside the campaign, with its colour mark", async () => {
       const wrapper = mountAt();
       await typeIn(
         wrapper,
@@ -500,15 +501,6 @@ describe("QuickAddQuest", () => {
           .get('[data-kind="category"] .parse-chip__mark')
           .attributes("style"),
       ).toContain("--mark: var(--color-mark-pine)");
-      await wrapper.get("form").trigger("submit");
-      await flushPromises();
-      expect(createTodo).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "Laufen gehen",
-          parentId: 1,
-          categoryId: 10,
-        }),
-      );
     });
 
     it("leaves a discarded chip's words in the title and sets nothing from them", async () => {
